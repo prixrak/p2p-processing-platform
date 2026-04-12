@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface-primary: #0a0a0f;
+  --color-surface-secondary: #12121a;
+  --color-surface-tertiary: #1a1a26;
+  --color-surface-elevated: #222232;
+
+  --color-border-primary: #2a2a3d;
+  --color-border-secondary: #363650;
+
+  --color-accent: #6366f1;
+  --color-accent-hover: #818cf8;
+  --color-accent-muted: #6366f11a;
+
+  --color-success: #22c55e;
+  --color-success-muted: #22c55e1a;
+  --color-warning: #f59e0b;
+  --color-warning-muted: #f59e0b1a;
+  --color-danger: #ef4444;
+  --color-danger-muted: #ef44441a;
+
+  --color-text-primary: #f0f0f5;
+  --color-text-secondary: #9495b0;
+  --color-text-muted: #5c5d78;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-surface-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: var(--color-danger); }
+  50% { border-color: transparent; }
+}
+
+.animate-pulse-border {
+  animation: pulse-border 1s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out;
+}

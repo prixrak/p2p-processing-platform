@@ -1,0 +1,15 @@
+---
+description: Reliable signed webhook delivery and idempotency
+globs: **/*.{ts,tsx,js,jsx,py,go,java}
+alwaysApply: false
+---
+
+# Webhook Reliability Rules
+
+- Sign every webhook body with direction-specific merchant secret.
+- Include event metadata (`method`, `timestamp`, payload identifiers) in a stable schema.
+- Retry delivery on non-200 responses with bounded attempts and backoff.
+- Treat webhook processing as at-least-once: design handlers to be idempotent.
+- Do not assume delivery order; state should be derived from explicit status value.
+- Persist delivery attempts with request body hash, response code, attempt number, and timestamp.
+- Expose safe re-delivery tooling from admin/merchant UI where supported.

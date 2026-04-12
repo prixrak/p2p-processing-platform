@@ -1,0 +1,15 @@
+---
+description: Mandatory tests for payment-critical changes
+globs: **/*.{ts,tsx,js,jsx,py,go,java}
+alwaysApply: false
+---
+
+# Testing Definition Rules
+
+- Any payment-flow change requires tests in the same task.
+- Cover positive and negative cases for auth, status changes, and callbacks.
+- Add contract tests for DTO shape and `ErrorDetails` format.
+- Add idempotency tests for duplicate webhook delivery.
+- Add regression tests for edge amounts (min/max, underpaid/overpaid) where relevant.
+- For bug fixes, add a failing test first when practical.
+- Do not mark work complete if critical-path tests are missing or skipped without rationale.

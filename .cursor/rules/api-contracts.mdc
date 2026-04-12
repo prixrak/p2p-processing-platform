@@ -1,0 +1,15 @@
+---
+description: Enforce external API contracts and error shape
+globs: **/*.{ts,tsx,js,jsx,py,go,java}
+alwaysApply: false
+---
+
+# External API Contract Rules
+
+- Keep external endpoints under `/api/external/v1/` backward compatible.
+- Use `POST` for all merchant API endpoints unless a new version explicitly states otherwise.
+- Keep request/response DTOs aligned with API docs before merging.
+- Preserve a single `ErrorDetails` structure in all 4xx/5xx responses.
+- Validate required fields at API boundary; avoid hidden defaults for critical payment fields.
+- For multipart endpoints, apply dedicated payload building and signing logic as specified.
+- If behavior changes, include contract tests and update API docs in the same task.

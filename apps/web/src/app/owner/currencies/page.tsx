@@ -1,0 +1,143 @@
+'use client';
+
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Plus, Power, PowerOff } from 'lucide-react';
+import { api } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Modal } from '@/components/ui/modal';
+import { DataTable } from '@/components/ui/data-table';
+
+interface Currency {
+  id: string;
+  code: string;
+  name: string;
+  status: string;
+}
+
+export default function CurrenciesPage() {
+  const queryClient = useQueryClient();
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState({ code: '', name: '' });
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['owner', 'currencies'],
+    queryFn: () => api.get<Currency[]>('/api/admin/currencies'),
+  });
+
+  const createCurrency = useMutation({
+    mutationFn: (payload: typeof form) => api.post('/api/admin/currencies', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['owner', 'currencies'] });
+      setShowCreate(false);
+      setForm({ code: '', name: '' });
+    },
+  });
+
+  const toggleStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api.patch(`/api/admin/currencies/${id}`, {
+        status: status === 'active' ? 'inactive' : 'active',
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'currencies'] }),
+  });
+
+  const columns = [
+    {
+      key: 'code',
+      header: 'Code',
+      render: (c: Currency) => (
+        <span className="font-mono text-sm font-semibold text-text-primary">{c.code}</span>
+      ),
+    },
+    {
+      key: 'name',
+      header: 'Name',
+      render: (c: Currency) => (
+        <span className="text-sm text-text-secondary">{c.name || '—'}</span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (c: Currency) => (
+        <Badge color={c.status === 'active' ? 'green' : 'red'}>{c.status}</Badge>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      className: 'w-24',
+      render: (c: Currency) => (
+        <Button
+          variant={c.status === 'active' ? 'danger' : 'success'}
+          size="sm"
+          onClick={() => toggleStatus.mutate({ id: c.id, status: c.status })}
+          title={c.status === 'active' ? 'Deactivate' : 'Activate'}
+        >
+          {c.status === 'active' ? (
+            <PowerOff className="h-3.5 w-3.5" />
+          ) : (
+            <Power className="h-3.5 w-3.5" />
+          )}
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Currencies</h1>
+          <p className="mt-1 text-sm text-text-muted">Manage supported currencies</p>
+        </div>
+        <Button onClick={() => setShowCreate(true)}>
+          <Plus className="h-4 w-4" /> Add Currency
+        </Button>
+      </div>
+
+      <DataTable
+        columns={columns}
+        data={data ?? []}
+        isLoading={isLoading}
+        emptyMessage="No currencies configured"
+      />
+
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Add Currency">
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            createCurrency.mutate(form);
+          }}
+        >
+          <Input
+            label="Currency Code"
+            value={form.code}
+            onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+            placeholder="USDT"
+            maxLength={10}
+            required
+          />
+          <Input
+            label="Display Name"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="Tether"
+          />
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="ghost" type="button" onClick={() => setShowCreate(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={createCurrency.isPending}>
+              Add
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}

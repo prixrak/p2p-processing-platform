@@ -1,0 +1,15 @@
+---
+description: HMAC auth and key-safety requirements
+globs: **/*.{ts,tsx,js,jsx,py,go,java}
+alwaysApply: false
+---
+
+# Security And Authentication Rules
+
+- Enforce HMAC-SHA512 validation for each external API request.
+- Require and validate `X-API-KEY`, `X-API-PAYLOAD`, `X-API-SIGNATURE`.
+- Enforce nonce freshness (5-minute window) and reject replay attempts.
+- Keep Pay-In and Pay-Out key pairs isolated in storage, code paths, and config.
+- Never log raw secret keys, full signatures, or sensitive payload fragments.
+- On auth failures, return consistent unauthorized/forbidden errors without leaking internals.
+- Add tests for invalid signature, missing headers, stale nonce, and wrong direction key usage.

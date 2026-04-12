@@ -1,0 +1,475 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users & Roles ───
+
+enum UserRole {
+  TRADER
+  ADMIN
+  SUPPORT
+  MERCHANT
+  OWNER
+}
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  role          UserRole
+  isActive      Boolean   @default(true) @map("is_active")
+  twoFaSecret   String?   @map("two_fa_secret")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  sessions      Session[]
+  merchant      Merchant?
+  traderProfile TraderProfile?
+  auditLogs     AuditLog[]
+  settlements   Settlement[] @relation("SettlementAdmin")
+  uploadedFiles File[]
+
+  @@map("users")
+}
+
+model Session {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  token       String   @unique
+  expiresAt   DateTime @map("expires_at")
+  ip          String?
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ─── Merchants ───
+
+model Merchant {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
+  name      String
+  isLock    Boolean  @default(false) @map("is_lock")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKeys   MerchantApiKey[]
+  balances  MerchantBalance[]
+  payinOrders  PayinOrder[]
+  payoutOrders PayoutOrder[]
+
+  @@map("merchants")
+}
+
+enum ApiKeyDirection {
+  PAYIN
+  PAYOUT
+}
+
+model MerchantApiKey {
+  id            String          @id @default(uuid()) @db.Uuid
+  merchantId    String          @map("merchant_id") @db.Uuid
+  direction     ApiKeyDirection
+  publicKey     String          @unique @map("public_key")
+  secretKeyHash String          @map("secret_key_hash")
+  isActive      Boolean         @default(true) @map("is_active")
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([publicKey])
+  @@index([merchantId, direction])
+  @@map("merchant_api_keys")
+}
+
+model MerchantBalance {
+  id         String  @id @default(uuid()) @db.Uuid
+  merchantId String  @map("merchant_id") @db.Uuid
+  currency   String
+  amount     Decimal @default(0) @db.Decimal(18, 4)
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, currency])
+  @@map("merchant_balances")
+}
+
+// ─── Currencies & Directions ───
+
+model Currency {
+  id       String  @id @default(uuid()) @db.Uuid
+  code     String  @unique
+  isActive Boolean @default(true) @map("is_active")
+
+  @@map("currencies")
+}
+
+enum DirectionType {
+  PAYIN
+  PAYOUT
+}
+
+model Direction {
+  id           String        @id @default(uuid()) @db.Uuid
+  name         String
+  type         DirectionType
+  fromCurrency String        @map("from_currency")
+  toCurrency   String        @map("to_currency")
+  minAmount    Decimal       @default(0) @map("min_amount") @db.Decimal(18, 4)
+  maxAmount    Decimal       @default(0) @map("max_amount") @db.Decimal(18, 4)
+  rate         Decimal       @default(1) @db.Decimal(18, 8)
+  percentFee   Decimal       @default(0) @map("percent_fee") @db.Decimal(8, 4)
+  isOnline     Boolean       @default(true) @map("is_online")
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  @@map("directions")
+}
+
+// ─── Traders & Requisites ───
+
+model TraderProfile {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balances         TraderBalance[]
+  requisites       Requisite[]
+  payinOrders      PayinOrder[]
+  payoutOrders     PayoutOrder[]
+  telegramSettings TelegramSettings?
+  settlements      Settlement[]
+
+  @@map("trader_profiles")
+}
+
+model TraderBalance {
+  id       String  @id @default(uuid()) @db.Uuid
+  traderId String  @map("trader_id") @db.Uuid
+  currency String
+  amount   Decimal @default(0) @db.Decimal(18, 4)
+
+  trader TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
+
+  @@unique([traderId, currency])
+  @@map("trader_balances")
+}
+
+enum RequisiteType {
+  CARD
+  IBAN
+}
+
+model Requisite {
+  id               String        @id @default(uuid()) @db.Uuid
+  traderId         String        @map("trader_id") @db.Uuid
+  type             RequisiteType
+  number           String
+  owner            String
+  bankId           Int?          @map("bank_id")
+  code             String?
+  isActive         Boolean       @default(true) @map("is_active")
+  acceptsOtherBanks Boolean      @default(false) @map("accepts_other_banks")
+  minAmount        Decimal       @default(0) @map("min_amount") @db.Decimal(18, 4)
+  maxAmount        Decimal       @default(999999999) @map("max_amount") @db.Decimal(18, 4)
+  limitTotalAmount Decimal       @default(999999999) @map("limit_total_amount") @db.Decimal(18, 4)
+  limitTotalOps    Int           @default(999999) @map("limit_total_ops")
+  usedAmount       Decimal       @default(0) @map("used_amount") @db.Decimal(18, 4)
+  usedOps          Int           @default(0) @map("used_ops")
+  currency         String        @default("UAH")
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  trader       TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
+  bank         Bank?         @relation(fields: [bankId], references: [id])
+  payinOrders  PayinOrder[]
+
+  @@index([traderId, isActive])
+  @@index([currency, isActive])
+  @@map("requisites")
+}
+
+// ─── Banks ───
+
+model Bank {
+  id        Int     @id @default(autoincrement())
+  name      String
+  logoFileId String? @map("logo_file_id") @db.Uuid
+  isActive  Boolean @default(true) @map("is_active")
+
+  logoFile   File?       @relation(fields: [logoFileId], references: [id])
+  requisites Requisite[]
+
+  @@map("banks")
+}
+
+// ─── Pay-In Orders ───
+
+enum PayinStatus {
+  PENDING
+  NEW
+  VERIFIED
+  PAID
+  UNDERPAID
+  OVERPAID
+  APPEAL
+  CANCELED
+  UPLOAD_FAILED
+}
+
+model PayinOrder {
+  id              String      @id @default(uuid()) @db.Uuid
+  requestId       String      @map("request_id")
+  merchantId      String      @map("merchant_id") @db.Uuid
+  traderId        String?     @map("trader_id") @db.Uuid
+  requisiteId     String?     @map("requisite_id") @db.Uuid
+  amount          Decimal     @db.Decimal(18, 4)
+  currency        String
+  commission      Decimal     @default(0) @db.Decimal(18, 4)
+  partnerAmount   Decimal     @default(0) @map("partner_amount") @db.Decimal(18, 4)
+  rate            Decimal     @default(1) @db.Decimal(18, 8)
+  status          PayinStatus @default(PENDING)
+  userFullName    String?     @map("user_full_name")
+  userIdExternal  String?     @map("user_id_external")
+  callbackUrl     String?     @map("callback_url")
+  redirectUrl     String?     @map("redirect_url")
+  autocloseAt     DateTime?   @map("autoclose_at")
+  confirmedAt     DateTime?   @map("confirmed_at")
+  isH2h           Boolean     @default(false) @map("is_h2h")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  merchant    Merchant       @relation(fields: [merchantId], references: [id])
+  trader      TraderProfile? @relation(fields: [traderId], references: [id])
+  requisite   Requisite?     @relation(fields: [requisiteId], references: [id])
+  appeals     Appeal[]
+  webhookOutbox WebhookOutbox[]
+
+  @@unique([merchantId, requestId])
+  @@index([status])
+  @@index([merchantId])
+  @@index([traderId])
+  @@index([createdAt])
+  @@map("payin_orders")
+}
+
+// ─── Pay-Out Orders ───
+
+enum PayoutStatus {
+  PENDING
+  NEW
+  PROCESSING
+  COMPLETED
+  FAILED
+  UPLOAD_FAILED
+}
+
+enum PayoutDetailsType {
+  CARD
+  IBAN
+}
+
+model PayoutOrder {
+  id              String            @id @default(uuid()) @db.Uuid
+  requestId       String            @map("request_id")
+  merchantId      String            @map("merchant_id") @db.Uuid
+  traderId        String?           @map("trader_id") @db.Uuid
+  amount          Decimal           @db.Decimal(18, 4)
+  currency        String
+  status          PayoutStatus      @default(PENDING)
+  detailsType     PayoutDetailsType @map("details_type")
+  detailsNumber   String            @map("details_number")
+  detailsOwner    String?           @map("details_owner")
+  detailsCode     String?           @map("details_code")
+  rate            Decimal           @default(1) @db.Decimal(18, 8)
+  partnerAmount   Decimal           @default(0) @map("partner_amount") @db.Decimal(18, 4)
+  percentFee      Decimal           @default(0) @map("percent_fee") @db.Decimal(8, 4)
+  callbackUrl     String?           @map("callback_url")
+  startAt         DateTime?         @map("start_at")
+  endAt           DateTime?         @map("end_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  merchant    Merchant       @relation(fields: [merchantId], references: [id])
+  trader      TraderProfile? @relation(fields: [traderId], references: [id])
+  webhookOutbox WebhookOutbox[]
+
+  @@unique([merchantId, requestId])
+  @@index([status])
+  @@index([merchantId])
+  @@index([traderId])
+  @@index([createdAt])
+  @@map("payout_orders")
+}
+
+// ─── Appeals ───
+
+enum AppealStatusEnum {
+  OPEN
+  RESOLVED
+  REJECTED
+}
+
+model Appeal {
+  id           String           @id @default(uuid()) @db.Uuid
+  payinOrderId String           @map("payin_order_id") @db.Uuid
+  paidAmount   Decimal          @map("paid_amount") @db.Decimal(18, 4)
+  status       AppealStatusEnum @default(OPEN)
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  payinOrder PayinOrder    @relation(fields: [payinOrderId], references: [id])
+  proofs     AppealProof[]
+
+  @@index([payinOrderId])
+  @@map("appeals")
+}
+
+model AppealProof {
+  id       String @id @default(uuid()) @db.Uuid
+  appealId String @map("appeal_id") @db.Uuid
+  fileId   String @map("file_id") @db.Uuid
+
+  appeal Appeal @relation(fields: [appealId], references: [id], onDelete: Cascade)
+  file   File   @relation(fields: [fileId], references: [id])
+
+  @@map("appeal_proofs")
+}
+
+// ─── Files ───
+
+model File {
+  id           String   @id @default(uuid()) @db.Uuid
+  originalName String   @map("original_name")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  s3Key        String   @map("s3_key")
+  uploadedBy   String?  @map("uploaded_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  uploader     User?         @relation(fields: [uploadedBy], references: [id])
+  appealProofs AppealProof[]
+  bankLogos    Bank[]
+
+  @@map("files")
+}
+
+// ─── Webhook Outbox & Logs ───
+
+enum WebhookOutboxStatusEnum {
+  PENDING
+  SENT
+  FAILED
+  DLQ
+}
+
+enum WebhookMethodEnum {
+  payin_update_status_order
+  payout_update_status_order
+}
+
+model WebhookOutbox {
+  id          String                  @id @default(uuid()) @db.Uuid
+  payinOrderId  String?               @map("payin_order_id") @db.Uuid
+  payoutOrderId String?               @map("payout_order_id") @db.Uuid
+  method      WebhookMethodEnum
+  payloadJson Json                    @map("payload_json")
+  callbackUrl String                  @map("callback_url")
+  status      WebhookOutboxStatusEnum @default(PENDING)
+  attempts    Int                     @default(0)
+  nextRetryAt DateTime?               @map("next_retry_at")
+  createdAt   DateTime                @default(now()) @map("created_at")
+
+  payinOrder  PayinOrder?  @relation(fields: [payinOrderId], references: [id])
+  payoutOrder PayoutOrder? @relation(fields: [payoutOrderId], references: [id])
+  logs        WebhookLog[]
+
+  @@index([status, nextRetryAt])
+  @@map("webhook_outbox")
+}
+
+model WebhookLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  outboxId       String   @map("outbox_id") @db.Uuid
+  callbackUrl    String   @map("callback_url")
+  requestBody    Json     @map("request_body")
+  responseStatus Int?     @map("response_status")
+  responseBody   String?  @map("response_body")
+  sentAt         DateTime @default(now()) @map("sent_at")
+
+  outbox WebhookOutbox @relation(fields: [outboxId], references: [id], onDelete: Cascade)
+
+  @@index([outboxId])
+  @@map("webhook_logs")
+}
+
+// ─── Settlements ───
+
+enum SettlementTypeEnum {
+  CREDIT
+  DEBIT
+}
+
+model Settlement {
+  id        String             @id @default(uuid()) @db.Uuid
+  adminId   String             @map("admin_id") @db.Uuid
+  traderId  String             @map("trader_id") @db.Uuid
+  type      SettlementTypeEnum
+  amount    Decimal            @db.Decimal(18, 4)
+  currency  String
+  note      String?
+  createdAt DateTime           @default(now()) @map("created_at")
+
+  admin  User          @relation("SettlementAdmin", fields: [adminId], references: [id])
+  trader TraderProfile @relation(fields: [traderId], references: [id])
+
+  @@index([traderId])
+  @@map("settlements")
+}
+
+// ─── Audit Log ───
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  actorRole  String?  @map("actor_role")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  oldValue   Json?    @map("old_value")
+  newValue   Json?    @map("new_value")
+  ip         String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ─── Telegram Notifications ───
+
+model TelegramSettings {
+  id            String  @id @default(uuid()) @db.Uuid
+  traderId      String  @unique @map("trader_id") @db.Uuid
+  chatId        String? @map("chat_id")
+  notifyPayin   Boolean @default(false) @map("notify_payin")
+  notifyPayout  Boolean @default(false) @map("notify_payout")
+  notifyAppeals Boolean @default(false) @map("notify_appeals")
+  isActive      Boolean @default(false) @map("is_active")
+
+  trader TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
+
+  @@map("telegram_settings")
+}

@@ -1,0 +1,143 @@
+import {
+  PayInOrderStatus,
+  PayOutOrderStatus,
+  DetailsType,
+  WebhookMethod,
+  AppealStatus,
+} from './enums';
+
+// --- Pay-In Models ---
+
+export interface PaymentDetailsShortDto {
+  id: string;
+  type: string;
+  number: string;
+  owner: string;
+  code: string;
+  bank_name: string;
+  acquiring_url?: string;
+}
+
+export interface AppealDto {
+  id: string;
+  status: AppealStatus;
+  created_at: number;
+  paid_amount: number;
+  proofs_of_payment: string[];
+}
+
+export interface OrderDto {
+  id: string;
+  request_id: string;
+  created_at: number;
+  confirmed_at: number | null;
+  autoclose_at: number | null;
+  amount: number;
+  commission: number;
+  partner_amount: number;
+  rate: number;
+  status: PayInOrderStatus;
+  requisite_number: string;
+  requisite_owner: string;
+  bank: string;
+  redirect_url: string | null;
+  appeals: AppealDto[];
+  payment_detail: PaymentDetailsShortDto | null;
+}
+
+export interface OrderResponseDto {
+  order: OrderDto;
+  form_uri: string;
+}
+
+export interface H2HOrderResponseDto {
+  order: OrderDto;
+}
+
+export interface PayInCheckAvailabilityResponseDto {
+  request_id: string;
+  available: boolean;
+  amount: number;
+  rounded_amount: number;
+  currency: string;
+  checked_at: number;
+}
+
+// --- Pay-Out Models ---
+
+export interface DetailsDto {
+  type: DetailsType;
+  number: string;
+  owner?: string;
+  code?: string;
+}
+
+export interface PayOutOrderApiDto {
+  id: string;
+  request_id: string;
+  created_at: number;
+  start_at: number | null;
+  end_at: number | null;
+  currency: string;
+  details: DetailsDto;
+  amount: number;
+  status: PayOutOrderStatus;
+  rate: number;
+  partner_amount: number;
+  percent_fee: number;
+}
+
+// --- Common Models ---
+
+export interface DirectionBalanceDto {
+  direction_name: string;
+  min_amount: number;
+  max_amount: number;
+  rate: number;
+  percent: number;
+  online: boolean;
+}
+
+export interface ProfileDto {
+  name: string;
+  is_lock: boolean;
+  balances: Record<string, number>;
+  direction: DirectionBalanceDto;
+}
+
+export interface PaymentBankApiDto {
+  id: number;
+  name: string;
+  logo_id: string;
+}
+
+// --- Webhook Models ---
+
+export interface WebhookPayinDataDto {
+  id: string;
+  order_id: string;
+  order_status: PayInOrderStatus;
+  amount: number;
+}
+
+export interface WebhookPayoutDataDto {
+  id: string;
+  order_id: string;
+  order_status: PayOutOrderStatus;
+  amount: number;
+}
+
+export interface WebhookDto {
+  method: WebhookMethod;
+  timestamp: number;
+  data: WebhookPayinDataDto | WebhookPayoutDataDto;
+}
+
+// --- Error Model ---
+
+export interface ErrorDetails {
+  timestamp: string;
+  message: string;
+  code: string;
+  details: Record<string, unknown>;
+}

@@ -1,0 +1,57 @@
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { PassportStrategy } from '@nestjs/passport';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+import { config } from '@p2p/config';
+import { PrismaService } from '../../config/prisma.service';
+
+export interface JwtPayload {
+  sub: string;
+  email: string;
+  role: string;
+}
+
+@Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy) {
+  constructor(private readonly prisma: PrismaService) {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ignoreExpiration: false,
+      secretOrKey: config.jwt.secret,
+    });
+  }
+
+  async validate(payload: JwtPayload) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, email: true, role: true, isActive: true },
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('User not found or deactivated');
+    }
+
+    const result: Record<string, unknown> = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    if (user.role === 'TRADER') {
+      const trader = await this.prisma.traderProfile.findUnique({
+        where: { userId: user.id },
+        select: { id: true },
+      });
+      result.traderId = trader?.id ?? null;
+    }
+
+    if (user.role === 'MERCHANT') {
+      const merchant = await this.prisma.merchant.findUnique({
+        where: { userId: user.id },
+        select: { id: true },
+      });
+      result.merchantId = merchant?.id ?? null;
+    }
+
+    return result;
+  }
+}

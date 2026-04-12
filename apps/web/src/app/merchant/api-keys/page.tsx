@@ -1,0 +1,279 @@
+'use client';
+
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Key, Eye, EyeOff, RefreshCw, Copy, Check, AlertTriangle } from 'lucide-react';
+import { api } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
+import { Badge } from '@/components/ui/badge';
+
+interface ApiKeyPair {
+  id: string;
+  direction: 'PAY_IN' | 'PAY_OUT';
+  publicKey: string;
+  secretKeyMasked: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+interface RegenerateResponse {
+  publicKey: string;
+  secretKey: string;
+}
+
+export default function ApiKeysPage() {
+  const queryClient = useQueryClient();
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [regeneratingDirection, setRegeneratingDirection] = useState<string>('');
+  const [newSecret, setNewSecret] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const { data: keys = [], isLoading } = useQuery<ApiKeyPair[]>({
+    queryKey: ['merchant', 'api-keys'],
+    queryFn: () => api.get('/api/merchant/api-keys'),
+  });
+
+  const regenerateMutation = useMutation<RegenerateResponse, Error, string>({
+    mutationFn: (keyId: string) =>
+      api.post(`/api/merchant/api-keys/${keyId}/regenerate`),
+    onSuccess: (data) => {
+      setNewSecret(data.secretKey);
+      setRegeneratingId(null);
+      queryClient.invalidateQueries({ queryKey: ['merchant', 'api-keys'] });
+    },
+  });
+
+  function copyToClipboard(text: string, label: string) {
+    navigator.clipboard.writeText(text);
+    setCopied(label);
+    setTimeout(() => setCopied(null), 2000);
+  }
+
+  const payInKeys = keys.filter((k) => k.direction === 'PAY_IN');
+  const payOutKeys = keys.filter((k) => k.direction === 'PAY_OUT');
+
+  return (
+    <div className="space-y-8 animate-fade-in">
+      <div>
+        <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+          <Key size={24} />
+          API Keys
+        </h1>
+        <p className="text-sm text-text-muted mt-1">
+          Manage your Pay-In and Pay-Out API key pairs
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-4">
+          {[1, 2].map((i) => (
+            <div
+              key={i}
+              className="bg-bg-card border border-border-primary rounded-xl p-6 animate-pulse-soft"
+            >
+              <div className="h-5 w-32 bg-bg-tertiary rounded mb-4" />
+              <div className="h-4 w-full bg-bg-tertiary rounded mb-2" />
+              <div className="h-4 w-3/4 bg-bg-tertiary rounded" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          <KeySection
+            title="Pay-In Keys"
+            keys={payInKeys}
+            onRegenerate={(key) => {
+              setRegeneratingId(key.id);
+              setRegeneratingDirection(key.direction);
+            }}
+            onCopy={copyToClipboard}
+            copied={copied}
+          />
+          <KeySection
+            title="Pay-Out Keys"
+            keys={payOutKeys}
+            onRegenerate={(key) => {
+              setRegeneratingId(key.id);
+              setRegeneratingDirection(key.direction);
+            }}
+            onCopy={copyToClipboard}
+            copied={copied}
+          />
+        </>
+      )}
+
+      <Modal
+        open={!!regeneratingId}
+        onClose={() => setRegeneratingId(null)}
+        title="Regenerate API Key"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-4 bg-accent-red/10 rounded-lg">
+            <AlertTriangle size={20} className="text-accent-red flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm text-text-primary font-medium">
+                This action cannot be undone
+              </p>
+              <p className="text-xs text-text-muted mt-1">
+                The current {regeneratingDirection.replace('_', '-')} secret key will be
+                instantly invalidated. Any integrations using the old key will stop working
+                immediately.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" onClick={() => setRegeneratingId(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              loading={regenerateMutation.isPending}
+              onClick={() => {
+                if (regeneratingId) regenerateMutation.mutate(regeneratingId);
+              }}
+              icon={<RefreshCw size={14} />}
+            >
+              Regenerate
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!newSecret}
+        onClose={() => setNewSecret(null)}
+        title="New Secret Key Generated"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-4 bg-accent-yellow/10 rounded-lg">
+            <AlertTriangle size={20} className="text-accent-yellow flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-text-primary">
+              Copy your secret key now. It will not be shown again.
+            </p>
+          </div>
+          <div className="bg-bg-primary rounded-lg p-4">
+            <p className="text-xs text-text-muted mb-1">Secret Key</p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-sm text-accent-green font-mono break-all">
+                {newSecret}
+              </code>
+              <button
+                onClick={() => copyToClipboard(newSecret!, 'secret')}
+                className="p-2 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-primary transition-colors"
+              >
+                {copied === 'secret' ? <Check size={16} className="text-accent-green" /> : <Copy size={16} />}
+              </button>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={() => setNewSecret(null)}>Done</Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+function KeySection({
+  title,
+  keys,
+  onRegenerate,
+  onCopy,
+  copied,
+}: {
+  title: string;
+  keys: ApiKeyPair[];
+  onRegenerate: (key: ApiKeyPair) => void;
+  onCopy: (text: string, label: string) => void;
+  copied: string | null;
+}) {
+  const [visibleSecrets, setVisibleSecrets] = useState<Set<string>>(new Set());
+
+  return (
+    <div>
+      <h2 className="text-lg font-semibold text-text-primary mb-3">{title}</h2>
+      {keys.length === 0 ? (
+        <div className="bg-bg-card border border-border-primary rounded-xl p-8 text-center text-text-muted text-sm">
+          No keys configured
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {keys.map((key) => (
+            <div
+              key={key.id}
+              className="bg-bg-card border border-border-primary rounded-xl p-5 space-y-3"
+            >
+              <div className="flex items-center justify-between">
+                <Badge variant="info">{key.direction.replace('_', '-')}</Badge>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  icon={<RefreshCw size={12} />}
+                  onClick={() => onRegenerate(key)}
+                >
+                  Regenerate
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <div>
+                  <p className="text-xs text-text-muted mb-1">Public Key</p>
+                  <div className="flex items-center gap-2 bg-bg-primary rounded-lg px-3 py-2">
+                    <code className="flex-1 text-sm text-text-secondary font-mono truncate">
+                      {key.publicKey}
+                    </code>
+                    <button
+                      onClick={() => onCopy(key.publicKey, `pub-${key.id}`)}
+                      className="p-1 rounded text-text-muted hover:text-text-primary"
+                    >
+                      {copied === `pub-${key.id}` ? (
+                        <Check size={14} className="text-accent-green" />
+                      ) : (
+                        <Copy size={14} />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs text-text-muted mb-1">Secret Key</p>
+                  <div className="flex items-center gap-2 bg-bg-primary rounded-lg px-3 py-2">
+                    <code className="flex-1 text-sm text-text-secondary font-mono">
+                      {visibleSecrets.has(key.id)
+                        ? key.secretKeyMasked
+                        : '••••••••••••••••••••••••'}
+                    </code>
+                    <button
+                      onClick={() =>
+                        setVisibleSecrets((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(key.id)) next.delete(key.id);
+                          else next.add(key.id);
+                          return next;
+                        })
+                      }
+                      className="p-1 rounded text-text-muted hover:text-text-primary"
+                    >
+                      {visibleSecrets.has(key.id) ? (
+                        <EyeOff size={14} />
+                      ) : (
+                        <Eye size={14} />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {key.lastUsedAt && (
+                <p className="text-xs text-text-muted">
+                  Last used: {new Date(key.lastUsedAt).toLocaleString()}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,15 @@
+---
+description: Guard Pay-In and Pay-Out status transitions
+globs: **/*.{ts,tsx,js,jsx,py,go,java}
+alwaysApply: false
+---
+
+# Domain State Machine Rules
+
+- Model allowed status transitions as explicit maps, not scattered conditionals.
+- Reject illegal transitions with domain errors and audit logging.
+- Keep Pay-In and Pay-Out transition graphs separate.
+- `Pay-In` and `Pay-Out` lifecycle behavior must match documented statuses.
+- Timers and visual indicators must not silently auto-cancel unless spec explicitly requires it.
+- Changes to status logic must include transition tests (happy path + invalid path).
+- Any new status requires: migration/enum update, webhook compatibility review, and docs update.

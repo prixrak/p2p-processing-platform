@@ -1,0 +1,282 @@
+import { PrismaClient } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
+
+const prisma = new PrismaClient();
+
+function generateApiKey(direction: 'payin' | 'payout') {
+  const publicKey = `pk_${direction}_${crypto.randomBytes(24).toString('hex')}`;
+  const secretKey = `sk_${direction}_${crypto.randomBytes(32).toString('hex')}`;
+  const secretKeyHash = crypto
+    .createHash('sha256')
+    .update(secretKey)
+    .digest('hex');
+  return { publicKey, secretKey, secretKeyHash };
+}
+
+async function main() {
+  const passwordHash = await bcrypt.hash('admin123', 12);
+
+  // ─── Users ───
+  const owner = await prisma.user.upsert({
+    where: { email: 'owner@p2p.local' },
+    update: {},
+    create: { email: 'owner@p2p.local', passwordHash, role: 'OWNER' },
+  });
+
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@p2p.local' },
+    update: {},
+    create: { email: 'admin@p2p.local', passwordHash, role: 'ADMIN' },
+  });
+
+  const support = await prisma.user.upsert({
+    where: { email: 'support@p2p.local' },
+    update: {},
+    create: { email: 'support@p2p.local', passwordHash, role: 'SUPPORT' },
+  });
+
+  const traderUser = await prisma.user.upsert({
+    where: { email: 'trader@p2p.local' },
+    update: {},
+    create: { email: 'trader@p2p.local', passwordHash, role: 'TRADER' },
+  });
+
+  const merchantUser = await prisma.user.upsert({
+    where: { email: 'merchant@p2p.local' },
+    update: {},
+    create: { email: 'merchant@p2p.local', passwordHash, role: 'MERCHANT' },
+  });
+
+  // ─── Trader Profile & Balance ───
+  const traderProfile = await prisma.traderProfile.upsert({
+    where: { userId: traderUser.id },
+    update: {},
+    create: { userId: traderUser.id },
+  });
+
+  await prisma.traderBalance.upsert({
+    where: { traderId_currency: { traderId: traderProfile.id, currency: 'UAH' } },
+    update: {},
+    create: { traderId: traderProfile.id, currency: 'UAH', amount: 50000 },
+  });
+
+  await prisma.traderBalance.upsert({
+    where: { traderId_currency: { traderId: traderProfile.id, currency: 'USDT' } },
+    update: {},
+    create: { traderId: traderProfile.id, currency: 'USDT', amount: 1000 },
+  });
+
+  // ─── Merchant & Balance ───
+  const merchant = await prisma.merchant.upsert({
+    where: { userId: merchantUser.id },
+    update: {},
+    create: { userId: merchantUser.id, name: 'Test Merchant' },
+  });
+
+  await prisma.merchantBalance.upsert({
+    where: { merchantId_currency: { merchantId: merchant.id, currency: 'USDT' } },
+    update: {},
+    create: { merchantId: merchant.id, currency: 'USDT', amount: 10000 },
+  });
+
+  await prisma.merchantBalance.upsert({
+    where: { merchantId_currency: { merchantId: merchant.id, currency: 'UAH' } },
+    update: {},
+    create: { merchantId: merchant.id, currency: 'UAH', amount: 500000 },
+  });
+
+  // ─── API Keys (matches HMAC guard - SHA-256 hash of secret) ───
+  const existingPayinKey = await prisma.merchantApiKey.findFirst({
+    where: { merchantId: merchant.id, direction: 'PAYIN', isActive: true },
+  });
+
+  let payinKeys: { publicKey: string; secretKey: string };
+  if (!existingPayinKey) {
+    const keys = generateApiKey('payin');
+    await prisma.merchantApiKey.create({
+      data: {
+        merchantId: merchant.id,
+        direction: 'PAYIN',
+        publicKey: keys.publicKey,
+        secretKeyHash: keys.secretKeyHash,
+      },
+    });
+    payinKeys = { publicKey: keys.publicKey, secretKey: keys.secretKey };
+  } else {
+    payinKeys = { publicKey: existingPayinKey.publicKey, secretKey: '(already exists — not regenerated)' };
+  }
+
+  const existingPayoutKey = await prisma.merchantApiKey.findFirst({
+    where: { merchantId: merchant.id, direction: 'PAYOUT', isActive: true },
+  });
+
+  let payoutKeys: { publicKey: string; secretKey: string };
+  if (!existingPayoutKey) {
+    const keys = generateApiKey('payout');
+    await prisma.merchantApiKey.create({
+      data: {
+        merchantId: merchant.id,
+        direction: 'PAYOUT',
+        publicKey: keys.publicKey,
+        secretKeyHash: keys.secretKeyHash,
+      },
+    });
+    payoutKeys = { publicKey: keys.publicKey, secretKey: keys.secretKey };
+  } else {
+    payoutKeys = { publicKey: existingPayoutKey.publicKey, secretKey: '(already exists — not regenerated)' };
+  }
+
+  // ─── Currencies ───
+  for (const code of ['UAH', 'USD', 'USDT', 'EUR', 'RUB']) {
+    await prisma.currency.upsert({
+      where: { code },
+      update: {},
+      create: { code },
+    });
+  }
+
+  // ─── Directions (idempotent) ───
+  const directions = [
+    { name: 'PayIn UAH → USDT', type: 'PAYIN' as const, fromCurrency: 'UAH', toCurrency: 'USDT', minAmount: 100, maxAmount: 50000, rate: 0.024, percentFee: 5 },
+    { name: 'PayOut USDT → UAH', type: 'PAYOUT' as const, fromCurrency: 'USDT', toCurrency: 'UAH', minAmount: 10, maxAmount: 5000, rate: 41.5, percentFee: 3 },
+  ];
+
+  for (const d of directions) {
+    const existing = await prisma.direction.findFirst({
+      where: { type: d.type, fromCurrency: d.fromCurrency, toCurrency: d.toCurrency },
+    });
+    if (!existing) {
+      await prisma.direction.create({ data: { ...d, isOnline: true } });
+    }
+  }
+
+  // ─── Banks ───
+  const banks = ['Monobank', 'PrivatBank', 'PUMB', 'Oshchadbank', 'Sportbank'];
+  const bankRecords: Record<string, { id: number }> = {};
+  for (let i = 0; i < banks.length; i++) {
+    const bank = await prisma.bank.upsert({
+      where: { id: i + 1 },
+      update: {},
+      create: { name: banks[i] },
+    });
+    bankRecords[banks[i]] = bank;
+  }
+
+  // ─── Requisites (idempotent) ───
+  const existingReqs = await prisma.requisite.count({ where: { traderId: traderProfile.id } });
+  if (existingReqs === 0) {
+    await prisma.requisite.createMany({
+      data: [
+        {
+          traderId: traderProfile.id,
+          type: 'CARD',
+          number: '5375411234567890',
+          owner: 'Test Trader',
+          bankId: bankRecords['Monobank'].id,
+          currency: 'UAH',
+          minAmount: 100,
+          maxAmount: 50000,
+          limitTotalAmount: 500000,
+          limitTotalOps: 100,
+        },
+        {
+          traderId: traderProfile.id,
+          type: 'CARD',
+          number: '4149629876543210',
+          owner: 'Test Trader',
+          bankId: bankRecords['PrivatBank'].id,
+          currency: 'UAH',
+          minAmount: 200,
+          maxAmount: 30000,
+          limitTotalAmount: 300000,
+          limitTotalOps: 50,
+        },
+      ],
+    });
+  }
+
+  // ─── Telegram Settings ───
+  await prisma.telegramSettings.upsert({
+    where: { traderId: traderProfile.id },
+    update: {},
+    create: {
+      traderId: traderProfile.id,
+      notifyPayin: true,
+      notifyPayout: true,
+      notifyAppeals: true,
+    },
+  });
+
+  // ─── Sample Pay-In Orders ───
+  const existingPayins = await prisma.payinOrder.count({ where: { merchantId: merchant.id } });
+  if (existingPayins === 0) {
+    const requisite = await prisma.requisite.findFirst({ where: { traderId: traderProfile.id } });
+    const statuses = ['PAID', 'NEW', 'VERIFIED', 'CANCELED', 'PAID', 'PAID'] as const;
+    for (let i = 0; i < statuses.length; i++) {
+      await prisma.payinOrder.create({
+        data: {
+          requestId: `test-payin-${i + 1}`,
+          merchantId: merchant.id,
+          traderId: traderProfile.id,
+          requisiteId: requisite?.id,
+          amount: 1000 + i * 500,
+          currency: 'UAH',
+          commission: (1000 + i * 500) * 0.05,
+          partnerAmount: (1000 + i * 500) * 0.024,
+          rate: 0.024,
+          status: statuses[i],
+          autocloseAt: new Date(Date.now() + 30 * 60 * 1000),
+        },
+      });
+    }
+  }
+
+  // ─── Sample Pay-Out Orders ───
+  const existingPayouts = await prisma.payoutOrder.count({ where: { merchantId: merchant.id } });
+  if (existingPayouts === 0) {
+    const payoutStatuses = ['COMPLETED', 'NEW', 'PROCESSING', 'PENDING'] as const;
+    for (let i = 0; i < payoutStatuses.length; i++) {
+      await prisma.payoutOrder.create({
+        data: {
+          requestId: `test-payout-${i + 1}`,
+          merchantId: merchant.id,
+          traderId: traderProfile.id,
+          amount: 50 + i * 25,
+          currency: 'USDT',
+          status: payoutStatuses[i],
+          detailsType: 'CARD',
+          detailsNumber: '5375411234567890',
+          detailsOwner: 'Recipient Name',
+          rate: 41.5,
+          partnerAmount: (50 + i * 25) * 41.5,
+          percentFee: 3,
+        },
+      });
+    }
+  }
+
+  console.log('');
+  console.log('=== Seed Complete ===');
+  console.log('');
+  console.log('Test accounts (password: admin123):');
+  console.log('  Owner:    owner@p2p.local');
+  console.log('  Admin:    admin@p2p.local');
+  console.log('  Support:  support@p2p.local');
+  console.log('  Trader:   trader@p2p.local');
+  console.log('  Merchant: merchant@p2p.local');
+  console.log('');
+  console.log('Pay-In API Key:  ', payinKeys.publicKey);
+  console.log('Pay-In Secret:   ', payinKeys.secretKey);
+  console.log('Pay-Out API Key: ', payoutKeys.publicKey);
+  console.log('Pay-Out Secret:  ', payoutKeys.secretKey);
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
