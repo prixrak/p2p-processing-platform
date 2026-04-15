@@ -15,6 +15,7 @@ enum UserRole {
   SUPPORT
   MERCHANT
   OWNER
+  REFERRAL
 }
 
 model User {
@@ -24,16 +25,20 @@ model User {
   role          UserRole
   isActive      Boolean   @default(true) @map("is_active")
   twoFaSecret   String?   @map("two_fa_secret")
+  referredById  String?   @map("referred_by_id") @db.Uuid
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  sessions      Session[]
-  merchant      Merchant?
-  traderProfile TraderProfile?
-  auditLogs     AuditLog[]
-  settlements   Settlement[] @relation("SettlementAdmin")
-  uploadedFiles File[]
+  sessions         Session[]
+  merchant         Merchant?
+  traderProfile    TraderProfile?
+  referralProfile  ReferralProfile?
+  referrer         ReferralProfile? @relation("ReferredUsers", fields: [referredById], references: [id])
+  auditLogs        AuditLog[]
+  settlements      Settlement[] @relation("SettlementAdmin")
+  uploadedFiles    File[]
 
+  @@index([referredById])
   @@map("users")
 }
 
@@ -50,6 +55,23 @@ model Session {
 
   @@index([userId])
   @@map("sessions")
+}
+
+// ─── Referral Profiles ───
+
+model ReferralProfile {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @unique @map("user_id") @db.Uuid
+  referralPercent Decimal  @default(0) @map("referral_percent") @db.Decimal(8, 4)
+  balance         Decimal  @default(0) @db.Decimal(18, 4)
+  currency        String   @default("UAH")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referrals User[] @relation("ReferredUsers")
+
+  @@map("referral_profiles")
 }
 
 // ─── Merchants ───
@@ -137,10 +159,12 @@ model Direction {
 // ─── Traders & Requisites ───
 
 model TraderProfile {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @unique @map("user_id") @db.Uuid
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @unique @map("user_id") @db.Uuid
+  isActive       Boolean  @default(true) @map("is_active")
+  payoutMinLimit Decimal  @default(0) @map("payout_min_limit") @db.Decimal(18, 4)
+  payoutMaxLimit Decimal  @default(0) @map("payout_max_limit") @db.Decimal(18, 4)
+  createdAt      DateTime @default(now()) @map("created_at")
 
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   balances         TraderBalance[]

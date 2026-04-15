@@ -30,6 +30,7 @@ import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { HealthModule } from './modules/health/health.module';
 import { CascadeModule } from './modules/cascade/cascade.module';
 import { RatingsModule } from './modules/ratings/ratings.module';
+import { ReferralModule } from './modules/referral/referral.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { RatingsModule } from './modules/ratings/ratings.module';
     HealthModule,
     CascadeModule,
     RatingsModule,
+    ReferralModule,
   ],
   providers: [
     {

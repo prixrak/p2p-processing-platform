@@ -10,6 +10,8 @@ import {
   Play,
   CheckCircle2,
   XCircle,
+  Layers,
+  List,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,8 +30,11 @@ interface PayOutListResponse {
   total: number;
 }
 
+type TabType = 'orders' | 'pool';
+
 export default function PayOutOrdersPage() {
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<TabType>('pool');
   const [statusFilter, setStatusFilter] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<PayOutOrderApiDto | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -37,14 +42,28 @@ export default function PayOutOrdersPage() {
   const queryParams: Record<string, string> = {};
   if (statusFilter) queryParams.status = statusFilter;
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
     queryKey: ['trader', 'payout-orders', queryParams],
     queryFn: () => api.get<PayOutListResponse>('/api/trader/payout/orders', queryParams),
   });
 
-  const takeMutation = useMutation({
+  const { data: poolData, isLoading: poolLoading, refetch: refetchPool } = useQuery({
+    queryKey: ['trader', 'payout-pool'],
+    queryFn: () => api.get<PayOutListResponse>('/api/trader/payout/pool'),
+  });
+
+  const takeFromPoolMutation = useMutation({
     mutationFn: (orderId: string) =>
       api.post(`/api/trader/payout/orders/${orderId}/take`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['trader', 'payout-pool'] });
+      queryClient.invalidateQueries({ queryKey: ['trader', 'payout-orders'] });
+    },
+  });
+
+  const processMutation = useMutation({
+    mutationFn: (orderId: string) =>
+      api.post(`/api/trader/payout/orders/${orderId}/process`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trader', 'payout-orders'] });
     },
@@ -73,7 +92,70 @@ export default function PayOutOrdersPage() {
     label: s,
   }));
 
-  const columns = [
+  const poolColumns = [
+    {
+      key: 'id',
+      header: 'ID',
+      render: (row: PayOutOrderApiDto) => (
+        <span className="font-mono text-xs text-text-muted">{shortId(row.id)}</span>
+      ),
+    },
+    {
+      key: 'amount',
+      header: 'Amount',
+      render: (row: PayOutOrderApiDto) => (
+        <span className="font-semibold text-accent-blue">{formatCurrency(row.amount, row.currency)}</span>
+      ),
+    },
+    {
+      key: 'currency',
+      header: 'Currency',
+      render: (row: PayOutOrderApiDto) => (
+        <span className="text-text-secondary">{row.currency}</span>
+      ),
+    },
+    {
+      key: 'recipient',
+      header: 'Recipient',
+      render: (row: PayOutOrderApiDto) => (
+        <div className="flex flex-col">
+          <span className="font-mono text-xs">{row.details.number}</span>
+          {row.details.owner && (
+            <span className="text-xs text-text-muted">{row.details.owner}</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'created_at',
+      header: 'Created',
+      render: (row: PayOutOrderApiDto) => (
+        <span className="text-text-muted text-sm">{formatDate(row.created_at)}</span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (row: PayOutOrderApiDto) => (
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => takeFromPoolMutation.mutate(row.id)}
+            loading={takeFromPoolMutation.isPending}
+          >
+            <Play className="h-3.5 w-3.5" />
+            Take
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelectedOrder(row)}>
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const ordersColumns = [
     {
       key: 'id',
       header: 'ID',
@@ -132,11 +214,11 @@ export default function PayOutOrdersPage() {
             <Button
               size="sm"
               variant="primary"
-              onClick={() => takeMutation.mutate(row.id)}
-              loading={takeMutation.isPending}
+              onClick={() => processMutation.mutate(row.id)}
+              loading={processMutation.isPending}
             >
               <Play className="h-3.5 w-3.5" />
-              Take
+              Process
             </Button>
           )}
           {row.status === PayOutOrderStatus.PROCESSING && (
@@ -148,7 +230,7 @@ export default function PayOutOrdersPage() {
                 loading={completeMutation.isPending}
               >
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Complete
+                Done
               </Button>
               <Button
                 size="sm"
@@ -157,7 +239,7 @@ export default function PayOutOrdersPage() {
                 loading={failMutation.isPending}
               >
                 <XCircle className="h-3.5 w-3.5" />
-                Failed
+                Fail
               </Button>
             </>
           )}
@@ -169,6 +251,11 @@ export default function PayOutOrdersPage() {
     },
   ];
 
+  const handleRefetch = () => {
+    if (activeTab === 'pool') refetchPool();
+    else refetchOrders();
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -176,47 +263,115 @@ export default function PayOutOrdersPage() {
           <ArrowUpFromLine className="h-6 w-6 text-accent-blue" />
           <div>
             <h1 className="text-2xl font-bold text-text-primary">Pay-Out Orders</h1>
-            <p className="text-sm text-text-muted">{data?.total ?? 0} total orders</p>
+            <p className="text-sm text-text-muted">
+              {activeTab === 'pool'
+                ? `${poolData?.total ?? 0} orders available in pool`
+                : `${ordersData?.total ?? 0} orders in your queue`}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="secondary" size="sm" onClick={() => setShowFilters(!showFilters)}>
-            <Filter className="h-4 w-4" />
-            Filters
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => refetch()}>
+          {activeTab === 'orders' && (
+            <Button variant="secondary" size="sm" onClick={() => setShowFilters(!showFilters)}>
+              <Filter className="h-4 w-4" />
+              Filters
+            </Button>
+          )}
+          <Button variant="secondary" size="sm" onClick={handleRefetch}>
             <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
-      {showFilters && (
-        <Card className="animate-slide-up">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Select
-              label="Status"
-              options={statusOptions}
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              placeholder="All statuses"
-            />
+      {/* Tabs */}
+      <div className="flex gap-1 rounded-lg bg-bg-secondary p-1 w-fit">
+        <button
+          onClick={() => setActiveTab('pool')}
+          className={cn(
+            'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+            activeTab === 'pool'
+              ? 'bg-bg-primary text-text-primary shadow-sm'
+              : 'text-text-muted hover:text-text-primary',
+          )}
+        >
+          <Layers className="h-4 w-4" />
+          Pool
+          {(poolData?.total ?? 0) > 0 && (
+            <span className="ml-1 rounded-full bg-accent-blue px-2 py-0.5 text-xs text-white">
+              {poolData?.total}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('orders')}
+          className={cn(
+            'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+            activeTab === 'orders'
+              ? 'bg-bg-primary text-text-primary shadow-sm'
+              : 'text-text-muted hover:text-text-primary',
+          )}
+        >
+          <List className="h-4 w-4" />
+          My Orders
+          {(ordersData?.total ?? 0) > 0 && (
+            <span className="ml-1 rounded-full bg-bg-tertiary px-2 py-0.5 text-xs text-text-secondary">
+              {ordersData?.total}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === 'pool' && (
+        <Card>
+          <div className="mb-4 flex items-start gap-3 rounded-lg border border-accent-blue/20 bg-accent-blue/5 p-3">
+            <Layers className="mt-0.5 h-4 w-4 shrink-0 text-accent-blue" />
+            <p className="text-sm text-text-secondary">
+              These are unassigned pay-out orders available for you to take. Only orders within
+              your configured amount limits are shown. Taking an order moves it to your queue.
+            </p>
           </div>
-          <div className="mt-4 flex justify-end">
-            <Button variant="ghost" size="sm" onClick={() => setStatusFilter('')}>
-              Clear
-            </Button>
-          </div>
+          <Table
+            columns={poolColumns}
+            data={poolData?.orders ?? []}
+            keyExtractor={(row) => row.id}
+            loading={poolLoading}
+            onRowClick={(row) => setSelectedOrder(row)}
+            emptyMessage="No orders in pool matching your limits"
+          />
         </Card>
       )}
 
-      <Table
-        columns={columns}
-        data={data?.orders ?? []}
-        keyExtractor={(row) => row.id}
-        loading={isLoading}
-        onRowClick={(row) => setSelectedOrder(row)}
-        emptyMessage="No pay-out orders found"
-      />
+      {activeTab === 'orders' && (
+        <>
+          {showFilters && (
+            <Card className="animate-slide-up">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Select
+                  label="Status"
+                  options={statusOptions}
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  placeholder="All statuses"
+                />
+              </div>
+              <div className="mt-4 flex justify-end">
+                <Button variant="ghost" size="sm" onClick={() => setStatusFilter('')}>
+                  Clear
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          <Table
+            columns={ordersColumns}
+            data={ordersData?.orders ?? []}
+            keyExtractor={(row) => row.id}
+            loading={ordersLoading}
+            onRowClick={(row) => setSelectedOrder(row)}
+            emptyMessage="No pay-out orders in your queue"
+          />
+        </>
+      )}
 
       <Modal
         open={!!selectedOrder}
@@ -259,14 +414,30 @@ export default function PayOutOrdersPage() {
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
+              {selectedOrder.status === PayOutOrderStatus.PENDING && (
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    takeFromPoolMutation.mutate(selectedOrder.id);
+                    setSelectedOrder(null);
+                  }}
+                  loading={takeFromPoolMutation.isPending}
+                >
+                  <Play className="h-4 w-4" />
+                  Take from Pool
+                </Button>
+              )}
               {selectedOrder.status === PayOutOrderStatus.NEW && (
                 <Button
                   variant="primary"
-                  onClick={() => takeMutation.mutate(selectedOrder.id)}
-                  loading={takeMutation.isPending}
+                  onClick={() => {
+                    processMutation.mutate(selectedOrder.id);
+                    setSelectedOrder(null);
+                  }}
+                  loading={processMutation.isPending}
                 >
                   <Play className="h-4 w-4" />
-                  Take Order
+                  Start Processing
                 </Button>
               )}
               {selectedOrder.status === PayOutOrderStatus.PROCESSING && (

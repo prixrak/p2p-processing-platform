@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
@@ -158,5 +159,30 @@ export class TradersService {
       where: { id: traderId },
       data: { isActive: false },
     });
+  }
+
+  async setPayoutLimits(
+    traderId: string,
+    minLimit: number,
+    maxLimit: number,
+  ) {
+    if (minLimit < 0 || maxLimit < 0) {
+      throw new BadRequestException('Limits must be non-negative (0 means no limit)');
+    }
+    if (maxLimit > 0 && minLimit > maxLimit) {
+      throw new BadRequestException('minLimit cannot be greater than maxLimit');
+    }
+
+    await this.getProfile(traderId);
+
+    const updated = await this.prisma.traderProfile.update({
+      where: { id: traderId },
+      data: { payoutMinLimit: minLimit, payoutMaxLimit: maxLimit },
+    });
+
+    this.logger.log(
+      `Payout limits updated for trader ${traderId}: min=${minLimit}, max=${maxLimit}`,
+    );
+    return updated;
   }
 }

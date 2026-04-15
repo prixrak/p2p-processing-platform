@@ -48,11 +48,32 @@ async function main() {
     create: { email: 'merchant@p2p.local', passwordHash, role: 'MERCHANT' },
   });
 
+  const referralUser = await prisma.user.upsert({
+    where: { email: 'referral@p2p.local' },
+    update: {},
+    create: { email: 'referral@p2p.local', passwordHash, role: 'REFERRAL' },
+  });
+
+  // ─── Referral Profile ───
+  const referralProfile = await (prisma as any).referralProfile.upsert({
+    where: { userId: referralUser.id },
+    update: {},
+    create: {
+      userId: referralUser.id,
+      referralPercent: 5,
+      currency: 'UAH',
+    },
+  });
+
   // ─── Trader Profile & Balance ───
   const traderProfile = await prisma.traderProfile.upsert({
     where: { userId: traderUser.id },
     update: {},
-    create: { userId: traderUser.id },
+    create: {
+      userId: traderUser.id,
+      payoutMinLimit: 100,
+      payoutMaxLimit: 20000,
+    },
   });
 
   await prisma.traderBalance.upsert({
@@ -232,24 +253,52 @@ async function main() {
     }
   }
 
+  // ─── Link trader to referral agent ───
+  await prisma.user.update({
+    where: { id: traderUser.id },
+    data: { referredById: referralProfile.id },
+  });
+
   // ─── Sample Pay-Out Orders ───
   const existingPayouts = await prisma.payoutOrder.count({ where: { merchantId: merchant.id } });
   if (existingPayouts === 0) {
-    const payoutStatuses = ['COMPLETED', 'NEW', 'PROCESSING', 'PENDING'] as const;
-    for (let i = 0; i < payoutStatuses.length; i++) {
+    // Assigned orders (have a trader)
+    const assignedStatuses = ['COMPLETED', 'NEW', 'PROCESSING'] as const;
+    for (let i = 0; i < assignedStatuses.length; i++) {
       await prisma.payoutOrder.create({
         data: {
           requestId: `test-payout-${i + 1}`,
           merchantId: merchant.id,
           traderId: traderProfile.id,
-          amount: 50 + i * 25,
-          currency: 'USDT',
-          status: payoutStatuses[i],
+          amount: 500 + i * 250,
+          currency: 'UAH',
+          status: assignedStatuses[i],
           detailsType: 'CARD',
           detailsNumber: '5375411234567890',
           detailsOwner: 'Recipient Name',
-          rate: 41.5,
-          partnerAmount: (50 + i * 25) * 41.5,
+          rate: 1,
+          partnerAmount: (500 + i * 250) * 0.97,
+          percentFee: 3,
+        },
+      });
+    }
+
+    // Pool orders — PENDING with no traderId (visible to traders in pool)
+    const poolAmounts = [1000, 5000, 12000, 18000, 25000];
+    for (let i = 0; i < poolAmounts.length; i++) {
+      await prisma.payoutOrder.create({
+        data: {
+          requestId: `test-payout-pool-${i + 1}`,
+          merchantId: merchant.id,
+          traderId: null,
+          amount: poolAmounts[i],
+          currency: 'UAH',
+          status: 'PENDING',
+          detailsType: 'CARD',
+          detailsNumber: '4149629876543210',
+          detailsOwner: 'Pool Recipient',
+          rate: 1,
+          partnerAmount: poolAmounts[i] * 0.97,
           percentFee: 3,
         },
       });
@@ -263,8 +312,9 @@ async function main() {
   console.log('  Owner:    owner@p2p.local');
   console.log('  Admin:    admin@p2p.local');
   console.log('  Support:  support@p2p.local');
-  console.log('  Trader:   trader@p2p.local');
+  console.log('  Trader:   trader@p2p.local    (payout limits: 100–20000 UAH)');
   console.log('  Merchant: merchant@p2p.local');
+  console.log('  Referral: referral@p2p.local  (5% commission, trader linked)');
   console.log('');
   console.log('Pay-In API Key:  ', payinKeys.publicKey);
   console.log('Pay-In Secret:   ', payinKeys.secretKey);

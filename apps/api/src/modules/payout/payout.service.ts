@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { Prisma, PayoutStatus } from '@prisma/client';
@@ -11,7 +12,6 @@ import {
   PayOutOrderStatus,
   isValidPayOutTransition,
   WebhookMethod,
-  DirectionType,
 } from '@p2p/shared';
 import type { PayOutOrderApiDto, ProfileDto, DetailsDto } from '@p2p/shared';
 import { OrderUploadDto, PayoutOrderInfoDto } from './dto';
@@ -132,12 +132,80 @@ export class PayoutService {
     };
   }
 
-  // ─── Internal: assignToTrader ───
+  // ─── Internal: getPool ─── (PENDING orders without a trader; filtered by trader's payout limits)
 
-  async assignToTrader(orderId: string, traderId: string): Promise<PayOutOrderApiDto> {
-    const order = await this.prisma.payoutOrder.findUniqueOrThrow({
-      where: { id: orderId },
+  async getPool(
+    traderId: string,
+    filters: Record<string, string> = {},
+  ) {
+    const page = filters.page ? parseInt(filters.page, 10) : 1;
+    const limit = filters.limit ? parseInt(filters.limit, 10) : 20;
+
+    const trader = await this.prisma.traderProfile.findUnique({
+      where: { id: traderId },
     });
+    if (!trader) throw new NotFoundException('Trader profile not found');
+
+    const minLimit = Number(trader.payoutMinLimit);
+    const maxLimit = Number(trader.payoutMaxLimit);
+
+    const amountFilter: Prisma.DecimalFilter = {};
+    if (minLimit > 0) amountFilter.gte = minLimit;
+    if (maxLimit > 0) amountFilter.lte = maxLimit;
+
+    const where: Prisma.PayoutOrderWhereInput = {
+      status: 'PENDING',
+      traderId: null,
+      ...(Object.keys(amountFilter).length > 0 ? { amount: amountFilter } : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.payoutOrder.findMany({
+        where,
+        orderBy: { createdAt: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.payoutOrder.count({ where }),
+    ]);
+
+    return {
+      orders: items.map((o) => this.toPayOutOrderApiDto(o)),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  // ─── Internal: traderTakeFromPool ─── (trader self-assigns from pool; PENDING → NEW)
+
+  async traderTakeFromPool(traderId: string, orderId: string): Promise<PayOutOrderApiDto> {
+    const trader = await this.prisma.traderProfile.findUnique({
+      where: { id: traderId },
+    });
+    if (!trader) throw new NotFoundException('Trader profile not found');
+
+    const order = await this.prisma.payoutOrder.findFirst({
+      where: { id: orderId, status: 'PENDING', traderId: null },
+    });
+    if (!order) {
+      throw new NotFoundException('Order not found in pool or already taken');
+    }
+
+    const minLimit = Number(trader.payoutMinLimit);
+    const maxLimit = Number(trader.payoutMaxLimit);
+    const orderAmount = Number(order.amount);
+
+    if (minLimit > 0 && orderAmount < minLimit) {
+      throw new ForbiddenException(
+        `Order amount ${orderAmount} is below your minimum limit ${minLimit}`,
+      );
+    }
+    if (maxLimit > 0 && orderAmount > maxLimit) {
+      throw new ForbiddenException(
+        `Order amount ${orderAmount} exceeds your maximum limit ${maxLimit}`,
+      );
+    }
 
     if (!isValidPayOutTransition(order.status as PayOutOrderStatus, PayOutOrderStatus.NEW)) {
       throw new BadRequestException(
@@ -152,6 +220,38 @@ export class PayoutService {
       });
 
       await this.createPayoutWebhookEntry(tx, result);
+      this.logger.log(`Trader ${traderId} self-assigned payout order ${orderId} from pool`);
+
+      return result;
+    });
+
+    return this.toPayOutOrderApiDto(updated);
+  }
+
+  // ─── Internal: assignToTrader ─── (admin/support assigns from pool to a specific trader)
+
+  async assignToTrader(orderId: string, traderId: string): Promise<PayOutOrderApiDto> {
+    const order = await this.prisma.payoutOrder.findFirst({
+      where: { id: orderId, status: 'PENDING', traderId: null },
+    });
+    if (!order) {
+      throw new NotFoundException('Order not found in pool (must be PENDING with no trader)');
+    }
+
+    if (!isValidPayOutTransition(order.status as PayOutOrderStatus, PayOutOrderStatus.NEW)) {
+      throw new BadRequestException(
+        `Invalid status transition: ${order.status} -> NEW`,
+      );
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.payoutOrder.update({
+        where: { id: orderId },
+        data: { traderId, status: 'NEW' },
+      });
+
+      await this.createPayoutWebhookEntry(tx, result);
+      this.logger.log(`Admin assigned payout order ${orderId} to trader ${traderId}`);
 
       return result;
     });
@@ -194,13 +294,15 @@ export class PayoutService {
     };
   }
 
-  // ─── Internal: traderTakeOrder ───
+  // ─── Internal: traderStartProcessing ─── (NEW → PROCESSING)
 
-  async traderTakeOrder(traderId: string, orderId: string): Promise<PayOutOrderApiDto> {
+  async traderStartProcessing(traderId: string, orderId: string): Promise<PayOutOrderApiDto> {
     const order = await this.prisma.payoutOrder.findFirst({
-      where: { id: orderId, traderId },
+      where: { id: orderId, traderId, status: 'NEW' },
     });
-    if (!order) throw new NotFoundException('Order not found or not assigned to this trader');
+    if (!order) {
+      throw new NotFoundException('Order not found, not assigned to this trader, or not in NEW status');
+    }
 
     if (!isValidPayOutTransition(order.status as PayOutOrderStatus, PayOutOrderStatus.PROCESSING)) {
       throw new BadRequestException(

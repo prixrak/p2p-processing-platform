@@ -1,8 +1,10 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Param,
+  Body,
   Query,
   UseGuards,
   ParseUUIDPipe,
@@ -16,7 +18,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { TradersService } from './traders.service';
-import { GetStatisticsDto } from './dto';
+import { GetStatisticsDto, SetPayoutLimitsDto } from './dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -104,5 +106,19 @@ export class TradersController {
   @ApiOperation({ summary: 'Deactivate trader' })
   deactivate(@Param('id', ParseUUIDPipe) id: string) {
     return this.tradersService.deactivate(id);
+  }
+
+  @Post(':id/payout-limits')
+  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @ApiOperation({
+    summary: 'Set payout order pool limits for a trader',
+    description:
+      'Set the min/max amount range of payout orders a trader can see in the pool. Use 0 for no limit.',
+  })
+  setPayoutLimits(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetPayoutLimitsDto,
+  ) {
+    return this.tradersService.setPayoutLimits(id, dto.minLimit, dto.maxLimit);
   }
 }

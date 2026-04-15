@@ -99,15 +99,16 @@ API Swagger docs: http://localhost:3001/api
 
 All accounts use password: `admin123`
 
-| Role     | Email              | Dashboard URL                  |
-| -------- | ------------------ | ------------------------------ |
-| Owner    | owner@p2p.local    | http://localhost:3000/owner    |
-| Admin    | admin@p2p.local    | http://localhost:3000/admin    |
-| Support  | support@p2p.local  | http://localhost:3000/support  |
-| Trader   | trader@p2p.local   | http://localhost:3000/trader   |
-| Merchant | merchant@p2p.local | http://localhost:3000/merchant |
+| Role     | Email                | Dashboard URL                    | Notes                              |
+| -------- | -------------------- | -------------------------------- | ---------------------------------- |
+| Owner    | owner@p2p.local      | http://localhost:3000/owner      |                                    |
+| Admin    | admin@p2p.local      | http://localhost:3000/admin      |                                    |
+| Support  | support@p2p.local    | http://localhost:3000/support    |                                    |
+| Trader   | trader@p2p.local     | http://localhost:3000/trader     | Payout limits: 100–20 000 UAH      |
+| Merchant | merchant@p2p.local   | http://localhost:3000/merchant   |                                    |
+| Referral | referral@p2p.local   | http://localhost:3000/referral   | 5% commission, trader linked       |
 
-Seed also creates: currencies (UAH, USDT), banks, trader balances, merchant balances, API keys, and sample orders.
+Seed also creates: currencies (UAH, USDT), banks, trader balances, merchant balances, API keys, sample pay-in orders, assigned pay-out orders, and pool (unassigned) pay-out orders.
 
 ---
 
@@ -139,26 +140,53 @@ p2p/
 
 ### Backend Modules
 
-| Module      | Path                 | Description                                    |
-| ----------- | -------------------- | ---------------------------------------------- |
-| auth        | `/api/auth/*`        | JWT login/register, 2FA (TOTP)                 |
-| payin       | `/api/v1/payin/*`    | Merchant Pay-In API (HMAC auth)                |
-| payout      | `/api/v1/payout/*`   | Merchant Pay-Out API (HMAC auth)               |
-| traders     | `/api/trader/*`      | Trader dashboard + order management            |
-| merchants   | `/api/merchant/*`    | Merchant dashboard + balances                  |
-| requisites  | `/api/requisites/*`  | Bank card/wallet CRUD                          |
-| appeals     | `/api/appeals/*`     | Dispute resolution                             |
-| settlements | `/api/settlements/*` | Balance credit/debit                           |
-| webhooks    | `/api/webhooks/*`    | Webhook logs + manual resend                   |
-| files       | `/api/files/*`       | S3 upload, presigned URL download              |
-| telegram    | `/api/telegram/*`    | Bot connection, notification preferences       |
-| audit       | `/api/audit/*`       | Full audit trail viewer                        |
-| admin       | `/api/admin/*`       | Admin dashboard stats                          |
-| support     | `/api/support/*`     | Support dashboard stats                        |
-| cascade     | internal             | Smart order distribution (requisite selection) |
-| ratings     | `/api/ratings/*`     | Trader/requisite performance scoring           |
-| health      | `/api/health`        | Health + readiness checks                      |
-| maintenance | internal             | Cron: auto-cancel expired orders, cleanup logs |
+| Module      | Path                    | Description                                                                     |
+| ----------- | ----------------------- | ------------------------------------------------------------------------------- |
+| auth        | `/api/auth/*`           | JWT login/register, 2FA (TOTP)                                                  |
+| payin       | `/api/v1/payin/*`       | Merchant Pay-In API (HMAC auth)                                                 |
+| payout      | `/api/v1/payout/*`      | Merchant Pay-Out API (HMAC auth); internal pool + assignment endpoints          |
+| traders     | `/api/trader/*`         | Trader dashboard + order management; payout pool limits                         |
+| merchants   | `/api/merchant/*`       | Merchant dashboard + balances                                                   |
+| requisites  | `/api/requisites/*`     | Bank card/wallet CRUD                                                           |
+| appeals     | `/api/appeals/*`        | Dispute resolution                                                              |
+| settlements | `/api/settlements/*`    | Balance credit/debit                                                            |
+| webhooks    | `/api/webhooks/*`       | Webhook logs + manual resend                                                    |
+| files       | `/api/files/*`          | S3 upload, presigned URL download                                               |
+| telegram    | `/api/telegram/*`       | Bot connection, notification preferences                                        |
+| audit       | `/api/audit/*`          | Full audit trail viewer                                                         |
+| admin       | `/api/admin/*`          | Admin dashboard stats                                                           |
+| support     | `/api/support/*`        | Support dashboard stats                                                         |
+| referral    | `/api/referrals/*`      | Referral agent CRUD (admin); `/api/referral/me` cabinet (REFERRAL role)         |
+| cascade     | internal                | Smart order distribution (requisite selection)                                  |
+| ratings     | `/api/ratings/*`        | Trader/requisite performance scoring                                            |
+| health      | `/api/health`           | Health + readiness checks                                                       |
+| maintenance | internal                | Cron: auto-cancel expired orders, cleanup logs                                  |
+
+### Pay-Out Pool Logic
+
+All pay-out orders start as **PENDING** with no assigned trader and land in the *shared pool*.
+
+| Actor | Action | Result |
+| ----- | ------ | ------ |
+| Trader | `GET /api/trader/payout/pool` | See PENDING orders filtered by their min/max limits |
+| Trader | `POST /api/trader/payout/orders/:id/take` | Self-assign from pool (PENDING → NEW) |
+| Admin/Support | `POST /api/trader/payout/assign` | Assign any PENDING order to a specific trader |
+| Admin | `POST /api/traders/:id/payout-limits` | Set the amount range a trader can see in the pool |
+| Trader | `POST /api/trader/payout/orders/:id/process` | Move NEW → PROCESSING |
+| Trader | `POST /api/trader/payout/orders/:id/complete` | Move PROCESSING → COMPLETED |
+| Trader | `POST /api/trader/payout/orders/:id/fail` | Move PROCESSING → FAILED |
+
+### Referral Cabinet
+
+| Feature | Description |
+| ------- | ----------- |
+| Role `REFERRAL` | New user role for referral agents |
+| `GET /api/referral/me` | View own profile + list of referred users |
+| `GET /api/referral/me/statistics` | Detailed stats: referred traders' completed order volumes, merchant balances, own earnings |
+| `POST /api/referrals` | Admin creates a referral agent |
+| `PATCH /api/referrals/:id` | Admin updates commission % |
+| `POST /api/referrals/:id/link-user` | Admin links an existing user to a referral agent |
+| `DELETE /api/referrals/users/:userId/unlink` | Admin unlinks a user |
 
 ---
 

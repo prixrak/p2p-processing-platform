@@ -20,8 +20,16 @@ export const internalPaths = {
   traderBalances: (id: string) => `/api/traders/${id}/balances`,
   traderActivate: (id: string) => `/api/traders/${id}/activate`,
   traderDeactivate: (id: string) => `/api/traders/${id}/deactivate`,
+  traderPayoutLimits: (id: string) => `/api/traders/${id}/payout-limits`,
 
+  // Pay-Out pool (trader cabinet)
+  payoutPool: '/api/trader/payout/pool',
+  payoutOrders: '/api/trader/payout/orders',
   payoutAssign: '/api/trader/payout/assign',
+  payoutOrderTake: (orderId: string) => `/api/trader/payout/orders/${orderId}/take`,
+  payoutOrderProcess: (orderId: string) => `/api/trader/payout/orders/${orderId}/process`,
+  payoutOrderComplete: (orderId: string) => `/api/trader/payout/orders/${orderId}/complete`,
+  payoutOrderFail: (orderId: string) => `/api/trader/payout/orders/${orderId}/fail`,
 
   merchants: '/api/merchants',
   merchant: (id: string) => `/api/merchants/${id}`,
@@ -41,6 +49,14 @@ export const internalPaths = {
   banks: '/api/banks',
   bank: (id: string | number) => `/api/banks/${id}`,
   bankDeactivate: (id: string | number) => `/api/banks/${id}/deactivate`,
+
+  // Referral management (admin) and cabinet
+  referrals: '/api/referrals',
+  referral: (id: string) => `/api/referrals/${id}`,
+  referralLinkUser: (id: string) => `/api/referrals/${id}/link-user`,
+  referralUnlinkUser: (userId: string) => `/api/referrals/users/${userId}/unlink`,
+  referralMe: '/api/referral/me',
+  referralMeStatistics: '/api/referral/me/statistics',
 
   /**
    * Endpoints still referenced by the UI but not implemented (or not at this path)

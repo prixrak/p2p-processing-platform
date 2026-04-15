@@ -25,6 +25,7 @@ export enum UserRole {
   SUPPORT = 'SUPPORT',
   MERCHANT = 'MERCHANT',
   OWNER = 'OWNER',
+  REFERRAL = 'REFERRAL',
 }
 
 export enum DirectionType {
