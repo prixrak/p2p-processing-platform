@@ -1,0 +1,15 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testRegex": "test/.*\\.e2e-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^@p2p/shared$": "<rootDir>/../../packages/shared/src/index.ts",
+    "^@p2p/config$": "<rootDir>/../../packages/config/src/index.ts",
+    "^@p2p/prisma$": "<rootDir>/../../packages/prisma/src/index.ts"
+  },
+  "passWithNoTests": true
+}
