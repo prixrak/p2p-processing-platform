@@ -24,7 +24,7 @@ interface PaymentMethod {
 }
 
 const FLOW_LABELS: Record<string, string> = { P2P: 'P2P', P2C: 'P2C', CRYPTO: 'Crypto' };
-const AVAIL_LABELS: Record<string, string> = { PAYIN: 'Pay-In', PAYOUT: 'Pay-Out', BOTH: 'Обидва' };
+const AVAIL_LABELS: Record<string, string> = { PAYIN: 'Pay-In', PAYOUT: 'Pay-Out', BOTH: 'Both' };
 const AVAIL_COLOR: Record<string, 'green' | 'blue' | 'yellow'> = { PAYIN: 'blue', PAYOUT: 'yellow', BOTH: 'green' };
 
 export default function PaymentMethodsPage() {
@@ -67,7 +67,7 @@ export default function PaymentMethodsPage() {
   const columns = [
     {
       key: 'name',
-      header: 'Назва',
+      header: 'Name',
       render: (m: PaymentMethod) => (
         <div className="flex items-center gap-2">
           <CreditCard className="h-4 w-4 text-text-muted" />
@@ -80,7 +80,7 @@ export default function PaymentMethodsPage() {
     },
     {
       key: 'country',
-      header: 'Країна',
+      header: 'Country',
       render: (m: PaymentMethod) => (
         <span className="font-mono text-sm">{m.country.code} / {m.country.currency}</span>
       ),
@@ -94,14 +94,14 @@ export default function PaymentMethodsPage() {
     },
     {
       key: 'requisiteType',
-      header: 'Реквізит',
+      header: 'Requisite',
       render: (m: PaymentMethod) => (
         <span className="text-sm text-text-secondary">{m.requisiteType}</span>
       ),
     },
     {
       key: 'availability',
-      header: 'Напрямок',
+      header: 'Direction',
       render: (m: PaymentMethod) => (
         <Badge color={AVAIL_COLOR[m.availability] ?? 'blue'}>
           {AVAIL_LABELS[m.availability] ?? m.availability}
@@ -110,7 +110,7 @@ export default function PaymentMethodsPage() {
     },
     {
       key: 'status',
-      header: 'Статус',
+      header: 'Status',
       render: (m: PaymentMethod) => (
         <Badge color={m.isActive ? 'green' : 'red'}>{m.isActive ? 'active' : 'inactive'}</Badge>
       ),
@@ -135,13 +135,13 @@ export default function PaymentMethodsPage() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Методи оплати</h1>
+          <h1 className="text-2xl font-bold text-text-primary">Payment methods</h1>
           <p className="mt-1 text-sm text-text-muted">
-            Налаштування доступних методів по країнах (CARD_P2P, IBAN_P2P, CRYPTO…)
+            Configure available methods per country (CARD_P2P, IBAN_P2P, CRYPTO…)
           </p>
         </div>
         <Button onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4" /> Додати метод
+          <Plus className="h-4 w-4" /> Add method
         </Button>
       </div>
 
@@ -149,10 +149,10 @@ export default function PaymentMethodsPage() {
         columns={columns}
         data={methods ?? []}
         isLoading={isLoading}
-        emptyMessage="Методи оплати не налаштовані"
+        emptyMessage="No payment methods configured"
       />
 
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Новий метод оплати">
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="New payment method">
         <form
           className="space-y-4"
           onSubmit={(e) => {
@@ -161,31 +161,31 @@ export default function PaymentMethodsPage() {
           }}
         >
           <div>
-            <label className="block text-sm font-medium text-text-primary mb-1">Країна</label>
+            <label className="block text-sm font-medium text-text-primary mb-1">Country</label>
             <select
               className="w-full rounded-lg border border-border bg-bg-secondary text-text-primary px-3 py-2 text-sm"
               value={form.countryId}
               onChange={(e) => setForm({ ...form, countryId: e.target.value })}
               required
             >
-              <option value="">Оберіть країну…</option>
+              <option value="">Select country…</option>
               {(countries ?? []).map((c) => (
                 <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>
               ))}
             </select>
           </div>
           <Input
-            label="Системна назва"
+            label="System name"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value.toUpperCase() })}
             placeholder="CARD_P2P"
             required
           />
           <Input
-            label="Відображувана назва"
+            label="Display name"
             value={form.displayName}
             onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-            placeholder="Картка P2P"
+            placeholder="P2P card"
             required
           />
           <div className="grid grid-cols-3 gap-3">
@@ -200,7 +200,7 @@ export default function PaymentMethodsPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Реквізит</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">Requisite</label>
               <select
                 className="w-full rounded-lg border border-border bg-bg-secondary text-text-primary px-3 py-2 text-sm"
                 value={form.requisiteType}
@@ -210,7 +210,7 @@ export default function PaymentMethodsPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Напрямок</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">Direction</label>
               <select
                 className="w-full rounded-lg border border-border bg-bg-secondary text-text-primary px-3 py-2 text-sm"
                 value={form.availability}
@@ -223,8 +223,8 @@ export default function PaymentMethodsPage() {
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <Button variant="ghost" type="button" onClick={() => setShowCreate(false)}>Скасувати</Button>
-            <Button type="submit" loading={create.isPending}>Створити</Button>
+            <Button variant="ghost" type="button" onClick={() => setShowCreate(false)}>Cancel</Button>
+            <Button type="submit" loading={create.isPending}>Create</Button>
           </div>
         </form>
       </Modal>

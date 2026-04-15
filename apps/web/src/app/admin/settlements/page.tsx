@@ -7,20 +7,19 @@ import { SettlementType } from '@p2p/shared';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { DataTable } from '@/components/ui/data-table';
-import { StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { format } from 'date-fns';
 
 interface Settlement {
   id: string;
-  traderName: string;
-  type: 'credit' | 'debit';
+  type: 'CREDIT' | 'DEBIT';
   amount: number;
   currency: string;
-  status: string;
-  note: string;
+  note: string | null;
   createdAt: string;
+  admin: { email: string } | null;
+  trader: { user: { email: string } } | null;
 }
 
 interface TraderOption {
@@ -41,7 +40,7 @@ export default function SettlementsPage() {
   const [traderId, setTraderId] = useState('');
   const [type, setType] = useState<'credit' | 'debit'>('credit');
   const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState('RUB');
+  const [currency, setCurrency] = useState('UAH');
   const [note, setNote] = useState('');
 
   const { data: settlements = [], isLoading } = useQuery<Settlement[]>({
@@ -73,6 +72,14 @@ export default function SettlementsPage() {
     enabled: !!traderId,
   });
 
+  const { data: currencyOptions = [] } = useQuery<{ code: string }[]>({
+    queryKey: ['currencies'],
+    queryFn: async () => {
+      const res = await api.get<{ data: { code: string }[] } | { code: string }[]>(internalPaths.currencies);
+      return Array.isArray(res) ? res : res.data;
+    },
+  });
+
   const createMutation = useMutation({
     mutationFn: () =>
       api.post(internalPaths.settlements, {
@@ -102,47 +109,40 @@ export default function SettlementsPage() {
     {
       key: 'id',
       header: 'ID',
-      render: (row) => (
+      render: (row: Settlement) => (
         <span className="font-mono text-xs text-text-muted">{row.id.slice(0, 8)}</span>
       ),
     },
     {
-      key: 'traderName',
+      key: 'trader',
       header: 'Trader',
-      render: (row) => <span className="text-text-primary">{row.traderName}</span>,
+      render: (row: Settlement) => (
+        <span className="text-text-primary">{row.trader?.user?.email ?? '—'}</span>
+      ),
     },
     {
       key: 'type',
       header: 'Type',
-      render: (row) => (
-        <span
-          className={
-            row.type === 'credit' ? 'text-accent-green' : 'text-accent-red'
-          }
-        >
-          {row.type.toUpperCase()}
+      render: (row: Settlement) => (
+        <span className={row.type === 'CREDIT' ? 'text-accent-green' : 'text-accent-red'}>
+          {row.type}
         </span>
       ),
     },
     {
       key: 'amount',
       header: 'Amount',
-      render: (row) => (
+      render: (row: Settlement) => (
         <span className="font-mono text-text-primary">
-          {row.type === 'credit' ? '+' : '-'}
+          {row.type === 'CREDIT' ? '+' : '-'}
           {row.amount.toLocaleString()} {row.currency}
         </span>
       ),
     },
     {
-      key: 'status',
-      header: 'Status',
-      render: (row) => <StatusBadge status={row.status} />,
-    },
-    {
       key: 'note',
       header: 'Note',
-      render: (row) => (
+      render: (row: Settlement) => (
         <span className="text-text-muted text-xs max-w-[200px] truncate block">
           {row.note || '—'}
         </span>
@@ -151,7 +151,7 @@ export default function SettlementsPage() {
     {
       key: 'createdAt',
       header: 'Date',
-      render: (row) => (
+      render: (row: Settlement) => (
         <span className="text-xs text-text-muted">
           {format(new Date(row.createdAt), 'dd.MM.yy HH:mm')}
         </span>
@@ -225,10 +225,13 @@ export default function SettlementsPage() {
                 onChange={(e) => setCurrency(e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-bg-input border border-border-primary rounded-lg text-text-primary focus:border-border-focus focus:outline-none"
               >
-                <option value="RUB">RUB</option>
-                <option value="USD">USD</option>
-                <option value="USDT">USDT</option>
-                <option value="EUR">EUR</option>
+                {currencyOptions.length > 0 ? (
+                  currencyOptions.map((c) => (
+                    <option key={c.code} value={c.code}>{c.code}</option>
+                  ))
+                ) : (
+                  <option value="UAH">UAH</option>
+                )}
               </select>
             </div>
           </div>

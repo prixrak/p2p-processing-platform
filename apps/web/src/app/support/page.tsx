@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { AlertTriangle, FileText, Clock, MessageSquare } from 'lucide-react';
 import { api } from '@/lib/api';
 import { StatCard, Card } from '@/components/ui/card';
@@ -37,6 +38,7 @@ const statusColor: Record<string, 'green' | 'yellow' | 'red' | 'blue' | 'default
 };
 
 export default function SupportDashboard() {
+  const router = useRouter();
   const { data: stats } = useQuery({
     queryKey: ['support', 'stats'],
     queryFn: () => api.get<SupportStats>('/api/support/stats'),
@@ -54,22 +56,26 @@ export default function SupportDashboard() {
           title="Active Disputes"
           value={stats?.activeDisputes ?? '—'}
           icon={AlertTriangle}
+          href="/support/disputes"
           className={stats?.activeDisputes ? 'border-danger/30' : ''}
         />
         <StatCard
           title="Orders Needing Attention"
           value={stats?.ordersNeedingAttention ?? '—'}
           icon={FileText}
+          href="/support/orders"
         />
         <StatCard
           title="Avg Resolution Time"
           value={stats?.avgResolutionTime ?? '—'}
           icon={Clock}
+          href="/support/disputes"
         />
         <StatCard
           title="Resolved Today"
           value={stats?.resolvedToday ?? '—'}
           icon={MessageSquare}
+          href="/support/disputes"
         />
       </div>
 
@@ -80,7 +86,8 @@ export default function SupportDashboard() {
               {stats.recentDisputes.map((d) => (
                 <div
                   key={d.id}
-                  className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary/50 px-4 py-3"
+                  onClick={() => router.push('/support/disputes')}
+                  className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary/50 px-4 py-3 cursor-pointer hover:border-border-secondary transition-colors"
                 >
                   <div>
                     <p className="text-sm font-medium text-text-primary">
@@ -103,7 +110,8 @@ export default function SupportDashboard() {
               {stats.flaggedOrders.map((o) => (
                 <div
                   key={o.id}
-                  className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary/50 px-4 py-3"
+                  onClick={() => router.push('/support/orders')}
+                  className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary/50 px-4 py-3 cursor-pointer hover:border-border-secondary transition-colors"
                 >
                   <div>
                     <p className="text-sm font-medium text-text-primary">

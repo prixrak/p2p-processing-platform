@@ -12,8 +12,14 @@ import {
   Wallet,
   BarChart3,
   ScrollText,
+  UserPlus,
+  Globe,
+  CreditCard,
 } from 'lucide-react';
+import { AuthGuard } from '@/components/auth-guard';
 import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
+
+const OWNER_ALLOWED = ['OWNER'] as const;
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/owner', icon: LayoutDashboard },
@@ -24,6 +30,9 @@ const navItems: NavItem[] = [
   { label: 'Directions', href: '/owner/directions', icon: ArrowLeftRight },
   { label: 'Currencies', href: '/owner/currencies', icon: Coins },
   { label: 'Banks', href: '/owner/banks', icon: Building2 },
+  { label: 'Countries', href: '/owner/countries', icon: Globe },
+  { label: 'Payment Methods', href: '/owner/payment-methods', icon: CreditCard },
+  { label: 'Referrals', href: '/owner/referrals', icon: UserPlus },
   { label: 'Settlements', href: '/owner/settlements', icon: Wallet },
   { label: 'Statistics', href: '/owner/statistics', icon: BarChart3 },
   { label: 'Audit Log', href: '/owner/audit', icon: ScrollText },
@@ -31,8 +40,10 @@ const navItems: NavItem[] = [
 
 export default function OwnerLayout({ children }: { children: React.ReactNode }) {
   return (
-    <DashboardShell navItems={navItems} role="owner">
-      {children}
-    </DashboardShell>
+    <AuthGuard allowedRoles={OWNER_ALLOWED}>
+      <DashboardShell navItems={navItems} role="owner">
+        {children}
+      </DashboardShell>
+    </AuthGuard>
   );
 }

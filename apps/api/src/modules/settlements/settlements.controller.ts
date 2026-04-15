@@ -4,8 +4,10 @@ import {
   Post,
   Body,
   Query,
+  Param,
   UseGuards,
   ParseIntPipe,
+  ParseUUIDPipe,
   DefaultValuePipe,
 } from '@nestjs/common';
 import {
@@ -51,5 +53,11 @@ export class SettlementsController {
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
     return this.settlementsService.findAll(filters, page, limit);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get settlement details by ID' })
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.settlementsService.findOne(id);
   }
 }

@@ -17,6 +17,7 @@
 
 ## Engineering Standards
 - Keep business logic deterministic and testable; no hidden side effects in controllers.
+- **Language**: All code comments (including JSDoc and JSX comments), user-facing UI copy, and API examples in source must be **English**. See `.cursor/rules/english-code-language.mdc`.
 - Never hardcode currencies, banks, directions, or payment methods in code.
 - Store reference data in DB and expose through admin-managed config.
 - Preserve a unified `ErrorDetails` response shape for all 4xx/5xx API errors.

@@ -34,6 +34,7 @@ interface MerchantApiRow {
   isLock: boolean;
   createdAt: string;
   balances: Array<{ amount: unknown; currency: string }>;
+  ordersCount?: number;
 }
 
 function mapMerchantRow(m: MerchantApiRow): Merchant {
@@ -45,7 +46,7 @@ function mapMerchantRow(m: MerchantApiRow): Merchant {
     status: m.isLock ? 'locked' : 'active',
     balance: primary ? Number(primary.amount) : 0,
     currency: primary?.currency ?? '—',
-    ordersCount: 0,
+    ordersCount: m.ordersCount ?? 0,
     createdAt: m.createdAt,
   };
 }
@@ -198,7 +199,7 @@ export default function MerchantsPage() {
       header: 'Actions',
       render: (m: Merchant) => (
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setDirectionsModal(m)} title="Комісії та напрямки">
+          <Button variant="ghost" size="sm" onClick={() => setDirectionsModal(m)} title="Commissions & directions">
             <Percent className="h-3.5 w-3.5" />
           </Button>
           <Button
@@ -288,15 +289,15 @@ export default function MerchantsPage() {
       <Modal
         open={!!directionsModal}
         onClose={() => { setDirectionsModal(null); setShowAddDir(false); }}
-        title={`Напрямки та комісії — ${directionsModal?.name ?? ''}`}
+        title={`Directions & commissions — ${directionsModal?.name ?? ''}`}
         size="lg"
       >
         <div className="space-y-4">
-          {dirsLoading && <p className="text-sm text-text-muted">Завантаження…</p>}
+          {dirsLoading && <p className="text-sm text-text-muted">Loading…</p>}
 
           {!dirsLoading && (merchantDirections ?? []).length === 0 && (
             <p className="text-sm text-text-muted py-4 text-center">
-              Немає налаштованих напрямків — використовуються глобальні налаштування
+              No directions configured — global defaults apply
             </p>
           )}
 
@@ -334,23 +335,23 @@ export default function MerchantsPage() {
               </div>
               <div className="grid grid-cols-3 gap-3 text-sm">
                 <div>
-                  <p className="text-text-muted text-xs">Мін/Макс</p>
+                  <p className="text-text-muted text-xs">Min/Max</p>
                   <p className="text-text-primary">
                     {Number(dir.minAmount).toLocaleString()} — {Number(dir.maxAmount).toLocaleString()} {dir.currency}
                   </p>
                 </div>
                 <div>
-                  <p className="text-text-muted text-xs">Комісія (default)</p>
+                  <p className="text-text-muted text-xs">Commission (default)</p>
                   <p className="text-text-primary font-mono">{Number(dir.defaultCommissionPercent).toFixed(2)}%</p>
                 </div>
                 <div>
-                  <p className="text-text-muted text-xs">Тарифні тири</p>
+                  <p className="text-text-muted text-xs">Pricing tiers</p>
                   <p className="text-text-primary">{dir.commissionTiers.length}</p>
                 </div>
               </div>
               {dir.commissionTiers.length > 0 && (
                 <div className="border-t border-border pt-2">
-                  <p className="text-xs text-text-muted mb-1">Тири комісій:</p>
+                  <p className="text-xs text-text-muted mb-1">Commission tiers:</p>
                   <div className="space-y-1">
                     {dir.commissionTiers.map((t) => (
                       <div key={t.id} className="flex items-center gap-2 text-xs font-mono text-text-secondary">
@@ -366,7 +367,7 @@ export default function MerchantsPage() {
 
           {!showAddDir ? (
             <Button variant="ghost" size="sm" onClick={() => setShowAddDir(true)}>
-              <Plus className="h-4 w-4" /> Додати напрямок
+              <Plus className="h-4 w-4" /> Add direction
             </Button>
           ) : (
             <form
@@ -376,10 +377,10 @@ export default function MerchantsPage() {
                 createDirection.mutate(dirForm);
               }}
             >
-              <p className="text-sm font-medium text-text-primary">Новий напрямок</p>
+              <p className="text-sm font-medium text-text-primary">New direction</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-text-muted mb-1">Тип</label>
+                  <label className="block text-xs text-text-muted mb-1">Type</label>
                   <select
                     className="w-full rounded border border-border bg-bg-primary text-text-primary px-2 py-1.5 text-sm"
                     value={dirForm.directionType}
@@ -390,7 +391,7 @@ export default function MerchantsPage() {
                   </select>
                 </div>
                 <Input
-                  label="Валюта"
+                  label="Currency"
                   value={dirForm.currency}
                   onChange={(e) => setDirForm({ ...dirForm, currency: e.target.value.toUpperCase() })}
                   placeholder="UAH"
@@ -398,21 +399,21 @@ export default function MerchantsPage() {
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <Input
-                  label="Мін сума"
+                  label="Min amount"
                   type="number"
                   min="0"
                   value={dirForm.minAmount}
                   onChange={(e) => setDirForm({ ...dirForm, minAmount: Number(e.target.value) })}
                 />
                 <Input
-                  label="Макс сума"
+                  label="Max amount"
                   type="number"
                   min="0"
                   value={dirForm.maxAmount}
                   onChange={(e) => setDirForm({ ...dirForm, maxAmount: Number(e.target.value) })}
                 />
                 <Input
-                  label="Комісія %"
+                  label="Commission %"
                   type="number"
                   step="0.01"
                   min="0"
@@ -421,14 +422,14 @@ export default function MerchantsPage() {
                 />
               </div>
               <div className="flex justify-end gap-2">
-                <Button variant="ghost" size="sm" type="button" onClick={() => setShowAddDir(false)}>Скасувати</Button>
-                <Button size="sm" type="submit" loading={createDirection.isPending}>Додати</Button>
+                <Button variant="ghost" size="sm" type="button" onClick={() => setShowAddDir(false)}>Cancel</Button>
+                <Button size="sm" type="submit" loading={createDirection.isPending}>Add</Button>
               </div>
             </form>
           )}
 
           <div className="flex justify-end pt-2 border-t border-border">
-            <Button variant="ghost" onClick={() => { setDirectionsModal(null); setShowAddDir(false); }}>Закрити</Button>
+            <Button variant="ghost" onClick={() => { setDirectionsModal(null); setShowAddDir(false); }}>Close</Button>
           </div>
         </div>
       </Modal>

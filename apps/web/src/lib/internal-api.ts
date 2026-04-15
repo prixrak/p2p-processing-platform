@@ -10,6 +10,11 @@
  */
 export const internalPaths = {
   adminStats: '/api/admin/stats',
+  adminStatistics: '/api/admin/statistics',
+
+  adminOrders: (qs: string) => `/api/admin/orders?${qs}`,
+  adminOrder: (id: string) => `/api/admin/orders/${id}`,
+  adminOrderStatus: (id: string) => `/api/admin/orders/${id}/status`,
 
   audit: '/api/audit',
 
@@ -48,7 +53,10 @@ export const internalPaths = {
   banksAdmin: '/api/banks/admin',
   banks: '/api/banks',
   bank: (id: string | number) => `/api/banks/${id}`,
+  bankActivate: (id: string | number) => `/api/banks/${id}/activate`,
   bankDeactivate: (id: string | number) => `/api/banks/${id}/deactivate`,
+
+  settlementDetail: (id: string) => `/api/settlements/${id}`,
 
   // Balance transactions
   balanceTransactions: '/api/trader/balance/transactions',
@@ -76,20 +84,12 @@ export const internalPaths = {
   referralMeStatistics: '/api/referral/me/statistics',
 
   /**
-   * Endpoints still referenced by the UI but not implemented (or not at this path)
-   * on the Nest API. Prefer implementing or wiring these before relying on them.
+   * Endpoints not yet implemented on the Nest API.
+   * All former stubs (platformStatistics, ordersQuery, order, orderStatus,
+   * settlement, bankStatus) have been wired to real routes above.
    */
   notImplemented: {
-    platformStatistics: '/api/admin/statistics',
-    ordersQuery: (queryString: string) => `/api/admin/orders?${queryString}`,
-    order: (id: string) => `/api/admin/orders/${id}`,
-    orderStatus: (id: string) => `/api/admin/orders/${id}/status`,
     orderAssign: (orderId: string) => `/api/admin/orders/${orderId}/assign`,
-    settlement: (id: string) => `/api/admin/settlements/${id}`,
-    settlementAction: (id: string, action: string) =>
-      `/api/admin/settlements/${id}/${action}`,
-    /** No matching Nest route — bank toggling uses `PATCH .../deactivate` for off only. */
-    bankStatus: (id: string | number) => `/api/admin/banks/${id}`,
     merchantConfig: (id: string) => `/api/admin/merchants/${id}/config`,
   },
 } as const;

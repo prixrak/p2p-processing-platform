@@ -1,13 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle, XCircle, Eye } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Eye, Plus } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Tabs } from '@/components/ui/tabs';
@@ -15,72 +13,53 @@ import { DataTable } from '@/components/ui/data-table';
 
 interface Settlement {
   id: string;
-  type: 'MERCHANT' | 'TRADER';
-  entityName: string;
+  type: 'CREDIT' | 'DEBIT';
   amount: number;
   currency: string;
-  status: string;
+  note: string | null;
   createdAt: string;
+  admin: { email: string } | null;
+  trader: { user: { email: string } } | null;
 }
 
 interface SettlementsResponse {
   data: Settlement[];
   total: number;
   page: number;
-  totalPages: number;
+  limit: number;
 }
 
-interface SettlementDetails {
-  id: string;
-  type: string;
-  entityName: string;
-  amount: number;
-  currency: string;
-  status: string;
-  createdAt: string;
-  processedAt: string | null;
-  requisites: { bank: string; account: string } | null;
-  notes: string | null;
-}
+interface SettlementDetail extends Settlement {}
 
-const statusColor: Record<string, 'green' | 'yellow' | 'red' | 'blue' | 'default'> = {
-  COMPLETED: 'green',
-  PENDING: 'yellow',
-  PROCESSING: 'blue',
-  REJECTED: 'red',
+const typeColor: Record<string, 'green' | 'red'> = {
+  CREDIT: 'green',
+  DEBIT: 'red',
 };
 
 export default function SettlementsPage() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState('PENDING');
+  const [tab, setTab] = useState('ALL');
   const [page, setPage] = useState(1);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner', 'settlements', tab, page],
     queryFn: () => {
-      const params = new URLSearchParams({ status: tab, page: String(page), limit: '20' });
+      const params = new URLSearchParams({ page: String(page), limit: '20' });
+      if (tab !== 'ALL') params.set('type', tab);
       return api.get<SettlementsResponse>(`${internalPaths.settlements}?${params}`);
     },
   });
 
   const { data: details } = useQuery({
     queryKey: ['owner', 'settlement-details', detailId],
-    queryFn: () =>
-      api.get<SettlementDetails>(
-        internalPaths.notImplemented.settlement(detailId!),
-      ),
+    queryFn: () => api.get<SettlementDetail>(internalPaths.settlementDetail(detailId!)),
     enabled: !!detailId,
   });
 
-  const processSettlement = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'approve' | 'reject' }) =>
-      api.post(internalPaths.notImplemented.settlementAction(id, action)),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['owner', 'settlements'] });
-      queryClient.invalidateQueries({ queryKey: ['owner', 'settlement-details'] });
-    },
-  });
+  const totalPages = data
+    ? Math.max(1, Math.ceil(data.total / (data.limit || 20)))
+    : 1;
 
   const columns = [
     {
@@ -94,14 +73,16 @@ export default function SettlementsPage() {
       key: 'type',
       header: 'Type',
       render: (s: Settlement) => (
-        <Badge color={s.type === 'MERCHANT' ? 'blue' : 'green'}>{s.type}</Badge>
+        <Badge color={typeColor[s.type] ?? 'default'}>{s.type}</Badge>
       ),
     },
     {
-      key: 'entity',
-      header: 'Entity',
+      key: 'trader',
+      header: 'Trader',
       render: (s: Settlement) => (
-        <span className="text-sm text-text-secondary">{s.entityName}</span>
+        <span className="text-sm text-text-secondary">
+          {s.trader?.user?.email ?? '—'}
+        </span>
       ),
     },
     {
@@ -114,10 +95,10 @@ export default function SettlementsPage() {
       ),
     },
     {
-      key: 'status',
-      header: 'Status',
+      key: 'admin',
+      header: 'Created By',
       render: (s: Settlement) => (
-        <Badge color={statusColor[s.status] ?? 'default'}>{s.status}</Badge>
+        <span className="text-sm text-text-muted">{s.admin?.email ?? '—'}</span>
       ),
     },
     {
@@ -133,31 +114,9 @@ export default function SettlementsPage() {
       key: 'actions',
       header: 'Actions',
       render: (s: Settlement) => (
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => setDetailId(s.id)} title="View">
-            <Eye className="h-3.5 w-3.5" />
-          </Button>
-          {s.status === 'PENDING' && (
-            <>
-              <Button
-                variant="success"
-                size="sm"
-                onClick={() => processSettlement.mutate({ id: s.id, action: 'approve' })}
-                title="Approve"
-              >
-                <CheckCircle className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => processSettlement.mutate({ id: s.id, action: 'reject' })}
-                title="Reject"
-              >
-                <XCircle className="h-3.5 w-3.5" />
-              </Button>
-            </>
-          )}
-        </div>
+        <Button variant="ghost" size="sm" onClick={() => setDetailId(s.id)} title="View">
+          <Eye className="h-3.5 w-3.5" />
+        </Button>
       ),
     },
   ];
@@ -166,15 +125,16 @@ export default function SettlementsPage() {
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Settlements</h1>
-        <p className="mt-1 text-sm text-text-muted">Review and process settlement requests</p>
+        <p className="mt-1 text-sm text-text-muted">
+          Admin-created balance adjustments (credits and debits) for traders
+        </p>
       </div>
 
       <Tabs
         tabs={[
-          { key: 'PENDING', label: 'Pending' },
-          { key: 'PROCESSING', label: 'Processing' },
-          { key: 'COMPLETED', label: 'Completed' },
-          { key: 'REJECTED', label: 'Rejected' },
+          { key: 'ALL', label: 'All' },
+          { key: 'CREDIT', label: 'Credits' },
+          { key: 'DEBIT', label: 'Debits' },
         ]}
         active={tab}
         onChange={(k) => { setTab(k); setPage(1); }}
@@ -185,7 +145,7 @@ export default function SettlementsPage() {
         data={data?.data ?? []}
         isLoading={isLoading}
         page={page}
-        totalPages={data?.totalPages}
+        totalPages={totalPages}
         onPageChange={setPage}
         emptyMessage="No settlements found"
       />
@@ -200,15 +160,7 @@ export default function SettlementsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-text-muted">Type</p>
-                <p className="font-medium text-text-primary">{details.type}</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted">Status</p>
-                <Badge color={statusColor[details.status] ?? 'default'}>{details.status}</Badge>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted">Entity</p>
-                <p className="text-sm text-text-primary">{details.entityName}</p>
+                <Badge color={typeColor[details.type] ?? 'default'}>{details.type}</Badge>
               </div>
               <div>
                 <p className="text-xs text-text-muted">Amount</p>
@@ -216,39 +168,26 @@ export default function SettlementsPage() {
                   {details.amount.toLocaleString()} {details.currency}
                 </p>
               </div>
+              <div>
+                <p className="text-xs text-text-muted">Trader</p>
+                <p className="text-sm text-text-primary">{details.trader?.user?.email ?? '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">Created By</p>
+                <p className="text-sm text-text-secondary">{details.admin?.email ?? '—'}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs text-text-muted">Created At</p>
+                <p className="text-sm text-text-secondary">
+                  {new Date(details.createdAt).toLocaleString()}
+                </p>
+              </div>
             </div>
 
-            {details.requisites && (
+            {details.note && (
               <div className="rounded-lg border border-border-primary bg-surface-primary p-3">
-                <p className="mb-1 text-xs text-text-muted">Requisites</p>
-                <p className="text-sm text-text-primary">{details.requisites.bank}</p>
-                <p className="font-mono text-sm text-text-secondary">{details.requisites.account}</p>
-              </div>
-            )}
-
-            {details.notes && (
-              <div className="rounded-lg border border-border-primary bg-surface-primary p-3">
-                <p className="mb-1 text-xs text-text-muted">Notes</p>
-                <p className="text-sm text-text-secondary">{details.notes}</p>
-              </div>
-            )}
-
-            {details.status === 'PENDING' && (
-              <div className="flex justify-end gap-3 pt-2">
-                <Button
-                  variant="danger"
-                  onClick={() => processSettlement.mutate({ id: details.id, action: 'reject' })}
-                  loading={processSettlement.isPending}
-                >
-                  Reject
-                </Button>
-                <Button
-                  variant="success"
-                  onClick={() => processSettlement.mutate({ id: details.id, action: 'approve' })}
-                  loading={processSettlement.isPending}
-                >
-                  Approve
-                </Button>
+                <p className="mb-1 text-xs text-text-muted">Note</p>
+                <p className="text-sm text-text-secondary">{details.note}</p>
               </div>
             )}
           </div>

@@ -1,0 +1,13 @@
+---
+description: Code, comments, and UI copy must be in English
+alwaysApply: true
+---
+
+# English-only code surface
+
+- **Comments**: `//`, `/* */`, `/** */`, JSDoc/TSDoc, and `{/* JSX comments */}` must be written in **English**. No Ukrainian, Russian, or other non-English natural language in comments.
+- **User-facing strings**: UI labels, placeholders, `title`/`aria-label`, empty states, error messages shown to users — **English**, unless the product explicitly ships localized copy via i18n.
+- **Identifiers** (`function`/`class`/`const` names) stay English as usual; do not introduce non-Latin names for symbols.
+- **Exceptions**: third-party quoted text, legal names, or data that must stay in a specific language; document why if unavoidable.
+
+When editing existing non-English comments or strings, translate to clear, concise English in the same change.

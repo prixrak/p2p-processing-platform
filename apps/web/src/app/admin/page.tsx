@@ -51,16 +51,19 @@ export default function AdminDashboard() {
               : `$${(stats?.totalVolume ?? 0).toLocaleString()}`
           }
           icon={TrendingUp}
+          href="/admin/statistics"
         />
         <StatCard
           label="Active Traders"
           value={isLoading ? '...' : String(stats?.activeTraders ?? 0)}
           icon={Users}
+          href="/admin/traders"
         />
         <StatCard
           label="Orders Today"
           value={isLoading ? '...' : String(stats?.ordersToday ?? 0)}
           icon={ArrowLeftRight}
+          href="/admin/orders"
         />
         <StatCard
           label="Conversion Rate"
@@ -70,6 +73,7 @@ export default function AdminDashboard() {
               : `${(stats?.conversionRate ?? 0).toFixed(1)}%`
           }
           icon={Percent}
+          href="/admin/statistics"
         />
         <StatCard
           label="Platform Revenue"
@@ -79,6 +83,7 @@ export default function AdminDashboard() {
               : `$${(stats?.platformRevenue ?? 0).toLocaleString()}`
           }
           icon={DollarSign}
+          href="/admin/statistics"
         />
       </div>
 

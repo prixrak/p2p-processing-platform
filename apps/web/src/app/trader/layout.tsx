@@ -1,40 +1,39 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Sidebar } from '@/components/ui/sidebar';
-import { useAuth } from '@/hooks/use-auth';
+import {
+  LayoutDashboard,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  CreditCard,
+  MessageSquareWarning,
+  BarChart3,
+  Send,
+  Settings,
+  Wallet,
+} from 'lucide-react';
+import { AuthGuard } from '@/components/auth-guard';
+import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
+
+const TRADER_ALLOWED = ['TRADER'] as const;
+
+const navItems: NavItem[] = [
+  { label: 'Dashboard', href: '/trader', icon: LayoutDashboard },
+  { label: 'Pay-In', href: '/trader/payin', icon: ArrowDownToLine },
+  { label: 'Pay-Out', href: '/trader/payout', icon: ArrowUpFromLine },
+  { label: 'Requisites', href: '/trader/requisites', icon: CreditCard },
+  { label: 'Balance', href: '/trader/balance', icon: Wallet },
+  { label: 'Appeals', href: '/trader/appeals', icon: MessageSquareWarning },
+  { label: 'Statistics', href: '/trader/statistics', icon: BarChart3 },
+  { label: 'Telegram', href: '/trader/telegram', icon: Send },
+  { label: 'Settings', href: '/trader/settings', icon: Settings },
+];
 
 export default function TraderLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, user, loadUser } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    loadUser();
-  }, [loadUser]);
-
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.push('/login');
-    }
-  }, [isLoading, isAuthenticated, router]);
-
-  if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-bg-primary">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-blue border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) return null;
-
   return (
-    <div className="flex h-screen overflow-hidden bg-bg-primary">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-7xl p-6">{children}</div>
-      </main>
-    </div>
+    <AuthGuard allowedRoles={TRADER_ALLOWED}>
+      <DashboardShell navItems={navItems} role="trader">
+        {children}
+      </DashboardShell>
+    </AuthGuard>
   );
 }

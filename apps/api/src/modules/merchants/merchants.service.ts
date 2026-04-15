@@ -74,13 +74,19 @@ export class MerchantsService {
         include: {
           balances: true,
           user: { select: { email: true, role: true, isActive: true } },
+          _count: { select: { payinOrders: true, payoutOrders: true } },
         },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.merchant.count(),
     ]);
 
-    return { data: merchants, total, page, limit };
+    const enriched = merchants.map((m) => ({
+      ...m,
+      ordersCount: (m._count?.payinOrders ?? 0) + (m._count?.payoutOrders ?? 0),
+    }));
+
+    return { data: enriched, total, page, limit };
   }
 
   async update(id: string, dto: UpdateMerchantDto) {

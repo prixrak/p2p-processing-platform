@@ -78,6 +78,10 @@ export default function TradersPage() {
           isActive: boolean;
           user: { email: string };
           requisites?: unknown[];
+          ordersCount?: number;
+          totalVolume?: number;
+          payoutMinLimit?: number | string | null;
+          payoutMaxLimit?: number | string | null;
         }>;
       }>(`${internalPaths.traders}?${params}`);
       return res.data.map((p) => ({
@@ -86,10 +90,10 @@ export default function TradersPage() {
         email: p.user.email,
         status: p.isActive ? 'active' : 'inactive',
         activeRequisitesCount: Array.isArray(p.requisites) ? p.requisites.length : 0,
-        totalVolume: 0,
-        ordersCount: 0,
-        payoutMinLimit: (p as any).payoutMinLimit ? Number((p as any).payoutMinLimit) : 0,
-        payoutMaxLimit: (p as any).payoutMaxLimit ? Number((p as any).payoutMaxLimit) : 0,
+        totalVolume: p.totalVolume ?? 0,
+        ordersCount: p.ordersCount ?? 0,
+        payoutMinLimit: p.payoutMinLimit ? Number(p.payoutMinLimit) : 0,
+        payoutMaxLimit: p.payoutMaxLimit ? Number(p.payoutMaxLimit) : 0,
       }));
     },
   });

@@ -74,6 +74,15 @@ export class BanksController {
     return this.banksService.update(id, dto);
   }
 
+  @Patch(':id/activate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Activate bank' })
+  activate(@Param('id', ParseIntPipe) id: number) {
+    return this.banksService.activate(id);
+  }
+
   @Patch(':id/deactivate')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.OWNER)

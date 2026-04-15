@@ -37,7 +37,7 @@ export default function StatisticsPage() {
   const { data: stats, isLoading } = useQuery<PlatformStats>({
     queryKey: ['admin', 'statistics'],
     queryFn: () =>
-      api.get(internalPaths.notImplemented.platformStatistics),
+      api.get(internalPaths.adminStatistics),
   });
 
   const loading = isLoading || !stats;

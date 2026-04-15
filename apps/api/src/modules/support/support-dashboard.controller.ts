@@ -24,24 +24,58 @@ export class SupportDashboardController {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const [activeDisputes, ordersNeedingAttention, resolvedToday] =
-      await Promise.all([
-        this.prisma.appeal.count({ where: { status: 'OPEN' } }),
-        this.prisma.payinOrder.count({
-          where: { status: { in: ['APPEAL', 'UNDERPAID', 'OVERPAID'] } },
-        }),
-        this.prisma.appeal.count({
-          where: { status: 'RESOLVED', updatedAt: { gte: today } },
-        }),
-      ]);
+    const [
+      activeDisputes,
+      ordersNeedingAttention,
+      resolvedToday,
+      recentAppeals,
+      flaggedPayins,
+    ] = await Promise.all([
+      this.prisma.appeal.count({ where: { status: 'OPEN' } }),
+      this.prisma.payinOrder.count({
+        where: { status: { in: ['APPEAL', 'UNDERPAID', 'OVERPAID'] } },
+      }),
+      this.prisma.appeal.count({
+        where: { status: 'RESOLVED', updatedAt: { gte: today } },
+      }),
+      this.prisma.appeal.findMany({
+        where: { status: 'OPEN' },
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          payinOrder: {
+            include: { merchant: { select: { name: true } } },
+          },
+        },
+      }),
+      this.prisma.payinOrder.findMany({
+        where: { status: { in: ['APPEAL', 'UNDERPAID', 'OVERPAID'] } },
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
 
     return {
       activeDisputes,
       ordersNeedingAttention,
       avgResolutionTime: '~2h',
       resolvedToday,
-      recentDisputes: [],
-      flaggedOrders: [],
+      recentDisputes: recentAppeals.map((a) => ({
+        id: a.id,
+        orderId: a.payinOrderId,
+        merchantName: a.payinOrder?.merchant?.name ?? '—',
+        reason: `Paid amount: ${Number(a.paidAmount)}`,
+        status: a.status,
+        createdAt: a.createdAt.toISOString(),
+      })),
+      flaggedOrders: flaggedPayins.map((o) => ({
+        id: o.id,
+        type: 'PAYIN',
+        amount: Number(o.amount),
+        currency: o.currency,
+        status: o.status,
+        reason: o.status === 'UNDERPAID' ? 'Underpaid' : o.status === 'OVERPAID' ? 'Overpaid' : 'Appeal',
+      })),
     };
   }
 }

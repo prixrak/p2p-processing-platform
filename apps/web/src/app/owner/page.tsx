@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import {
   Users,
   Store,
@@ -45,6 +46,7 @@ const statusColor: Record<string, 'green' | 'yellow' | 'red' | 'blue' | 'default
 };
 
 export default function OwnerDashboard() {
+  const router = useRouter();
   const { data: stats } = useQuery({
     queryKey: ['owner', 'stats'],
     queryFn: () => api.get<PlatformStats>(internalPaths.adminStats),
@@ -62,25 +64,25 @@ export default function OwnerDashboard() {
           title="Total Users"
           value={stats?.totalUsers ?? '—'}
           icon={Users}
-          trend={{ value: 12, positive: true }}
+          href="/owner/users"
         />
         <StatCard
           title="Merchants"
           value={stats?.totalMerchants ?? '—'}
           icon={Store}
-          trend={{ value: 5, positive: true }}
+          href="/owner/merchants"
         />
         <StatCard
           title="Total Orders"
           value={stats?.totalOrders?.toLocaleString() ?? '—'}
           icon={FileText}
-          trend={{ value: 8, positive: true }}
+          href="/owner/orders"
         />
         <StatCard
           title="Total Volume"
           value={stats?.totalVolume ? `$${stats.totalVolume.toLocaleString()}` : '—'}
           icon={TrendingUp}
-          trend={{ value: 15, positive: true }}
+          href="/owner/statistics"
         />
       </div>
 
@@ -89,21 +91,25 @@ export default function OwnerDashboard() {
           title="Active Pay-Ins"
           value={stats?.activePayins ?? '—'}
           icon={ArrowDownLeft}
+          href="/owner/orders"
         />
         <StatCard
           title="Active Pay-Outs"
           value={stats?.activePayouts ?? '—'}
           icon={ArrowUpRight}
+          href="/owner/orders"
         />
         <StatCard
           title="Pending Settlements"
           value={stats?.pendingSettlements ?? '—'}
           icon={Wallet}
+          href="/owner/settlements"
         />
         <StatCard
           title="Open Disputes"
           value={stats?.disputesCount ?? '—'}
           icon={AlertTriangle}
+          href="/owner/orders"
           className={stats?.disputesCount ? 'border-danger/30' : ''}
         />
       </div>
@@ -114,7 +120,8 @@ export default function OwnerDashboard() {
             {stats.recentOrders.map((order) => (
               <div
                 key={order.id}
-                className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary/50 px-4 py-3"
+                onClick={() => router.push('/owner/orders')}
+                className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary/50 px-4 py-3 cursor-pointer hover:border-border-secondary transition-colors"
               >
                 <div className="flex items-center gap-3">
                   {order.type === 'PAYIN' ? (

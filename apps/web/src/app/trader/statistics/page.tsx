@@ -82,15 +82,32 @@ export default function StatisticsPage() {
             <LineChart className="h-5 w-5 text-text-muted" />
             <h2 className="text-lg font-semibold text-text-primary">Volume Over Time</h2>
           </div>
-          <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-border-secondary">
-            <div className="text-center">
-              <BarChart3 className="mx-auto h-8 w-8 text-text-muted mb-2" />
-              <p className="text-sm text-text-muted">Chart placeholder</p>
-              <p className="text-xs text-text-muted mt-1">
-                Integrate with a charting library (e.g., recharts)
-              </p>
+          {stats?.volume_by_day?.length ? (
+            <div className="overflow-x-auto">
+              <div className="flex items-end gap-1" style={{ minHeight: 200 }}>
+                {stats.volume_by_day.map((d) => {
+                  const max = Math.max(...stats.volume_by_day!.map((v) => v.volume), 1);
+                  const h = (d.volume / max) * 160;
+                  return (
+                    <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
+                      <div
+                        className="w-full max-w-[32px] rounded-t bg-accent/60"
+                        style={{ height: Math.max(h, 2) }}
+                        title={`${d.volume.toLocaleString()} ${stats.currency ?? ''}`}
+                      />
+                      <span className="text-[10px] text-text-muted">
+                        {new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border-secondary">
+              <p className="text-sm text-text-muted">No volume data yet</p>
+            </div>
+          )}
         </Card>
 
         <Card>

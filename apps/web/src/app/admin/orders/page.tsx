@@ -44,7 +44,14 @@ export default function AdminOrdersPage() {
 
   const direction = tab === 'pay-in' ? 'PAY_IN' : 'PAY_OUT';
 
-  const { data: orders = [], isLoading } = useQuery<Order[]>({
+  interface AdminOrdersResponse {
+    data: Order[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }
+
+  const { data: ordersData, isLoading } = useQuery<AdminOrdersResponse>({
     queryKey: ['admin', 'orders', { direction, statusFilter, merchantFilter, traderFilter, dateFrom, dateTo }],
     queryFn: () => {
       const params = new URLSearchParams({ direction });
@@ -53,9 +60,10 @@ export default function AdminOrdersPage() {
       if (traderFilter) params.set('trader', traderFilter);
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
-      return api.get(internalPaths.notImplemented.ordersQuery(params.toString()));
+      return api.get<AdminOrdersResponse>(internalPaths.adminOrders(params.toString()));
     },
   });
+  const orders = ordersData?.data ?? [];
 
   const { data: traders = [] } = useQuery<TraderOption[]>({
     queryKey: ['admin', 'traders', 'options'],

@@ -60,9 +60,9 @@ export default function BanksPage() {
 
   const toggleStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.patch(internalPaths.notImplemented.bankStatus(id), {
-        status: status === 'active' ? 'inactive' : 'active',
-      }),
+      status === 'active'
+        ? api.patch(internalPaths.bankDeactivate(id))
+        : api.patch(internalPaths.bankActivate(id)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'banks'] }),
   });
 

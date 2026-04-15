@@ -21,11 +21,11 @@ interface BalanceTx {
 }
 
 const TX_TYPE_LABELS: Record<string, string> = {
-  PAYIN_COMMISSION: 'Pay-In комісія',
-  PAYOUT_DEBIT: 'Pay-Out списання',
-  SETTLEMENT: 'Розрахунок',
-  MANUAL_CREDIT: 'Ручне поповнення',
-  MANUAL_DEBIT: 'Ручне списання',
+  PAYIN_COMMISSION: 'Pay-In commission',
+  PAYOUT_DEBIT: 'Pay-Out debit',
+  SETTLEMENT: 'Settlement',
+  MANUAL_CREDIT: 'Manual credit',
+  MANUAL_DEBIT: 'Manual debit',
 };
 
 const TX_TYPE_COLOR: Record<string, 'green' | 'red' | 'blue' | 'yellow'> = {
@@ -65,7 +65,7 @@ export default function BalanceHistoryPage() {
   const columns = [
     {
       key: 'type',
-      header: 'Тип',
+      header: 'Type',
       render: (tx: BalanceTx) => (
         <div className="flex items-center gap-2">
           {isCredit(tx.type) ? (
@@ -81,7 +81,7 @@ export default function BalanceHistoryPage() {
     },
     {
       key: 'amount',
-      header: 'Сума',
+      header: 'Amount',
       render: (tx: BalanceTx) => (
         <span
           className={`font-mono font-semibold ${isCredit(tx.type) ? 'text-green-400' : 'text-red-400'}`}
@@ -93,7 +93,7 @@ export default function BalanceHistoryPage() {
     },
     {
       key: 'comment',
-      header: 'Коментар / ID',
+      header: 'Comment / ID',
       render: (tx: BalanceTx) => (
         <span className="text-sm text-text-secondary">
           {tx.comment || (tx.referenceId ? <span className="font-mono text-xs">{tx.referenceId.slice(0, 8)}…</span> : '—')}
@@ -102,17 +102,17 @@ export default function BalanceHistoryPage() {
     },
     {
       key: 'createdBy',
-      header: 'Ким',
+      header: 'By',
       render: (tx: BalanceTx) => (
-        <span className="text-xs text-text-muted">{tx.createdBy?.email ?? 'система'}</span>
+        <span className="text-xs text-text-muted">{tx.createdBy?.email ?? 'system'}</span>
       ),
     },
     {
       key: 'createdAt',
-      header: 'Час',
+      header: 'Time',
       render: (tx: BalanceTx) => (
         <span className="text-xs text-text-muted">
-          {new Date(tx.createdAt).toLocaleString('uk-UA')}
+          {new Date(tx.createdAt).toLocaleString('en-US')}
         </span>
       ),
     },
@@ -123,10 +123,10 @@ export default function BalanceHistoryPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-            <DollarSign className="h-6 w-6" /> Баланс — Рух коштів
+            <DollarSign className="h-6 w-6" /> Balance — Ledger
           </h1>
           <p className="mt-1 text-sm text-text-muted">
-            Повна історія зарахувань та списань по вашому рахунку
+            Full history of credits and debits on your account
           </p>
         </div>
       </div>
@@ -134,21 +134,21 @@ export default function BalanceHistoryPage() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <Input
-          placeholder="Валюта (UAH)"
+          placeholder="Currency (UAH)"
           value={currency}
           onChange={(e) => { setCurrency(e.target.value.toUpperCase()); setPage(1); }}
           className="w-32"
         />
         <Input
           type="date"
-          label="Від"
+          label="From"
           value={dateFrom}
           onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
           className="w-40"
         />
         <Input
           type="date"
-          label="До"
+          label="To"
           value={dateTo}
           onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
           className="w-40"
@@ -159,19 +159,19 @@ export default function BalanceHistoryPage() {
         columns={columns}
         data={txList}
         isLoading={isLoading}
-        emptyMessage="Операцій не знайдено"
+        emptyMessage="No transactions found"
       />
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm text-text-muted">
-          <span>Всього: {total}</span>
+          <span>Total: {total}</span>
           <div className="flex gap-2">
             <button
               className="px-3 py-1 rounded bg-bg-secondary disabled:opacity-40"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
             >
-              ← Попередня
+              ← Previous
             </button>
             <span className="px-3 py-1">{page} / {totalPages}</span>
             <button
@@ -179,7 +179,7 @@ export default function BalanceHistoryPage() {
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
             >
-              Наступна →
+              Next →
             </button>
           </div>
         </div>

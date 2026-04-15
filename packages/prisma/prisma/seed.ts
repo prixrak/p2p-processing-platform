@@ -171,7 +171,7 @@ async function main() {
     create: {
       countryId: ukraine.id,
       name: 'CARD_P2P',
-      displayName: 'Картка P2P',
+      displayName: 'P2P card',
       flowType: 'P2P',
       requisiteType: 'CARD',
       availability: 'BOTH',

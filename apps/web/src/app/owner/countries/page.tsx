@@ -48,7 +48,7 @@ export default function CountriesPage() {
   const columns = [
     {
       key: 'name',
-      header: 'Країна',
+      header: 'Country',
       render: (c: Country) => (
         <div className="flex items-center gap-2">
           <Globe className="h-4 w-4 text-text-muted" />
@@ -58,28 +58,28 @@ export default function CountriesPage() {
     },
     {
       key: 'code',
-      header: 'Код',
+      header: 'Code',
       render: (c: Country) => (
         <span className="font-mono text-sm text-text-secondary">{c.code}</span>
       ),
     },
     {
       key: 'currency',
-      header: 'Валюта',
+      header: 'Currency',
       render: (c: Country) => (
         <span className="font-mono text-sm font-semibold">{c.currency}</span>
       ),
     },
     {
       key: 'methods',
-      header: 'Методи оплати',
+      header: 'Payment methods',
       render: (c: Country) => (
         <span className="text-sm text-text-muted">{c._count?.paymentMethods ?? 0}</span>
       ),
     },
     {
       key: 'status',
-      header: 'Статус',
+      header: 'Status',
       render: (c: Country) => (
         <Badge color={c.isActive ? 'green' : 'red'}>{c.isActive ? 'active' : 'inactive'}</Badge>
       ),
@@ -104,11 +104,11 @@ export default function CountriesPage() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Країни</h1>
-          <p className="mt-1 text-sm text-text-muted">Управління гео-ринками та валютами</p>
+          <h1 className="text-2xl font-bold text-text-primary">Countries</h1>
+          <p className="mt-1 text-sm text-text-muted">Manage geo markets and currencies</p>
         </div>
         <Button onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4" /> Додати країну
+          <Plus className="h-4 w-4" /> Add country
         </Button>
       </div>
 
@@ -116,10 +116,10 @@ export default function CountriesPage() {
         columns={columns}
         data={data ?? []}
         isLoading={isLoading}
-        emptyMessage="Країн не налаштовано"
+        emptyMessage="No countries configured"
       />
 
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Нова країна">
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="New country">
         <form
           className="space-y-4"
           onSubmit={(e) => {
@@ -128,14 +128,14 @@ export default function CountriesPage() {
           }}
         >
           <Input
-            label="Назва"
+            label="Name"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="Ukraine"
             required
           />
           <Input
-            label="Код (ISO 3166-1)"
+            label="Code (ISO 3166-1)"
             value={form.code}
             onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
             placeholder="UA"
@@ -143,7 +143,7 @@ export default function CountriesPage() {
             required
           />
           <Input
-            label="Валюта"
+            label="Currency"
             value={form.currency}
             onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })}
             placeholder="UAH"
@@ -152,10 +152,10 @@ export default function CountriesPage() {
           />
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" type="button" onClick={() => setShowCreate(false)}>
-              Скасувати
+              Cancel
             </Button>
             <Button type="submit" loading={create.isPending}>
-              Створити
+              Create
             </Button>
           </div>
         </form>

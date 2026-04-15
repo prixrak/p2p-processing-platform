@@ -126,13 +126,48 @@ export class TradersService {
         include: {
           user: { select: { email: true, role: true, isActive: true } },
           balances: true,
+          _count: {
+            select: {
+              payinOrders: true,
+              payoutOrders: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.traderProfile.count(),
     ]);
 
-    return { data: traders, total, page, limit };
+    const traderIds = traders.map((t) => t.id);
+    const volumeAggs = traderIds.length
+      ? await Promise.all(
+          traderIds.map((id) =>
+            Promise.all([
+              this.prisma.payinOrder.aggregate({
+                where: { traderId: id, status: 'PAID' },
+                _sum: { amount: true },
+              }),
+              this.prisma.payinOrder.count({ where: { traderId: id, status: 'PAID' } }),
+              this.prisma.payinOrder.count({ where: { traderId: id } }),
+            ]),
+          ),
+        )
+      : [];
+
+    const enriched = traders.map((t, i) => {
+      const [volAgg, completedPayin, totalPayin] = volumeAggs[i] ?? [null, 0, 0];
+      const totalOrders = (t._count?.payinOrders ?? 0) + (t._count?.payoutOrders ?? 0);
+      const successRate = totalPayin > 0 ? Math.round((completedPayin / totalPayin) * 100) : 0;
+      return {
+        ...t,
+        ordersCount: totalOrders,
+        completedOrders: completedPayin,
+        totalVolume: Number(volAgg?._sum?.amount ?? 0),
+        successRate,
+      };
+    });
+
+    return { data: enriched, total, page, limit };
   }
 
   async activate(traderId: string) {

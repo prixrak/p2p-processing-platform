@@ -8,19 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { useAuth } from '@/hooks/use-auth';
 import { ApiError } from '@/lib/api';
-import type { UserRole } from '@p2p/shared';
-
-const roleDashboardMap: Record<string, string> = {
-  TRADER: '/trader',
-  ADMIN: '/admin',
-  SUPPORT: '/support',
-  MERCHANT: '/merchant',
-  OWNER: '/owner',
-};
+import { getDashboardPathForRole } from '@/lib/role-dashboard';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, verify2FA, requires2FA, isAuthenticated, user, loadUser } = useAuth();
+  const { login, verify2FA, requires2FA, isAuthenticated, user, loadUser, isLoading } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -33,10 +25,11 @@ export default function LoginPage() {
   }, [loadUser]);
 
   useEffect(() => {
-    if (isAuthenticated && user) {
-      router.push(roleDashboardMap[user.role] ?? '/trader');
+    if (isLoading) return;
+    if (!requires2FA && isAuthenticated && user) {
+      router.replace(getDashboardPathForRole(user.role));
     }
-  }, [isAuthenticated, user, router]);
+  }, [isLoading, requires2FA, isAuthenticated, user, router]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -46,7 +39,7 @@ export default function LoginPage() {
       const result = await login(email, password);
       if (!result.requires2FA) {
         const currentUser = useAuth.getState().user;
-        router.push(roleDashboardMap[currentUser?.role ?? 'TRADER'] ?? '/trader');
+        router.replace(getDashboardPathForRole(currentUser?.role ?? 'TRADER'));
       }
     } catch (err) {
       if (err instanceof ApiError) {
@@ -66,7 +59,7 @@ export default function LoginPage() {
     try {
       await verify2FA(code2FA);
       const currentUser = useAuth.getState().user;
-      router.push(roleDashboardMap[currentUser?.role ?? 'TRADER'] ?? '/trader');
+      router.replace(getDashboardPathForRole(currentUser?.role ?? 'TRADER'));
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -76,6 +69,14 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (isLoading || (!requires2FA && isAuthenticated && user)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-bg-primary p-4">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-blue/30 border-t-accent-blue" />
+      </div>
+    );
   }
 
   return (

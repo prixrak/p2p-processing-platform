@@ -177,4 +177,20 @@ export class SettlementsService {
 
     return { data: settlements, total, page, limit };
   }
+
+  async findOne(id: string) {
+    const settlement = await this.prisma.settlement.findUnique({
+      where: { id },
+      include: {
+        admin: { select: { email: true } },
+        trader: {
+          include: { user: { select: { email: true } } },
+        },
+      },
+    });
+    if (!settlement) {
+      throw new NotFoundException(`Settlement ${id} not found`);
+    }
+    return settlement;
+  }
 }

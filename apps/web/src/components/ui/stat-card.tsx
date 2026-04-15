@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { clsx } from 'clsx';
 import type { LucideIcon } from 'lucide-react';
 
@@ -6,17 +7,19 @@ interface StatCardProps {
   value: string | number;
   icon?: LucideIcon;
   change?: { value: number; positive: boolean };
+  href?: string;
   className?: string;
 }
 
-export function StatCard({ label, value, icon: Icon, change, className }: StatCardProps) {
-  return (
-    <div
-      className={clsx(
-        'rounded-xl border border-border-primary bg-surface-secondary p-5 transition-colors hover:border-border-secondary',
-        className,
-      )}
-    >
+export function StatCard({ label, value, icon: Icon, change, href, className }: StatCardProps) {
+  const cardClass = clsx(
+    'rounded-xl border border-border-primary bg-surface-secondary p-5 transition-colors hover:border-border-secondary',
+    href && 'cursor-pointer',
+    className,
+  );
+
+  const content = (
+    <>
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <p className="text-sm text-text-muted">{label}</p>
@@ -36,6 +39,16 @@ export function StatCard({ label, value, icon: Icon, change, className }: StatCa
           <span className="text-text-muted">vs last period</span>
         </div>
       )}
-    </div>
+    </>
   );
+
+  if (href) {
+    return (
+      <Link href={href} className={cardClass}>
+        {content}
+      </Link>
+    );
+  }
+
+  return <div className={cardClass}>{content}</div>;
 }

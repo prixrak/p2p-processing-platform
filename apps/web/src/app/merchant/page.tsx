@@ -95,6 +95,7 @@ export default function MerchantDashboard() {
             label="Orders Today"
             value={statsLoading ? '...' : String(stats?.ordersToday ?? 0)}
             icon={ArrowLeftRight}
+            href="/merchant/orders"
           />
           <StatCard
             label="Success Rate"
@@ -102,6 +103,7 @@ export default function MerchantDashboard() {
               statsLoading ? '...' : `${(stats?.successRate ?? 0).toFixed(1)}%`
             }
             icon={CheckCircle}
+            href="/merchant/analytics"
           />
           <StatCard
             label="Total Volume"
@@ -111,6 +113,7 @@ export default function MerchantDashboard() {
                 : `$${(stats?.totalVolume ?? 0).toLocaleString()}`
             }
             icon={TrendingUp}
+            href="/merchant/analytics"
           />
         </div>
       </div>

@@ -83,7 +83,7 @@ export default function OrdersPage() {
       if (statusFilter) params.set('status', statusFilter);
       if (search) params.set('search', search);
       return api.get<OrdersResponse>(
-        internalPaths.notImplemented.ordersQuery(params.toString()),
+        internalPaths.adminOrders(params.toString()),
       );
     },
   });
@@ -91,13 +91,13 @@ export default function OrdersPage() {
   const { data: details } = useQuery({
     queryKey: ['owner', 'order-details', detailOrder],
     queryFn: () =>
-      api.get<OrderDetails>(internalPaths.notImplemented.order(detailOrder!)),
+      api.get<OrderDetails>(internalPaths.adminOrder(detailOrder!)),
     enabled: !!detailOrder,
   });
 
   const updateStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.patch(internalPaths.notImplemented.orderStatus(id), { status }),
+      api.patch(internalPaths.adminOrderStatus(id), { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'orders'] });
       queryClient.invalidateQueries({ queryKey: ['owner', 'order-details'] });

@@ -37,7 +37,7 @@ export default function StatisticsPage() {
     queryKey: ['owner', 'statistics', period],
     queryFn: () =>
       api.get<Statistics>(
-        `${internalPaths.notImplemented.platformStatistics}?period=${period}`,
+        `${internalPaths.adminStatistics}?period=${period}`,
       ),
   });
 

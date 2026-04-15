@@ -66,6 +66,8 @@ export default function TradersPage() {
           user: { email: string };
           balances: Array<{ amount: unknown; currency: string }>;
           createdAt: string;
+          completedOrders?: number;
+          successRate?: number;
         }>;
         total: number;
         page: number;
@@ -84,8 +86,8 @@ export default function TradersPage() {
             status: p.isActive ? 'active' : 'inactive',
             balance: primary ? Number(primary.amount) : 0,
             currency: primary?.currency ?? '—',
-            completedOrders: 0,
-            successRate: 0,
+            completedOrders: p.completedOrders ?? 0,
+            successRate: p.successRate ?? 0,
             avgResponseTime: 0,
             createdAt: p.createdAt,
           };

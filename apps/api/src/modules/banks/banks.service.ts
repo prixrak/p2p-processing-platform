@@ -61,6 +61,14 @@ export class BanksService {
     });
   }
 
+  async activate(id: number) {
+    await this.findById(id);
+    return this.prisma.bank.update({
+      where: { id },
+      data: { isActive: true },
+    });
+  }
+
   async deactivate(id: number) {
     await this.findById(id);
     return this.prisma.bank.update({

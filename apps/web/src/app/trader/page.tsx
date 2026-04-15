@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import {
   TrendingUp,
   ShoppingCart,
@@ -50,6 +51,7 @@ const statusBadgeVariant: Record<string, 'success' | 'warning' | 'danger' | 'inf
 };
 
 export default function TraderDashboard() {
+  const router = useRouter();
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['trader', 'dashboard-stats'],
     queryFn: () => api.get<DashboardStats>('/api/trader/dashboard/stats'),
@@ -119,21 +121,25 @@ export default function TraderDashboard() {
           title="Total Volume"
           value={statsLoading ? '...' : formatCurrency(stats?.total_volume ?? 0, stats?.currency)}
           icon={TrendingUp}
+          href="/trader/statistics"
         />
         <StatCard
           title="Orders Today"
           value={statsLoading ? '...' : (stats?.orders_today ?? 0)}
           icon={ShoppingCart}
+          href="/trader/payin"
         />
         <StatCard
           title="Success Rate"
           value={statsLoading ? '...' : `${(stats?.success_rate ?? 0).toFixed(1)}%`}
           icon={CheckCircle2}
+          href="/trader/statistics"
         />
         <StatCard
           title="Active Requisites"
           value={statsLoading ? '...' : (stats?.active_requisites ?? 0)}
           icon={CreditCard}
+          href="/trader/requisites"
         />
       </div>
 
@@ -150,6 +156,7 @@ export default function TraderDashboard() {
           keyExtractor={(row) => row.id}
           loading={ordersLoading}
           emptyMessage="No recent orders"
+          onRowClick={(row) => router.push(row.type === 'payin' ? '/trader/payin' : '/trader/payout')}
         />
       </Card>
     </div>

@@ -17,7 +17,7 @@ export class CreatePaymentMethodDto {
   @IsString()
   name!: string;
 
-  @ApiProperty({ example: 'Картка P2P' })
+  @ApiProperty({ example: 'P2P card' })
   @IsString()
   displayName!: string;
 
