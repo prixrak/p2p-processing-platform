@@ -9,6 +9,7 @@ import { CreateMerchantDto, UpdateMerchantDto } from './dto';
 import { DirectionType } from '@p2p/shared';
 import { ApiKeyDirection } from '@prisma/client';
 import * as crypto from 'crypto';
+import { encryptSecret } from '../../common/utils/crypto';
 
 @Injectable()
 export class MerchantsService {
@@ -140,10 +141,7 @@ export class MerchantsService {
 
     const publicKey = `pk_${direction.toLowerCase()}_${crypto.randomBytes(24).toString('hex')}`;
     const secretKey = `sk_${direction.toLowerCase()}_${crypto.randomBytes(32).toString('hex')}`;
-    const secretKeyHash = crypto
-      .createHash('sha256')
-      .update(secretKey)
-      .digest('hex');
+    const secretKeyHash = encryptSecret(secretKey);
 
     const apiKey = await this.prisma.merchantApiKey.create({
       data: {
@@ -182,10 +180,7 @@ export class MerchantsService {
     const direction = existing.direction === ApiKeyDirection.PAYIN ? 'payin' : 'payout';
     const publicKey = `pk_${direction}_${crypto.randomBytes(24).toString('hex')}`;
     const secretKey = `sk_${direction}_${crypto.randomBytes(32).toString('hex')}`;
-    const secretKeyHash = crypto
-      .createHash('sha256')
-      .update(secretKey)
-      .digest('hex');
+    const secretKeyHash = encryptSecret(secretKey);
 
     const newKey = await this.prisma.merchantApiKey.create({
       data: {

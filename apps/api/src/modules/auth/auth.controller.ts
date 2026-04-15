@@ -81,12 +81,12 @@ export class AuthController {
     @Body('code') code: string,
   ) {
     const user = req.user as { id: string };
-    const { secret, otpAuthUrl } = await this.authService.setup2FA(user.id);
+    await this.authService.setup2FA(user.id);
     const valid = await this.authService.verify2FA(user.id, code);
     if (!valid) {
       throw new UnauthorizedException('Invalid 2FA code — secret was reset, try setup again');
     }
-    return { enabled: true, secret, otpAuthUrl };
+    return { enabled: true };
   }
 
   @Post('2fa/login')

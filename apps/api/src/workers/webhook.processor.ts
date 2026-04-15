@@ -3,6 +3,8 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { createHmac } from 'crypto';
 import { PrismaService } from '../config/prisma.service';
+import { decryptSecret } from '../common/utils/crypto';
+import { validateCallbackUrl } from '../common/utils/url-validator';
 import { WEBHOOK_MAX_RETRIES, WEBHOOK_RETRY_DELAYS_MS } from '@p2p/shared';
 
 interface WebhookJobData {
@@ -37,9 +39,37 @@ export class WebhookProcessor extends WorkerHost {
       return;
     }
 
+    try {
+      await validateCallbackUrl(outbox.callbackUrl);
+    } catch (err) {
+      this.logger.error(
+        `SSRF blocked: ${outbox.callbackUrl} for outbox ${outboxId}: ${(err as Error).message}`,
+      );
+      await this.prisma.webhookOutbox.update({
+        where: { id: outboxId },
+        data: { status: 'DLQ', attempts: outbox.attempts + 1 },
+      });
+      return;
+    }
+
     const merchant = outbox.payinOrder?.merchant ?? outbox.payoutOrder?.merchant;
     const apiKey = merchant?.apiKeys?.[0];
-    const signingKey = apiKey?.secretKeyHash ?? '';
+
+    let signingKey = '';
+    if (apiKey?.secretKeyHash) {
+      try {
+        signingKey = decryptSecret(apiKey.secretKeyHash);
+      } catch {
+        this.logger.error(
+          `Failed to decrypt signing key for outbox ${outboxId} — moving to DLQ`,
+        );
+        await this.prisma.webhookOutbox.update({
+          where: { id: outboxId },
+          data: { status: 'DLQ', attempts: outbox.attempts + 1 },
+        });
+        return;
+      }
+    }
 
     const payloadStr = JSON.stringify(outbox.payloadJson);
     const signature = createHmac('sha512', signingKey)

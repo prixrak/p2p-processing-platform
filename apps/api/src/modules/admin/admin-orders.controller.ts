@@ -11,6 +11,7 @@ import {
   DefaultValuePipe,
   BadRequestException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -21,7 +22,14 @@ import {
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { UserRole } from '@p2p/shared';
+import {
+  UserRole,
+  PayInOrderStatus,
+  PayOutOrderStatus,
+  isValidPayInTransition,
+  isValidPayOutTransition,
+  WebhookMethod,
+} from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
 import { IsString } from 'class-validator';
 
@@ -36,6 +44,8 @@ class UpdateOrderStatusDto {
 @Roles(UserRole.ADMIN, UserRole.OWNER)
 @Controller('admin/orders')
 export class AdminOrdersController {
+  private readonly logger = new Logger(AdminOrdersController.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   @Get()
@@ -273,7 +283,7 @@ export class AdminOrdersController {
   }
 
   @Patch(':id/status')
-  @ApiOperation({ summary: 'Update order status (admin override)' })
+  @ApiOperation({ summary: 'Update order status (admin override with state-machine validation)' })
   @ApiQuery({ name: 'type', required: false, enum: ['PAYIN', 'PAYOUT'] })
   async updateStatus(
     @Param('id', ParseUUIDPipe) id: string,
@@ -281,30 +291,92 @@ export class AdminOrdersController {
     @Query('type') type?: string,
   ) {
     if (!dto.status) throw new BadRequestException('status is required');
+    const targetStatus = dto.status.toUpperCase();
     const isPayin = !type || type.toUpperCase() !== 'PAYOUT';
 
     if (isPayin) {
       const order = await this.prisma.payinOrder.findUnique({ where: { id } });
+
       if (!order) {
         const payoutOrder = await this.prisma.payoutOrder.findUnique({ where: { id } });
         if (!payoutOrder) throw new NotFoundException(`Order ${id} not found`);
-        return this.prisma.payoutOrder.update({
-          where: { id },
-          data: { status: dto.status as never },
-        });
+        return this.updatePayoutStatus(payoutOrder, targetStatus);
       }
-      return this.prisma.payinOrder.update({
-        where: { id },
-        data: { status: dto.status as never },
-      });
+
+      return this.updatePayinStatus(order, targetStatus);
     } else {
       const order = await this.prisma.payoutOrder.findUnique({ where: { id } });
       if (!order) throw new NotFoundException(`Order ${id} not found`);
-      return this.prisma.payoutOrder.update({
-        where: { id },
-        data: { status: dto.status as never },
-      });
+      return this.updatePayoutStatus(order, targetStatus);
     }
+  }
+
+  private async updatePayinStatus(order: { id: string; status: string; callbackUrl: string | null; requestId: string; amount: any }, targetStatus: string) {
+    if (!isValidPayInTransition(order.status as PayInOrderStatus, targetStatus as PayInOrderStatus)) {
+      throw new BadRequestException(
+        `Invalid status transition: ${order.status} -> ${targetStatus}`,
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.payinOrder.update({
+        where: { id: order.id },
+        data: { status: targetStatus as never },
+      });
+
+      if (updated.callbackUrl) {
+        await tx.webhookOutbox.create({
+          data: {
+            payinOrderId: updated.id,
+            method: WebhookMethod.PAYIN_UPDATE_STATUS_ORDER as any,
+            payloadJson: {
+              id: updated.id,
+              order_id: updated.requestId,
+              order_status: updated.status,
+              amount: Number(updated.amount),
+            },
+            callbackUrl: updated.callbackUrl,
+          },
+        });
+      }
+
+      this.logger.log(`Admin updated pay-in order ${order.id}: ${order.status} -> ${targetStatus}`);
+      return updated;
+    });
+  }
+
+  private async updatePayoutStatus(order: { id: string; status: string; callbackUrl: string | null; requestId: string; amount: any }, targetStatus: string) {
+    if (!isValidPayOutTransition(order.status as PayOutOrderStatus, targetStatus as PayOutOrderStatus)) {
+      throw new BadRequestException(
+        `Invalid status transition: ${order.status} -> ${targetStatus}`,
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.payoutOrder.update({
+        where: { id: order.id },
+        data: { status: targetStatus as never },
+      });
+
+      if (updated.callbackUrl) {
+        await tx.webhookOutbox.create({
+          data: {
+            payoutOrderId: updated.id,
+            method: WebhookMethod.PAYOUT_UPDATE_STATUS_ORDER as any,
+            payloadJson: {
+              id: updated.id,
+              order_id: updated.requestId,
+              order_status: updated.status,
+              amount: Number(updated.amount),
+            },
+            callbackUrl: updated.callbackUrl,
+          },
+        });
+      }
+
+      this.logger.log(`Admin updated pay-out order ${order.id}: ${order.status} -> ${targetStatus}`);
+      return updated;
+    });
   }
 
   private formatPayoutDetail(order: {

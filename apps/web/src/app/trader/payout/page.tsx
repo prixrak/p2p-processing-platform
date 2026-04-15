@@ -22,7 +22,7 @@ import { Select } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { formatCurrency, formatDate, formatDateFull, shortId, cn } from '@/lib/utils';
 import { payoutStatusVariant } from '@/lib/status-helpers';
-import { PayOutOrderStatus } from '@p2p/shared';
+import { PayOutOrderStatus, AUTO_REFRESH_INTERVALS } from '@p2p/shared';
 import type { PayOutOrderApiDto } from '@p2p/shared';
 
 interface PayOutListResponse {
@@ -38,18 +38,23 @@ export default function PayOutOrdersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<PayOutOrderApiDto | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(10);
 
   const queryParams: Record<string, string> = {};
   if (statusFilter) queryParams.status = statusFilter;
 
+  const refetchInterval = autoRefresh > 0 ? autoRefresh * 1000 : false;
+
   const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
     queryKey: ['trader', 'payout-orders', queryParams],
     queryFn: () => api.get<PayOutListResponse>('/api/trader/payout/orders', queryParams),
+    refetchInterval,
   });
 
   const { data: poolData, isLoading: poolLoading, refetch: refetchPool } = useQuery({
     queryKey: ['trader', 'payout-pool'],
     queryFn: () => api.get<PayOutListResponse>('/api/trader/payout/pool'),
+    refetchInterval,
   });
 
   const takeFromPoolMutation = useMutation({
@@ -277,6 +282,14 @@ export default function PayOutOrdersPage() {
               Filters
             </Button>
           )}
+          <Select
+            options={[
+              { value: '0', label: 'Off' },
+              ...AUTO_REFRESH_INTERVALS.map((s) => ({ value: String(s), label: `${s}s` })),
+            ]}
+            value={String(autoRefresh)}
+            onChange={(e) => setAutoRefresh(Number(e.target.value))}
+          />
           <Button variant="secondary" size="sm" onClick={handleRefetch}>
             <RefreshCw className="h-4 w-4" />
           </Button>

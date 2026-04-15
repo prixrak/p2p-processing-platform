@@ -16,6 +16,7 @@ import {
   isValidPayInTransition,
   WebhookMethod,
   DirectionType,
+  MAX_PAGE_SIZE,
 } from '@p2p/shared';
 import type {
   OrderDto,
@@ -26,7 +27,10 @@ import type {
   PaymentBankApiDto,
   AppealDto as AppealDtoType,
 } from '@p2p/shared';
+import { BalanceTransactionType } from '@prisma/client';
 import { config } from '@p2p/config';
+import { validateCallbackUrl } from '../../common/utils/url-validator';
+import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
 import {
   UploadOrderDto,
   UpdateOrderDto,
@@ -56,18 +60,17 @@ export class PayinService {
     private readonly banksService: BanksService,
     private readonly filesService: FilesService,
     private readonly merchantDirectionsService: MerchantDirectionsService,
+    private readonly balanceTxService: BalanceTransactionsService,
   ) {}
 
   // ─── External: upload_order ───
 
   async uploadOrder(merchantId: string, dto: UploadOrderDto): Promise<OrderResponseDto> {
-    const direction = await this.findActiveDirection(dto.currency, DirectionType.PAYIN);
-    const requisite = await this.requisitesService.findAvailable(dto.currency, dto.amount);
-    if (!requisite) {
-      throw new BadRequestException('PARAMETER_NOT_FOUND: No available requisite');
+    if (dto.callback_url) {
+      await validateCallbackUrl(dto.callback_url);
     }
+    const direction = await this.findActiveDirection(dto.currency, DirectionType.PAYIN);
 
-    // Merchant-specific commission overrides global Direction fee
     const merchantCommissionPct =
       await this.merchantDirectionsService.getEffectiveCommissionPercent(
         merchantId,
@@ -79,9 +82,36 @@ export class PayinService {
     const commission = dto.amount * commissionPercent / 100;
     const partnerAmount = dto.amount - commission;
     const autocloseAt = new Date(Date.now() + 15 * 60 * 1000);
+    const amountDec = new Prisma.Decimal(dto.amount);
 
     try {
       const order = await this.prisma.$transaction(async (tx) => {
+        const lockedRows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM requisites
+          WHERE currency = ${dto.currency}
+            AND is_active = true
+            AND min_amount <= ${amountDec}
+            AND max_amount >= ${amountDec}
+            AND used_amount < limit_total_amount
+            AND used_ops < limit_total_ops
+          ORDER BY used_ops ASC
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED
+        `;
+
+        if (lockedRows.length === 0) {
+          throw new BadRequestException('PARAMETER_NOT_FOUND: No available requisite');
+        }
+
+        const requisite = await tx.requisite.findUnique({
+          where: { id: lockedRows[0].id },
+          include: { bank: true, trader: true },
+        });
+
+        if (!requisite) {
+          throw new BadRequestException('PARAMETER_NOT_FOUND: No available requisite');
+        }
+
         const created = await tx.payinOrder.create({
           data: {
             requestId: dto.request_id,
@@ -162,6 +192,10 @@ export class PayinService {
       return result;
     });
 
+    if (dto.status === PayInOrderStatus.CANCELED && order.requisiteId) {
+      await this.requisitesService.releaseUsage(order.requisiteId, Number(order.amount));
+    }
+
     return this.toOrderDto(updated);
   }
 
@@ -217,6 +251,10 @@ export class PayinService {
 
       return result;
     });
+
+    if (status === PayInOrderStatus.CANCELED && order.requisiteId) {
+      await this.requisitesService.releaseUsage(order.requisiteId, Number(order.amount));
+    }
 
     const refreshed = await this.prisma.payinOrder.findUniqueOrThrow({
       where: { id: updated.id },
@@ -277,18 +315,44 @@ export class PayinService {
   // ─── External: h2h_init ───
 
   async h2hInit(merchantId: string, dto: H2hInitDto): Promise<H2HOrderResponseDto> {
-    const direction = await this.findActiveDirection(dto.currency, DirectionType.PAYIN);
-    const requisite = await this.requisitesService.findAvailable(dto.currency, dto.amount);
-    if (!requisite) {
-      throw new BadRequestException('PARAMETER_NOT_FOUND: No available requisite');
+    if (dto.callback_url) {
+      await validateCallbackUrl(dto.callback_url);
     }
+    const direction = await this.findActiveDirection(dto.currency, DirectionType.PAYIN);
 
     const commission = dto.amount * Number(direction.percentFee) / 100;
     const partnerAmount = dto.amount - commission;
     const autocloseAt = new Date(Date.now() + 15 * 60 * 1000);
+    const amountDec = new Prisma.Decimal(dto.amount);
 
     try {
       const order = await this.prisma.$transaction(async (tx) => {
+        const lockedRows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM requisites
+          WHERE currency = ${dto.currency}
+            AND is_active = true
+            AND min_amount <= ${amountDec}
+            AND max_amount >= ${amountDec}
+            AND used_amount < limit_total_amount
+            AND used_ops < limit_total_ops
+          ORDER BY used_ops ASC
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED
+        `;
+
+        if (lockedRows.length === 0) {
+          throw new BadRequestException('PARAMETER_NOT_FOUND: No available requisite');
+        }
+
+        const requisite = await tx.requisite.findUnique({
+          where: { id: lockedRows[0].id },
+          include: { bank: true, trader: true },
+        });
+
+        if (!requisite) {
+          throw new BadRequestException('PARAMETER_NOT_FOUND: No available requisite');
+        }
+
         const created = await tx.payinOrder.create({
           data: {
             requestId: dto.request_id,
@@ -405,7 +469,7 @@ export class PayinService {
 
   async getTraderOrders(traderId: string, filters: TraderOrderFiltersDto) {
     const page = filters.page ?? 1;
-    const limit = filters.limit ?? 20;
+    const limit = Math.min(filters.limit ?? 20, MAX_PAGE_SIZE);
 
     const where: Prisma.PayinOrderWhereInput = {
       traderId,
@@ -465,6 +529,10 @@ export class PayinService {
         include: ORDER_INCLUDE,
       });
 
+      if (targetStatus === PayInOrderStatus.PAID) {
+        await this.creditBalancesOnPaid(tx, order);
+      }
+
       await this.createPayinWebhookEntry(tx, result);
 
       return result;
@@ -499,6 +567,10 @@ export class PayinService {
 
       return result;
     });
+
+    if (order.requisiteId) {
+      await this.requisitesService.releaseUsage(order.requisiteId, Number(order.amount));
+    }
 
     return this.toOrderDto(updated);
   }
@@ -593,6 +665,66 @@ export class PayinService {
     };
   }
 
+  /**
+   * RISK NOTE: modifies merchant and trader balances.
+   * Merchant gets credited with partnerAmount, trader gets the commission.
+   */
+  private async creditBalancesOnPaid(
+    tx: Prisma.TransactionClient,
+    order: OrderWithRelations,
+  ): Promise<void> {
+    const partnerAmount = Number(order.partnerAmount);
+    const commission = Number(order.commission);
+
+    // Credit merchant balance
+    await tx.merchantBalance.upsert({
+      where: {
+        merchantId_currency: {
+          merchantId: order.merchantId,
+          currency: order.currency,
+        },
+      },
+      create: {
+        merchantId: order.merchantId,
+        currency: order.currency,
+        amount: partnerAmount,
+      },
+      update: { amount: { increment: partnerAmount } },
+    });
+
+    // Credit trader balance with commission
+    if (order.traderId && commission > 0) {
+      await tx.traderBalance.upsert({
+        where: {
+          traderId_currency: {
+            traderId: order.traderId,
+            currency: order.currency,
+          },
+        },
+        create: {
+          traderId: order.traderId,
+          currency: order.currency,
+          amount: commission,
+        },
+        update: { amount: { increment: commission } },
+      });
+
+      await this.balanceTxService.record({
+        traderId: order.traderId,
+        type: BalanceTransactionType.PAYIN_COMMISSION,
+        amount: commission,
+        currency: order.currency,
+        referenceId: order.id,
+        comment: `Pay-in commission for order ${order.id}`,
+        tx,
+      });
+    }
+
+    this.logger.log(
+      `Balances updated for PAID order ${order.id}: merchant +${partnerAmount}, trader +${commission} ${order.currency}`,
+    );
+  }
+
   private handleUniqueConstraint(error: unknown): never | void {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -614,21 +746,47 @@ export class PayinService {
   async confirmFromPaymentPage(orderId: string, files: UploadedFile[]) {
     const order = await this.prisma.payinOrder.findUnique({
       where: { id: orderId },
+      include: ORDER_INCLUDE,
     });
     if (!order) throw new NotFoundException(`Order ${orderId} not found`);
 
-    if (files.length > 0) {
-      const uploadedFiles = await this.filesService.uploadMultiple(
-        files.map((f) => ({
-          originalname: f.originalname,
-          mimetype: f.mimetype,
-          size: f.size,
-          buffer: f.buffer,
-        })) as any,
+    if (!isValidPayInTransition(order.status as PayInOrderStatus, PayInOrderStatus.VERIFIED)) {
+      throw new BadRequestException(
+        `Cannot confirm payment for order in status ${order.status}`,
       );
-      this.logger.log(`Payment page: ${files.length} proof files uploaded for order ${orderId}`);
     }
 
-    return { success: true, orderId };
+    const fileIds = files.length > 0
+      ? await this.filesService.saveFiles(files)
+      : [];
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.payinOrder.update({
+        where: { id: orderId },
+        data: { status: 'VERIFIED', confirmedAt: new Date() },
+        include: ORDER_INCLUDE,
+      });
+
+      if (fileIds.length > 0) {
+        const appeal = await tx.appeal.create({
+          data: {
+            payinOrderId: orderId,
+            paidAmount: Number(order.amount),
+            status: 'OPEN',
+          },
+        });
+        for (const fileId of fileIds) {
+          await tx.appealProof.create({
+            data: { appealId: appeal.id, fileId },
+          });
+        }
+      }
+
+      await this.createPayinWebhookEntry(tx, result);
+
+      return result;
+    });
+
+    return this.toOrderDto(updated);
   }
 }

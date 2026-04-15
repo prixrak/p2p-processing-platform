@@ -1,4 +1,7 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { Queue } from 'bullmq';
 import { createHmac } from 'crypto';
 import { PrismaService } from '../../config/prisma.service';
 import {
@@ -12,7 +15,10 @@ import { Prisma, WebhookMethodEnum } from '@prisma/client';
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue('webhook') private readonly webhookQueue: Queue,
+  ) {}
 
   async createOutboxEntry(
     orderId: string,
@@ -88,13 +94,25 @@ export class WebhooksService {
     });
   }
 
-  async resend(outboxId: string) {
+  async resend(outboxId: string, merchantId?: string) {
     const entry = await this.prisma.webhookOutbox.findUnique({
       where: { id: outboxId },
+      include: {
+        payinOrder: { select: { merchantId: true } },
+        payoutOrder: { select: { merchantId: true } },
+      },
     });
 
     if (!entry) {
       throw new NotFoundException('Webhook outbox entry not found');
+    }
+
+    if (merchantId) {
+      const owner =
+        entry.payinOrder?.merchantId ?? entry.payoutOrder?.merchantId;
+      if (owner !== merchantId) {
+        throw new ForbiddenException('This webhook does not belong to your merchant');
+      }
     }
 
     return this.prisma.webhookOutbox.update({
@@ -208,5 +226,34 @@ export class WebhooksService {
 
   signWebhookPayload(payload: string, secretKey: string): string {
     return createHmac('sha512', secretKey).update(payload).digest('hex');
+  }
+
+  /**
+   * Enqueue a single outbox entry for immediate delivery.
+   * Called after creating outbox rows so webhooks fire without waiting for the cron cycle.
+   */
+  async enqueueDelivery(outboxId: string): Promise<void> {
+    await this.webhookQueue.add('deliver', { outboxId }, {
+      attempts: 1,
+      removeOnComplete: true,
+      removeOnFail: 100,
+    });
+  }
+
+  @Cron(CronExpression.EVERY_10_SECONDS)
+  async pollAndEnqueuePending(): Promise<void> {
+    const pending = await this.getOutboxPending();
+    if (pending.length === 0) return;
+
+    for (const entry of pending) {
+      await this.webhookQueue.add('deliver', { outboxId: entry.id }, {
+        jobId: `webhook-${entry.id}`,
+        attempts: 1,
+        removeOnComplete: true,
+        removeOnFail: 100,
+      });
+    }
+
+    this.logger.log(`Enqueued ${pending.length} pending webhook(s) for delivery`);
   }
 }

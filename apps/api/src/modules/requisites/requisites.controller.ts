@@ -10,6 +10,7 @@ import {
   Query,
   UseGuards,
   ParseUUIDPipe,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -83,18 +84,26 @@ export class RequisitesController {
   @Get(':id')
   @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Get requisite by ID' })
-  findById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.requisitesService.findById(id);
+  async findById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { role: string; traderId?: string },
+  ) {
+    const requisite = await this.requisitesService.findById(id);
+    this.assertOwnership(user, requisite.traderId);
+    return requisite;
   }
 
   @Put(':id')
   @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Update requisite' })
   @Audited('UPDATE', 'Requisite')
-  update(
+  async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRequisiteDto,
+    @CurrentUser() user: { role: string; traderId?: string },
   ) {
+    const requisite = await this.requisitesService.findById(id);
+    this.assertOwnership(user, requisite.traderId);
     return this.requisitesService.update(id, dto);
   }
 
@@ -102,7 +111,12 @@ export class RequisitesController {
   @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Delete requisite' })
   @Audited('DELETE', 'Requisite')
-  delete(@Param('id', ParseUUIDPipe) id: string) {
+  async delete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { role: string; traderId?: string },
+  ) {
+    const requisite = await this.requisitesService.findById(id);
+    this.assertOwnership(user, requisite.traderId);
     return this.requisitesService.delete(id);
   }
 
@@ -110,7 +124,12 @@ export class RequisitesController {
   @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Activate requisite' })
   @Audited('ACTIVATE', 'Requisite')
-  activate(@Param('id', ParseUUIDPipe) id: string) {
+  async activate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { role: string; traderId?: string },
+  ) {
+    const requisite = await this.requisitesService.findById(id);
+    this.assertOwnership(user, requisite.traderId);
     return this.requisitesService.activate(id);
   }
 
@@ -118,7 +137,18 @@ export class RequisitesController {
   @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Deactivate requisite' })
   @Audited('DEACTIVATE', 'Requisite')
-  deactivate(@Param('id', ParseUUIDPipe) id: string) {
+  async deactivate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { role: string; traderId?: string },
+  ) {
+    const requisite = await this.requisitesService.findById(id);
+    this.assertOwnership(user, requisite.traderId);
     return this.requisitesService.deactivate(id);
+  }
+
+  private assertOwnership(user: { role: string; traderId?: string }, requisiteTraderId: string) {
+    if (user.role === UserRole.TRADER && user.traderId !== requisiteTraderId) {
+      throw new ForbiddenException('You can only manage your own requisites');
+    }
   }
 }

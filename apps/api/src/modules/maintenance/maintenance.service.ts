@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../config/prisma.service';
+import { WebhookMethod } from '@p2p/shared';
 
 @Injectable()
 export class MaintenanceService {
@@ -12,17 +13,57 @@ export class MaintenanceService {
   async handleExpiredOrders() {
     const now = new Date();
 
-    const expired = await this.prisma.payinOrder.updateMany({
+    const expiredOrders = await this.prisma.payinOrder.findMany({
       where: {
         status: { in: ['NEW', 'PENDING'] },
         autocloseAt: { lte: now },
       },
-      data: { status: 'CANCELED' },
+      select: { id: true, requestId: true, amount: true, callbackUrl: true, requisiteId: true },
     });
 
-    if (expired.count > 0) {
-      this.logger.log(`Auto-canceled ${expired.count} expired pay-in orders`);
-    }
+    if (expiredOrders.length === 0) return;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payinOrder.updateMany({
+        where: { id: { in: expiredOrders.map((o) => o.id) } },
+        data: { status: 'CANCELED' },
+      });
+
+      const webhookEntries = expiredOrders
+        .filter((o) => o.callbackUrl)
+        .map((o) => ({
+          payinOrderId: o.id,
+          method: WebhookMethod.PAYIN_UPDATE_STATUS_ORDER as any,
+          payloadJson: {
+            id: o.id,
+            order_id: o.requestId,
+            order_status: 'CANCELED',
+            amount: Number(o.amount),
+          },
+          callbackUrl: o.callbackUrl!,
+        }));
+
+      if (webhookEntries.length > 0) {
+        for (const entry of webhookEntries) {
+          await tx.webhookOutbox.create({ data: entry });
+        }
+      }
+
+      // Release requisite usage for canceled orders
+      for (const o of expiredOrders) {
+        if (o.requisiteId) {
+          await tx.requisite.update({
+            where: { id: o.requisiteId },
+            data: {
+              usedAmount: { decrement: Number(o.amount) },
+              usedOps: { decrement: 1 },
+            },
+          });
+        }
+      }
+    });
+
+    this.logger.log(`Auto-canceled ${expiredOrders.length} expired pay-in orders (${expiredOrders.filter((o) => o.callbackUrl).length} webhooks enqueued)`);
   }
 
   @Cron(CronExpression.EVERY_HOUR)

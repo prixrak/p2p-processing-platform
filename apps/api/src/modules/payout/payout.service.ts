@@ -12,9 +12,13 @@ import {
   PayOutOrderStatus,
   isValidPayOutTransition,
   WebhookMethod,
+  MAX_PAGE_SIZE,
 } from '@p2p/shared';
 import type { PayOutOrderApiDto, ProfileDto, DetailsDto } from '@p2p/shared';
-import { OrderUploadDto, PayoutOrderInfoDto } from './dto';
+import { BalanceTransactionType } from '@prisma/client';
+import { validateCallbackUrl } from '../../common/utils/url-validator';
+import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
+import { OrderUploadDto, PayoutOrderInfoDto, PayoutListFiltersDto } from './dto';
 
 const ORDER_INCLUDE = {} as const;
 
@@ -24,13 +28,20 @@ type PayoutOrderRow = Prisma.PayoutOrderGetPayload<{ include: typeof ORDER_INCLU
 export class PayoutService {
   private readonly logger = new Logger(PayoutService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly balanceTxService: BalanceTransactionsService,
+  ) {}
 
   // ─── External: order_upload ───
 
   async orderUpload(merchantId: string, dto: OrderUploadDto): Promise<PayOutOrderApiDto> {
     if (!dto.request_id || !dto.currency || !dto.amount || !dto.details) {
       throw new BadRequestException('request_id, currency, amount, and details are required');
+    }
+
+    if (dto.callback_url) {
+      await validateCallbackUrl(dto.callback_url);
     }
 
     const direction = await this.prisma.direction.findFirst({
@@ -136,10 +147,10 @@ export class PayoutService {
 
   async getPool(
     traderId: string,
-    filters: Record<string, string> = {},
+    filters: PayoutListFiltersDto = {},
   ) {
-    const page = filters.page ? parseInt(filters.page, 10) : 1;
-    const limit = filters.limit ? parseInt(filters.limit, 10) : 20;
+    const page = filters.page ?? 1;
+    const limit = Math.min(filters.limit ?? 20, MAX_PAGE_SIZE);
 
     const trader = await this.prisma.traderProfile.findUnique({
       where: { id: traderId },
@@ -185,35 +196,43 @@ export class PayoutService {
     });
     if (!trader) throw new NotFoundException('Trader profile not found');
 
-    const order = await this.prisma.payoutOrder.findFirst({
-      where: { id: orderId, status: 'PENDING', traderId: null },
-    });
-    if (!order) {
-      throw new NotFoundException('Order not found in pool or already taken');
-    }
-
-    const minLimit = Number(trader.payoutMinLimit);
-    const maxLimit = Number(trader.payoutMaxLimit);
-    const orderAmount = Number(order.amount);
-
-    if (minLimit > 0 && orderAmount < minLimit) {
-      throw new ForbiddenException(
-        `Order amount ${orderAmount} is below your minimum limit ${minLimit}`,
-      );
-    }
-    if (maxLimit > 0 && orderAmount > maxLimit) {
-      throw new ForbiddenException(
-        `Order amount ${orderAmount} exceeds your maximum limit ${maxLimit}`,
-      );
-    }
-
-    if (!isValidPayOutTransition(order.status as PayOutOrderStatus, PayOutOrderStatus.NEW)) {
-      throw new BadRequestException(
-        `Invalid status transition: ${order.status} -> NEW`,
-      );
-    }
-
     const updated = await this.prisma.$transaction(async (tx) => {
+      // Lock the row to prevent concurrent claims
+      const rows = await tx.$queryRaw<Array<{ id: string; status: string; amount: number }>>`
+        SELECT id, status, amount::numeric AS amount
+        FROM payout_orders
+        WHERE id = ${orderId}::uuid
+          AND status = 'PENDING'
+          AND trader_id IS NULL
+        FOR UPDATE SKIP LOCKED
+      `;
+
+      if (rows.length === 0) {
+        throw new ConflictException('Order not found in pool or already taken by another trader');
+      }
+
+      const order = rows[0];
+      const minLimit = Number(trader.payoutMinLimit);
+      const maxLimit = Number(trader.payoutMaxLimit);
+      const orderAmount = Number(order.amount);
+
+      if (minLimit > 0 && orderAmount < minLimit) {
+        throw new ForbiddenException(
+          `Order amount ${orderAmount} is below your minimum limit ${minLimit}`,
+        );
+      }
+      if (maxLimit > 0 && orderAmount > maxLimit) {
+        throw new ForbiddenException(
+          `Order amount ${orderAmount} exceeds your maximum limit ${maxLimit}`,
+        );
+      }
+
+      if (!isValidPayOutTransition(order.status as PayOutOrderStatus, PayOutOrderStatus.NEW)) {
+        throw new BadRequestException(
+          `Invalid status transition: ${order.status} -> NEW`,
+        );
+      }
+
       const result = await tx.payoutOrder.update({
         where: { id: orderId },
         data: { traderId, status: 'NEW' },
@@ -231,20 +250,28 @@ export class PayoutService {
   // ─── Internal: assignToTrader ─── (admin/support assigns from pool to a specific trader)
 
   async assignToTrader(orderId: string, traderId: string): Promise<PayOutOrderApiDto> {
-    const order = await this.prisma.payoutOrder.findFirst({
-      where: { id: orderId, status: 'PENDING', traderId: null },
-    });
-    if (!order) {
-      throw new NotFoundException('Order not found in pool (must be PENDING with no trader)');
-    }
-
-    if (!isValidPayOutTransition(order.status as PayOutOrderStatus, PayOutOrderStatus.NEW)) {
-      throw new BadRequestException(
-        `Invalid status transition: ${order.status} -> NEW`,
-      );
-    }
-
     const updated = await this.prisma.$transaction(async (tx) => {
+      // Lock the row to prevent concurrent assignment
+      const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+        SELECT id, status
+        FROM payout_orders
+        WHERE id = ${orderId}::uuid
+          AND status = 'PENDING'
+          AND trader_id IS NULL
+        FOR UPDATE SKIP LOCKED
+      `;
+
+      if (rows.length === 0) {
+        throw new NotFoundException('Order not found in pool (must be PENDING with no trader)');
+      }
+
+      const order = rows[0];
+      if (!isValidPayOutTransition(order.status as PayOutOrderStatus, PayOutOrderStatus.NEW)) {
+        throw new BadRequestException(
+          `Invalid status transition: ${order.status} -> NEW`,
+        );
+      }
+
       const result = await tx.payoutOrder.update({
         where: { id: orderId },
         data: { traderId, status: 'NEW' },
@@ -261,9 +288,9 @@ export class PayoutService {
 
   // ─── Internal: getTraderOrders ───
 
-  async getTraderOrders(traderId: string, filters: Record<string, string>) {
-    const page = filters.page ? parseInt(filters.page, 10) : 1;
-    const limit = filters.limit ? parseInt(filters.limit, 10) : 20;
+  async getTraderOrders(traderId: string, filters: PayoutListFiltersDto) {
+    const page = filters.page ?? 1;
+    const limit = Math.min(filters.limit ?? 20, MAX_PAGE_SIZE);
 
     const status =
       filters.status &&
@@ -344,6 +371,7 @@ export class PayoutService {
         data: { status: 'COMPLETED', endAt: new Date() },
       });
 
+      await this.debitMerchantOnCompleted(tx, order);
       await this.createPayoutWebhookEntry(tx, result);
 
       return result;
@@ -385,6 +413,65 @@ export class PayoutService {
   }
 
   // ─── Private helpers ───
+
+  /**
+   * RISK NOTE: deducts merchant balance and credits trader for payout.
+   */
+  private async debitMerchantOnCompleted(
+    tx: Prisma.TransactionClient,
+    order: PayoutOrderRow,
+  ): Promise<void> {
+    const amount = Number(order.amount);
+    const commission = Number(order.percentFee) * amount / 100;
+
+    // Debit merchant balance
+    await tx.merchantBalance.upsert({
+      where: {
+        merchantId_currency: {
+          merchantId: order.merchantId,
+          currency: order.currency,
+        },
+      },
+      create: {
+        merchantId: order.merchantId,
+        currency: order.currency,
+        amount: -amount,
+      },
+      update: { amount: { increment: -amount } },
+    });
+
+    // Credit trader balance with commission
+    if (order.traderId && commission > 0) {
+      await tx.traderBalance.upsert({
+        where: {
+          traderId_currency: {
+            traderId: order.traderId,
+            currency: order.currency,
+          },
+        },
+        create: {
+          traderId: order.traderId,
+          currency: order.currency,
+          amount: commission,
+        },
+        update: { amount: { increment: commission } },
+      });
+
+      await this.balanceTxService.record({
+        traderId: order.traderId,
+        type: BalanceTransactionType.PAYOUT_DEBIT,
+        amount: commission,
+        currency: order.currency,
+        referenceId: order.id,
+        comment: `Pay-out commission for order ${order.id}`,
+        tx,
+      });
+    }
+
+    this.logger.log(
+      `Balances updated for COMPLETED payout ${order.id}: merchant -${amount} ${order.currency}`,
+    );
+  }
 
   private async resolveOrder(merchantId: string, id?: string, requestId?: string) {
     if (!id && !requestId) {

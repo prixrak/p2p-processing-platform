@@ -23,9 +23,14 @@ export class AppealsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async findByOrderId(orderId: string): Promise<AppealDto[]> {
+  async findByOrderId(orderId: string, traderId?: string): Promise<AppealDto[]> {
+    const where: Prisma.AppealWhereInput = {
+      payinOrderId: orderId,
+      ...(traderId ? { payinOrder: { traderId } } : {}),
+    };
+
     const appeals = await this.prisma.appeal.findMany({
-      where: { payinOrderId: orderId },
+      where,
       include: APPEAL_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
@@ -33,13 +38,14 @@ export class AppealsService {
     return appeals.map((a) => this.toAppealDto(a));
   }
 
-  async findAll(filters: AppealFiltersDto) {
+  async findAll(filters: AppealFiltersDto, traderId?: string) {
     const page = filters.page ?? 1;
     const limit = filters.limit ?? 20;
 
     const where: Prisma.AppealWhereInput = {
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.orderId ? { payinOrderId: filters.orderId } : {}),
+      ...(traderId ? { payinOrder: { traderId } } : {}),
     };
 
     const [items, total] = await Promise.all([
@@ -87,15 +93,18 @@ export class AppealsService {
     return this.toAppealDto(updated);
   }
 
-  async getProofs(appealId: string): Promise<string[]> {
+  async getProofs(appealId: string, traderId?: string): Promise<string[]> {
+    const where: Prisma.AppealWhereInput = {
+      id: appealId,
+      ...(traderId ? { payinOrder: { traderId } } : {}),
+    };
+
+    const appeal = await this.prisma.appeal.findFirst({ where });
+    if (!appeal) throw new NotFoundException('Appeal not found');
+
     const proofs = await this.prisma.appealProof.findMany({
       where: { appealId },
     });
-
-    if (proofs.length === 0) {
-      const exists = await this.prisma.appeal.findUnique({ where: { id: appealId } });
-      if (!exists) throw new NotFoundException('Appeal not found');
-    }
 
     return proofs.map((p) => p.fileId);
   }

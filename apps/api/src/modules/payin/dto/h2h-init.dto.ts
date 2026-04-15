@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsPositive } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsPositive, IsUrl } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class H2hInitDto {
@@ -16,7 +16,7 @@ export class H2hInitDto {
   currency!: string;
 
   @ApiProperty({ description: 'URL for redirect after payment' })
-  @IsString()
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
   redirect_url!: string;
 
   @ApiPropertyOptional({ description: 'Payer full name' })

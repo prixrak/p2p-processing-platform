@@ -75,6 +75,23 @@ export class RequisitesService {
   }
 
   /**
+   * Reverse the usage counters when an order is canceled.
+   * Ensures the requisite capacity is freed for future orders.
+   */
+  async releaseUsage(requisiteId: string, amount: number): Promise<void> {
+    await this.prisma.requisite.update({
+      where: { id: requisiteId },
+      data: {
+        usedAmount: { decrement: amount },
+        usedOps: { decrement: 1 },
+      },
+    });
+    this.logger.log(
+      `Requisite ${requisiteId} usage released: amount=${amount}, ops=1`,
+    );
+  }
+
+  /**
    * Check whether a requisite has exceeded its limits and disable it if so.
    * Returns true if the requisite was disabled.
    */

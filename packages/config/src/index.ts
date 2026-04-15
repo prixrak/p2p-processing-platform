@@ -39,5 +39,6 @@ export const config = {
     baseUrl: optional('BASE_URL', 'http://localhost:3001'),
     frontendUrl: optional('FRONTEND_URL', 'http://localhost:3000'),
     nodeEnv: optional('NODE_ENV', 'development'),
+    encryptionKey: optional('ENCRYPTION_KEY', 'dev-encryption-key-change-me-in-prod'),
   },
 };

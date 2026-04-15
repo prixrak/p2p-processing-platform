@@ -1,6 +1,6 @@
-import { IsString, IsOptional, IsNumber, IsEnum, IsPositive, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsEnum, IsPositive, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PayInOrderStatus } from '@p2p/shared';
+import { PayInOrderStatus, MAX_PAGE_SIZE } from '@p2p/shared';
 import { Type } from 'class-transformer';
 
 export class TraderOrderFiltersDto {
@@ -18,12 +18,15 @@ export class TraderOrderFiltersDto {
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @Min(1)
   page?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @Min(1)
+  @Max(MAX_PAGE_SIZE)
   limit?: number;
 }
 

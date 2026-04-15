@@ -56,8 +56,13 @@ export class WebhooksController {
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.MERCHANT, UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Resend a webhook' })
-  async resend(@Param('id', ParseUUIDPipe) id: string) {
-    return this.webhooksService.resend(id);
+  async resend(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { role: string; merchantId?: string },
+  ) {
+    const merchantScope =
+      user.role === UserRole.MERCHANT ? user.merchantId : undefined;
+    return this.webhooksService.resend(id, merchantScope);
   }
 
   @Get('admin/logs')

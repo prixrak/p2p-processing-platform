@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiSecurity, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { UserRole } from '@p2p/shared';
 import { HmacAuthGuard } from '../../common/guards/hmac-auth.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -22,11 +23,13 @@ import {
   PayoutOrderInfoDto,
   AssignToTraderDto,
   TraderFailDto,
+  PayoutListFiltersDto,
 } from './dto';
 
 @ApiTags('Pay-Out (External)')
 @ApiSecurity('hmac-auth')
 @UseGuards(HmacAuthGuard)
+@Throttle({ default: { limit: 30, ttl: 60000 } })
 @Controller('external/v1/payout')
 export class PayoutController {
   constructor(private readonly payoutService: PayoutService) {}
@@ -73,28 +76,19 @@ export class PayoutInternalController {
   @ApiOperation({
     summary: 'Get public pool of unassigned Pay-Out orders (filtered by trader limits)',
   })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
   async getPool(
     @CurrentUser('traderId') traderId: string,
-    @Query() filters: Record<string, string>,
+    @Query() filters: PayoutListFiltersDto,
   ) {
     return this.payoutService.getPool(traderId, filters);
   }
 
-  /**
-   * GET /api/trader/payout/orders
-   * Orders already assigned to this trader.
-   */
   @Get('orders')
   @Roles(UserRole.TRADER)
   @ApiOperation({ summary: 'List Pay-Out orders assigned to the trader' })
-  @ApiQuery({ name: 'status', required: false })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
   async getTraderOrders(
     @CurrentUser('traderId') traderId: string,
-    @Query() filters: Record<string, string>,
+    @Query() filters: PayoutListFiltersDto,
   ) {
     return this.payoutService.getTraderOrders(traderId, filters);
   }

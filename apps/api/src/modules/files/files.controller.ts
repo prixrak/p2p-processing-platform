@@ -9,6 +9,7 @@ import {
   UseInterceptors,
   UseGuards,
   ParseUUIDPipe,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   FileInterceptor,
@@ -24,16 +25,21 @@ import {
 import { Response } from 'express';
 import { FilesService } from './files.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { MAX_FILE_SIZE_BYTES } from '@p2p/shared';
+import { UserRole } from '@p2p/shared';
 
 @ApiTags('Files')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('files')
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
 
   @Post('upload')
+  @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT, UserRole.MERCHANT)
   @ApiOperation({ summary: 'Upload a single file' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -52,6 +58,7 @@ export class FilesController {
   }
 
   @Post('upload/batch')
+  @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT, UserRole.MERCHANT)
   @ApiOperation({ summary: 'Upload multiple files' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
@@ -64,7 +71,8 @@ export class FilesController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get file (redirects to presigned S3 URL)' })
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Get file (redirects to presigned S3 URL) — admin/support only' })
   async getFile(
     @Param('id', ParseUUIDPipe) id: string,
     @Res() res: Response,
@@ -74,7 +82,8 @@ export class FilesController {
   }
 
   @Get(':id/metadata')
-  @ApiOperation({ summary: 'Get file metadata' })
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Get file metadata — admin/support only' })
   async getMetadata(@Param('id', ParseUUIDPipe) id: string) {
     return this.filesService.getMetadata(id);
   }

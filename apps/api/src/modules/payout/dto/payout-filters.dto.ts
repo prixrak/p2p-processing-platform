@@ -1,18 +1,13 @@
-import { IsString, IsOptional, IsEnum, IsNumber, Min, Max } from 'class-validator';
+import { IsOptional, IsNumber, IsString, Min, Max } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { AppealStatus, MAX_PAGE_SIZE } from '@p2p/shared';
 import { Type } from 'class-transformer';
+import { MAX_PAGE_SIZE } from '@p2p/shared';
 
-export class AppealFiltersDto {
-  @ApiPropertyOptional({ enum: AppealStatus })
-  @IsOptional()
-  @IsEnum(AppealStatus)
-  status?: AppealStatus;
-
-  @ApiPropertyOptional({ description: 'Filter by Pay-In order ID' })
+export class PayoutListFiltersDto {
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  orderId?: string;
+  status?: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

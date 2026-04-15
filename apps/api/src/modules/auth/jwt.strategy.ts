@@ -8,6 +8,7 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: string;
+  type?: string;
 }
 
 @Injectable()
@@ -21,6 +22,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
+    if (payload.type === 'refresh' || payload.type === '2fa-pending') {
+      throw new UnauthorizedException('Cannot use this token type for API access');
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       select: { id: true, email: true, role: true, isActive: true },

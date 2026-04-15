@@ -13,6 +13,7 @@ import { AppealFiltersDto, ResolveAppealDto } from './dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '@p2p/shared';
 
 @ApiTags('Appeals')
@@ -25,22 +26,34 @@ export class AppealsController {
   @Get()
   @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT, UserRole.TRADER)
   @ApiOperation({ summary: 'List all appeals with optional filters' })
-  async findAll(@Query() filters: AppealFiltersDto) {
-    return this.appealsService.findAll(filters);
+  async findAll(
+    @Query() filters: AppealFiltersDto,
+    @CurrentUser() user: { role: string; traderId?: string },
+  ) {
+    const traderId = user.role === UserRole.TRADER ? user.traderId : undefined;
+    return this.appealsService.findAll(filters, traderId);
   }
 
   @Get('order/:orderId')
   @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT, UserRole.TRADER)
   @ApiOperation({ summary: 'Get appeals for a specific Pay-In order' })
-  async findByOrderId(@Param('orderId') orderId: string) {
-    return this.appealsService.findByOrderId(orderId);
+  async findByOrderId(
+    @Param('orderId') orderId: string,
+    @CurrentUser() user: { role: string; traderId?: string },
+  ) {
+    const traderId = user.role === UserRole.TRADER ? user.traderId : undefined;
+    return this.appealsService.findByOrderId(orderId, traderId);
   }
 
   @Get(':appealId/proofs')
   @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT, UserRole.TRADER)
   @ApiOperation({ summary: 'Get proof file IDs for an appeal' })
-  async getProofs(@Param('appealId') appealId: string) {
-    return this.appealsService.getProofs(appealId);
+  async getProofs(
+    @Param('appealId') appealId: string,
+    @CurrentUser() user: { role: string; traderId?: string },
+  ) {
+    const traderId = user.role === UserRole.TRADER ? user.traderId : undefined;
+    return this.appealsService.getProofs(appealId, traderId);
   }
 
   @Patch(':appealId/resolve')

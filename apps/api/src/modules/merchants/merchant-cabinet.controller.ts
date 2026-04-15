@@ -248,7 +248,7 @@ export class MerchantCabinetController {
       id: k.id,
       direction: k.direction === 'PAYIN' ? 'PAY_IN' : 'PAY_OUT',
       publicKey: k.publicKey,
-      secretKeyMasked: `${k.secretKeyHash.slice(0, 8)}...${k.secretKeyHash.slice(-4)}`,
+      secretKeyMasked: 'sk_••••••••••••',
       createdAt: k.createdAt.toISOString(),
       lastUsedAt: null,
     }));

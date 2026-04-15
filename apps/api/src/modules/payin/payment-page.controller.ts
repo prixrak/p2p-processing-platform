@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import { MAX_FILE_SIZE_BYTES } from '@p2p/shared';
 import { PayinService } from './payin.service';
 import { FilesService, UploadedFile as UploadedFileType } from '../files/files.service';
 
@@ -35,7 +36,7 @@ export class PaymentPageController {
   @Post(':id/confirm')
   @ApiOperation({ summary: 'Confirm payment from payment page' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FilesInterceptor('files'))
+  @UseInterceptors(FilesInterceptor('files', 5, { limits: { fileSize: MAX_FILE_SIZE_BYTES } }))
   async confirmPayment(
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFiles() files?: Express.Multer.File[],

@@ -12,4 +12,5 @@ export const WEBHOOK_RETRY_DELAYS_MS = [
   3_600_000,  // 1h
   3_600_000,  // 1h
 ];
+export const MAX_PAGE_SIZE = 100;
 export const AUTO_REFRESH_INTERVALS = [5, 10, 20] as const;

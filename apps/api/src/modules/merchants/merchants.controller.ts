@@ -53,7 +53,13 @@ export class MerchantsController {
   @Get('by-user/:userId')
   @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.MERCHANT)
   @ApiOperation({ summary: 'Get merchant by user ID' })
-  findByUserId(@Param('userId', ParseUUIDPipe) userId: string) {
+  findByUserId(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    if (user.role === UserRole.MERCHANT && userId !== user.id) {
+      throw new ForbiddenException('You can only look up your own merchant by user ID');
+    }
     return this.merchantsService.findByUserId(userId);
   }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Copy,
   Check,
@@ -19,9 +19,19 @@ import type { OrderDto } from '@p2p/shared';
 import { PayInOrderStatus } from '@p2p/shared';
 import { CountdownTimer } from '@/components/ui/countdown-timer';
 import { FileUpload } from '@/components/ui/file-upload';
-import { confirmPayment } from '@/lib/api';
+import { confirmPayment, api } from '@/lib/api';
 
 type Step = 'viewing' | 'uploading' | 'confirming' | 'success' | 'error' | 'expired';
+
+function isSafeRedirectUrl(url: string | undefined | null): url is string {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 interface PaymentClientProps {
   order: OrderDto;
@@ -39,10 +49,32 @@ export function PaymentClient({ order }: PaymentClientProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
 
-  const cardNumber = order.payment_detail?.number ?? order.requisite_number;
-  const ownerName = order.payment_detail?.owner ?? order.requisite_owner;
-  const bankName = order.payment_detail?.bank_name ?? order.bank;
-  const bankCode = order.payment_detail?.code;
+  const [currentOrder, setCurrentOrder] = useState(order);
+  const pollRef = useRef<ReturnType<typeof setInterval>>();
+
+  useEffect(() => {
+    if (step === 'success' || step === 'expired') return;
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const fresh = await api.get<OrderDto>(`/api/pay/${order.id}`);
+        setCurrentOrder(fresh);
+        if (fresh.status === PayInOrderStatus.CANCELED) setStep('expired');
+        if (fresh.status === PayInOrderStatus.PAID || fresh.status === PayInOrderStatus.VERIFIED) {
+          setStep('success');
+        }
+      } catch {
+        // Network error -- skip this cycle
+      }
+    }, 5000);
+
+    return () => clearInterval(pollRef.current);
+  }, [order.id, step]);
+
+  const cardNumber = currentOrder.payment_detail?.number ?? currentOrder.requisite_number;
+  const ownerName = currentOrder.payment_detail?.owner ?? currentOrder.requisite_owner;
+  const bankName = currentOrder.payment_detail?.bank_name ?? currentOrder.bank;
+  const bankCode = currentOrder.payment_detail?.code;
 
   const copyToClipboard = useCallback(async (text: string) => {
     try {
@@ -62,7 +94,7 @@ export function PaymentClient({ order }: PaymentClientProps) {
       await confirmPayment(order.id, files.length > 0 ? files : undefined);
       setStep('success');
 
-      if (order.redirect_url) {
+      if (isSafeRedirectUrl(order.redirect_url)) {
         let count = 5;
         setRedirectCountdown(count);
         const interval = setInterval(() => {
@@ -97,13 +129,14 @@ export function PaymentClient({ order }: PaymentClientProps) {
           Your payment is being processed. Thank you!
         </p>
 
-        {order.redirect_url && redirectCountdown !== null && (
+        {isSafeRedirectUrl(order.redirect_url) && redirectCountdown !== null && (
           <div className="mt-6">
             <p className="text-xs text-text-muted">
               Redirecting in {redirectCountdown}s…
             </p>
             <a
               href={order.redirect_url}
+              rel="noopener noreferrer"
               className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent transition-colors hover:text-accent-hover"
             >
               Go now

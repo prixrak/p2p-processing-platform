@@ -4,6 +4,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { config } from '@p2p/config';
 import { PrismaModule } from './config/prisma.module';
+import { SecurityModule } from './common/security.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
@@ -39,6 +40,7 @@ import { MerchantDirectionsModule } from './modules/merchant-directions/merchant
 @Module({
   imports: [
     PrismaModule,
+    SecurityModule,
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 600,

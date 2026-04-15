@@ -94,11 +94,7 @@ export class RatingsService {
   }
 
   async getRequisiteRatings(traderId?: string): Promise<RequisiteRating[]> {
-    const whereClause = traderId
-      ? `WHERE r.trader_id = '${traderId}' AND r.is_active = true`
-      : 'WHERE r.is_active = true';
-
-    const ratings = await this.prisma.$queryRawUnsafe<Array<{
+    const ratings = await this.prisma.$queryRaw<Array<{
       requisiteId: string;
       number: string;
       bank: string;
@@ -107,7 +103,7 @@ export class RatingsService {
       totalOrders: number;
       usedAmount: number;
       limitTotalAmount: number;
-    }>>(`
+    }>>`
       SELECT
         r.id AS "requisiteId",
         r.number,
@@ -125,10 +121,11 @@ export class RatingsService {
       LEFT JOIN banks b ON b.id = r.bank_id
       LEFT JOIN payin_orders po ON po.requisite_id = r.id
         AND po.created_at > NOW() - INTERVAL '30 days'
-      ${whereClause}
+      WHERE r.is_active = true
+        AND (${traderId}::text IS NULL OR r.trader_id = ${traderId}::text)
       GROUP BY r.id, r.number, b.name, r.used_amount, r.limit_total_amount
       ORDER BY "successRate" DESC, "totalOrders" DESC
-    `);
+    `;
 
     return ratings.map((r) => {
       const utilization = Number(r.limitTotalAmount) > 0

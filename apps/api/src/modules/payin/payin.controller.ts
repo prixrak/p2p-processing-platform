@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes, ApiSecurity, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { PayInOrderStatus, UserRole } from '@p2p/shared';
 import { HmacAuthGuard } from '../../common/guards/hmac-auth.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -30,11 +31,13 @@ import {
   AppealSendDto,
   TraderConfirmPaidDto,
   TraderCancelOrderDto,
+  TraderOrderFiltersDto,
 } from './dto';
 
 @ApiTags('Pay-In (External)')
 @ApiSecurity('hmac-auth')
 @UseGuards(HmacAuthGuard)
+@Throttle({ default: { limit: 30, ttl: 60000 } })
 @Controller('external/v1/payin')
 export class PayinController {
   constructor(private readonly payinService: PayinService) {}
@@ -147,12 +150,9 @@ export class PayinInternalController {
   @Get('orders')
   @Roles(UserRole.TRADER)
   @ApiOperation({ summary: 'List Pay-In orders assigned to the trader' })
-  @ApiQuery({ name: 'status', required: false })
-  @ApiQuery({ name: 'date_from', required: false })
-  @ApiQuery({ name: 'date_to', required: false })
   async getTraderOrders(
     @CurrentUser('traderId') traderId: string,
-    @Query() filters: Record<string, string>,
+    @Query() filters: TraderOrderFiltersDto,
   ) {
     return this.payinService.getTraderOrders(traderId, filters);
   }
