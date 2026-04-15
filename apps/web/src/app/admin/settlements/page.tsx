@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Landmark } from 'lucide-react';
+import { SettlementType } from '@p2p/shared';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { DataTable } from '@/components/ui/data-table';
 import { StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -44,25 +46,39 @@ export default function SettlementsPage() {
 
   const { data: settlements = [], isLoading } = useQuery<Settlement[]>({
     queryKey: ['admin', 'settlements'],
-    queryFn: () => api.get('/api/admin/settlements'),
+    queryFn: async () => {
+      const res = await api.get<{ data: Settlement[] }>(
+        `${internalPaths.settlements}?page=1&limit=100`,
+      );
+      return res.data;
+    },
   });
 
   const { data: traders = [] } = useQuery<TraderOption[]>({
     queryKey: ['admin', 'traders', 'options'],
-    queryFn: () => api.get('/api/admin/traders/options'),
+    queryFn: async () => {
+      const res = await api.get<{
+        data: Array<{ id: string; user: { email: string } }>;
+      }>(`${internalPaths.traders}?page=1&limit=500`);
+      return res.data.map((t) => ({
+        id: t.id,
+        name: t.user.email,
+      }));
+    },
   });
 
   const { data: traderBalances } = useQuery<TraderBalance[]>({
     queryKey: ['admin', 'traders', traderId, 'balances'],
-    queryFn: () => api.get(`/api/admin/traders/${traderId}/balances`),
+    queryFn: () => api.get(internalPaths.traderBalances(traderId)),
     enabled: !!traderId,
   });
 
   const createMutation = useMutation({
     mutationFn: () =>
-      api.post('/api/admin/settlements', {
+      api.post(internalPaths.settlements, {
         traderId,
-        type,
+        type:
+          type === 'credit' ? SettlementType.CREDIT : SettlementType.DEBIT,
         amount: parseFloat(amount),
         currency,
         note,

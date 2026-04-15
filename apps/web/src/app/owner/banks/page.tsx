@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Power, PowerOff, Upload } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -27,7 +28,7 @@ export default function BanksPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner', 'banks'],
-    queryFn: () => api.get<Bank[]>('/api/admin/banks'),
+    queryFn: () => api.get<Bank[]>(internalPaths.banksAdmin),
   });
 
   const createBank = useMutation({
@@ -35,7 +36,7 @@ export default function BanksPage() {
       const fd = new FormData();
       fd.append('name', form.name);
       if (logo) fd.append('logo', logo);
-      return api.upload('/api/admin/banks', fd);
+      return api.upload(internalPaths.banks, fd);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'banks'] });
@@ -49,7 +50,7 @@ export default function BanksPage() {
       const fd = new FormData();
       fd.append('name', form.name);
       if (logo) fd.append('logo', logo);
-      return api.upload(`/api/admin/banks/${editItem.id}`, fd);
+      return api.upload(internalPaths.bank(editItem.id), fd);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'banks'] });
@@ -59,7 +60,7 @@ export default function BanksPage() {
 
   const toggleStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.patch(`/api/admin/banks/${id}`, {
+      api.patch(internalPaths.notImplemented.bankStatus(id), {
         status: status === 'active' ? 'inactive' : 'active',
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'banks'] }),

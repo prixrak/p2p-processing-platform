@@ -13,6 +13,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { StatCard } from '@/components/ui/stat-card';
 
 interface PlatformStats {
@@ -35,7 +36,8 @@ interface PlatformStats {
 export default function StatisticsPage() {
   const { data: stats, isLoading } = useQuery<PlatformStats>({
     queryKey: ['admin', 'statistics'],
-    queryFn: () => api.get('/api/admin/statistics'),
+    queryFn: () =>
+      api.get(internalPaths.notImplemented.platformStatistics),
   });
 
   const loading = isLoading || !stats;

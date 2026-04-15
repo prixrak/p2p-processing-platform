@@ -12,6 +12,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { StatCard, Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
@@ -46,7 +47,7 @@ const statusColor: Record<string, 'green' | 'yellow' | 'red' | 'blue' | 'default
 export default function OwnerDashboard() {
   const { data: stats } = useQuery({
     queryKey: ['owner', 'stats'],
-    queryFn: () => api.get<PlatformStats>('/api/admin/stats'),
+    queryFn: () => api.get<PlatformStats>(internalPaths.adminStats),
   });
 
   return (

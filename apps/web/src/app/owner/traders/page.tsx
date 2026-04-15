@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, ShieldOff, Eye } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -54,25 +55,60 @@ export default function TradersPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner', 'traders', page, statusFilter, search],
-    queryFn: () => {
+    queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
       if (statusFilter) params.set('status', statusFilter);
       if (search) params.set('search', search);
-      return api.get<TradersResponse>(`/api/admin/traders?${params}`);
+      const raw = await api.get<{
+        data: Array<{
+          id: string;
+          isActive: boolean;
+          user: { email: string };
+          balances: Array<{ amount: unknown; currency: string }>;
+          createdAt: string;
+        }>;
+        total: number;
+        page: number;
+        limit: number;
+      }>(`${internalPaths.traders}?${params}`);
+      const limit = raw.limit || 20;
+      return {
+        data: raw.data.map((p) => {
+          const email = p.user.email;
+          const primary =
+            p.balances.find((b) => Number(b.amount) !== 0) ?? p.balances[0];
+          return {
+            id: p.id,
+            name: email.split('@')[0] ?? email,
+            email,
+            status: p.isActive ? 'active' : 'inactive',
+            balance: primary ? Number(primary.amount) : 0,
+            currency: primary?.currency ?? '—',
+            completedOrders: 0,
+            successRate: 0,
+            avgResponseTime: 0,
+            createdAt: p.createdAt,
+          };
+        }),
+        total: raw.total,
+        page: raw.page,
+        totalPages: Math.max(1, Math.ceil(raw.total / limit)),
+      } satisfies TradersResponse;
     },
   });
 
   const { data: details } = useQuery({
     queryKey: ['owner', 'trader-details', detailTrader],
-    queryFn: () => api.get<TraderDetails>(`/api/admin/traders/${detailTrader}`),
+    queryFn: () =>
+      api.get<TraderDetails>(internalPaths.trader(detailTrader!)),
     enabled: !!detailTrader,
   });
 
   const toggleStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.patch(`/api/admin/traders/${id}`, {
-        status: status === 'active' ? 'inactive' : 'active',
-      }),
+      status === 'active'
+        ? api.patch(internalPaths.traderDeactivate(id))
+        : api.patch(internalPaths.traderActivate(id)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'traders'] }),
   });
 

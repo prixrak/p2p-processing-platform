@@ -1,6 +1,43 @@
 # P2P Processing Platform
 
-## Quick Start
+## Local setup (copy-paste)
+
+**Prerequisites:** Node.js ≥ 20, Docker Desktop (so `docker compose` works).
+
+In your terminal, `cd` to the **repository root** (`p2p`), then run the **whole block** below (paste as one piece):
+
+```bash
+set -e
+npm install
+docker compose up -d
+
+echo "Waiting for PostgreSQL..."
+until docker compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
+
+test -f .env || cp .env.example .env
+grep '^DATABASE_URL=' .env > packages/prisma/.env
+echo 'NEXT_PUBLIC_API_URL=http://localhost:3001' > apps/web/.env.local
+
+npm run db:generate
+npm run db:migrate:deploy
+npm run db:seed
+
+echo ""
+echo "OK: database and seed are ready."
+echo "Next, open TWO terminals in this same directory:"
+echo "  Terminal 1:  npm run dev:api    → http://localhost:3001"
+echo "  Terminal 2:  npm run dev:web    → http://localhost:3000"
+echo "Swagger: http://localhost:3001/api"
+```
+
+Then run the API in one terminal and the web app in the other (see lines above).
+
+**After `git pull` (new migrations):** `npm run db:migrate:deploy`
+**Create a new migration (interactive):** `npm run db:migrate` (requires `packages/prisma/.env` with `DATABASE_URL`, same as in the block above).
+
+---
+
+## Quick Start (step by step)
 
 ### Prerequisites
 
@@ -21,26 +58,28 @@ docker compose up -d
 
 This starts 3 services:
 
-| Service      | Port  | Purpose              | UI                          |
-|-------------|-------|----------------------|-----------------------------|
-| PostgreSQL  | 5432  | Main database        | —                           |
-| Redis       | 6379  | Queues, rate limiting| —                           |
-| MinIO (S3)  | 9000  | File storage         | http://localhost:9001 (minioadmin/minioadmin) |
+| Service    | Port | Purpose               | UI                                            |
+| ---------- | ---- | --------------------- | --------------------------------------------- |
+| PostgreSQL | 5432 | Main database         | —                                             |
+| Redis      | 6379 | Queues, rate limiting | —                                             |
+| MinIO (S3) | 9000 | File storage          | http://localhost:9001 (minioadmin/minioadmin) |
 
 ### 3. Setup environment
 
 ```bash
-cp .env.example .env
+test -f .env || cp .env.example .env
+grep '^DATABASE_URL=' .env > packages/prisma/.env
+echo 'NEXT_PUBLIC_API_URL=http://localhost:3001' > apps/web/.env.local
 ```
 
-Default values work out of the box with Docker services above.
+`packages/prisma/.env` is required for the Prisma CLI (`migrate`, `studio`). The root `.env` is used by NestJS when you run `dev:api`.
 
 ### 4. Setup database
 
 ```bash
-npm run db:generate        # Generate Prisma Client
-npm run db:migrate         # Run migrations
-npm run db:seed            # Seed test data
+npm run db:generate
+npm run db:migrate:deploy
+npm run db:seed
 ```
 
 ### 5. Run the apps
@@ -60,13 +99,13 @@ API Swagger docs: http://localhost:3001/api
 
 All accounts use password: `admin123`
 
-| Role     | Email               | Dashboard URL                |
-|----------|---------------------|------------------------------|
-| Owner    | owner@p2p.local     | http://localhost:3000/owner   |
-| Admin    | admin@p2p.local     | http://localhost:3000/admin   |
-| Support  | support@p2p.local   | http://localhost:3000/support |
-| Trader   | trader@p2p.local    | http://localhost:3000/trader  |
-| Merchant | merchant@p2p.local  | http://localhost:3000/merchant|
+| Role     | Email              | Dashboard URL                  |
+| -------- | ------------------ | ------------------------------ |
+| Owner    | owner@p2p.local    | http://localhost:3000/owner    |
+| Admin    | admin@p2p.local    | http://localhost:3000/admin    |
+| Support  | support@p2p.local  | http://localhost:3000/support  |
+| Trader   | trader@p2p.local   | http://localhost:3000/trader   |
+| Merchant | merchant@p2p.local | http://localhost:3000/merchant |
 
 Seed also creates: currencies (UAH, USDT), banks, trader balances, merchant balances, API keys, and sample orders.
 
@@ -100,26 +139,26 @@ p2p/
 
 ### Backend Modules
 
-| Module        | Path                    | Description                                      |
-|--------------|-------------------------|--------------------------------------------------|
-| auth         | `/api/auth/*`           | JWT login/register, 2FA (TOTP)                   |
-| payin        | `/api/v1/payin/*`       | Merchant Pay-In API (HMAC auth)                  |
-| payout       | `/api/v1/payout/*`      | Merchant Pay-Out API (HMAC auth)                 |
-| traders      | `/api/trader/*`         | Trader dashboard + order management              |
-| merchants    | `/api/merchant/*`       | Merchant dashboard + balances                    |
-| requisites   | `/api/requisites/*`     | Bank card/wallet CRUD                            |
-| appeals      | `/api/appeals/*`        | Dispute resolution                               |
-| settlements  | `/api/settlements/*`    | Balance credit/debit                             |
-| webhooks     | `/api/webhooks/*`       | Webhook logs + manual resend                     |
-| files        | `/api/files/*`          | S3 upload, presigned URL download                |
-| telegram     | `/api/telegram/*`       | Bot connection, notification preferences         |
-| audit        | `/api/audit/*`          | Full audit trail viewer                          |
-| admin        | `/api/admin/*`          | Admin dashboard stats                            |
-| support      | `/api/support/*`        | Support dashboard stats                          |
-| cascade      | internal                | Smart order distribution (requisite selection)    |
-| ratings      | `/api/ratings/*`        | Trader/requisite performance scoring             |
-| health       | `/api/health`           | Health + readiness checks                        |
-| maintenance  | internal                | Cron: auto-cancel expired orders, cleanup logs   |
+| Module      | Path                 | Description                                    |
+| ----------- | -------------------- | ---------------------------------------------- |
+| auth        | `/api/auth/*`        | JWT login/register, 2FA (TOTP)                 |
+| payin       | `/api/v1/payin/*`    | Merchant Pay-In API (HMAC auth)                |
+| payout      | `/api/v1/payout/*`   | Merchant Pay-Out API (HMAC auth)               |
+| traders     | `/api/trader/*`      | Trader dashboard + order management            |
+| merchants   | `/api/merchant/*`    | Merchant dashboard + balances                  |
+| requisites  | `/api/requisites/*`  | Bank card/wallet CRUD                          |
+| appeals     | `/api/appeals/*`     | Dispute resolution                             |
+| settlements | `/api/settlements/*` | Balance credit/debit                           |
+| webhooks    | `/api/webhooks/*`    | Webhook logs + manual resend                   |
+| files       | `/api/files/*`       | S3 upload, presigned URL download              |
+| telegram    | `/api/telegram/*`    | Bot connection, notification preferences       |
+| audit       | `/api/audit/*`       | Full audit trail viewer                        |
+| admin       | `/api/admin/*`       | Admin dashboard stats                          |
+| support     | `/api/support/*`     | Support dashboard stats                        |
+| cascade     | internal             | Smart order distribution (requisite selection) |
+| ratings     | `/api/ratings/*`     | Trader/requisite performance scoring           |
+| health      | `/api/health`        | Health + readiness checks                      |
+| maintenance | internal             | Cron: auto-cancel expired orders, cleanup logs |
 
 ---
 
@@ -131,7 +170,8 @@ npm run dev:api              # Start API with ts-node
 npm run dev:web              # Start frontend with next dev
 
 # Database
-npm run db:migrate           # Create/apply migrations
+npm run db:migrate:deploy    # Apply existing migrations (after clone / pull)
+npm run db:migrate           # prisma migrate dev: create new migrations (interactive)
 npm run db:generate          # Regenerate Prisma Client after schema change
 npm run db:seed              # Seed/re-seed test data (idempotent)
 npm run db:studio            # Open Prisma Studio (DB browser) → http://localhost:5555
@@ -156,15 +196,15 @@ docker build -f Dockerfile.web -t p2p-web .
 
 All variables are in `.env.example`. Key ones:
 
-| Variable              | Default                          | Description                        |
-|----------------------|----------------------------------|------------------------------------|
-| `DATABASE_URL`       | `postgresql://postgres:postgres@localhost:5432/p2p` | PostgreSQL connection       |
-| `REDIS_HOST`         | `localhost`                      | Redis host                         |
-| `JWT_SECRET`         | `dev-jwt-secret-change-me...`    | **Change in production!**          |
-| `S3_ENDPOINT`        | `http://localhost:9000`          | MinIO locally, remove for AWS S3   |
-| `S3_ACCESS_KEY_ID`   | `minioadmin`                     | MinIO default / AWS IAM key        |
-| `TELEGRAM_BOT_TOKEN` | (empty)                          | Optional, for notifications        |
-| `NEXT_PUBLIC_API_URL`| `http://localhost:3001`          | API URL for frontend (in `apps/web/.env.local`) |
+| Variable              | Default                                             | Description                                     |
+| --------------------- | --------------------------------------------------- | ----------------------------------------------- |
+| `DATABASE_URL`        | `postgresql://postgres:postgres@localhost:5432/p2p` | PostgreSQL connection                           |
+| `REDIS_HOST`          | `localhost`                                         | Redis host                                      |
+| `JWT_SECRET`          | `dev-jwt-secret-change-me...`                       | **Change in production!**                       |
+| `S3_ENDPOINT`         | `http://localhost:9000`                             | MinIO locally, remove for AWS S3                |
+| `S3_ACCESS_KEY_ID`    | `minioadmin`                                        | MinIO default / AWS IAM key                     |
+| `TELEGRAM_BOT_TOKEN`  | (empty)                                             | Optional, for notifications                     |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:3001`                             | API URL for frontend (in `apps/web/.env.local`) |
 
 ---
 
@@ -197,30 +237,45 @@ All variables are in `.env.example`. Key ones:
 ## Troubleshooting
 
 ### `docker compose up -d` fails
+
 Make sure Docker Desktop is running. On older Docker versions, try `docker-compose up -d` (with hyphen).
 
 ### API won't start — Prisma errors
+
 ```bash
-npm run db:generate          # Regenerate client
-npm run db:migrate           # Apply pending migrations
+grep '^DATABASE_URL=' .env > packages/prisma/.env   # if Prisma cannot see DATABASE_URL
+npm run db:generate
+npm run db:migrate:deploy
 ```
 
+### `Environment variable not found: DATABASE_URL` (migrate / studio)
+
+Create `packages/prisma/.env` with the same `DATABASE_URL` as the root `.env` (see **Local setup** above).
+
 ### Frontend shows "Network Error" on login
+
 Check that `apps/web/.env.local` contains:
+
 ```
 NEXT_PUBLIC_API_URL=http://localhost:3001
 ```
 
 ### Port already in use
+
 ```bash
 lsof -i :3001                # Find what's using the port
 kill -9 <PID>                # Kill it
 ```
 
 ### Reset everything
+
 ```bash
 docker compose down -v       # Remove containers + volumes (deletes all data!)
-docker compose up -d         # Fresh start
-npm run db:migrate
+docker compose up -d
+until docker compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
+test -f .env || cp .env.example .env
+grep '^DATABASE_URL=' .env > packages/prisma/.env
+npm run db:generate
+npm run db:migrate:deploy
 npm run db:seed
 ```

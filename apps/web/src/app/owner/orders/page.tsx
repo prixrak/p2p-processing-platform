@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Eye, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -81,19 +82,22 @@ export default function OrdersPage() {
       });
       if (statusFilter) params.set('status', statusFilter);
       if (search) params.set('search', search);
-      return api.get<OrdersResponse>(`/api/admin/orders?${params}`);
+      return api.get<OrdersResponse>(
+        internalPaths.notImplemented.ordersQuery(params.toString()),
+      );
     },
   });
 
   const { data: details } = useQuery({
     queryKey: ['owner', 'order-details', detailOrder],
-    queryFn: () => api.get<OrderDetails>(`/api/admin/orders/${detailOrder}`),
+    queryFn: () =>
+      api.get<OrderDetails>(internalPaths.notImplemented.order(detailOrder!)),
     enabled: !!detailOrder,
   });
 
   const updateStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.patch(`/api/admin/orders/${id}/status`, { status }),
+      api.patch(internalPaths.notImplemented.orderStatus(id), { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'orders'] });
       queryClient.invalidateQueries({ queryKey: ['owner', 'order-details'] });

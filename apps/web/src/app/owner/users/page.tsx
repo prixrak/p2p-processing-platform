@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, ShieldCheck, ShieldOff } from 'lucide-react';
+import { UserRole } from '@p2p/shared';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -15,7 +17,7 @@ interface User {
   id: string;
   email: string;
   name: string;
-  role: string;
+  role: UserRole;
   status: string;
   createdAt: string;
 }
@@ -27,50 +29,89 @@ interface UsersResponse {
   totalPages: number;
 }
 
-const roleColors: Record<string, 'blue' | 'green' | 'yellow' | 'red' | 'default'> = {
-  owner: 'red',
-  admin: 'yellow',
-  trader: 'green',
-  merchant: 'blue',
-  support: 'default',
+interface UsersApiRow {
+  id: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+  createdAt: string;
+}
+
+const roleColors: Record<UserRole, 'blue' | 'green' | 'yellow' | 'red' | 'default'> = {
+  [UserRole.OWNER]: 'red',
+  [UserRole.ADMIN]: 'yellow',
+  [UserRole.TRADER]: 'green',
+  [UserRole.MERCHANT]: 'blue',
+  [UserRole.SUPPORT]: 'default',
 };
 
 const roleOptions = [
-  { value: 'admin', label: 'Admin' },
-  { value: 'trader', label: 'Trader' },
-  { value: 'merchant', label: 'Merchant' },
-  { value: 'support', label: 'Support' },
+  { value: UserRole.ADMIN, label: 'Admin' },
+  { value: UserRole.TRADER, label: 'Trader' },
+  { value: UserRole.MERCHANT, label: 'Merchant' },
+  { value: UserRole.SUPPORT, label: 'Support' },
 ];
 
 export default function UsersPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ email: '', password: '', role: 'trader', name: '' });
+  const [form, setForm] = useState({
+    email: '',
+    password: '',
+    role: UserRole.TRADER,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner', 'users', page],
-    queryFn: () => api.get<UsersResponse>(`/api/admin/users?page=${page}&limit=20`),
+    queryFn: async () => {
+      const raw = await api.get<{
+        data: UsersApiRow[];
+        total: number;
+        page: number;
+        limit: number;
+      }>(`${internalPaths.users}?page=${page}&limit=20`);
+
+      const limit = raw.limit || 20;
+      return {
+        data: raw.data.map((u) => ({
+          id: u.id,
+          email: u.email,
+          name: '',
+          role: u.role,
+          status: u.isActive ? 'active' : 'inactive',
+          createdAt: u.createdAt,
+        })),
+        total: raw.total,
+        page: raw.page,
+        totalPages: Math.max(1, Math.ceil(raw.total / limit)),
+      } satisfies UsersResponse;
+    },
   });
 
   const createUser = useMutation({
-    mutationFn: (payload: typeof form) => api.post('/api/admin/users', payload),
+    mutationFn: (payload: typeof form) =>
+      api.post(internalPaths.users, {
+        email: payload.email,
+        password: payload.password,
+        role: payload.role,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'users'] });
       setShowCreate(false);
-      setForm({ email: '', password: '', role: 'trader', name: '' });
+      setForm({ email: '', password: '', role: UserRole.TRADER });
     },
   });
 
   const toggleStatus = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.patch(`/api/admin/users/${id}`, { status: status === 'active' ? 'inactive' : 'active' }),
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      api.patch(internalPaths.user(id), { isActive }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'users'] }),
   });
 
   const updateRole = useMutation({
-    mutationFn: ({ id, role }: { id: string; role: string }) =>
-      api.patch(`/api/admin/users/${id}`, { role }),
+    mutationFn: ({ id, role }: { id: string; role: UserRole }) =>
+      api.patch(internalPaths.user(id), { role }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'users'] }),
   });
 
@@ -90,7 +131,7 @@ export default function UsersPage() {
       header: 'Role',
       render: (u: User) => (
         <Badge color={roleColors[u.role] ?? 'default'}>
-          {u.role}
+          {u.role.toLowerCase()}
         </Badge>
       ),
     },
@@ -117,16 +158,27 @@ export default function UsersPage() {
       header: 'Actions',
       render: (u: User) => (
         <div className="flex items-center gap-2">
-          <Select
-            options={roleOptions}
-            value={u.role}
-            onChange={(e) => updateRole.mutate({ id: u.id, role: e.target.value })}
-            className="!py-1.5 !text-xs w-28"
-          />
+          {u.role === UserRole.OWNER ? (
+            <span className="text-xs text-text-muted">—</span>
+          ) : (
+            <Select
+              options={roleOptions}
+              value={u.role}
+              onChange={(e) =>
+                updateRole.mutate({ id: u.id, role: e.target.value as UserRole })
+              }
+              className="!py-1.5 !text-xs w-28"
+            />
+          )}
           <Button
             variant={u.status === 'active' ? 'danger' : 'success'}
             size="sm"
-            onClick={() => toggleStatus.mutate({ id: u.id, status: u.status })}
+            onClick={() =>
+              toggleStatus.mutate({
+                id: u.id,
+                isActive: u.status !== 'active',
+              })
+            }
           >
             {u.status === 'active' ? (
               <ShieldOff className="h-3.5 w-3.5" />
@@ -172,13 +224,6 @@ export default function UsersPage() {
           }}
         >
           <Input
-            label="Full Name"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="John Doe"
-            required
-          />
-          <Input
             label="Email"
             type="email"
             value={form.email}
@@ -198,7 +243,9 @@ export default function UsersPage() {
             label="Role"
             options={roleOptions}
             value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value })}
+            onChange={(e) =>
+              setForm({ ...form, role: e.target.value as UserRole })
+            }
           />
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" type="button" onClick={() => setShowCreate(false)}>

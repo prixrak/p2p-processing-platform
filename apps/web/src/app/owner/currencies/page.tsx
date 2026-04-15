@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Power, PowerOff } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -24,11 +25,22 @@ export default function CurrenciesPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner', 'currencies'],
-    queryFn: () => api.get<Currency[]>('/api/admin/currencies'),
+    queryFn: async () => {
+      const rows = await api.get<
+        Array<{ id: string; code: string; isActive: boolean }>
+      >(internalPaths.currencies);
+      return rows.map((r) => ({
+        id: r.id,
+        code: r.code,
+        name: r.code,
+        status: r.isActive ? 'active' : 'inactive',
+      }));
+    },
   });
 
   const createCurrency = useMutation({
-    mutationFn: (payload: typeof form) => api.post('/api/admin/currencies', payload),
+    mutationFn: (payload: typeof form) =>
+      api.post(internalPaths.currencies, { code: payload.code.trim() }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'currencies'] });
       setShowCreate(false);
@@ -38,8 +50,8 @@ export default function CurrenciesPage() {
 
   const toggleStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.patch(`/api/admin/currencies/${id}`, {
-        status: status === 'active' ? 'inactive' : 'active',
+      api.patch(internalPaths.currency(id), {
+        isActive: status !== 'active',
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'currencies'] }),
   });

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Lock, Unlock, Settings } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +28,28 @@ interface MerchantsResponse {
   totalPages: number;
 }
 
+interface MerchantApiRow {
+  id: string;
+  name: string;
+  isLock: boolean;
+  createdAt: string;
+  balances: Array<{ amount: unknown; currency: string }>;
+}
+
+function mapMerchantRow(m: MerchantApiRow): Merchant {
+  const primary =
+    m.balances.find((b) => Number(b.amount) !== 0) ?? m.balances[0];
+  return {
+    id: m.id,
+    name: m.name,
+    status: m.isLock ? 'locked' : 'active',
+    balance: primary ? Number(primary.amount) : 0,
+    currency: primary?.currency ?? '—',
+    ordersCount: 0,
+    createdAt: m.createdAt,
+  };
+}
+
 interface MerchantConfig {
   commissionPayin: number;
   commissionPayout: number;
@@ -47,17 +70,35 @@ export default function MerchantsPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner', 'merchants', page],
-    queryFn: () => api.get<MerchantsResponse>(`/api/admin/merchants?page=${page}&limit=20`),
+    queryFn: async () => {
+      const raw = await api.get<{
+        data: MerchantApiRow[];
+        total: number;
+        page: number;
+        limit: number;
+      }>(`${internalPaths.merchants}?page=${page}&limit=20`);
+      const limit = raw.limit || 20;
+      return {
+        data: raw.data.map(mapMerchantRow),
+        total: raw.total,
+        page: raw.page,
+        totalPages: Math.max(1, Math.ceil(raw.total / limit)),
+      } satisfies MerchantsResponse;
+    },
   });
 
   const { data: merchantConfig } = useQuery({
     queryKey: ['owner', 'merchant-config', configModal?.id],
-    queryFn: () => api.get<MerchantConfig>(`/api/admin/merchants/${configModal!.id}/config`),
+    queryFn: () =>
+      api.get<MerchantConfig>(
+        internalPaths.notImplemented.merchantConfig(configModal!.id),
+      ),
     enabled: !!configModal,
   });
 
   const createMerchant = useMutation({
-    mutationFn: (payload: typeof form) => api.post('/api/admin/merchants', payload),
+    mutationFn: (payload: typeof form) =>
+      api.post(internalPaths.merchants, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'merchants'] });
       setShowCreate(false);
@@ -67,12 +108,18 @@ export default function MerchantsPage() {
 
   const toggleLock = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.patch(`/api/admin/merchants/${id}`, { status: status === 'active' ? 'locked' : 'active' }),
+      status === 'active'
+        ? api.patch(internalPaths.merchantLock(id))
+        : api.patch(internalPaths.merchantUnlock(id)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'merchants'] }),
   });
 
   const saveConfig = useMutation({
-    mutationFn: () => api.patch(`/api/admin/merchants/${configModal!.id}/config`, config),
+    mutationFn: () =>
+      api.patch(
+        internalPaths.notImplemented.merchantConfig(configModal!.id),
+        config,
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'merchants'] });
       setConfigModal(null);
@@ -111,7 +158,7 @@ export default function MerchantsPage() {
       header: 'Balance',
       render: (m: Merchant) => (
         <span className="font-mono text-sm text-text-primary">
-          {m.balance.toLocaleString()} {m.currency}
+          {(m.balance ?? 0).toLocaleString()} {m.currency ?? '—'}
         </span>
       ),
     },
@@ -119,7 +166,9 @@ export default function MerchantsPage() {
       key: 'orders',
       header: 'Orders',
       render: (m: Merchant) => (
-        <span className="text-sm text-text-secondary">{m.ordersCount.toLocaleString()}</span>
+        <span className="text-sm text-text-secondary">
+          {(m.ordersCount ?? 0).toLocaleString()}
+        </span>
       ),
     },
     {

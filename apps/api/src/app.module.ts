@@ -12,6 +12,7 @@ import { UsersModule } from './modules/users/users.module';
 import { MerchantsModule } from './modules/merchants/merchants.module';
 import { TradersModule } from './modules/traders/traders.module';
 import { DirectionsModule } from './modules/directions/directions.module';
+import { CurrenciesModule } from './modules/currencies/currencies.module';
 import { BanksModule } from './modules/banks/banks.module';
 import { RequisitesModule } from './modules/requisites/requisites.module';
 import { FilesModule } from './modules/files/files.module';
@@ -53,6 +54,7 @@ import { RatingsModule } from './modules/ratings/ratings.module';
     MerchantsModule,
     TradersModule,
     DirectionsModule,
+    CurrenciesModule,
     BanksModule,
     RequisitesModule,
     FilesModule,

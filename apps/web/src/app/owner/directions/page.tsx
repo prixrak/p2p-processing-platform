@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Power, PowerOff, Pencil } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -51,11 +52,15 @@ export default function DirectionsPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner', 'directions', page],
-    queryFn: () => api.get<DirectionsResponse>(`/api/admin/directions?page=${page}&limit=20`),
+    queryFn: () =>
+      api.get<DirectionsResponse>(
+        `${internalPaths.directions}?page=${page}&limit=20`,
+      ),
   });
 
   const createDirection = useMutation({
-    mutationFn: (payload: typeof form) => api.post('/api/admin/directions', payload),
+    mutationFn: (payload: typeof form) =>
+      api.post(internalPaths.directions, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'directions'] });
       setShowCreate(false);
@@ -65,7 +70,7 @@ export default function DirectionsPage() {
 
   const updateDirection = useMutation({
     mutationFn: (payload: Partial<Direction> & { id: string }) =>
-      api.patch(`/api/admin/directions/${payload.id}`, payload),
+      api.patch(internalPaths.direction(payload.id), payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'directions'] });
       setEditItem(null);
@@ -74,7 +79,7 @@ export default function DirectionsPage() {
 
   const toggleOnline = useMutation({
     mutationFn: ({ id, isOnline }: { id: string; isOnline: boolean }) =>
-      api.patch(`/api/admin/directions/${id}`, { isOnline: !isOnline }),
+      api.patch(internalPaths.direction(id), { isOnline: !isOnline }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'directions'] }),
   });
 

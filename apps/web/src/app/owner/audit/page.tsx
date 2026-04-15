@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +29,19 @@ interface AuditResponse {
   totalPages: number;
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function serializeJson(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'string') return v;
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
 const actionColors: Record<string, 'green' | 'yellow' | 'red' | 'blue' | 'default'> = {
   CREATE: 'green',
   UPDATE: 'blue',
@@ -46,14 +60,63 @@ export default function AuditPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner', 'audit', page, search, actionFilter, entityFilter, dateFrom, dateTo],
-    queryFn: () => {
-      const params = new URLSearchParams({ page: String(page), limit: '30' });
-      if (search) params.set('search', search);
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: '30',
+      });
       if (actionFilter) params.set('action', actionFilter);
-      if (entityFilter) params.set('entity', entityFilter);
-      if (dateFrom) params.set('dateFrom', dateFrom);
-      if (dateTo) params.set('dateTo', dateTo);
-      return api.get<AuditResponse>(`/api/admin/audit?${params}`);
+      if (entityFilter) params.set('entityType', entityFilter);
+      if (dateFrom) params.set('from', new Date(dateFrom).toISOString());
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setHours(23, 59, 59, 999);
+        params.set('to', end.toISOString());
+      }
+      const q = search.trim();
+      if (q && UUID_RE.test(q)) {
+        params.set('actorId', q);
+      }
+
+      const res = await api.get<{
+        items: Array<{
+          id: string;
+          createdAt: string;
+          action: string;
+          entityType: string;
+          entityId: string | null;
+          oldValue: unknown;
+          newValue: unknown;
+          actorRole: string | null;
+          actor: { email: string; role: string } | null;
+          ip: string | null;
+        }>;
+        total: number;
+        page: number;
+        limit: number;
+      }>(`${internalPaths.audit}?${params}`);
+
+      const items = Array.isArray(res?.items) ? res.items : [];
+      const limit = res.limit || 30;
+      const dataRows: AuditEntry[] = items.map((log) => ({
+        id: log.id,
+        actor: log.actor?.email ?? '—',
+        actorRole: String(log.actor?.role ?? log.actorRole ?? '—'),
+        action: log.action,
+        entity: log.entityType,
+        entityId: log.entityId ?? '',
+        previousValue: serializeJson(log.oldValue),
+        newValue: serializeJson(log.newValue),
+        ipAddress: log.ip ?? '—',
+        timestamp: log.createdAt,
+      }));
+
+      return {
+        data: dataRows,
+        total: res.total,
+        page: res.page,
+        totalPages: Math.max(1, Math.ceil(res.total / limit)),
+      } satisfies AuditResponse;
     },
   });
 
@@ -90,7 +153,9 @@ export default function AuditPage() {
       render: (e: AuditEntry) => (
         <div>
           <p className="text-sm text-text-primary">{e.entity}</p>
-          <p className="font-mono text-xs text-text-muted">{e.entityId.slice(0, 12)}</p>
+          <p className="font-mono text-xs text-text-muted">
+            {e.entityId ? e.entityId.slice(0, 12) : '—'}
+          </p>
         </div>
       ),
     },
@@ -135,7 +200,7 @@ export default function AuditPage() {
 
       <div className="flex flex-wrap items-end gap-3">
         <Input
-          placeholder="Search actor or entity..."
+          placeholder="Actor user UUID (optional)…"
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           className="w-60"
@@ -144,10 +209,11 @@ export default function AuditPage() {
           options={[
             { value: '', label: 'All Actions' },
             { value: 'CREATE', label: 'Create' },
+            { value: 'CREATE_USER', label: 'Create user' },
             { value: 'UPDATE', label: 'Update' },
-            { value: 'DELETE', label: 'Delete' },
+            { value: 'UPDATE_USER', label: 'Update user' },
             { value: 'LOGIN', label: 'Login' },
-            { value: 'STATUS_CHANGE', label: 'Status Change' },
+            { value: 'REGISTER', label: 'Register' },
           ]}
           value={actionFilter}
           onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
@@ -156,12 +222,12 @@ export default function AuditPage() {
         <Select
           options={[
             { value: '', label: 'All Entities' },
-            { value: 'USER', label: 'User' },
-            { value: 'ORDER', label: 'Order' },
-            { value: 'MERCHANT', label: 'Merchant' },
-            { value: 'TRADER', label: 'Trader' },
-            { value: 'DIRECTION', label: 'Direction' },
-            { value: 'SETTLEMENT', label: 'Settlement' },
+            { value: 'User', label: 'User' },
+            { value: 'Merchant', label: 'Merchant' },
+            { value: 'Currency', label: 'Currency' },
+            { value: 'Settlement', label: 'Settlement' },
+            { value: 'Requisite', label: 'Requisite' },
+            { value: 'Direction', label: 'Direction' },
           ]}
           value={entityFilter}
           onChange={(e) => { setEntityFilter(e.target.value); setPage(1); }}

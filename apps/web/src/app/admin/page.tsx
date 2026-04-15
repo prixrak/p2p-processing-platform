@@ -11,6 +11,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { StatCard } from '@/components/ui/stat-card';
 
 interface AdminStats {
@@ -31,7 +32,7 @@ const quickLinks = [
 export default function AdminDashboard() {
   const { data: stats, isLoading } = useQuery<AdminStats>({
     queryKey: ['admin', 'stats'],
-    queryFn: () => api.get('/api/admin/stats'),
+    queryFn: () => api.get(internalPaths.adminStats),
   });
 
   return (

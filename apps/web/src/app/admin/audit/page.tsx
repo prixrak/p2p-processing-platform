@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ScrollText } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { FilterBar, FilterSelect, FilterInput } from '@/components/ui/filters';
@@ -22,6 +23,28 @@ interface AuditEntry {
   newValue: Record<string, unknown> | null;
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function toJsonRecord(v: unknown): Record<string, unknown> | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'object' && !Array.isArray(v)) {
+    return v as Record<string, unknown>;
+  }
+  return { value: v as string | number | boolean };
+}
+
+function summarizeDetails(v: unknown): string {
+  if (v === null || v === undefined) return '—';
+  if (typeof v === 'string') return v.length > 120 ? `${v.slice(0, 117)}…` : v;
+  try {
+    const s = JSON.stringify(v);
+    return s.length > 120 ? `${s.slice(0, 117)}…` : s;
+  } catch {
+    return '—';
+  }
+}
+
 export default function AuditLogPage() {
   const [actorFilter, setActorFilter] = useState('');
   const [actionFilter, setActionFilter] = useState('');
@@ -31,14 +54,49 @@ export default function AuditLogPage() {
 
   const { data: entries = [], isLoading } = useQuery<AuditEntry[]>({
     queryKey: ['admin', 'audit', { actorFilter, actionFilter, entityFilter, dateFrom, dateTo }],
-    queryFn: () => {
+    queryFn: async () => {
       const params = new URLSearchParams();
-      if (actorFilter) params.set('actor', actorFilter);
+      params.set('page', '1');
+      params.set('limit', '100');
       if (actionFilter) params.set('action', actionFilter);
-      if (entityFilter) params.set('entity', entityFilter);
-      if (dateFrom) params.set('dateFrom', dateFrom);
-      if (dateTo) params.set('dateTo', dateTo);
-      return api.get(`/api/admin/audit?${params}`);
+      if (entityFilter) params.set('entityType', entityFilter);
+      if (dateFrom) params.set('from', new Date(dateFrom).toISOString());
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setHours(23, 59, 59, 999);
+        params.set('to', end.toISOString());
+      }
+      if (actorFilter && UUID_RE.test(actorFilter)) {
+        params.set('actorId', actorFilter);
+      }
+
+      const res = await api.get<{
+        items: Array<{
+          id: string;
+          createdAt: string;
+          action: string;
+          entityType: string;
+          entityId: string | null;
+          oldValue: unknown;
+          newValue: unknown;
+          actorRole: string | null;
+          actor: { email: string; role: string } | null;
+        }>;
+      }>(`${internalPaths.audit}?${params}`);
+
+      const rows = Array.isArray(res?.items) ? res.items : [];
+      return rows.map((log) => ({
+        id: log.id,
+        timestamp: log.createdAt,
+        actor: log.actor?.email ?? '—',
+        actorRole: String(log.actor?.role ?? log.actorRole ?? '—'),
+        action: log.action,
+        entity: log.entityType,
+        entityId: log.entityId ?? '',
+        details: summarizeDetails(log.newValue),
+        oldValue: toJsonRecord(log.oldValue),
+        newValue: toJsonRecord(log.newValue),
+      }));
     },
   });
 
@@ -86,7 +144,7 @@ export default function AuditLogPage() {
         <div>
           <span className="text-text-primary text-sm">{row.entity}</span>
           <span className="text-text-muted text-xs ml-1.5 font-mono">
-            {row.entityId.slice(0, 8)}
+            {row.entityId ? row.entityId.slice(0, 8) : '—'}
           </span>
         </div>
       ),
@@ -116,10 +174,10 @@ export default function AuditLogPage() {
 
       <FilterBar>
         <FilterInput
-          label="Actor"
+          label="Actor ID"
           value={actorFilter}
           onChange={setActorFilter}
-          placeholder="User email..."
+          placeholder="User UUID (optional)…"
         />
         <FilterSelect
           label="Action"
@@ -127,13 +185,15 @@ export default function AuditLogPage() {
           onChange={setActionFilter}
           options={[
             { value: '', label: 'All actions' },
-            { value: 'create', label: 'Create' },
-            { value: 'update', label: 'Update' },
-            { value: 'delete', label: 'Delete' },
-            { value: 'enable', label: 'Enable' },
-            { value: 'disable', label: 'Disable' },
-            { value: 'assign', label: 'Assign' },
-            { value: 'status_change', label: 'Status Change' },
+            { value: 'LOGIN', label: 'Login' },
+            { value: 'REGISTER', label: 'Register' },
+            { value: 'CREATE_USER', label: 'Create user' },
+            { value: 'UPDATE_USER', label: 'Update user' },
+            { value: 'DEACTIVATE_USER', label: 'Deactivate user' },
+            { value: 'CREATE', label: 'Create' },
+            { value: 'UPDATE', label: 'Update' },
+            { value: 'LOCK', label: 'Lock' },
+            { value: 'UNLOCK', label: 'Unlock' },
           ]}
         />
         <FilterSelect
@@ -142,12 +202,12 @@ export default function AuditLogPage() {
           onChange={setEntityFilter}
           options={[
             { value: '', label: 'All entities' },
-            { value: 'order', label: 'Order' },
-            { value: 'trader', label: 'Trader' },
-            { value: 'merchant', label: 'Merchant' },
-            { value: 'settlement', label: 'Settlement' },
-            { value: 'requisite', label: 'Requisite' },
-            { value: 'api_key', label: 'API Key' },
+            { value: 'User', label: 'User' },
+            { value: 'Merchant', label: 'Merchant' },
+            { value: 'Currency', label: 'Currency' },
+            { value: 'Settlement', label: 'Settlement' },
+            { value: 'Requisite', label: 'Requisite' },
+            { value: 'Direction', label: 'Direction' },
           ]}
         />
         <FilterInput

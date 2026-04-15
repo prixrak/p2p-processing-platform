@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle, XCircle, Eye } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -59,19 +60,22 @@ export default function SettlementsPage() {
     queryKey: ['owner', 'settlements', tab, page],
     queryFn: () => {
       const params = new URLSearchParams({ status: tab, page: String(page), limit: '20' });
-      return api.get<SettlementsResponse>(`/api/admin/settlements?${params}`);
+      return api.get<SettlementsResponse>(`${internalPaths.settlements}?${params}`);
     },
   });
 
   const { data: details } = useQuery({
     queryKey: ['owner', 'settlement-details', detailId],
-    queryFn: () => api.get<SettlementDetails>(`/api/admin/settlements/${detailId}`),
+    queryFn: () =>
+      api.get<SettlementDetails>(
+        internalPaths.notImplemented.settlement(detailId!),
+      ),
     enabled: !!detailId,
   });
 
   const processSettlement = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'approve' | 'reject' }) =>
-      api.post(`/api/admin/settlements/${id}/${action}`),
+      api.post(internalPaths.notImplemented.settlementAction(id, action)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'settlements'] });
       queryClient.invalidateQueries({ queryKey: ['owner', 'settlement-details'] });

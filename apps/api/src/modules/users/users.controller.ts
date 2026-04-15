@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Delete,
   Param,
@@ -19,6 +20,8 @@ import {
 } from '@nestjs/swagger';
 import { UserRole } from '@p2p/shared';
 import { UsersService } from './users.service';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -43,6 +46,14 @@ export class UsersController {
     return this.usersService.findAll(page, limit);
   }
 
+  @Post()
+  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @ApiOperation({ summary: 'Create user (admin/owner)' })
+  @Audited('CREATE_USER', 'User')
+  async create(@Body() dto: CreateUserDto) {
+    return this.usersService.create(dto.email, dto.password, dto.role);
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Get user by ID (admin/owner)' })
@@ -56,7 +67,7 @@ export class UsersController {
   @Audited('UPDATE_USER', 'User')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() data: { email?: string; role?: string },
+    @Body() data: UpdateUserDto,
   ) {
     return this.usersService.update(id, data);
   }

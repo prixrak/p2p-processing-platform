@@ -1,9 +1,12 @@
 import {
   Injectable,
   NotFoundException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
+import { UserRole } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
+import { hashPassword } from '../../common/utils/password';
 
 const USER_SELECT = {
   id: true,
@@ -56,12 +59,33 @@ export class UsersService {
     });
   }
 
-  async update(id: string, data: { email?: string; role?: string }) {
+  async create(email: string, password: string, role: UserRole) {
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      throw new ConflictException('Email already registered');
+    }
+
+    const passwordHash = await hashPassword(password);
+
+    const user = await this.prisma.user.create({
+      data: { email, passwordHash, role },
+      select: USER_SELECT,
+    });
+
+    this.logger.log(`User ${email} created with role ${role}`);
+    return user;
+  }
+
+  async update(
+    id: string,
+    data: { email?: string; role?: UserRole; isActive?: boolean },
+  ) {
     await this.findById(id);
 
     const updateData: Record<string, unknown> = {};
-    if (data.email) updateData.email = data.email;
-    if (data.role) updateData.role = data.role;
+    if (data.email !== undefined) updateData.email = data.email;
+    if (data.role !== undefined) updateData.role = data.role;
+    if (data.isActive !== undefined) updateData.isActive = data.isActive;
 
     const updated = await this.prisma.user.update({
       where: { id },

@@ -11,6 +11,7 @@ import {
   Users,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { StatCard, Card } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -34,7 +35,10 @@ export default function StatisticsPage() {
 
   const { data: stats } = useQuery({
     queryKey: ['owner', 'statistics', period],
-    queryFn: () => api.get<Statistics>(`/api/admin/statistics?period=${period}`),
+    queryFn: () =>
+      api.get<Statistics>(
+        `${internalPaths.notImplemented.platformStatistics}?period=${period}`,
+      ),
   });
 
   return (

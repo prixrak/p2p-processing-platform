@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Users, ToggleLeft, ToggleRight } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { DataTable } from '@/components/ui/data-table';
 import { StatusBadge } from '@/components/ui/badge';
 import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
@@ -60,17 +61,35 @@ export default function TradersPage() {
 
   const { data: traders = [], isLoading } = useQuery<Trader[]>({
     queryKey: ['admin', 'traders', { status: statusFilter, search }],
-    queryFn: () => {
+    queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
       if (search) params.set('search', search);
-      return api.get(`/api/admin/traders?${params}`);
+      const res = await api.get<{
+        data: Array<{
+          id: string;
+          isActive: boolean;
+          user: { email: string };
+          requisites?: unknown[];
+        }>;
+      }>(`${internalPaths.traders}?${params}`);
+      return res.data.map((p) => ({
+        id: p.id,
+        name: p.user.email.split('@')[0] ?? 'Trader',
+        email: p.user.email,
+        status: p.isActive ? 'active' : 'inactive',
+        activeRequisitesCount: Array.isArray(p.requisites) ? p.requisites.length : 0,
+        totalVolume: 0,
+        ordersCount: 0,
+      }));
     },
   });
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
-      api.patch(`/api/admin/traders/${id}/status`, { status: enabled ? 'active' : 'disabled' }),
+      enabled
+        ? api.patch(internalPaths.traderActivate(id))
+        : api.patch(internalPaths.traderDeactivate(id)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'traders'] });
     },
@@ -78,7 +97,7 @@ export default function TradersPage() {
 
   const { data: traderDetail, isLoading: detailLoading } = useQuery<TraderDetail>({
     queryKey: ['admin', 'traders', selectedTrader?.id],
-    queryFn: () => api.get(`/api/admin/traders/${selectedTrader!.id}`),
+    queryFn: () => api.get(internalPaths.trader(selectedTrader!.id)),
     enabled: !!selectedTrader,
   });
 

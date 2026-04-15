@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftRight } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { DataTable } from '@/components/ui/data-table';
 import { StatusBadge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
@@ -52,18 +53,23 @@ export default function AdminOrdersPage() {
       if (traderFilter) params.set('trader', traderFilter);
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
-      return api.get(`/api/admin/orders?${params}`);
+      return api.get(internalPaths.notImplemented.ordersQuery(params.toString()));
     },
   });
 
   const { data: traders = [] } = useQuery<TraderOption[]>({
     queryKey: ['admin', 'traders', 'options'],
-    queryFn: () => api.get('/api/admin/traders/options'),
+    queryFn: async () => {
+      const res = await api.get<{
+        data: Array<{ id: string; user: { email: string } }>;
+      }>(`${internalPaths.traders}?page=1&limit=500`);
+      return res.data.map((t) => ({ id: t.id, name: t.user.email }));
+    },
   });
 
   const assignMutation = useMutation({
     mutationFn: ({ orderId, traderId }: { orderId: string; traderId: string }) =>
-      api.post(`/api/admin/orders/${orderId}/assign`, { traderId }),
+      api.post(internalPaths.payoutAssign, { orderId, traderId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'orders'] });
       setAssigningOrder(null);
