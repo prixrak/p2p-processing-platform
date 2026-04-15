@@ -26,17 +26,19 @@ model User {
   isActive      Boolean   @default(true) @map("is_active")
   twoFaSecret   String?   @map("two_fa_secret")
   referredById  String?   @map("referred_by_id") @db.Uuid
+  lastLoginAt   DateTime? @map("last_login_at")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  sessions         Session[]
-  merchant         Merchant?
-  traderProfile    TraderProfile?
-  referralProfile  ReferralProfile?
-  referrer         ReferralProfile? @relation("ReferredUsers", fields: [referredById], references: [id])
-  auditLogs        AuditLog[]
-  settlements      Settlement[] @relation("SettlementAdmin")
-  uploadedFiles    File[]
+  sessions                    Session[]
+  merchant                    Merchant?
+  traderProfile               TraderProfile?
+  referralProfile             ReferralProfile?
+  referrer                    ReferralProfile?     @relation("ReferredUsers", fields: [referredById], references: [id])
+  auditLogs                   AuditLog[]
+  settlements                 Settlement[]         @relation("SettlementAdmin")
+  uploadedFiles               File[]
+  balanceTransactionsCreated  BalanceTransaction[] @relation("BalanceTxCreator")
 
   @@index([referredById])
   @@map("users")
@@ -83,11 +85,12 @@ model Merchant {
   isLock    Boolean  @default(false) @map("is_lock")
   createdAt DateTime @default(now()) @map("created_at")
 
-  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  apiKeys   MerchantApiKey[]
-  balances  MerchantBalance[]
-  payinOrders  PayinOrder[]
-  payoutOrders PayoutOrder[]
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKeys            MerchantApiKey[]
+  balances           MerchantBalance[]
+  payinOrders        PayinOrder[]
+  payoutOrders       PayoutOrder[]
+  merchantDirections MerchantDirection[]
 
   @@map("merchants")
 }
@@ -104,6 +107,7 @@ model MerchantApiKey {
   publicKey     String          @unique @map("public_key")
   secretKeyHash String          @map("secret_key_hash")
   isActive      Boolean         @default(true) @map("is_active")
+  revokedAt     DateTime?       @map("revoked_at")
   createdAt     DateTime        @default(now()) @map("created_at")
 
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
@@ -156,6 +160,129 @@ model Direction {
   @@map("directions")
 }
 
+// ─── Geo: Countries ───
+
+model Country {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  code      String   @unique
+  currency  String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  paymentMethods PaymentMethod[]
+
+  @@map("countries")
+}
+
+// ─── Payment Methods ───
+
+enum PaymentMethodFlowType {
+  P2P
+  P2C
+  CRYPTO
+}
+
+enum PaymentMethodRequisiteType {
+  CARD
+  IBAN
+  WALLET
+}
+
+enum PaymentMethodAvailability {
+  PAYIN
+  PAYOUT
+  BOTH
+}
+
+model PaymentMethod {
+  id            String                     @id @default(uuid()) @db.Uuid
+  countryId     String                     @map("country_id") @db.Uuid
+  name          String                     @unique
+  displayName   String                     @map("display_name")
+  flowType      PaymentMethodFlowType      @map("flow_type")
+  requisiteType PaymentMethodRequisiteType @map("requisite_type")
+  availability  PaymentMethodAvailability
+  isActive      Boolean                    @default(true) @map("is_active")
+  createdAt     DateTime                   @default(now()) @map("created_at")
+
+  country            Country             @relation(fields: [countryId], references: [id])
+  merchantDirections MerchantDirection[]
+  payinOrders        PayinOrder[]
+  payoutOrders       PayoutOrder[]
+  requisites         Requisite[]
+
+  @@index([countryId, isActive])
+  @@map("payment_methods")
+}
+
+// ─── Merchant Directions (per-merchant settings) ───
+
+model MerchantDirection {
+  id                      String        @id @default(uuid()) @db.Uuid
+  merchantId              String        @map("merchant_id") @db.Uuid
+  paymentMethodId         String?       @map("payment_method_id") @db.Uuid
+  directionType           DirectionType @map("direction_type")
+  currency                String
+  minAmount               Decimal       @default(0) @map("min_amount") @db.Decimal(18, 4)
+  maxAmount               Decimal       @default(0) @map("max_amount") @db.Decimal(18, 4)
+  defaultCommissionPercent Decimal      @default(0) @map("default_commission_percent") @db.Decimal(8, 4)
+  isActive                Boolean       @default(true) @map("is_active")
+  createdAt               DateTime      @default(now()) @map("created_at")
+
+  merchant        Merchant         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  paymentMethod   PaymentMethod?   @relation(fields: [paymentMethodId], references: [id])
+  commissionTiers MerchantCommissionTier[]
+
+  @@unique([merchantId, directionType, currency])
+  @@index([merchantId, directionType])
+  @@map("merchant_directions")
+}
+
+// ─── Merchant Commission Tiers ───
+
+model MerchantCommissionTier {
+  id                  String   @id @default(uuid()) @db.Uuid
+  merchantDirectionId String   @map("merchant_direction_id") @db.Uuid
+  amountFrom          Decimal  @map("amount_from") @db.Decimal(18, 4)
+  amountTo            Decimal? @map("amount_to") @db.Decimal(18, 4)
+  commissionPercent   Decimal  @map("commission_percent") @db.Decimal(8, 4)
+
+  merchantDirection MerchantDirection @relation(fields: [merchantDirectionId], references: [id], onDelete: Cascade)
+
+  @@index([merchantDirectionId])
+  @@map("merchant_commission_tiers")
+}
+
+// ─── Balance Transactions ───
+
+enum BalanceTransactionType {
+  PAYIN_COMMISSION
+  PAYOUT_DEBIT
+  SETTLEMENT
+  MANUAL_CREDIT
+  MANUAL_DEBIT
+}
+
+model BalanceTransaction {
+  id          String                 @id @default(uuid()) @db.Uuid
+  traderId    String                 @map("trader_id") @db.Uuid
+  type        BalanceTransactionType
+  amount      Decimal                @db.Decimal(18, 4)
+  currency    String
+  referenceId String?                @map("reference_id") @db.Uuid
+  createdById String?                @map("created_by_id") @db.Uuid
+  comment     String?
+  createdAt   DateTime               @default(now()) @map("created_at")
+
+  trader    TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
+  createdBy User?         @relation("BalanceTxCreator", fields: [createdById], references: [id])
+
+  @@index([traderId])
+  @@index([createdAt])
+  @@map("balance_transactions")
+}
+
 // ─── Traders & Requisites ───
 
 model TraderProfile {
@@ -166,13 +293,14 @@ model TraderProfile {
   payoutMaxLimit Decimal  @default(0) @map("payout_max_limit") @db.Decimal(18, 4)
   createdAt      DateTime @default(now()) @map("created_at")
 
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  balances         TraderBalance[]
-  requisites       Requisite[]
-  payinOrders      PayinOrder[]
-  payoutOrders     PayoutOrder[]
-  telegramSettings TelegramSettings?
-  settlements      Settlement[]
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balances            TraderBalance[]
+  requisites          Requisite[]
+  payinOrders         PayinOrder[]
+  payoutOrders        PayoutOrder[]
+  telegramSettings    TelegramSettings?
+  settlements         Settlement[]
+  balanceTransactions BalanceTransaction[]
 
   @@map("trader_profiles")
 }
@@ -194,28 +322,37 @@ enum RequisiteType {
   IBAN
 }
 
-model Requisite {
-  id               String        @id @default(uuid()) @db.Uuid
-  traderId         String        @map("trader_id") @db.Uuid
-  type             RequisiteType
-  number           String
-  owner            String
-  bankId           Int?          @map("bank_id")
-  code             String?
-  isActive         Boolean       @default(true) @map("is_active")
-  acceptsOtherBanks Boolean      @default(false) @map("accepts_other_banks")
-  minAmount        Decimal       @default(0) @map("min_amount") @db.Decimal(18, 4)
-  maxAmount        Decimal       @default(999999999) @map("max_amount") @db.Decimal(18, 4)
-  limitTotalAmount Decimal       @default(999999999) @map("limit_total_amount") @db.Decimal(18, 4)
-  limitTotalOps    Int           @default(999999) @map("limit_total_ops")
-  usedAmount       Decimal       @default(0) @map("used_amount") @db.Decimal(18, 4)
-  usedOps          Int           @default(0) @map("used_ops")
-  currency         String        @default("UAH")
-  createdAt        DateTime      @default(now()) @map("created_at")
+enum RequisiteDisabledReason {
+  LIMIT_AMOUNT
+  LIMIT_TX
+  MANUAL
+}
 
-  trader       TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
-  bank         Bank?         @relation(fields: [bankId], references: [id])
-  payinOrders  PayinOrder[]
+model Requisite {
+  id                String                   @id @default(uuid()) @db.Uuid
+  traderId          String                   @map("trader_id") @db.Uuid
+  paymentMethodId   String?                  @map("payment_method_id") @db.Uuid
+  type              RequisiteType
+  number            String
+  owner             String
+  bankId            Int?                     @map("bank_id")
+  code              String?
+  isActive          Boolean                  @default(true) @map("is_active")
+  disabledReason    RequisiteDisabledReason? @map("disabled_reason")
+  acceptsOtherBanks Boolean                  @default(false) @map("accepts_other_banks")
+  minAmount         Decimal                  @default(0) @map("min_amount") @db.Decimal(18, 4)
+  maxAmount         Decimal                  @default(999999999) @map("max_amount") @db.Decimal(18, 4)
+  limitTotalAmount  Decimal                  @default(999999999) @map("limit_total_amount") @db.Decimal(18, 4)
+  limitTotalOps     Int                      @default(999999) @map("limit_total_ops")
+  usedAmount        Decimal                  @default(0) @map("used_amount") @db.Decimal(18, 4)
+  usedOps           Int                      @default(0) @map("used_ops")
+  currency          String                   @default("UAH")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+
+  trader        TraderProfile  @relation(fields: [traderId], references: [id], onDelete: Cascade)
+  paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  bank          Bank?          @relation(fields: [bankId], references: [id])
+  payinOrders   PayinOrder[]
 
   @@index([traderId, isActive])
   @@index([currency, isActive])
@@ -251,31 +388,35 @@ enum PayinStatus {
 }
 
 model PayinOrder {
-  id              String      @id @default(uuid()) @db.Uuid
-  requestId       String      @map("request_id")
-  merchantId      String      @map("merchant_id") @db.Uuid
-  traderId        String?     @map("trader_id") @db.Uuid
-  requisiteId     String?     @map("requisite_id") @db.Uuid
-  amount          Decimal     @db.Decimal(18, 4)
-  currency        String
-  commission      Decimal     @default(0) @db.Decimal(18, 4)
-  partnerAmount   Decimal     @default(0) @map("partner_amount") @db.Decimal(18, 4)
-  rate            Decimal     @default(1) @db.Decimal(18, 8)
-  status          PayinStatus @default(PENDING)
-  userFullName    String?     @map("user_full_name")
-  userIdExternal  String?     @map("user_id_external")
-  callbackUrl     String?     @map("callback_url")
-  redirectUrl     String?     @map("redirect_url")
-  autocloseAt     DateTime?   @map("autoclose_at")
-  confirmedAt     DateTime?   @map("confirmed_at")
-  isH2h           Boolean     @default(false) @map("is_h2h")
-  createdAt       DateTime    @default(now()) @map("created_at")
-  updatedAt       DateTime    @updatedAt @map("updated_at")
+  id                String      @id @default(uuid()) @db.Uuid
+  requestId         String      @map("request_id")
+  merchantId        String      @map("merchant_id") @db.Uuid
+  traderId          String?     @map("trader_id") @db.Uuid
+  requisiteId       String?     @map("requisite_id") @db.Uuid
+  paymentMethodId   String?     @map("payment_method_id") @db.Uuid
+  amount            Decimal     @db.Decimal(18, 4)
+  currency          String
+  commissionPercent Decimal     @default(0) @map("commission_percent") @db.Decimal(8, 4)
+  commission        Decimal     @default(0) @db.Decimal(18, 4)
+  partnerAmount     Decimal     @default(0) @map("partner_amount") @db.Decimal(18, 4)
+  rate              Decimal     @default(1) @db.Decimal(18, 8)
+  status            PayinStatus @default(PENDING)
+  userFullName      String?     @map("user_full_name")
+  userIdExternal    String?     @map("user_id_external")
+  callbackUrl       String?     @map("callback_url")
+  redirectUrl       String?     @map("redirect_url")
+  autocloseAt       DateTime?   @map("autoclose_at")
+  confirmedAt       DateTime?   @map("confirmed_at")
+  completedAt       DateTime?   @map("completed_at")
+  isH2h             Boolean     @default(false) @map("is_h2h")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
 
-  merchant    Merchant       @relation(fields: [merchantId], references: [id])
-  trader      TraderProfile? @relation(fields: [traderId], references: [id])
-  requisite   Requisite?     @relation(fields: [requisiteId], references: [id])
-  appeals     Appeal[]
+  merchant      Merchant       @relation(fields: [merchantId], references: [id])
+  trader        TraderProfile? @relation(fields: [traderId], references: [id])
+  requisite     Requisite?     @relation(fields: [requisiteId], references: [id])
+  paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  appeals       Appeal[]
   webhookOutbox WebhookOutbox[]
 
   @@unique([merchantId, requestId])
@@ -307,6 +448,7 @@ model PayoutOrder {
   requestId       String            @map("request_id")
   merchantId      String            @map("merchant_id") @db.Uuid
   traderId        String?           @map("trader_id") @db.Uuid
+  paymentMethodId String?           @map("payment_method_id") @db.Uuid
   amount          Decimal           @db.Decimal(18, 4)
   currency        String
   status          PayoutStatus      @default(PENDING)
@@ -315,6 +457,7 @@ model PayoutOrder {
   detailsOwner    String?           @map("details_owner")
   detailsCode     String?           @map("details_code")
   rate            Decimal           @default(1) @db.Decimal(18, 8)
+  commissionAmount Decimal          @default(0) @map("commission_amount") @db.Decimal(18, 4)
   partnerAmount   Decimal           @default(0) @map("partner_amount") @db.Decimal(18, 4)
   percentFee      Decimal           @default(0) @map("percent_fee") @db.Decimal(8, 4)
   callbackUrl     String?           @map("callback_url")
@@ -323,8 +466,9 @@ model PayoutOrder {
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
-  merchant    Merchant       @relation(fields: [merchantId], references: [id])
-  trader      TraderProfile? @relation(fields: [traderId], references: [id])
+  merchant      Merchant       @relation(fields: [merchantId], references: [id])
+  trader        TraderProfile? @relation(fields: [traderId], references: [id])
+  paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
   webhookOutbox WebhookOutbox[]
 
   @@unique([merchantId, requestId])

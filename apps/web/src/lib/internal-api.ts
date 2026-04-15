@@ -50,6 +50,23 @@ export const internalPaths = {
   bank: (id: string | number) => `/api/banks/${id}`,
   bankDeactivate: (id: string | number) => `/api/banks/${id}/deactivate`,
 
+  // Balance transactions
+  balanceTransactions: '/api/trader/balance/transactions',
+  adminBalanceTransactions: '/api/admin/balance-transactions',
+
+  // Countries & Payment Methods
+  countries: '/api/countries',
+  adminCountries: '/api/admin/countries',
+  adminCountry: (id: string) => `/api/admin/countries/${id}`,
+  paymentMethods: '/api/payment-methods',
+  adminPaymentMethods: '/api/admin/payment-methods',
+  adminPaymentMethod: (id: string) => `/api/admin/payment-methods/${id}`,
+
+  // Merchant directions
+  merchantDirections: (merchantId: string) => `/api/merchants/${merchantId}/directions`,
+  merchantDirection: (merchantId: string, id: string) => `/api/merchants/${merchantId}/directions/${id}`,
+  merchantDirectionTiers: (merchantId: string, id: string) => `/api/merchants/${merchantId}/directions/${id}/tiers`,
+
   // Referral management (admin) and cabinet
   referrals: '/api/referrals',
   referral: (id: string) => `/api/referrals/${id}`,

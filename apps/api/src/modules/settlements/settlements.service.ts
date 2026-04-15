@@ -7,13 +7,17 @@ import {
 import { PrismaService } from '../../config/prisma.service';
 import { CreateSettlementDto, FilterSettlementsDto } from './dto';
 import { SettlementType } from '@p2p/shared';
-import { SettlementTypeEnum, Prisma } from '@prisma/client';
+import { SettlementTypeEnum, BalanceTransactionType, Prisma } from '@prisma/client';
+import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
 
 @Injectable()
 export class SettlementsService {
   private readonly logger = new Logger(SettlementsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly balanceTxService: BalanceTransactionsService,
+  ) {}
 
   /**
    * Create a settlement and atomically update the trader's balance
@@ -99,6 +103,22 @@ export class SettlementsService {
             },
           },
         },
+      });
+
+      const txType =
+        dto.type === SettlementType.CREDIT
+          ? BalanceTransactionType.MANUAL_CREDIT
+          : BalanceTransactionType.MANUAL_DEBIT;
+
+      await this.balanceTxService.record({
+        traderId: dto.traderId,
+        type: txType,
+        amount: dto.amount,
+        currency: dto.currency,
+        referenceId: settlement.id,
+        createdById: adminId,
+        comment: dto.note,
+        tx,
       });
 
       this.logger.log(

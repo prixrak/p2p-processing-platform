@@ -45,6 +45,7 @@ export class RequisitesService {
 
   /**
    * Atomically increment usage counters and auto-disable when limits are hit.
+   * Sets `disabledReason` so traders and admins know why it was turned off.
    */
   async updateUsage(requisiteId: string, amount: number): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
@@ -56,17 +57,18 @@ export class RequisitesService {
         },
       });
 
-      const shouldDisable =
-        Number(requisite.usedAmount) >= Number(requisite.limitTotalAmount) ||
-        requisite.usedOps >= requisite.limitTotalOps;
+      const amountLimitReached =
+        Number(requisite.usedAmount) >= Number(requisite.limitTotalAmount);
+      const txLimitReached = requisite.usedOps >= requisite.limitTotalOps;
 
-      if (shouldDisable) {
+      if (amountLimitReached || txLimitReached) {
+        const reason = amountLimitReached ? 'LIMIT_AMOUNT' : 'LIMIT_TX';
         await tx.requisite.update({
           where: { id: requisiteId },
-          data: { isActive: false },
+          data: { isActive: false, disabledReason: reason },
         });
         this.logger.warn(
-          `Requisite ${requisiteId} auto-disabled: usedAmount=${requisite.usedAmount}, usedOps=${requisite.usedOps}`,
+          `Requisite ${requisiteId} auto-disabled [${reason}]: usedAmount=${requisite.usedAmount}, usedOps=${requisite.usedOps}`,
         );
       }
     });
@@ -86,17 +88,18 @@ export class RequisitesService {
 
     if (!requisite.isActive) return false;
 
-    const shouldDisable =
-      Number(requisite.usedAmount) >= Number(requisite.limitTotalAmount) ||
-      requisite.usedOps >= requisite.limitTotalOps;
+    const amountLimitReached =
+      Number(requisite.usedAmount) >= Number(requisite.limitTotalAmount);
+    const txLimitReached = requisite.usedOps >= requisite.limitTotalOps;
 
-    if (shouldDisable) {
+    if (amountLimitReached || txLimitReached) {
+      const reason = amountLimitReached ? 'LIMIT_AMOUNT' : 'LIMIT_TX';
       await this.prisma.requisite.update({
         where: { id: requisiteId },
-        data: { isActive: false },
+        data: { isActive: false, disabledReason: reason },
       });
       this.logger.warn(
-        `Requisite ${requisiteId} auto-disabled after limit check`,
+        `Requisite ${requisiteId} auto-disabled [${reason}] after limit check`,
       );
       return true;
     }
@@ -178,7 +181,7 @@ export class RequisitesService {
     await this.findById(id);
     return this.prisma.requisite.update({
       where: { id },
-      data: { isActive: true },
+      data: { isActive: true, disabledReason: null },
     });
   }
 
@@ -186,7 +189,7 @@ export class RequisitesService {
     await this.findById(id);
     return this.prisma.requisite.update({
       where: { id },
-      data: { isActive: false },
+      data: { isActive: false, disabledReason: 'MANUAL' },
     });
   }
 }

@@ -157,6 +157,75 @@ async function main() {
     });
   }
 
+  // ─── Countries ───
+  const ukraine = await prisma.country.upsert({
+    where: { code: 'UA' },
+    update: {},
+    create: { name: 'Ukraine', code: 'UA', currency: 'UAH' },
+  });
+
+  // ─── Payment Methods ───
+  const cardP2P = await prisma.paymentMethod.upsert({
+    where: { name: 'CARD_P2P' },
+    update: {},
+    create: {
+      countryId: ukraine.id,
+      name: 'CARD_P2P',
+      displayName: 'Картка P2P',
+      flowType: 'P2P',
+      requisiteType: 'CARD',
+      availability: 'BOTH',
+    },
+  });
+
+  const ibanP2P = await prisma.paymentMethod.upsert({
+    where: { name: 'IBAN_P2P' },
+    update: {},
+    create: {
+      countryId: ukraine.id,
+      name: 'IBAN_P2P',
+      displayName: 'IBAN P2P',
+      flowType: 'P2P',
+      requisiteType: 'IBAN',
+      availability: 'PAYIN',
+    },
+  });
+  void ibanP2P;
+
+  // ─── Merchant Directions + Commission Tiers ───
+  const payinDir = await prisma.merchantDirection.upsert({
+    where: {
+      merchantId_directionType_currency: {
+        merchantId: merchant.id,
+        directionType: 'PAYIN',
+        currency: 'UAH',
+      },
+    },
+    update: {},
+    create: {
+      merchantId: merchant.id,
+      paymentMethodId: cardP2P.id,
+      directionType: 'PAYIN',
+      currency: 'UAH',
+      minAmount: 100,
+      maxAmount: 50000,
+      defaultCommissionPercent: 5,
+    },
+  });
+
+  // Tiered commission: up to 10k = 5%, 10k–50k = 4%
+  const existingTiers = await prisma.merchantCommissionTier.count({
+    where: { merchantDirectionId: payinDir.id },
+  });
+  if (existingTiers === 0) {
+    await prisma.merchantCommissionTier.createMany({
+      data: [
+        { merchantDirectionId: payinDir.id, amountFrom: 0, amountTo: 10000, commissionPercent: 5 },
+        { merchantDirectionId: payinDir.id, amountFrom: 10001, amountTo: null, commissionPercent: 4 },
+      ],
+    });
+  }
+
   // ─── Directions (idempotent) ───
   const directions = [
     { name: 'PayIn UAH → USDT', type: 'PAYIN' as const, fromCurrency: 'UAH', toCurrency: 'USDT', minAmount: 100, maxAmount: 50000, rate: 0.024, percentFee: 5 },
@@ -315,6 +384,9 @@ async function main() {
   console.log('  Trader:   trader@p2p.local    (payout limits: 100–20000 UAH)');
   console.log('  Merchant: merchant@p2p.local');
   console.log('  Referral: referral@p2p.local  (5% commission, trader linked)');
+  console.log('');
+  console.log('Geo/Payment: Ukraine (UA/UAH) → CARD_P2P (Both), IBAN_P2P (PayIn)');
+  console.log('Merchant dir: PAYIN/UAH, tiers: 0–10k=5%, 10k+=4%');
   console.log('');
   console.log('Pay-In API Key:  ', payinKeys.publicKey);
   console.log('Pay-In Secret:   ', payinKeys.secretKey);

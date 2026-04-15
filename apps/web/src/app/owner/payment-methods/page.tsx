@@ -1,0 +1,233 @@
+'use client';
+
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Plus, Power, PowerOff, CreditCard } from 'lucide-react';
+import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Modal } from '@/components/ui/modal';
+import { DataTable } from '@/components/ui/data-table';
+
+interface Country { id: string; name: string; code: string; currency: string; }
+interface PaymentMethod {
+  id: string;
+  name: string;
+  displayName: string;
+  flowType: string;
+  requisiteType: string;
+  availability: string;
+  isActive: boolean;
+  country: Country;
+}
+
+const FLOW_LABELS: Record<string, string> = { P2P: 'P2P', P2C: 'P2C', CRYPTO: 'Crypto' };
+const AVAIL_LABELS: Record<string, string> = { PAYIN: 'Pay-In', PAYOUT: 'Pay-Out', BOTH: 'Обидва' };
+const AVAIL_COLOR: Record<string, 'green' | 'blue' | 'yellow'> = { PAYIN: 'blue', PAYOUT: 'yellow', BOTH: 'green' };
+
+export default function PaymentMethodsPage() {
+  const qc = useQueryClient();
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState({
+    countryId: '',
+    name: '',
+    displayName: '',
+    flowType: 'P2P',
+    requisiteType: 'CARD',
+    availability: 'BOTH',
+  });
+
+  const { data: methods, isLoading } = useQuery({
+    queryKey: ['owner', 'payment-methods'],
+    queryFn: () => api.get<PaymentMethod[]>(internalPaths.paymentMethods),
+  });
+
+  const { data: countries } = useQuery({
+    queryKey: ['owner', 'countries'],
+    queryFn: () => api.get<Country[]>(internalPaths.countries),
+  });
+
+  const create = useMutation({
+    mutationFn: (body: typeof form) => api.post(internalPaths.adminPaymentMethods, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['owner', 'payment-methods'] });
+      setShowCreate(false);
+      setForm({ countryId: '', name: '', displayName: '', flowType: 'P2P', requisiteType: 'CARD', availability: 'BOTH' });
+    },
+  });
+
+  const toggle = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      api.patch(internalPaths.adminPaymentMethod(id), { isActive: !isActive }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['owner', 'payment-methods'] }),
+  });
+
+  const columns = [
+    {
+      key: 'name',
+      header: 'Назва',
+      render: (m: PaymentMethod) => (
+        <div className="flex items-center gap-2">
+          <CreditCard className="h-4 w-4 text-text-muted" />
+          <div>
+            <p className="font-mono text-sm font-semibold text-text-primary">{m.name}</p>
+            <p className="text-xs text-text-muted">{m.displayName}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'country',
+      header: 'Країна',
+      render: (m: PaymentMethod) => (
+        <span className="font-mono text-sm">{m.country.code} / {m.country.currency}</span>
+      ),
+    },
+    {
+      key: 'flowType',
+      header: 'Flow',
+      render: (m: PaymentMethod) => (
+        <Badge color="blue">{FLOW_LABELS[m.flowType] ?? m.flowType}</Badge>
+      ),
+    },
+    {
+      key: 'requisiteType',
+      header: 'Реквізит',
+      render: (m: PaymentMethod) => (
+        <span className="text-sm text-text-secondary">{m.requisiteType}</span>
+      ),
+    },
+    {
+      key: 'availability',
+      header: 'Напрямок',
+      render: (m: PaymentMethod) => (
+        <Badge color={AVAIL_COLOR[m.availability] ?? 'blue'}>
+          {AVAIL_LABELS[m.availability] ?? m.availability}
+        </Badge>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Статус',
+      render: (m: PaymentMethod) => (
+        <Badge color={m.isActive ? 'green' : 'red'}>{m.isActive ? 'active' : 'inactive'}</Badge>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      className: 'w-24',
+      render: (m: PaymentMethod) => (
+        <Button
+          variant={m.isActive ? 'danger' : 'success'}
+          size="sm"
+          onClick={() => toggle.mutate({ id: m.id, isActive: m.isActive })}
+        >
+          {m.isActive ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Методи оплати</h1>
+          <p className="mt-1 text-sm text-text-muted">
+            Налаштування доступних методів по країнах (CARD_P2P, IBAN_P2P, CRYPTO…)
+          </p>
+        </div>
+        <Button onClick={() => setShowCreate(true)}>
+          <Plus className="h-4 w-4" /> Додати метод
+        </Button>
+      </div>
+
+      <DataTable
+        columns={columns}
+        data={methods ?? []}
+        isLoading={isLoading}
+        emptyMessage="Методи оплати не налаштовані"
+      />
+
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Новий метод оплати">
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            create.mutate(form);
+          }}
+        >
+          <div>
+            <label className="block text-sm font-medium text-text-primary mb-1">Країна</label>
+            <select
+              className="w-full rounded-lg border border-border bg-bg-secondary text-text-primary px-3 py-2 text-sm"
+              value={form.countryId}
+              onChange={(e) => setForm({ ...form, countryId: e.target.value })}
+              required
+            >
+              <option value="">Оберіть країну…</option>
+              {(countries ?? []).map((c) => (
+                <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>
+              ))}
+            </select>
+          </div>
+          <Input
+            label="Системна назва"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value.toUpperCase() })}
+            placeholder="CARD_P2P"
+            required
+          />
+          <Input
+            label="Відображувана назва"
+            value={form.displayName}
+            onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+            placeholder="Картка P2P"
+            required
+          />
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-1">Flow</label>
+              <select
+                className="w-full rounded-lg border border-border bg-bg-secondary text-text-primary px-3 py-2 text-sm"
+                value={form.flowType}
+                onChange={(e) => setForm({ ...form, flowType: e.target.value })}
+              >
+                {['P2P', 'P2C', 'CRYPTO'].map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-1">Реквізит</label>
+              <select
+                className="w-full rounded-lg border border-border bg-bg-secondary text-text-primary px-3 py-2 text-sm"
+                value={form.requisiteType}
+                onChange={(e) => setForm({ ...form, requisiteType: e.target.value })}
+              >
+                {['CARD', 'IBAN', 'WALLET'].map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-1">Напрямок</label>
+              <select
+                className="w-full rounded-lg border border-border bg-bg-secondary text-text-primary px-3 py-2 text-sm"
+                value={form.availability}
+                onChange={(e) => setForm({ ...form, availability: e.target.value })}
+              >
+                {['PAYIN', 'PAYOUT', 'BOTH'].map((v) => (
+                  <option key={v} value={v}>{AVAIL_LABELS[v]}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="ghost" type="button" onClick={() => setShowCreate(false)}>Скасувати</Button>
+            <Button type="submit" loading={create.isPending}>Створити</Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}

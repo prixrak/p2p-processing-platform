@@ -10,6 +10,7 @@ import { PrismaService } from '../../config/prisma.service';
 import { RequisitesService } from '../requisites/requisites.service';
 import { BanksService } from '../banks/banks.service';
 import { FilesService, UploadedFile } from '../files/files.service';
+import { MerchantDirectionsService } from '../merchant-directions/merchant-directions.service';
 import {
   PayInOrderStatus,
   isValidPayInTransition,
@@ -54,6 +55,7 @@ export class PayinService {
     private readonly requisitesService: RequisitesService,
     private readonly banksService: BanksService,
     private readonly filesService: FilesService,
+    private readonly merchantDirectionsService: MerchantDirectionsService,
   ) {}
 
   // ─── External: upload_order ───
@@ -65,7 +67,16 @@ export class PayinService {
       throw new BadRequestException('PARAMETER_NOT_FOUND: No available requisite');
     }
 
-    const commission = dto.amount * Number(direction.percentFee) / 100;
+    // Merchant-specific commission overrides global Direction fee
+    const merchantCommissionPct =
+      await this.merchantDirectionsService.getEffectiveCommissionPercent(
+        merchantId,
+        'PAYIN',
+        dto.currency,
+        dto.amount,
+      );
+    const commissionPercent = merchantCommissionPct ?? Number(direction.percentFee);
+    const commission = dto.amount * commissionPercent / 100;
     const partnerAmount = dto.amount - commission;
     const autocloseAt = new Date(Date.now() + 15 * 60 * 1000);
 
@@ -79,6 +90,7 @@ export class PayinService {
             requisiteId: requisite.id,
             amount: dto.amount,
             currency: dto.currency,
+            commissionPercent,
             commission,
             partnerAmount,
             rate: Number(direction.rate),

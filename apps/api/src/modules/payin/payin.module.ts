@@ -5,9 +5,10 @@ import { PaymentPageController } from './payment-page.controller';
 import { RequisitesModule } from '../requisites/requisites.module';
 import { BanksModule } from '../banks/banks.module';
 import { FilesModule } from '../files/files.module';
+import { MerchantDirectionsModule } from '../merchant-directions/merchant-directions.module';
 
 @Module({
-  imports: [RequisitesModule, BanksModule, FilesModule],
+  imports: [RequisitesModule, BanksModule, FilesModule, MerchantDirectionsModule],
   controllers: [PayinController, PayinInternalController, PaymentPageController],
   providers: [PayinService],
   exports: [PayinService],

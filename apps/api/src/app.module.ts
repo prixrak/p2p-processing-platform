@@ -31,6 +31,10 @@ import { HealthModule } from './modules/health/health.module';
 import { CascadeModule } from './modules/cascade/cascade.module';
 import { RatingsModule } from './modules/ratings/ratings.module';
 import { ReferralModule } from './modules/referral/referral.module';
+import { BalanceTransactionsModule } from './modules/balance-transactions/balance-transactions.module';
+import { CountriesModule } from './modules/countries/countries.module';
+import { PaymentMethodsModule } from './modules/payment-methods/payment-methods.module';
+import { MerchantDirectionsModule } from './modules/merchant-directions/merchant-directions.module';
 
 @Module({
   imports: [
@@ -73,6 +77,10 @@ import { ReferralModule } from './modules/referral/referral.module';
     CascadeModule,
     RatingsModule,
     ReferralModule,
+    BalanceTransactionsModule,
+    CountriesModule,
+    PaymentMethodsModule,
+    MerchantDirectionsModule,
   ],
   providers: [
     {
