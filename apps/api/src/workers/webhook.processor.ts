@@ -6,6 +6,7 @@ import { PrismaService } from '../config/prisma.service';
 import { decryptSecret } from '../common/utils/crypto';
 import { validateCallbackUrl } from '../common/utils/url-validator';
 import { WEBHOOK_MAX_RETRIES, WEBHOOK_RETRY_DELAYS_MS } from '@p2p/shared';
+import { ApiKeyDirection } from '@prisma/client';
 
 interface WebhookJobData {
   outboxId: string;
@@ -53,7 +54,8 @@ export class WebhookProcessor extends WorkerHost {
     }
 
     const merchant = outbox.payinOrder?.merchant ?? outbox.payoutOrder?.merchant;
-    const apiKey = merchant?.apiKeys?.[0];
+    const direction: ApiKeyDirection = outbox.payinOrder ? ApiKeyDirection.PAYIN : ApiKeyDirection.PAYOUT;
+    const apiKey = merchant?.apiKeys?.find((k) => k.direction === direction) ?? merchant?.apiKeys?.[0];
 
     let signingKey = '';
     if (apiKey?.secretKeyHash) {
@@ -71,7 +73,13 @@ export class WebhookProcessor extends WorkerHost {
       }
     }
 
-    const payloadStr = JSON.stringify(outbox.payloadJson);
+    // Wrap data in the spec-defined envelope: { method, timestamp, data }
+    const webhookBody = {
+      method: outbox.method,
+      timestamp: Math.floor(Date.now() / 1000),
+      data: outbox.payloadJson,
+    };
+    const payloadStr = JSON.stringify(webhookBody);
     const signature = createHmac('sha512', signingKey)
       .update(payloadStr)
       .digest('hex');
@@ -87,7 +95,7 @@ export class WebhookProcessor extends WorkerHost {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Signature': signature,
+          'X-Webhook-Signature': signature,
           'X-Webhook-Id': outbox.id,
         },
         body: payloadStr,
@@ -102,7 +110,7 @@ export class WebhookProcessor extends WorkerHost {
         data: {
           outboxId,
           callbackUrl: outbox.callbackUrl,
-          requestBody: outbox.payloadJson as any,
+          requestBody: webhookBody as any,
           responseStatus,
           responseBody: responseBody?.substring(0, 4096) ?? null,
         },
@@ -124,7 +132,7 @@ export class WebhookProcessor extends WorkerHost {
         data: {
           outboxId,
           callbackUrl: outbox.callbackUrl,
-          requestBody: outbox.payloadJson as any,
+          requestBody: webhookBody as any,
           responseStatus: null,
           responseBody: errorMsg.substring(0, 4096),
         },

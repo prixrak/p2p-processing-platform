@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { BalanceTransactionType, Prisma } from '@prisma/client';
 
@@ -78,6 +78,71 @@ export class BalanceTransactionsService {
     ]);
 
     return { data, total, page, limit };
+  }
+
+  /**
+   * Direct manual credit or debit of trader balance (admin action).
+   * Atomically updates TraderBalance and records a MANUAL_CREDIT / MANUAL_DEBIT
+   * transaction. Does NOT create a Settlement record — use settlements for
+   * formal financial reconciliation.
+   */
+  async adminAdjust(params: {
+    traderId: string;
+    type: 'MANUAL_CREDIT' | 'MANUAL_DEBIT';
+    amount: number;
+    currency: string;
+    comment?: string;
+    adminId: string;
+  }) {
+    const trader = await this.prisma.traderProfile.findUnique({
+      where: { id: params.traderId },
+    });
+    if (!trader) {
+      throw new NotFoundException(`Trader ${params.traderId} not found`);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      let balance = await tx.traderBalance.findUnique({
+        where: { traderId_currency: { traderId: params.traderId, currency: params.currency } },
+      });
+
+      if (!balance) {
+        balance = await tx.traderBalance.create({
+          data: { traderId: params.traderId, currency: params.currency, amount: 0 },
+        });
+      }
+
+      if (params.type === 'MANUAL_DEBIT' && Number(balance.amount) < params.amount) {
+        throw new BadRequestException(
+          `Insufficient balance: current=${balance.amount}, requested debit=${params.amount}`,
+        );
+      }
+
+      const delta = params.type === 'MANUAL_CREDIT' ? params.amount : -params.amount;
+
+      await tx.traderBalance.update({
+        where: { traderId_currency: { traderId: params.traderId, currency: params.currency } },
+        data: { amount: { increment: delta } },
+      });
+
+      const txRecord = await tx.balanceTransaction.create({
+        data: {
+          traderId: params.traderId,
+          type: params.type as BalanceTransactionType,
+          amount: params.amount,
+          currency: params.currency,
+          createdById: params.adminId,
+          comment: params.comment,
+        },
+        include: { createdBy: { select: { email: true } } },
+      });
+
+      this.logger.log(
+        `Admin adjust: ${params.type} ${params.amount} ${params.currency} trader=${params.traderId} by=${params.adminId}`,
+      );
+
+      return txRecord;
+    });
   }
 
   async findAll(filters: ListBalanceTxFilters, page = 1, limit = 50) {

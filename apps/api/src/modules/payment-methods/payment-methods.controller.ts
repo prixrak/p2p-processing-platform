@@ -17,7 +17,7 @@ import { UserRole } from '@p2p/shared';
 export class PaymentMethodsController {
   constructor(private readonly svc: PaymentMethodsService) {}
 
-  @Get('api/payment-methods')
+  @Get('payment-methods')
   @ApiOperation({ summary: 'List payment methods' })
   @ApiQuery({ name: 'countryId', required: false })
   @ApiQuery({ name: 'activeOnly', required: false, type: Boolean })
@@ -28,7 +28,7 @@ export class PaymentMethodsController {
     return this.svc.findAll(countryId, activeOnly === 'true');
   }
 
-  @Post('api/admin/payment-methods')
+  @Post('admin/payment-methods')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Create payment method' })
@@ -36,7 +36,7 @@ export class PaymentMethodsController {
     return this.svc.create(dto);
   }
 
-  @Patch('api/admin/payment-methods/:id')
+  @Patch('admin/payment-methods/:id')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Update payment method' })

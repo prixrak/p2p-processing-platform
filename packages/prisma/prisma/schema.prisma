@@ -626,6 +626,17 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// ─── Platform Settings ───
+
+model PlatformSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  @@map("platform_settings")
+}
+
 // ─── Telegram Notifications ───
 
 model TelegramSettings {

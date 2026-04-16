@@ -142,7 +142,7 @@ p2p/
 
 | Module      | Path                    | Description                                                                     |
 | ----------- | ----------------------- | ------------------------------------------------------------------------------- |
-| auth        | `/api/auth/*`           | JWT login/register, 2FA (TOTP)                                                  |
+| auth        | `/api/auth/*`           | JWT login, refresh, 2FA (TOTP)                                                  |
 | payin       | `/api/v1/payin/*`       | Merchant Pay-In API (HMAC auth)                                                 |
 | payout      | `/api/v1/payout/*`      | Merchant Pay-Out API (HMAC auth); internal pool + assignment endpoints          |
 | traders     | `/api/trader/*`         | Trader dashboard + order management; payout pool limits                         |

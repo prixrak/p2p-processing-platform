@@ -19,7 +19,7 @@ interface AdminStats {
   activeTraders: number;
   ordersToday: number;
   conversionRate: number;
-  platformRevenue: number;
+  totalCommissions: number;
 }
 
 const quickLinks = [
@@ -76,11 +76,11 @@ export default function AdminDashboard() {
           href="/admin/statistics"
         />
         <StatCard
-          label="Platform Revenue"
+          label="Total Commissions"
           value={
             isLoading
               ? '...'
-              : `$${(stats?.platformRevenue ?? 0).toLocaleString()}`
+              : `$${(stats?.totalCommissions ?? 0).toLocaleString()}`
           }
           icon={DollarSign}
           href="/admin/statistics"

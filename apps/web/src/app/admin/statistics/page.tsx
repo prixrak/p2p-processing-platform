@@ -28,7 +28,7 @@ interface PlatformStats {
     expired: number;
   };
   conversionRate: number;
-  revenue: number;
+  totalCommissions: number;
   avgProcessingTime: number;
   totalOrders: number;
 }
@@ -71,8 +71,8 @@ export default function StatisticsPage() {
           icon={Percent}
         />
         <StatCard
-          label="Revenue"
-          value={loading ? '...' : `$${stats.revenue.toLocaleString()}`}
+          label="Total Commissions"
+          value={loading ? '...' : `$${stats.totalCommissions.toLocaleString()}`}
           icon={DollarSign}
         />
       </div>

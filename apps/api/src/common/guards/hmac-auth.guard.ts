@@ -49,15 +49,17 @@ export class HmacAuthGuard implements CanActivate {
       throw new UnauthorizedException('API key direction mismatch');
     }
 
-    let secretKey: string;
+    let rawSecret: string;
     try {
-      secretKey = decryptSecret(merchantApiKey.secretKeyHash);
+      rawSecret = decryptSecret(merchantApiKey.secretKeyHash);
     } catch {
       this.logger.error(`Failed to decrypt secret for key ${merchantApiKey.id}, may be legacy SHA256 format`);
       throw new UnauthorizedException('Invalid API key configuration');
     }
 
-    if (!this.verifySignature(apiPayload, secretKey, apiSignature)) {
+    // Detect auth version: v2 payloads include "api_path" field in the JSON body
+    const isV2 = this.isV2Payload(apiPayload);
+    if (!this.verifySignature(apiPayload, rawSecret, apiSignature, isV2)) {
       throw new UnauthorizedException('Invalid signature');
     }
 
@@ -74,26 +76,35 @@ export class HmacAuthGuard implements CanActivate {
   }
 
   private verifyPayloadIntegrity(apiPayload: string, request: Request): void {
+    const decodedPayload = Buffer.from(apiPayload, 'base64').toString('utf-8');
+
+    const contentType = request.headers['content-type'] ?? '';
+    if (contentType.includes('multipart/form-data')) {
+      // For multipart endpoints, payload must be "id={id};status={status};nonce={nonce}"
+      // or "order_id={id};paid_amount={amount};nonce={nonce}" — validate it parses correctly
+      const hasRequiredFields =
+        /nonce=\d+/.test(decodedPayload) &&
+        (/id=[^;]+/.test(decodedPayload) || /order_id=[^;]+/.test(decodedPayload));
+      if (!hasRequiredFields) {
+        throw new UnauthorizedException('Multipart payload missing required fields (id/order_id, nonce)');
+      }
+      return;
+    }
+
     const rawBody = (request as any).rawBody as Buffer | undefined;
     if (!rawBody) {
       this.logger.warn('Raw body not available for payload integrity check');
       return;
     }
 
-    const decodedPayload = Buffer.from(apiPayload, 'base64').toString('utf-8');
-    let bodyString: string;
+    const bodyString = rawBody.toString('utf-8');
 
-    const contentType = request.headers['content-type'] ?? '';
-    if (contentType.includes('multipart/form-data')) {
-      return;
-    }
-
-    bodyString = rawBody.toString('utf-8');
-
+    let payloadParsed: Record<string, unknown> | null = null;
     let payloadNormalized: string;
     let bodyNormalized: string;
     try {
-      payloadNormalized = JSON.stringify(JSON.parse(decodedPayload));
+      payloadParsed = JSON.parse(decodedPayload) as Record<string, unknown>;
+      payloadNormalized = JSON.stringify(payloadParsed);
       bodyNormalized = JSON.stringify(JSON.parse(bodyString));
     } catch {
       payloadNormalized = decodedPayload;
@@ -105,11 +116,40 @@ export class HmacAuthGuard implements CanActivate {
         'X-API-PAYLOAD does not match request body',
       );
     }
+
+    // ── Auth v2: validate api_path matches actual request path ──────────────
+    if (payloadParsed && 'api_path' in payloadParsed) {
+      const declaredPath = payloadParsed['api_path'] as string;
+      const actualPath = request.path;
+      if (declaredPath !== actualPath) {
+        throw new UnauthorizedException(
+          `api_path mismatch: declared "${declaredPath}", actual "${actualPath}"`,
+        );
+      }
+    }
   }
 
-  private verifySignature(payload: string, secret: string, signature: string): boolean {
+  /**
+   * v2 payloads carry an "api_path" field inside the JSON body.
+   * v1 payloads are plain JSON without that field (or multipart key=value strings).
+   */
+  private isV2Payload(apiPayload: string): boolean {
     try {
-      const computed = createHmac('sha512', secret)
+      const decoded = Buffer.from(apiPayload, 'base64').toString('utf-8');
+      const parsed = JSON.parse(decoded) as Record<string, unknown>;
+      return 'api_path' in parsed;
+    } catch {
+      return false;
+    }
+  }
+
+  private verifySignature(payload: string, secret: string, signature: string, isV2: boolean): boolean {
+    try {
+      // v1: secret is Base64-encoded — decode it before use as HMAC key
+      // v2: secret used as-is (plain string)
+      const hmacKey: string | Buffer = isV2 ? secret : Buffer.from(secret, 'base64');
+
+      const computed = createHmac('sha512', hmacKey)
         .update(payload)
         .digest('hex');
 

@@ -2,7 +2,16 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Key, Eye, EyeOff, RefreshCw, Copy, Check, AlertTriangle } from 'lucide-react';
+import {
+  Key,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  Copy,
+  Check,
+  AlertTriangle,
+  Plus,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -17,7 +26,8 @@ interface ApiKeyPair {
   lastUsedAt: string | null;
 }
 
-interface RegenerateResponse {
+interface NewKeyPairResponse {
+  id: string;
   publicKey: string;
   secretKey: string;
 }
@@ -34,7 +44,16 @@ export default function ApiKeysPage() {
     queryFn: () => api.get('/api/merchant/api-keys'),
   });
 
-  const regenerateMutation = useMutation<RegenerateResponse, Error, string>({
+  const generateMutation = useMutation<NewKeyPairResponse, Error, 'PAYIN' | 'PAYOUT'>({
+    mutationFn: (direction) =>
+      api.post<NewKeyPairResponse>('/api/merchant/api-keys', { direction }),
+    onSuccess: (data) => {
+      setNewSecret(data.secretKey);
+      queryClient.invalidateQueries({ queryKey: ['merchant', 'api-keys'] });
+    },
+  });
+
+  const regenerateMutation = useMutation<NewKeyPairResponse, Error, string>({
     mutationFn: (keyId: string) =>
       api.post(`/api/merchant/api-keys/${keyId}/regenerate`),
     onSuccess: (data) => {
@@ -83,6 +102,11 @@ export default function ApiKeysPage() {
           <KeySection
             title="Pay-In Keys"
             keys={payInKeys}
+            generateDirection="PAYIN"
+            onGenerate={() => generateMutation.mutate('PAYIN')}
+            isGenerateLoading={
+              generateMutation.isPending && generateMutation.variables === 'PAYIN'
+            }
             onRegenerate={(key) => {
               setRegeneratingId(key.id);
               setRegeneratingDirection(key.direction);
@@ -93,6 +117,11 @@ export default function ApiKeysPage() {
           <KeySection
             title="Pay-Out Keys"
             keys={payOutKeys}
+            generateDirection="PAYOUT"
+            onGenerate={() => generateMutation.mutate('PAYOUT')}
+            isGenerateLoading={
+              generateMutation.isPending && generateMutation.variables === 'PAYOUT'
+            }
             onRegenerate={(key) => {
               setRegeneratingId(key.id);
               setRegeneratingDirection(key.direction);
@@ -178,12 +207,18 @@ export default function ApiKeysPage() {
 function KeySection({
   title,
   keys,
+  generateDirection,
+  onGenerate,
+  isGenerateLoading,
   onRegenerate,
   onCopy,
   copied,
 }: {
   title: string;
   keys: ApiKeyPair[];
+  generateDirection?: 'PAYIN' | 'PAYOUT';
+  onGenerate?: () => void;
+  isGenerateLoading?: boolean;
   onRegenerate: (key: ApiKeyPair) => void;
   onCopy: (text: string, label: string) => void;
   copied: string | null;
@@ -194,8 +229,21 @@ function KeySection({
     <div>
       <h2 className="text-lg font-semibold text-text-primary mb-3">{title}</h2>
       {keys.length === 0 ? (
-        <div className="bg-bg-card border border-border-primary rounded-xl p-8 text-center text-text-muted text-sm">
-          No keys configured
+        <div className="bg-bg-card border border-border-primary rounded-xl p-8 flex flex-col items-center gap-4 text-center">
+          <p className="text-sm text-text-muted max-w-md">
+            No keys configured for this direction. Generate a key pair to authenticate
+            External API requests (HMAC signing).
+          </p>
+          {onGenerate && generateDirection ? (
+            <Button
+              variant="primary"
+              icon={<Plus size={14} />}
+              loading={isGenerateLoading}
+              onClick={onGenerate}
+            >
+              Generate keys
+            </Button>
+          ) : null}
         </div>
       ) : (
         <div className="space-y-3">

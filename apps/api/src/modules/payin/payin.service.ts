@@ -31,6 +31,7 @@ import { BalanceTransactionType } from '@prisma/client';
 import { config } from '@p2p/config';
 import { validateCallbackUrl } from '../../common/utils/url-validator';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
+import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
 import {
   UploadOrderDto,
   UpdateOrderDto,
@@ -61,7 +62,14 @@ export class PayinService {
     private readonly filesService: FilesService,
     private readonly merchantDirectionsService: MerchantDirectionsService,
     private readonly balanceTxService: BalanceTransactionsService,
+    private readonly platformSettings: PlatformSettingsService,
   ) {}
+
+  private async getAutocloseMs(): Promise<number> {
+    const setting = await this.platformSettings.findOne('payin_autoclose_minutes');
+    const minutes = Math.max(1, parseInt(setting.value, 10) || 30);
+    return minutes * 60 * 1000;
+  }
 
   // ─── External: upload_order ───
 
@@ -81,7 +89,7 @@ export class PayinService {
     const commissionPercent = merchantCommissionPct ?? Number(direction.percentFee);
     const commission = dto.amount * commissionPercent / 100;
     const partnerAmount = dto.amount - commission;
-    const autocloseAt = new Date(Date.now() + 15 * 60 * 1000);
+    const autocloseAt = new Date(Date.now() + await this.getAutocloseMs());
     const amountDec = new Prisma.Decimal(dto.amount);
 
     try {
@@ -322,7 +330,7 @@ export class PayinService {
 
     const commission = dto.amount * Number(direction.percentFee) / 100;
     const partnerAmount = dto.amount - commission;
-    const autocloseAt = new Date(Date.now() + 15 * 60 * 1000);
+    const autocloseAt = new Date(Date.now() + await this.getAutocloseMs());
     const amountDec = new Prisma.Decimal(dto.amount);
 
     try {

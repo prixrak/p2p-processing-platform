@@ -61,6 +61,11 @@ export const internalPaths = {
   // Balance transactions
   balanceTransactions: '/api/trader/balance/transactions',
   adminBalanceTransactions: '/api/admin/balance-transactions',
+  adminBalanceAdjust: '/api/admin/balance-transactions/adjust',
+
+  // Platform settings (Owner only write, Admin read)
+  platformSettings: '/api/platform-settings',
+  platformSetting: (key: string) => `/api/platform-settings/${key}`,
 
   // Countries & Payment Methods
   countries: '/api/countries',

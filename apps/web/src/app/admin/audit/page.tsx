@@ -186,7 +186,6 @@ export default function AuditLogPage() {
           options={[
             { value: '', label: 'All actions' },
             { value: 'LOGIN', label: 'Login' },
-            { value: 'REGISTER', label: 'Register' },
             { value: 'CREATE_USER', label: 'Create user' },
             { value: 'UPDATE_USER', label: 'Update user' },
             { value: 'DEACTIVATE_USER', label: 'Deactivate user' },

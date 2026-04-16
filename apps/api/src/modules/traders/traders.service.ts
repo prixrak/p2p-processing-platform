@@ -19,7 +19,7 @@ export class TradersService {
       include: {
         user: { select: { email: true, role: true, isActive: true } },
         balances: true,
-        requisites: { where: { isActive: true } },
+        requisites: { include: { bank: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
         telegramSettings: true,
       },
     });

@@ -13,14 +13,14 @@ import { UserRole } from '@p2p/shared';
 export class CountriesController {
   constructor(private readonly svc: CountriesService) {}
 
-  @Get('api/countries')
+  @Get('countries')
   @ApiOperation({ summary: 'List countries (public-ish, used by frontend)' })
   @ApiQuery({ name: 'activeOnly', required: false, type: Boolean })
   findAll(@Query('activeOnly') activeOnly?: string) {
     return this.svc.findAll(activeOnly === 'true');
   }
 
-  @Post('api/admin/countries')
+  @Post('admin/countries')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Create country' })
@@ -28,7 +28,7 @@ export class CountriesController {
     return this.svc.create(dto);
   }
 
-  @Patch('api/admin/countries/:id')
+  @Patch('admin/countries/:id')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Update country' })

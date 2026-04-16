@@ -13,7 +13,6 @@ import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Audited } from '../../common/decorators/audited.decorator';
@@ -30,14 +29,6 @@ export class AuthController {
   @Audited('LOGIN', 'User')
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto.email, dto.password);
-  }
-
-  @Post('register')
-  @Throttle({ default: { limit: 3, ttl: 60000 } })
-  @ApiOperation({ summary: 'Register a new user' })
-  @Audited('REGISTER', 'User')
-  async register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto.email, dto.password, dto.role);
   }
 
   @Post('refresh')

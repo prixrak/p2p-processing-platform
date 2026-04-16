@@ -36,6 +36,7 @@ import { BalanceTransactionsModule } from './modules/balance-transactions/balanc
 import { CountriesModule } from './modules/countries/countries.module';
 import { PaymentMethodsModule } from './modules/payment-methods/payment-methods.module';
 import { MerchantDirectionsModule } from './modules/merchant-directions/merchant-directions.module';
+import { PlatformSettingsModule } from './modules/platform-settings/platform-settings.module';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { MerchantDirectionsModule } from './modules/merchant-directions/merchant
     CountriesModule,
     PaymentMethodsModule,
     MerchantDirectionsModule,
+    PlatformSettingsModule,
   ],
   providers: [
     {

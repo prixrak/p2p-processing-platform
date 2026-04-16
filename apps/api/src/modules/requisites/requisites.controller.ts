@@ -50,8 +50,19 @@ export class RequisitesController {
   @Get('my')
   @Roles(UserRole.TRADER)
   @ApiOperation({ summary: 'List own requisites (trader)' })
-  getMyRequisites(@CurrentUser('traderId') traderId: string) {
-    return this.requisitesService.findByTraderId(traderId);
+  @ApiQuery({
+    name: 'includeInactive',
+    required: false,
+    description: 'Include deactivated requisites (to re-enable or review limits)',
+  })
+  getMyRequisites(
+    @CurrentUser('traderId') traderId: string,
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    return this.requisitesService.findByTraderId(
+      traderId,
+      includeInactive === 'true',
+    );
   }
 
   // ─── Admin endpoints ───

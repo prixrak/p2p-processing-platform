@@ -23,6 +23,7 @@ import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { RequisiteType } from '@p2p/shared';
 
+/** Normalized row for UI (snake_case) */
 interface Requisite {
   id: string;
   type: RequisiteType;
@@ -30,20 +31,66 @@ interface Requisite {
   owner: string;
   bank_name: string;
   is_active: boolean;
+  accepts_other_banks: boolean;
   min_amount: number;
   max_amount: number;
   limit_amount: number;
   used_amount: number;
   limit_operations: number;
   used_operations: number;
-  created_at: number;
+}
+
+interface RequisiteApiRow {
+  id: string;
+  type: RequisiteType;
+  number: string;
+  owner: string;
+  isActive: boolean;
+  acceptsOtherBanks: boolean;
+  minAmount: unknown;
+  maxAmount: unknown;
+  limitTotalAmount: unknown;
+  limitTotalOps: number;
+  usedAmount: unknown;
+  usedOps: number;
+  bank: { id: number; name: string } | null;
+}
+
+interface BankOption {
+  id: number;
+  name: string;
+}
+
+function num(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') return Number(v);
+  return Number(v);
+}
+
+function mapRequisite(r: RequisiteApiRow): Requisite {
+  return {
+    id: r.id,
+    type: r.type,
+    number: r.number,
+    owner: r.owner,
+    bank_name: r.bank?.name ?? '—',
+    is_active: r.isActive,
+    accepts_other_banks: r.acceptsOtherBanks,
+    min_amount: num(r.minAmount),
+    max_amount: num(r.maxAmount),
+    limit_amount: num(r.limitTotalAmount),
+    used_amount: num(r.usedAmount),
+    limit_operations: r.limitTotalOps,
+    used_operations: r.usedOps,
+  };
 }
 
 interface RequisiteFormData {
   type: RequisiteType;
   number: string;
   owner: string;
-  bank_name: string;
+  bank_id: string;
+  accepts_other_banks: boolean;
   min_amount: number;
   max_amount: number;
   limit_amount: number;
@@ -54,7 +101,8 @@ const defaultForm: RequisiteFormData = {
   type: RequisiteType.CARD,
   number: '',
   owner: '',
-  bank_name: '',
+  bank_id: '',
+  accepts_other_banks: false,
   min_amount: 100,
   max_amount: 50000,
   limit_amount: 500000,
@@ -67,13 +115,35 @@ export default function RequisitesPage() {
   const [editingRequisite, setEditingRequisite] = useState<Requisite | null>(null);
   const [form, setForm] = useState<RequisiteFormData>(defaultForm);
 
+  const { data: banks = [] } = useQuery({
+    queryKey: ['banks', 'list'],
+    queryFn: () => api.get<BankOption[]>('/api/banks'),
+  });
+
   const { data: requisites, isLoading, refetch } = useQuery({
     queryKey: ['trader', 'requisites'],
-    queryFn: () => api.get<Requisite[]>('/api/trader/requisites'),
+    queryFn: async () => {
+      const rows = await api.get<RequisiteApiRow[]>('/api/requisites/my?includeInactive=true');
+      return rows.map(mapRequisite);
+    },
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: RequisiteFormData) => api.post('/api/trader/requisites', data),
+    mutationFn: (data: RequisiteFormData) => {
+      const bankId = data.bank_id ? Number(data.bank_id) : undefined;
+      return api.post('/api/requisites/my', {
+        type: data.type,
+        number: data.number,
+        owner: data.owner,
+        ...(bankId ? { bankId } : {}),
+        minAmount: data.min_amount,
+        maxAmount: data.max_amount,
+        limitTotalAmount: data.limit_amount,
+        limitTotalOps: data.limit_operations,
+        acceptsOtherBanks: data.accepts_other_banks,
+        currency: 'UAH',
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trader', 'requisites'] });
       setShowAddModal(false);
@@ -82,8 +152,25 @@ export default function RequisitesPage() {
   });
 
   const updateLimitsMutation = useMutation({
-    mutationFn: ({ id, limits }: { id: string; limits: Partial<RequisiteFormData> }) =>
-      api.patch(`/api/trader/requisites/${id}/limits`, limits),
+    mutationFn: ({
+      id,
+      limits,
+      acceptsOtherBanks,
+    }: {
+      id: string;
+      limits: Pick<
+        RequisiteFormData,
+        'min_amount' | 'max_amount' | 'limit_amount' | 'limit_operations'
+      >;
+      acceptsOtherBanks: boolean;
+    }) =>
+      api.put(`/api/requisites/${id}`, {
+        minAmount: limits.min_amount,
+        maxAmount: limits.max_amount,
+        limitTotalAmount: limits.limit_amount,
+        limitTotalOps: limits.limit_operations,
+        acceptsOtherBanks,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trader', 'requisites'] });
       setEditingRequisite(null);
@@ -91,8 +178,12 @@ export default function RequisitesPage() {
   });
 
   const toggleMutation = useMutation({
-    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
-      api.patch(`/api/trader/requisites/${id}/toggle`, { is_active: active }),
+    mutationFn: async ({ id, makeActive }: { id: string; makeActive: boolean }) => {
+      if (makeActive) {
+        return api.patch(`/api/requisites/${id}/activate`);
+      }
+      return api.patch(`/api/requisites/${id}/deactivate`);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trader', 'requisites'] });
     },
@@ -100,6 +191,9 @@ export default function RequisitesPage() {
 
   function handleSubmitCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.bank_id) {
+      return;
+    }
     createMutation.mutate(form);
   }
 
@@ -114,6 +208,7 @@ export default function RequisitesPage() {
         limit_amount: form.limit_amount,
         limit_operations: form.limit_operations,
       },
+      acceptsOtherBanks: form.accepts_other_banks,
     });
   }
 
@@ -123,13 +218,16 @@ export default function RequisitesPage() {
       type: req.type,
       number: req.number,
       owner: req.owner,
-      bank_name: req.bank_name,
+      bank_id: '',
+      accepts_other_banks: req.accepts_other_banks,
       min_amount: req.min_amount,
       max_amount: req.max_amount,
       limit_amount: req.limit_amount,
       limit_operations: req.limit_operations,
     });
   }
+
+  const bankOptions = banks.map((b) => ({ value: String(b.id), label: b.name }));
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -179,9 +277,13 @@ export default function RequisitesPage() {
                     )}
                   >
                     {req.type === RequisiteType.CARD ? (
-                      <CreditCard className={cn('h-5 w-5', req.is_active ? 'text-accent-green' : 'text-text-muted')} />
+                      <CreditCard
+                        className={cn('h-5 w-5', req.is_active ? 'text-accent-green' : 'text-text-muted')}
+                      />
                     ) : (
-                      <Building className={cn('h-5 w-5', req.is_active ? 'text-accent-green' : 'text-text-muted')} />
+                      <Building
+                        className={cn('h-5 w-5', req.is_active ? 'text-accent-green' : 'text-text-muted')}
+                      />
                     )}
                   </div>
                   <div>
@@ -193,12 +295,17 @@ export default function RequisitesPage() {
                         {req.is_active ? 'Active' : 'Inactive'}
                       </Badge>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-text-muted">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
                       <span>{req.owner}</span>
                       <span>&middot;</span>
                       <span>{req.bank_name}</span>
                       <span>&middot;</span>
                       <Badge variant="default">{req.type}</Badge>
+                      {req.accepts_other_banks && (
+                        <Badge variant="info" className="text-[10px]">
+                          Other banks
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -209,7 +316,9 @@ export default function RequisitesPage() {
                   <Button
                     size="sm"
                     variant={req.is_active ? 'danger' : 'success'}
-                    onClick={() => toggleMutation.mutate({ id: req.id, active: !req.is_active })}
+                    onClick={() =>
+                      toggleMutation.mutate({ id: req.id, makeActive: !req.is_active })
+                    }
                     loading={toggleMutation.isPending}
                   >
                     {req.is_active ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
@@ -219,11 +328,7 @@ export default function RequisitesPage() {
               </div>
 
               <div className="space-y-3">
-                <ProgressBar
-                  label="Volume Used"
-                  value={req.used_amount}
-                  max={req.limit_amount}
-                />
+                <ProgressBar label="Volume Used" value={req.used_amount} max={req.limit_amount} />
                 <ProgressBar
                   label="Operations Used"
                   value={req.used_operations}
@@ -242,7 +347,6 @@ export default function RequisitesPage() {
         </div>
       )}
 
-      {/* Add Requisite Modal */}
       <Modal
         open={showAddModal}
         onClose={() => setShowAddModal(false)}
@@ -273,13 +377,22 @@ export default function RequisitesPage() {
             onChange={(e) => setForm({ ...form, owner: e.target.value })}
             required
           />
-          <Input
-            label="Bank Name"
-            placeholder="e.g. Monobank, PrivatBank"
-            value={form.bank_name}
-            onChange={(e) => setForm({ ...form, bank_name: e.target.value })}
+          <Select
+            label="Bank"
+            options={[{ value: '', label: 'Select bank…' }, ...bankOptions]}
+            value={form.bank_id}
+            onChange={(e) => setForm({ ...form, bank_id: e.target.value })}
             required
           />
+          <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
+            <input
+              type="checkbox"
+              className="rounded border-border-primary"
+              checked={form.accepts_other_banks}
+              onChange={(e) => setForm({ ...form, accepts_other_banks: e.target.checked })}
+            />
+            Accept transfers from other banks
+          </label>
           <div className="grid grid-cols-2 gap-4">
             <Input
               label="Min Amount"
@@ -316,7 +429,7 @@ export default function RequisitesPage() {
             <Button variant="secondary" type="button" onClick={() => setShowAddModal(false)}>
               Cancel
             </Button>
-            <Button type="submit" loading={createMutation.isPending}>
+            <Button type="submit" loading={createMutation.isPending} disabled={!form.bank_id}>
               <Plus className="h-4 w-4" />
               Create Requisite
             </Button>
@@ -324,7 +437,6 @@ export default function RequisitesPage() {
         </form>
       </Modal>
 
-      {/* Edit Limits Modal */}
       <Modal
         open={!!editingRequisite}
         onClose={() => setEditingRequisite(null)}
@@ -341,6 +453,15 @@ export default function RequisitesPage() {
                 <span className="text-text-muted">{editingRequisite.bank_name}</span>
               </div>
             </div>
+            <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
+              <input
+                type="checkbox"
+                className="rounded border-border-primary"
+                checked={form.accepts_other_banks}
+                onChange={(e) => setForm({ ...form, accepts_other_banks: e.target.checked })}
+              />
+              Accept transfers from other banks
+            </label>
             <div className="grid grid-cols-2 gap-4">
               <Input
                 label="Min Amount"

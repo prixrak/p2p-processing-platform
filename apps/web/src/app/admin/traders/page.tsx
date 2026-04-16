@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, ToggleLeft, ToggleRight, SlidersHorizontal } from 'lucide-react';
+import { Users, ToggleLeft, ToggleRight, SlidersHorizontal, Power, PowerOff } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { DataTable } from '@/components/ui/data-table';
@@ -36,10 +36,11 @@ interface TraderDetail {
 
 interface Requisite {
   id: string;
-  bank: string;
-  method: string;
+  type: string;
+  number: string;
+  bank: { name: string } | null;
   currency: string;
-  status: string;
+  isActive: boolean;
 }
 
 interface TraderOrder {
@@ -114,6 +115,16 @@ export default function TradersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'traders'] });
       setLimitsTrader(null);
+    },
+  });
+
+  const toggleRequisiteMutation = useMutation({
+    mutationFn: ({ id, makeActive }: { id: string; makeActive: boolean }) =>
+      makeActive
+        ? api.patch(`/api/requisites/${id}/activate`)
+        : api.patch(`/api/requisites/${id}/deactivate`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'traders', selectedTrader?.id] });
     },
   });
 
@@ -352,11 +363,28 @@ export default function TradersPage() {
                       className="flex items-center justify-between bg-bg-tertiary rounded-lg p-3 text-sm"
                     >
                       <div>
-                        <span className="text-text-primary">{r.bank}</span>
-                        <span className="text-text-muted ml-2">{r.method}</span>
-                        <span className="text-text-muted ml-2">{r.currency}</span>
+                        <span className="font-mono text-xs text-text-secondary">{r.number}</span>
+                        <span className="text-text-muted ml-2">{r.bank?.name ?? '—'}</span>
+                        <span className="text-text-muted ml-1 text-xs uppercase">{r.type}</span>
+                        <span className="text-text-muted ml-2 text-xs">{r.currency}</span>
                       </div>
-                      <StatusBadge status={r.status} />
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={r.isActive ? 'active' : 'inactive'} />
+                        <button
+                          onClick={() =>
+                            toggleRequisiteMutation.mutate({ id: r.id, makeActive: !r.isActive })
+                          }
+                          disabled={toggleRequisiteMutation.isPending}
+                          className="p-1 rounded text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
+                          title={r.isActive ? 'Deactivate requisite' : 'Activate requisite'}
+                        >
+                          {r.isActive ? (
+                            <PowerOff size={15} className="text-accent-red" />
+                          ) : (
+                            <Power size={15} className="text-accent-green" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

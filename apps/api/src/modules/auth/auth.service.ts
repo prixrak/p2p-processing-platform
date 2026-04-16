@@ -1,15 +1,9 @@
-import {
-  Injectable,
-  UnauthorizedException,
-  ConflictException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { authenticator } from 'otplib';
 import { config } from '@p2p/config';
-import { UserRole } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
-import { hashPassword, comparePassword } from '../../common/utils/password';
+import { comparePassword } from '../../common/utils/password';
 import { JwtPayload } from './jwt.strategy';
 
 @Injectable()
@@ -100,24 +94,6 @@ export class AuthService {
     this.logger.log(`User ${user.email} logged in`);
 
     return { accessToken, refreshToken, user: { id: user.id, email: user.email, role: user.role } };
-  }
-
-  async register(email: string, password: string, role: UserRole) {
-    const existing = await this.prisma.user.findUnique({ where: { email } });
-    if (existing) {
-      throw new ConflictException('Email already registered');
-    }
-
-    const passwordHash = await hashPassword(password);
-
-    const user = await this.prisma.user.create({
-      data: { email, passwordHash, role },
-      select: { id: true, email: true, role: true, createdAt: true },
-    });
-
-    this.logger.log(`User ${email} registered with role ${role}`);
-
-    return user;
   }
 
   async refreshToken(token: string) {

@@ -25,7 +25,7 @@ import {
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN, UserRole.OWNER)
-@Controller('api/merchants/:merchantId/directions')
+@Controller('merchants/:merchantId/directions')
 export class MerchantDirectionsController {
   constructor(private readonly svc: MerchantDirectionsService) {}
 

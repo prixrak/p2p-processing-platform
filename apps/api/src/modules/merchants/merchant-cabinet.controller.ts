@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Post,
@@ -18,6 +19,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
 import { MerchantsService } from './merchants.service';
+import { MerchantDirectionsService } from '../merchant-directions/merchant-directions.service';
+import { GenerateApiKeysDto } from './dto';
 
 @ApiTags('Merchant Cabinet')
 @ApiBearerAuth()
@@ -28,6 +31,7 @@ export class MerchantCabinetController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly merchantsService: MerchantsService,
+    private readonly merchantDirectionsService: MerchantDirectionsService,
   ) {}
 
   @Get('orders')
@@ -234,6 +238,21 @@ export class MerchantCabinetController {
     });
 
     return { success: true };
+  }
+
+  @Get('directions')
+  @ApiOperation({ summary: 'List own directions with commission tiers' })
+  async getDirections(@CurrentUser('merchantId') merchantId: string) {
+    return this.merchantDirectionsService.findByMerchant(merchantId);
+  }
+
+  @Post('api-keys')
+  @ApiOperation({ summary: 'Generate a new API key pair for Pay-In or Pay-Out' })
+  async generateApiKeys(
+    @CurrentUser('merchantId') merchantId: string,
+    @Body() dto: GenerateApiKeysDto,
+  ) {
+    return this.merchantsService.generateApiKeys(merchantId, dto.direction);
   }
 
   @Get('api-keys')

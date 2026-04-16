@@ -7,9 +7,10 @@ import { BanksModule } from '../banks/banks.module';
 import { FilesModule } from '../files/files.module';
 import { MerchantDirectionsModule } from '../merchant-directions/merchant-directions.module';
 import { BalanceTransactionsModule } from '../balance-transactions/balance-transactions.module';
+import { PlatformSettingsModule } from '../platform-settings/platform-settings.module';
 
 @Module({
-  imports: [RequisitesModule, BanksModule, FilesModule, MerchantDirectionsModule, BalanceTransactionsModule],
+  imports: [RequisitesModule, BanksModule, FilesModule, MerchantDirectionsModule, BalanceTransactionsModule, PlatformSettingsModule],
   controllers: [PayinController, PayinInternalController, PaymentPageController],
   providers: [PayinService],
   exports: [PayinService],

@@ -32,6 +32,8 @@ export class AdminDashboardController {
       ordersToday,
       totalPayinVolume,
       totalPayoutVolume,
+      payinCommissionAgg,
+      payoutCommissionAgg,
       successfulOrders,
       totalOrders,
       activePayins,
@@ -50,6 +52,14 @@ export class AdminDashboardController {
       this.prisma.payoutOrder.aggregate({
         where: { status: 'COMPLETED' },
         _sum: { amount: true },
+      }),
+      this.prisma.payinOrder.aggregate({
+        where: { status: 'PAID' },
+        _sum: { commission: true },
+      }),
+      this.prisma.payoutOrder.aggregate({
+        where: { status: 'COMPLETED' },
+        _sum: { commissionAmount: true },
       }),
       this.prisma.payinOrder.count({
         where: { status: 'PAID' },
@@ -72,6 +82,10 @@ export class AdminDashboardController {
     const conversionRate =
       totalOrders > 0 ? (successfulOrders / totalOrders) * 100 : 0;
 
+    const totalCommissions =
+      Number(payinCommissionAgg._sum.commission ?? 0) +
+      Number(payoutCommissionAgg._sum.commissionAmount ?? 0);
+
     return {
       totalUsers,
       totalMerchants,
@@ -80,7 +94,7 @@ export class AdminDashboardController {
       totalVolume,
       totalOrders,
       conversionRate,
-      platformRevenue: 0,
+      totalCommissions,
       activePayins,
       activePayouts,
       pendingSettlements,
@@ -101,6 +115,8 @@ export class AdminDashboardController {
     const [
       payinVolumeAgg,
       payoutVolumeAgg,
+      payinCommissionAgg,
+      payoutCommissionAgg,
       totalPayinOrders,
       completedPayinOrders,
       totalPayoutOrders,
@@ -117,6 +133,14 @@ export class AdminDashboardController {
       this.prisma.payoutOrder.aggregate({
         where: { status: 'COMPLETED', createdAt: { gte: from } },
         _sum: { amount: true },
+      }),
+      this.prisma.payinOrder.aggregate({
+        where: { status: 'PAID', createdAt: { gte: from } },
+        _sum: { commission: true },
+      }),
+      this.prisma.payoutOrder.aggregate({
+        where: { status: 'COMPLETED', createdAt: { gte: from } },
+        _sum: { commissionAmount: true },
       }),
       this.prisma.payinOrder.count({ where: { createdAt: { gte: from } } }),
       this.prisma.payinOrder.count({ where: { status: 'PAID', createdAt: { gte: from } } }),
@@ -153,6 +177,10 @@ export class AdminDashboardController {
     const completedOrders = completedPayinOrders + completedPayoutOrders;
     const conversionRate = totalOrders > 0 ? (completedOrders / totalOrders) * 100 : 0;
     const avgOrderAmount = completedOrders > 0 ? totalVolume / completedOrders : 0;
+
+    const totalCommissions =
+      Number(payinCommissionAgg._sum.commission ?? 0) +
+      Number(payoutCommissionAgg._sum.commissionAmount ?? 0);
 
     const ordersByStatus: Record<string, number> = {};
     for (const row of ordersByStatusRaw) {
@@ -224,13 +252,12 @@ export class AdminDashboardController {
       totalVolume,
       payinVolume,
       payoutVolume,
-      totalCommissions: 0,
+      totalCommissions,
       totalOrders,
       completedOrders,
       avgOrderAmount,
       activeTraders,
       conversionRate,
-      revenue: 0,
       totalTraffic: totalVolume,
       ordersByStatus,
       topMerchants,

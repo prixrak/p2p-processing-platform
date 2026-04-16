@@ -7,6 +7,7 @@ import {
   Key,
   Webhook,
   BarChart3,
+  Percent,
 } from 'lucide-react';
 import { AuthGuard } from '@/components/auth-guard';
 import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
@@ -17,6 +18,7 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/merchant', icon: LayoutDashboard },
   { label: 'Orders', href: '/merchant/orders', icon: ArrowLeftRight },
   { label: 'Balances', href: '/merchant/balances', icon: Wallet },
+  { label: 'Directions', href: '/merchant/directions', icon: Percent },
   { label: 'API Keys', href: '/merchant/api-keys', icon: Key },
   { label: 'Webhooks', href: '/merchant/webhooks', icon: Webhook },
   { label: 'Analytics', href: '/merchant/analytics', icon: BarChart3 },

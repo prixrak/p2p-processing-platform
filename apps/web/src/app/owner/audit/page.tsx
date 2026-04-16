@@ -213,7 +213,6 @@ export default function AuditPage() {
             { value: 'UPDATE', label: 'Update' },
             { value: 'UPDATE_USER', label: 'Update user' },
             { value: 'LOGIN', label: 'Login' },
-            { value: 'REGISTER', label: 'Register' },
           ]}
           value={actionFilter}
           onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}

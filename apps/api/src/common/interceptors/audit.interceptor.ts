@@ -8,13 +8,28 @@ import { Reflector } from '@nestjs/core';
 import { Observable, tap } from 'rxjs';
 import { Request } from 'express';
 import { AuditService } from '../../modules/audit/audit.service';
+import { PrismaService } from '../../config/prisma.service';
 import { AUDITED_KEY, AuditedMetadata } from '../decorators/audited.decorator';
+
+/** Map entityType → Prisma table so we can fetch the before-state. */
+const ENTITY_TABLE_MAP: Record<string, string> = {
+  PayinOrder: 'payinOrder',
+  PayoutOrder: 'payoutOrder',
+  Trader: 'traderProfile',
+  Merchant: 'merchant',
+  User: 'user',
+  Requisite: 'requisite',
+  Bank: 'bank',
+  PlatformSetting: 'platformSetting',
+  Direction: 'direction',
+};
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
   constructor(
     private readonly reflector: Reflector,
     private readonly auditService: AuditService,
+    private readonly prisma: PrismaService,
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -38,26 +53,65 @@ export class AuditInterceptor implements NestInterceptor {
 
     const entityId =
       (request.params?.id as string) ??
+      (request.params?.key as string) ??
       (request.body?.id as string) ??
       null;
 
+    // Fetch old value before handler executes (best-effort)
+    const oldValuePromise = this.fetchEntity(metadata.entityType, entityId);
+
     return next.handle().pipe(
-      tap(() => {
-        this.auditService
-          .log({
-            actorId: user?.id ?? null,
-            actorRole: user?.role ?? null,
-            action: metadata.action,
-            entityType: metadata.entityType,
-            entityId,
-            oldValue: null,
-            newValue: null,
-            ip,
+      tap((responseData: unknown) => {
+        oldValuePromise
+          .then((oldValue) => {
+            this.auditService
+              .log({
+                actorId: user?.id ?? null,
+                actorRole: user?.role ?? null,
+                action: metadata.action,
+                entityType: metadata.entityType,
+                entityId,
+                oldValue,
+                newValue: responseData ?? null,
+                ip,
+              })
+              .catch(() => {
+                // Audit logging must never break the request flow
+              });
           })
           .catch(() => {
-            // Audit logging must never break the request flow
+            // oldValue fetch failed — log without it
+            this.auditService
+              .log({
+                actorId: user?.id ?? null,
+                actorRole: user?.role ?? null,
+                action: metadata.action,
+                entityType: metadata.entityType,
+                entityId,
+                oldValue: null,
+                newValue: responseData ?? null,
+                ip,
+              })
+              .catch(() => {});
           });
       }),
     );
+  }
+
+  private async fetchEntity(entityType: string, entityId: string | null): Promise<unknown> {
+    if (!entityId) return null;
+    const table = ENTITY_TABLE_MAP[entityType];
+    if (!table) return null;
+
+    try {
+      const model = (this.prisma as any)[table];
+      if (!model?.findUnique) return null;
+
+      // PlatformSetting uses "key" as PK, everything else uses "id"
+      const where = entityType === 'PlatformSetting' ? { key: entityId } : { id: entityId };
+      return await model.findUnique({ where });
+    } catch {
+      return null;
+    }
   }
 }
