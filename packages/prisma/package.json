@@ -9,10 +9,12 @@
     "migrate": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "studio": "prisma studio",
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node prisma/seed.ts",
+    "bootstrap": "ts-node prisma/bootstrap-owner.ts"
   },
   "dependencies": {
-    "@prisma/client": "^6.5.0"
+    "@prisma/client": "^6.5.0",
+    "bcryptjs": "^2.4.3"
   },
   "devDependencies": {
     "prisma": "^6.5.0",
