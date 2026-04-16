@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { clsx } from 'clsx';
+import { Tooltip } from '@/components/ui/tooltip';
 
 type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -58,12 +59,18 @@ export function Modal({ open, onClose, title, children, size = 'md', className }
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-text-primary">{title}</h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-surface-tertiary hover:text-text-primary"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <Tooltip content="Close (Esc)" side="bottom">
+            <span className="inline-flex">
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close dialog"
+                className="cursor-pointer rounded-lg p-1.5 text-text-muted transition-colors hover:bg-surface-tertiary hover:text-text-primary"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </span>
+          </Tooltip>
         </div>
         {children}
       </div>

@@ -6,7 +6,9 @@ import { Plus, Power, PowerOff, CreditCard } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
@@ -120,13 +122,13 @@ export default function PaymentMethodsPage() {
       header: '',
       className: 'w-24',
       render: (m: PaymentMethod) => (
-        <Button
+        <IconButton
+          label={m.isActive ? 'Deactivate payment method' : 'Activate payment method'}
           variant={m.isActive ? 'danger' : 'success'}
-          size="sm"
           onClick={() => toggle.mutate({ id: m.id, isActive: m.isActive })}
         >
           {m.isActive ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
-        </Button>
+        </IconButton>
       ),
     },
   ];
@@ -160,20 +162,17 @@ export default function PaymentMethodsPage() {
             create.mutate(form);
           }}
         >
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-1">Country</label>
-            <select
-              className="w-full rounded-lg border border-border bg-bg-secondary text-text-primary px-3 py-2 text-sm"
-              value={form.countryId}
-              onChange={(e) => setForm({ ...form, countryId: e.target.value })}
-              required
-            >
-              <option value="">Select country…</option>
-              {(countries ?? []).map((c) => (
-                <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>
-              ))}
-            </select>
-          </div>
+          <Select
+            label="Country"
+            placeholder="Select country…"
+            required
+            options={(countries ?? []).map((c) => ({
+              value: c.id,
+              label: `${c.name} (${c.currency})`,
+            }))}
+            value={form.countryId}
+            onChange={(e) => setForm({ ...form, countryId: e.target.value })}
+          />
           <Input
             label="System name"
             value={form.name}
@@ -189,38 +188,30 @@ export default function PaymentMethodsPage() {
             required
           />
           <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Flow</label>
-              <select
-                className="w-full rounded-lg border border-border bg-bg-secondary text-text-primary px-3 py-2 text-sm"
-                value={form.flowType}
-                onChange={(e) => setForm({ ...form, flowType: e.target.value })}
-              >
-                {['P2P', 'P2C', 'CRYPTO'].map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Requisite</label>
-              <select
-                className="w-full rounded-lg border border-border bg-bg-secondary text-text-primary px-3 py-2 text-sm"
-                value={form.requisiteType}
-                onChange={(e) => setForm({ ...form, requisiteType: e.target.value })}
-              >
-                {['CARD', 'IBAN', 'WALLET'].map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Direction</label>
-              <select
-                className="w-full rounded-lg border border-border bg-bg-secondary text-text-primary px-3 py-2 text-sm"
-                value={form.availability}
-                onChange={(e) => setForm({ ...form, availability: e.target.value })}
-              >
-                {['PAYIN', 'PAYOUT', 'BOTH'].map((v) => (
-                  <option key={v} value={v}>{AVAIL_LABELS[v]}</option>
-                ))}
-              </select>
-            </div>
+            <Select
+              label="Flow"
+              options={['P2P', 'P2C', 'CRYPTO'].map((v) => ({
+                value: v,
+                label: FLOW_LABELS[v] ?? v,
+              }))}
+              value={form.flowType}
+              onChange={(e) => setForm({ ...form, flowType: e.target.value })}
+            />
+            <Select
+              label="Requisite"
+              options={['CARD', 'IBAN', 'WALLET'].map((v) => ({ value: v, label: v }))}
+              value={form.requisiteType}
+              onChange={(e) => setForm({ ...form, requisiteType: e.target.value })}
+            />
+            <Select
+              label="Direction"
+              options={['PAYIN', 'PAYOUT', 'BOTH'].map((v) => ({
+                value: v,
+                label: AVAIL_LABELS[v],
+              }))}
+              value={form.availability}
+              onChange={(e) => setForm({ ...form, availability: e.target.value })}
+            />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" type="button" onClick={() => setShowCreate(false)}>Cancel</Button>

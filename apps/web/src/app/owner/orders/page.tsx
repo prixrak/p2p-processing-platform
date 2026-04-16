@@ -6,6 +6,7 @@ import { Eye, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -156,38 +157,35 @@ export default function OrdersPage() {
       header: 'Actions',
       render: (o: Order) => (
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => setDetailOrder(o.id)} title="View">
+          <IconButton label="View order details" onClick={() => setDetailOrder(o.id)}>
             <Eye className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
           {o.status === 'ACTIVE' && (
             <>
-              <Button
+              <IconButton
+                label="Mark order completed"
                 variant="success"
-                size="sm"
                 onClick={() => updateStatus.mutate({ id: o.id, status: 'COMPLETED' })}
-                title="Complete"
               >
                 <CheckCircle className="h-3.5 w-3.5" />
-              </Button>
-              <Button
+              </IconButton>
+              <IconButton
+                label="Cancel order"
                 variant="danger"
-                size="sm"
                 onClick={() => updateStatus.mutate({ id: o.id, status: 'CANCELLED' })}
-                title="Cancel"
               >
                 <XCircle className="h-3.5 w-3.5" />
-              </Button>
+              </IconButton>
             </>
           )}
           {o.status === 'FAILED' && (
-            <Button
+            <IconButton
+              label="Retry order (set to pending)"
               variant="ghost"
-              size="sm"
               onClick={() => updateStatus.mutate({ id: o.id, status: 'PENDING' })}
-              title="Retry"
             >
               <RotateCcw className="h-3.5 w-3.5" />
-            </Button>
+            </IconButton>
           )}
         </div>
       ),

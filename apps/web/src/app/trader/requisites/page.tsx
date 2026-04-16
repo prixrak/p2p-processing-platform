@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Select } from '@/components/ui/select';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { api } from '@/lib/api';
@@ -141,7 +142,6 @@ export default function RequisitesPage() {
         limitTotalAmount: data.limit_amount,
         limitTotalOps: data.limit_operations,
         acceptsOtherBanks: data.accepts_other_banks,
-        currency: 'UAH',
       });
     },
     onSuccess: () => {
@@ -191,9 +191,6 @@ export default function RequisitesPage() {
 
   function handleSubmitCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.bank_id) {
-      return;
-    }
     createMutation.mutate(form);
   }
 
@@ -378,11 +375,10 @@ export default function RequisitesPage() {
             required
           />
           <Select
-            label="Bank"
-            options={[{ value: '', label: 'Select bank…' }, ...bankOptions]}
+            label="Bank (optional)"
+            options={[{ value: '', label: '—' }, ...bankOptions]}
             value={form.bank_id}
             onChange={(e) => setForm({ ...form, bank_id: e.target.value })}
-            required
           />
           <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
             <input
@@ -394,42 +390,38 @@ export default function RequisitesPage() {
             Accept transfers from other banks
           </label>
           <div className="grid grid-cols-2 gap-4">
-            <Input
+            <NumberInput
               label="Min Amount"
-              type="number"
-              value={String(form.min_amount)}
+              variant="amount"
+              value={form.min_amount}
               onChange={(e) => setForm({ ...form, min_amount: Number(e.target.value) })}
-              required
             />
-            <Input
+            <NumberInput
               label="Max Amount"
-              type="number"
-              value={String(form.max_amount)}
+              variant="amount"
+              value={form.max_amount}
               onChange={(e) => setForm({ ...form, max_amount: Number(e.target.value) })}
-              required
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input
+            <NumberInput
               label="Volume Limit"
-              type="number"
-              value={String(form.limit_amount)}
+              variant="amount"
+              value={form.limit_amount}
               onChange={(e) => setForm({ ...form, limit_amount: Number(e.target.value) })}
-              required
             />
-            <Input
+            <NumberInput
               label="Operations Limit"
-              type="number"
-              value={String(form.limit_operations)}
+              variant="integer"
+              value={form.limit_operations}
               onChange={(e) => setForm({ ...form, limit_operations: Number(e.target.value) })}
-              required
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setShowAddModal(false)}>
               Cancel
             </Button>
-            <Button type="submit" loading={createMutation.isPending} disabled={!form.bank_id}>
+            <Button type="submit" loading={createMutation.isPending}>
               <Plus className="h-4 w-4" />
               Create Requisite
             </Button>
@@ -463,35 +455,31 @@ export default function RequisitesPage() {
               Accept transfers from other banks
             </label>
             <div className="grid grid-cols-2 gap-4">
-              <Input
+              <NumberInput
                 label="Min Amount"
-                type="number"
-                value={String(form.min_amount)}
+                variant="amount"
+                value={form.min_amount}
                 onChange={(e) => setForm({ ...form, min_amount: Number(e.target.value) })}
-                required
               />
-              <Input
+              <NumberInput
                 label="Max Amount"
-                type="number"
-                value={String(form.max_amount)}
+                variant="amount"
+                value={form.max_amount}
                 onChange={(e) => setForm({ ...form, max_amount: Number(e.target.value) })}
-                required
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <Input
+              <NumberInput
                 label="Volume Limit"
-                type="number"
-                value={String(form.limit_amount)}
+                variant="amount"
+                value={form.limit_amount}
                 onChange={(e) => setForm({ ...form, limit_amount: Number(e.target.value) })}
-                required
               />
-              <Input
+              <NumberInput
                 label="Operations Limit"
-                type="number"
-                value={String(form.limit_operations)}
+                variant="integer"
+                value={form.limit_operations}
                 onChange={(e) => setForm({ ...form, limit_operations: Number(e.target.value) })}
-                required
               />
             </div>
             <div className="flex justify-end gap-2 pt-2">

@@ -3,6 +3,7 @@
 import { clsx } from 'clsx';
 import { Search, X } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { Select } from '@/components/ui/select';
 
 interface FilterBarProps {
   children: ReactNode;
@@ -38,20 +39,13 @@ export function FilterSelect({
   className,
 }: FilterSelectProps) {
   return (
-    <div className={clsx('flex flex-col gap-1', className)}>
-      <label className="text-xs text-text-muted">{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="px-3 py-1.5 text-sm bg-bg-input border border-border-primary rounded-lg text-text-primary focus:border-border-focus focus:outline-none"
-      >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    </div>
+    <Select
+      label={label}
+      options={options}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={clsx('min-w-[10rem]', className)}
+    />
   );
 }
 
@@ -87,9 +81,12 @@ export function FilterInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
+          inputMode={type === 'number' ? 'decimal' : undefined}
           className={clsx(
             'py-1.5 text-sm bg-bg-input border border-border-primary rounded-lg text-text-primary placeholder:text-text-muted focus:border-border-focus focus:outline-none',
             type === 'text' ? 'pl-8 pr-3' : 'px-3',
+            type === 'number' &&
+              'font-mono tabular-nums text-end [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
           )}
         />
         {value && (

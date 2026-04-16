@@ -10,6 +10,7 @@ import { StatusBadge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
 import { FilterBar, FilterSelect, FilterInput } from '@/components/ui/filters';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import { format } from 'date-fns';
 
 interface Order {
@@ -147,18 +148,15 @@ export default function AdminOrdersPage() {
               !row.traderName ? (
                 assigningOrder === row.id ? (
                   <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                    <select
+                    <Select
+                      options={[
+                        { value: '', label: 'Select trader' },
+                        ...traders.map((t) => ({ value: t.id, label: t.name })),
+                      ]}
                       value={selectedTrader}
                       onChange={(e) => setSelectedTrader(e.target.value)}
-                      className="px-2 py-1 text-xs bg-bg-input border border-border-primary rounded text-text-primary"
-                    >
-                      <option value="">Select trader</option>
-                      {traders.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
+                      className="min-h-9 min-w-[12rem] max-w-[16rem] !py-1.5 !text-xs"
+                    />
                     <Button
                       size="sm"
                       disabled={!selectedTrader}

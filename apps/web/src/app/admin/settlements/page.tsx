@@ -9,6 +9,9 @@ import { internalPaths } from '@/lib/internal-api';
 import { DataTable } from '@/components/ui/data-table';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
+import { NumberInput } from '@/components/ui/number-input';
+import { Select } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
 
 interface Settlement {
@@ -190,75 +193,55 @@ export default function SettlementsPage() {
         title="New Settlement"
       >
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-text-muted mb-1">Trader</label>
-            <select
-              value={traderId}
-              onChange={(e) => setTraderId(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-bg-input border border-border-primary rounded-lg text-text-primary focus:border-border-focus focus:outline-none"
-            >
-              <option value="">Select trader</option>
-              {traders.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Select
+            label="Trader"
+            placeholder="Select trader"
+            options={[
+              { value: '', label: 'Select trader' },
+              ...traders.map((t) => ({ value: t.id, label: t.name })),
+            ]}
+            value={traderId}
+            onChange={(e) => setTraderId(e.target.value)}
+          />
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-text-muted mb-1">Type</label>
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value as 'credit' | 'debit')}
-                className="w-full px-3 py-2 text-sm bg-bg-input border border-border-primary rounded-lg text-text-primary focus:border-border-focus focus:outline-none"
-              >
-                <option value="credit">Credit (Add funds)</option>
-                <option value="debit">Debit (Withdraw funds)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-text-muted mb-1">Currency</label>
-              <select
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-bg-input border border-border-primary rounded-lg text-text-primary focus:border-border-focus focus:outline-none"
-              >
-                {currencyOptions.length > 0 ? (
-                  currencyOptions.map((c) => (
-                    <option key={c.code} value={c.code}>{c.code}</option>
-                  ))
-                ) : (
-                  <option value="UAH">UAH</option>
-                )}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm text-text-muted mb-1">Amount</label>
-            <input
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-              min="0"
-              step="0.01"
-              className="w-full px-3 py-2 text-sm bg-bg-input border border-border-primary rounded-lg text-text-primary placeholder:text-text-muted focus:border-border-focus focus:outline-none"
+            <Select
+              label="Type"
+              options={[
+                { value: 'credit', label: 'Credit (Add funds)' },
+                { value: 'debit', label: 'Debit (Withdraw funds)' },
+              ]}
+              value={type}
+              onChange={(e) => setType(e.target.value as 'credit' | 'debit')}
+            />
+            <Select
+              label="Currency"
+              options={
+                currencyOptions.length > 0
+                  ? currencyOptions.map((c) => ({ value: c.code, label: c.code }))
+                  : [{ value: 'UAH', label: 'UAH' }]
+              }
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
             />
           </div>
 
-          <div>
-            <label className="block text-sm text-text-muted mb-1">Note</label>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={2}
-              placeholder="Optional note..."
-              className="w-full px-3 py-2 text-sm bg-bg-input border border-border-primary rounded-lg text-text-primary placeholder:text-text-muted focus:border-border-focus focus:outline-none resize-none"
-            />
-          </div>
+          <NumberInput
+            label="Amount"
+            variant="amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0.00"
+            min={0}
+          />
+
+          <Textarea
+            label="Note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            placeholder="Optional note…"
+          />
 
           {traderId && currentBalance && (
             <div className="bg-bg-tertiary rounded-lg p-4 text-sm">

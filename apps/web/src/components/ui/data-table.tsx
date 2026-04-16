@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { clsx } from 'clsx';
 import { ChevronDown, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react';
+import { Tooltip } from '@/components/ui/tooltip';
 
 interface Column<T> {
   key: string;
@@ -69,8 +70,8 @@ export function DataTable<T>({
 
   return (
     <div className={clsx('space-y-4', className)}>
-      <div className="bg-bg-card border border-border-primary rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="bg-bg-card border border-border-primary rounded-xl overflow-x-auto">
+        <div className="min-w-0">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border-primary">
@@ -127,20 +128,30 @@ export function DataTable<T>({
             Page {page} of {totalPages}
           </p>
           <div className="flex gap-2">
-            <button
-              onClick={() => onPageChange(page - 1)}
-              disabled={page <= 1}
-              className="inline-flex items-center gap-1 rounded-lg border border-border-primary bg-bg-secondary px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-bg-hover disabled:opacity-50 disabled:pointer-events-none"
-            >
-              <ChevronLeft className="h-4 w-4" /> Previous
-            </button>
-            <button
-              onClick={() => onPageChange(page + 1)}
-              disabled={page >= totalPages}
-              className="inline-flex items-center gap-1 rounded-lg border border-border-primary bg-bg-secondary px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-bg-hover disabled:opacity-50 disabled:pointer-events-none"
-            >
-              Next <ChevronRightIcon className="h-4 w-4" />
-            </button>
+            <Tooltip content="Previous page" side="top">
+              <span className="inline-flex">
+                <button
+                  type="button"
+                  onClick={() => onPageChange(page - 1)}
+                  disabled={page <= 1}
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-border-primary bg-bg-secondary px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ChevronLeft className="h-4 w-4" /> Previous
+                </button>
+              </span>
+            </Tooltip>
+            <Tooltip content="Next page" side="top">
+              <span className="inline-flex">
+                <button
+                  type="button"
+                  onClick={() => onPageChange(page + 1)}
+                  disabled={page >= totalPages}
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-border-primary bg-bg-secondary px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next <ChevronRightIcon className="h-4 w-4" />
+                </button>
+              </span>
+            </Tooltip>
           </div>
         </div>
       )}
@@ -174,21 +185,28 @@ function TableRow<T>({
       >
         {expandable && (
           <td className="px-2 py-3">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggle();
-              }}
-              className="p-1 rounded text-text-muted hover:text-text-primary"
-            >
-              <ChevronDown
-                size={14}
-                className={clsx(
-                  'transition-transform',
-                  !isExpanded && '-rotate-90',
-                )}
-              />
-            </button>
+            <Tooltip content={isExpanded ? 'Collapse row' : 'Expand row'} side="top">
+              <span className="inline-flex">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggle();
+                  }}
+                  aria-expanded={isExpanded}
+                  aria-label={isExpanded ? 'Collapse row' : 'Expand row'}
+                  className="cursor-pointer rounded p-1 text-text-muted transition-colors hover:bg-surface-tertiary hover:text-text-primary"
+                >
+                  <ChevronDown
+                    size={14}
+                    className={clsx(
+                      'transition-transform',
+                      !isExpanded && '-rotate-90',
+                    )}
+                  />
+                </button>
+              </span>
+            </Tooltip>
           </td>
         )}
         {columns.map((col) => (

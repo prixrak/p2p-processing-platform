@@ -6,6 +6,7 @@ import { Plus, Power, PowerOff } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -83,18 +84,17 @@ export default function CurrenciesPage() {
       header: 'Actions',
       className: 'w-24',
       render: (c: Currency) => (
-        <Button
+        <IconButton
+          label={c.status === 'active' ? 'Deactivate currency' : 'Activate currency'}
           variant={c.status === 'active' ? 'danger' : 'success'}
-          size="sm"
           onClick={() => toggleStatus.mutate({ id: c.id, status: c.status })}
-          title={c.status === 'active' ? 'Deactivate' : 'Activate'}
         >
           {c.status === 'active' ? (
             <PowerOff className="h-3.5 w-3.5" />
           ) : (
             <Power className="h-3.5 w-3.5" />
           )}
-        </Button>
+        </IconButton>
       ),
     },
   ];

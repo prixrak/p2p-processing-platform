@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Eye, FileImage, MessageSquare } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -162,9 +163,9 @@ export default function DisputesPage() {
       header: '',
       className: 'w-12',
       render: (d: Dispute) => (
-        <Button variant="ghost" size="sm" onClick={() => setDetailId(d.id)} title="View">
+        <IconButton label="View dispute details" onClick={() => setDetailId(d.id)}>
           <Eye className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
       ),
     },
   ];

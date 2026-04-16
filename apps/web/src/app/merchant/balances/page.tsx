@@ -24,7 +24,7 @@ export default function MerchantBalancesPage() {
           Balances
         </h1>
         <p className="text-sm text-text-muted mt-1">
-          Account balances (per-currency ledger). There is no merchant transaction-history API yet.
+          Per-currency available and frozen balances.
         </p>
       </div>
 
@@ -42,26 +42,22 @@ export default function MerchantBalancesPage() {
           ))
         ) : (
           balances.map((b) => {
-            const total = b.available + (b.frozen ?? 0);
+            const frozen = b.frozen ?? 0;
             return (
               <div
                 key={b.currency}
                 className="bg-bg-card border border-border-primary rounded-xl p-5"
               >
                 <p className="text-sm text-text-muted mb-1">{b.currency}</p>
+                <p className="text-xs text-text-muted uppercase tracking-wide mb-0.5">Available</p>
                 <p className="text-2xl font-bold text-text-primary font-mono">
                   {b.available.toLocaleString()}
                 </p>
-                <div className="flex gap-4 mt-2 text-xs">
-                  <span className="text-text-muted">
-                    Total:{' '}
-                    <span className="text-text-secondary font-mono">{total.toLocaleString()}</span>
+                <div className="mt-2 text-xs text-text-muted">
+                  Frozen:{' '}
+                  <span className={frozen > 0 ? 'text-accent-yellow font-mono' : 'font-mono text-text-secondary'}>
+                    {frozen.toLocaleString()}
                   </span>
-                  {b.frozen > 0 && (
-                    <span className="text-accent-yellow">
-                      Frozen: {b.frozen.toLocaleString()}
-                    </span>
-                  )}
                 </div>
               </div>
             );

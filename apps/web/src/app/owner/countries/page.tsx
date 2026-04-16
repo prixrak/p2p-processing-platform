@@ -6,6 +6,7 @@ import { Plus, Power, PowerOff, Globe } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -89,13 +90,13 @@ export default function CountriesPage() {
       header: '',
       className: 'w-24',
       render: (c: Country) => (
-        <Button
+        <IconButton
+          label={c.isActive ? 'Deactivate country' : 'Activate country'}
           variant={c.isActive ? 'danger' : 'success'}
-          size="sm"
           onClick={() => toggle.mutate({ id: c.id, isActive: c.isActive })}
         >
           {c.isActive ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
-        </Button>
+        </IconButton>
       ),
     },
   ];

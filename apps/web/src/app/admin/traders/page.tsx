@@ -10,7 +10,9 @@ import { StatusBadge } from '@/components/ui/badge';
 import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 
 interface Trader {
   id: string;
@@ -181,28 +183,30 @@ export default function TradersPage() {
       header: '',
       render: (row) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button
+          <IconButton
+            label="Set payout pool limits"
+            variant="ghost"
             onClick={() => {
               setLimitsTrader(row);
               setMinLimit(String(row.payoutMinLimit ?? 0));
               setMaxLimit(String(row.payoutMaxLimit ?? 0));
             }}
-            className="p-1 rounded text-text-muted hover:text-accent-blue transition-colors"
-            title="Set payout limits"
+            className="!min-h-8 !min-w-8 !p-1"
           >
             <SlidersHorizontal size={16} />
-          </button>
-          <button
+          </IconButton>
+          <IconButton
+            label={row.status === 'active' ? 'Disable trader' : 'Enable trader'}
+            variant="ghost"
             onClick={() => toggleMutation.mutate({ id: row.id, enabled: row.status !== 'active' })}
-            className="p-1 rounded text-text-muted hover:text-text-primary transition-colors"
-            title={row.status === 'active' ? 'Disable trader' : 'Enable trader'}
+            className="!min-h-8 !min-w-8 !p-1"
           >
             {row.status === 'active' ? (
               <ToggleRight size={20} className="text-accent-green" />
             ) : (
               <ToggleLeft size={20} />
             )}
-          </button>
+          </IconButton>
         </div>
       ),
     },
@@ -265,17 +269,17 @@ export default function TradersPage() {
             Set both to <strong>0</strong> to show all orders (no limit).
           </p>
           <div className="grid grid-cols-2 gap-4">
-            <Input
+            <NumberInput
               label="Min Amount (0 = no min)"
-              type="number"
+              variant="amount"
               min={0}
               value={minLimit}
               onChange={(e) => setMinLimit(e.target.value)}
               placeholder="0"
             />
-            <Input
+            <NumberInput
               label="Max Amount (0 = no max)"
-              type="number"
+              variant="amount"
               min={0}
               value={maxLimit}
               onChange={(e) => setMaxLimit(e.target.value)}
@@ -370,20 +374,21 @@ export default function TradersPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <StatusBadge status={r.isActive ? 'active' : 'inactive'} />
-                        <button
+                        <IconButton
+                          label={r.isActive ? 'Deactivate requisite' : 'Activate requisite'}
+                          variant="ghost"
+                          disabled={toggleRequisiteMutation.isPending}
                           onClick={() =>
                             toggleRequisiteMutation.mutate({ id: r.id, makeActive: !r.isActive })
                           }
-                          disabled={toggleRequisiteMutation.isPending}
-                          className="p-1 rounded text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
-                          title={r.isActive ? 'Deactivate requisite' : 'Activate requisite'}
+                          className="!min-h-8 !min-w-8 !p-1"
                         >
                           {r.isActive ? (
                             <PowerOff size={15} className="text-accent-red" />
                           ) : (
                             <Power size={15} className="text-accent-green" />
                           )}
-                        </button>
+                        </IconButton>
                       </div>
                     </div>
                   ))}

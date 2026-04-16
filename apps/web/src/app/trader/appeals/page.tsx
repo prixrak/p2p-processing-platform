@@ -10,6 +10,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Table } from '@/components/ui/table';
 import { Modal } from '@/components/ui/modal';
@@ -90,9 +91,9 @@ export default function AppealsPage() {
       header: '',
       render: (row: AppealDto) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button size="sm" variant="ghost" onClick={() => setSelectedAppeal(row)}>
+          <IconButton label="View appeal details" onClick={() => setSelectedAppeal(row)}>
             <Eye className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         </div>
       ),
     },

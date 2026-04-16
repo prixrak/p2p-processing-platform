@@ -1,13 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Power, PowerOff, Pencil } from 'lucide-react';
 import { DirectionType } from '@p2p/shared';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -79,11 +81,44 @@ const emptyForm: {
   maxAmount: 0,
 };
 
+interface CurrencyRow {
+  id: string;
+  code: string;
+  isActive: boolean;
+}
+
 export default function DirectionsPage() {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [editItem, setEditItem] = useState<Direction | null>(null);
   const [form, setForm] = useState(emptyForm);
+
+  const { data: currencies, isLoading: currenciesLoading } = useQuery({
+    queryKey: ['owner', 'currencies'],
+    queryFn: () => api.get<CurrencyRow[]>(internalPaths.currencies),
+  });
+
+  const currencySelectOptions = useMemo(() => {
+    const rows = currencies ?? [];
+    const active = rows.filter((c) => c.isActive);
+    const opts = active.map((c) => ({ value: c.code, label: c.code }));
+    const seen = new Set(opts.map((o) => o.value));
+    if (editItem) {
+      for (const code of [editItem.fromCurrency, editItem.toCurrency]) {
+        if (code && !seen.has(code)) {
+          opts.push({ value: code, label: `${code} (inactive)` });
+          seen.add(code);
+        }
+      }
+    }
+    opts.sort((a, b) => a.value.localeCompare(b.value));
+    return opts;
+  }, [currencies, editItem]);
+
+  const activeCurrencyCount = useMemo(
+    () => (currencies ?? []).filter((c) => c.isActive).length,
+    [currencies],
+  );
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner', 'directions'],
@@ -207,17 +242,16 @@ export default function DirectionsPage() {
       header: 'Actions',
       render: (d: Direction) => (
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => openEdit(d)} title="Edit">
+          <IconButton label="Edit direction" onClick={() => openEdit(d)}>
             <Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button
+          </IconButton>
+          <IconButton
+            label={d.isOnline ? 'Take direction offline' : 'Put direction online'}
             variant={d.isOnline ? 'danger' : 'success'}
-            size="sm"
             onClick={() => toggleOnline.mutate({ id: d.id })}
-            title={d.isOnline ? 'Go Offline' : 'Go Online'}
           >
             {d.isOnline ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
-          </Button>
+          </IconButton>
         </div>
       ),
     },
@@ -254,49 +288,57 @@ export default function DirectionsPage() {
         />
       )}
       <div className="grid grid-cols-2 gap-3">
-        <Input
+        <Select
           label="From Currency"
+          placeholder="Select currency"
+          options={currencySelectOptions}
           value={form.fromCurrency}
           onChange={(e) => setForm({ ...form, fromCurrency: e.target.value })}
-          placeholder="RUB"
           required
+          disabled={currenciesLoading}
         />
-        <Input
+        <Select
           label="To Currency"
+          placeholder="Select currency"
+          options={currencySelectOptions}
           value={form.toCurrency}
           onChange={(e) => setForm({ ...form, toCurrency: e.target.value })}
-          placeholder="USDT"
           required
+          disabled={currenciesLoading}
         />
       </div>
+      {!currenciesLoading && activeCurrencyCount === 0 && (
+        <p className="text-sm text-amber-600 dark:text-amber-400">
+          No active currencies. Add and activate currencies under Currencies first.
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-3">
-        <Input
+        <NumberInput
           label="Rate"
-          type="number"
-          step="0.0001"
+          variant="rate"
           value={form.rate}
           onChange={(e) => setForm({ ...form, rate: parseFloat(e.target.value) || 0 })}
           required
         />
-        <Input
-          label="Fee (%)"
-          type="number"
-          step="0.01"
+        <NumberInput
+          label="Fee"
+          variant="percent"
+          suffix="%"
           value={form.fee}
           onChange={(e) => setForm({ ...form, fee: parseFloat(e.target.value) || 0 })}
           required
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Input
+        <NumberInput
           label="Min Amount"
-          type="number"
+          variant="amount"
           value={form.minAmount}
           onChange={(e) => setForm({ ...form, minAmount: parseFloat(e.target.value) || 0 })}
         />
-        <Input
+        <NumberInput
           label="Max Amount"
-          type="number"
+          variant="amount"
           value={form.maxAmount}
           onChange={(e) => setForm({ ...form, maxAmount: parseFloat(e.target.value) || 0 })}
         />
@@ -345,7 +387,11 @@ export default function DirectionsPage() {
             <Button variant="ghost" type="button" onClick={() => setShowCreate(false)}>
               Cancel
             </Button>
-            <Button type="submit" loading={createDirection.isPending}>
+            <Button
+              type="submit"
+              loading={createDirection.isPending}
+              disabled={!currenciesLoading && activeCurrencyCount === 0}
+            >
               Create
             </Button>
           </div>

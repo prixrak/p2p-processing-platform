@@ -6,6 +6,7 @@ import { Eye, Plus } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Tabs } from '@/components/ui/tabs';
@@ -114,9 +115,9 @@ export default function SettlementsPage() {
       key: 'actions',
       header: 'Actions',
       render: (s: Settlement) => (
-        <Button variant="ghost" size="sm" onClick={() => setDetailId(s.id)} title="View">
+        <IconButton label="View settlement details" onClick={() => setDetailId(s.id)}>
           <Eye className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
       ),
     },
   ];

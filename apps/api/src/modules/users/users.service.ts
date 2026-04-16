@@ -68,7 +68,12 @@ export class UsersService {
     const passwordHash = await hashPassword(password);
 
     const user = await this.prisma.user.create({
-      data: { email, passwordHash, role },
+      data: {
+        email,
+        passwordHash,
+        role,
+        ...(role === UserRole.TRADER ? { traderProfile: { create: {} } } : {}),
+      },
       select: USER_SELECT,
     });
 
@@ -92,6 +97,14 @@ export class UsersService {
       data: updateData as any,
       select: USER_SELECT,
     });
+
+    if (updated.role === UserRole.TRADER) {
+      await this.prisma.traderProfile.upsert({
+        where: { userId: id },
+        create: { userId: id },
+        update: {},
+      });
+    }
 
     this.logger.log(`User ${id} updated`);
     return updated;

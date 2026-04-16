@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
@@ -14,13 +15,41 @@ export class DirectionsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * New directions must reference currencies that exist in `currencies` and are active.
+   * On update, only newly chosen codes are validated so legacy directions can be edited
+   * if their stored codes were later deactivated.
+   */
+  private async assertSingleActiveCurrency(code: string) {
+    const c = code.trim().toUpperCase();
+    if (!c) {
+      throw new BadRequestException('Currency code is required');
+    }
+    const row = await this.prisma.currency.findUnique({ where: { code: c } });
+    if (!row) {
+      throw new BadRequestException(
+        `Unknown currency code: ${c}. Add it in Currencies first.`,
+      );
+    }
+    if (!row.isActive) {
+      throw new BadRequestException(
+        `Inactive currency: ${c}. Activate the currency or pick another.`,
+      );
+    }
+  }
+
   async create(dto: CreateDirectionDto) {
+    const fromCurrency = dto.fromCurrency.trim().toUpperCase();
+    const toCurrency = dto.toCurrency.trim().toUpperCase();
+    await this.assertSingleActiveCurrency(fromCurrency);
+    await this.assertSingleActiveCurrency(toCurrency);
+
     const direction = await this.prisma.direction.create({
       data: {
         name: dto.name,
         type: dto.type,
-        fromCurrency: dto.fromCurrency,
-        toCurrency: dto.toCurrency,
+        fromCurrency,
+        toCurrency,
         minAmount: dto.minAmount ?? 0,
         maxAmount: dto.maxAmount ?? 0,
         rate: dto.rate ?? 1,
@@ -36,11 +65,38 @@ export class DirectionsService {
   }
 
   async update(id: string, dto: UpdateDirectionDto) {
-    await this.findById(id);
+    const existing = await this.findById(id);
 
+    const fromCurrency =
+      dto.fromCurrency !== undefined
+        ? dto.fromCurrency.trim().toUpperCase()
+        : existing.fromCurrency;
+    const toCurrency =
+      dto.toCurrency !== undefined
+        ? dto.toCurrency.trim().toUpperCase()
+        : existing.toCurrency;
+
+    if (
+      dto.fromCurrency !== undefined &&
+      fromCurrency !== existing.fromCurrency
+    ) {
+      await this.assertSingleActiveCurrency(fromCurrency);
+    }
+    if (
+      dto.toCurrency !== undefined &&
+      toCurrency !== existing.toCurrency
+    ) {
+      await this.assertSingleActiveCurrency(toCurrency);
+    }
+
+    const { fromCurrency: _fc, toCurrency: _tc, ...rest } = dto;
     return this.prisma.direction.update({
       where: { id },
-      data: dto,
+      data: {
+        ...rest,
+        ...(dto.fromCurrency !== undefined ? { fromCurrency } : {}),
+        ...(dto.toCurrency !== undefined ? { toCurrency } : {}),
+      },
     });
   }
 

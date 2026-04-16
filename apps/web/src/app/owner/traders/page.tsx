@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, ShieldOff, Eye } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
@@ -169,12 +169,12 @@ export default function TradersPage() {
       header: 'Actions',
       render: (t: Trader) => (
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setDetailTrader(t.id)} title="View">
+          <IconButton label="View trader details" onClick={() => setDetailTrader(t.id)}>
             <Eye className="h-3.5 w-3.5" />
-          </Button>
-          <Button
+          </IconButton>
+          <IconButton
+            label={t.status === 'active' ? 'Deactivate trader' : 'Activate trader'}
             variant={t.status === 'active' ? 'danger' : 'success'}
-            size="sm"
             onClick={() => toggleStatus.mutate({ id: t.id, status: t.status })}
           >
             {t.status === 'active' ? (
@@ -182,7 +182,7 @@ export default function TradersPage() {
             ) : (
               <ShieldCheck className="h-3.5 w-3.5" />
             )}
-          </Button>
+          </IconButton>
         </div>
       ),
     },

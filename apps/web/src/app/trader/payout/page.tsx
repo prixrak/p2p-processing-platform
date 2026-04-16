@@ -14,6 +14,7 @@ import {
   List,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
@@ -155,9 +156,9 @@ export default function PayOutOrdersPage() {
             <Play className="h-3.5 w-3.5" />
             Take
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelectedOrder(row)}>
+          <IconButton label="View order details" onClick={() => setSelectedOrder(row)}>
             <Eye className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         </div>
       ),
     },
@@ -251,9 +252,9 @@ export default function PayOutOrdersPage() {
               </Button>
             </>
           )}
-          <Button size="sm" variant="ghost" onClick={() => setSelectedOrder(row)}>
+          <IconButton label="View order details" onClick={() => setSelectedOrder(row)}>
             <Eye className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         </div>
       ),
     },

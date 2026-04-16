@@ -7,6 +7,7 @@ import { UserRole } from '@p2p/shared';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -43,6 +44,7 @@ const roleColors: Record<UserRole, 'blue' | 'green' | 'yellow' | 'red' | 'defaul
   [UserRole.TRADER]: 'green',
   [UserRole.MERCHANT]: 'blue',
   [UserRole.SUPPORT]: 'default',
+  [UserRole.REFERRAL]: 'default',
 };
 
 const roleOptions = [
@@ -170,9 +172,9 @@ export default function UsersPage() {
               className="!py-1.5 !text-xs w-28"
             />
           )}
-          <Button
+          <IconButton
+            label={u.status === 'active' ? 'Deactivate user' : 'Activate user'}
             variant={u.status === 'active' ? 'danger' : 'success'}
-            size="sm"
             onClick={() =>
               toggleStatus.mutate({
                 id: u.id,
@@ -185,7 +187,7 @@ export default function UsersPage() {
             ) : (
               <ShieldCheck className="h-3.5 w-3.5" />
             )}
-          </Button>
+          </IconButton>
         </div>
       ),
     },

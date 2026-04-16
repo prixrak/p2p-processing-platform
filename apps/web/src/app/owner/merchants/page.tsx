@@ -7,7 +7,9 @@ import { UserRole } from '@p2p/shared';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -235,21 +237,23 @@ export default function MerchantsPage() {
       header: 'Actions',
       render: (m: Merchant) => (
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setDirectionsModal(m)} title="Commissions & directions">
+          <IconButton
+            label="Directions & commissions (rates, tiers)"
+            onClick={() => setDirectionsModal(m)}
+          >
             <Percent className="h-3.5 w-3.5" />
-          </Button>
-          <Button
+          </IconButton>
+          <IconButton
+            label={m.status === 'active' ? 'Lock merchant account' : 'Unlock merchant account'}
             variant={m.status === 'active' ? 'danger' : 'success'}
-            size="sm"
             onClick={() => toggleLock.mutate({ id: m.id, status: m.status })}
-            title={m.status === 'active' ? 'Lock' : 'Unlock'}
           >
             {m.status === 'active' ? (
               <Lock className="h-3.5 w-3.5" />
             ) : (
               <Unlock className="h-3.5 w-3.5" />
             )}
-          </Button>
+          </IconButton>
         </div>
       ),
     },
@@ -341,7 +345,7 @@ export default function MerchantsPage() {
           {(merchantDirections ?? []).map((dir) => (
             <div
               key={dir.id}
-              className="rounded-lg border border-border bg-bg-secondary p-4 space-y-3"
+              className="rounded-lg border border-border-primary bg-bg-secondary p-4 space-y-3"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -354,20 +358,20 @@ export default function MerchantsPage() {
                   </Badge>
                 </div>
                 <div className="flex gap-2">
-                  <Button
+                  <IconButton
+                    label={dir.isActive ? 'Deactivate direction' : 'Activate direction'}
                     variant="ghost"
-                    size="sm"
                     onClick={() => toggleDirection.mutate({ dirId: dir.id, isActive: dir.isActive })}
                   >
                     {dir.isActive ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
-                  </Button>
-                  <Button
+                  </IconButton>
+                  <IconButton
+                    label="Delete direction"
                     variant="danger"
-                    size="sm"
                     onClick={() => deleteDirection.mutate({ dirId: dir.id })}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  </IconButton>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3 text-sm">
@@ -387,7 +391,7 @@ export default function MerchantsPage() {
                 </div>
               </div>
               {dir.commissionTiers.length > 0 && (
-                <div className="border-t border-border pt-2">
+                <div className="border-t border-border-primary pt-2">
                   <p className="text-xs text-text-muted mb-1">Commission tiers:</p>
                   <div className="space-y-1">
                     {dir.commissionTiers.map((t) => (
@@ -408,7 +412,7 @@ export default function MerchantsPage() {
             </Button>
           ) : (
             <form
-              className="rounded-lg border border-border border-dashed p-4 space-y-3"
+              className="rounded-lg border border-border-primary border-dashed p-4 space-y-3"
               onSubmit={(e) => {
                 e.preventDefault();
                 createDirection.mutate(dirForm);
@@ -416,17 +420,17 @@ export default function MerchantsPage() {
             >
               <p className="text-sm font-medium text-text-primary">New direction</p>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-text-muted mb-1">Type</label>
-                  <select
-                    className="w-full rounded border border-border bg-bg-primary text-text-primary px-2 py-1.5 text-sm"
-                    value={dirForm.directionType}
-                    onChange={(e) => setDirForm({ ...dirForm, directionType: e.target.value })}
-                  >
-                    <option value="PAYIN">Pay-In</option>
-                    <option value="PAYOUT">Pay-Out</option>
-                  </select>
-                </div>
+                <Select
+                  label="Type"
+                  options={[
+                    { value: 'PAYIN', label: 'Pay-In' },
+                    { value: 'PAYOUT', label: 'Pay-Out' },
+                  ]}
+                  value={dirForm.directionType}
+                  onChange={(e) =>
+                    setDirForm({ ...dirForm, directionType: e.target.value as 'PAYIN' | 'PAYOUT' })
+                  }
+                />
                 <Input
                   label="Currency"
                   value={dirForm.currency}
@@ -435,27 +439,29 @@ export default function MerchantsPage() {
                 />
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <Input
+                <NumberInput
                   label="Min amount"
-                  type="number"
-                  min="0"
+                  variant="amount"
+                  min={0}
                   value={dirForm.minAmount}
                   onChange={(e) => setDirForm({ ...dirForm, minAmount: Number(e.target.value) })}
                 />
-                <Input
+                <NumberInput
                   label="Max amount"
-                  type="number"
-                  min="0"
+                  variant="amount"
+                  min={0}
                   value={dirForm.maxAmount}
                   onChange={(e) => setDirForm({ ...dirForm, maxAmount: Number(e.target.value) })}
                 />
-                <Input
-                  label="Commission %"
-                  type="number"
-                  step="0.01"
-                  min="0"
+                <NumberInput
+                  label="Commission"
+                  variant="percent"
+                  suffix="%"
+                  min={0}
                   value={dirForm.defaultCommissionPercent}
-                  onChange={(e) => setDirForm({ ...dirForm, defaultCommissionPercent: Number(e.target.value) })}
+                  onChange={(e) =>
+                    setDirForm({ ...dirForm, defaultCommissionPercent: Number(e.target.value) })
+                  }
                 />
               </div>
               <div className="flex justify-end gap-2">
@@ -465,7 +471,7 @@ export default function MerchantsPage() {
             </form>
           )}
 
-          <div className="flex justify-end pt-2 border-t border-border">
+          <div className="flex justify-end border-t border-border-primary pt-2">
             <Button variant="ghost" onClick={() => { setDirectionsModal(null); setShowAddDir(false); }}>Close</Button>
           </div>
         </div>

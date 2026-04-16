@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Eye } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -144,9 +144,9 @@ export default function SupportOrdersPage() {
       header: '',
       className: 'w-12',
       render: (o: Order) => (
-        <Button variant="ghost" size="sm" onClick={() => setDetailOrder(o.id)} title="View Details">
+        <IconButton label="View order details" onClick={() => setDetailOrder(o.id)}>
           <Eye className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
       ),
     },
   ];

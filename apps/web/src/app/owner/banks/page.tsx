@@ -6,6 +6,7 @@ import { Plus, Pencil, Power, PowerOff, Upload } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
@@ -115,21 +116,20 @@ export default function BanksPage() {
       header: 'Actions',
       render: (b: Bank) => (
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => openEdit(b)} title="Edit">
+          <IconButton label="Edit bank" onClick={() => openEdit(b)}>
             <Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button
+          </IconButton>
+          <IconButton
+            label={b.status === 'active' ? 'Deactivate bank' : 'Activate bank'}
             variant={b.status === 'active' ? 'danger' : 'success'}
-            size="sm"
             onClick={() => toggleStatus.mutate({ id: b.id, status: b.status })}
-            title={b.status === 'active' ? 'Deactivate' : 'Activate'}
           >
             {b.status === 'active' ? (
               <PowerOff className="h-3.5 w-3.5" />
             ) : (
               <Power className="h-3.5 w-3.5" />
             )}
-          </Button>
+          </IconButton>
         </div>
       ),
     },

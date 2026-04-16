@@ -12,10 +12,12 @@ import {
   Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Table } from '@/components/ui/table';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -149,20 +151,24 @@ export default function ReferralsAdminPage() {
       header: '',
       render: (row: ReferralAgent) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button
-            size="sm"
-            variant="ghost"
+          <IconButton
+            label="Link a user to this agent"
             onClick={() => {
               setLinkAgentId(row.id);
               setLinkOpen(true);
             }}
-            title="Link a user"
           >
             <Link className="h-3.5 w-3.5" />
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => { setDetailAgent(row); setEditPercent(String(row.referralPercent)); }}>
+          </IconButton>
+          <IconButton
+            label="View agent details"
+            onClick={() => {
+              setDetailAgent(row);
+              setEditPercent(String(row.referralPercent));
+            }}
+          >
             <Eye className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         </div>
       ),
     },
@@ -204,9 +210,10 @@ export default function ReferralsAdminPage() {
           <Input label="Email" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
           <Input label="Password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
           <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Commission % (0–100)"
-              type="number"
+            <NumberInput
+              label="Commission (0–100)"
+              variant="percent"
+              suffix="%"
               min={0}
               max={100}
               value={newPercent}
@@ -290,15 +297,17 @@ export default function ReferralsAdminPage() {
             <Card>
               <h3 className="mb-3 text-sm font-medium text-text-secondary">Update Commission %</h3>
               <div className="flex items-end gap-3">
-                <Input
-                  label="New Commission %"
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={editPercent}
-                  onChange={(e) => setEditPercent(e.target.value)}
-                  className="flex-1"
-                />
+                <div className="min-w-0 flex-1">
+                  <NumberInput
+                    label="New commission"
+                    variant="percent"
+                    suffix="%"
+                    min={0}
+                    max={100}
+                    value={editPercent}
+                    onChange={(e) => setEditPercent(e.target.value)}
+                  />
+                </div>
                 <Button
                   variant="primary"
                   loading={updateMutation.isPending}
@@ -326,15 +335,14 @@ export default function ReferralsAdminPage() {
                         <Badge variant={u.isActive ? 'success' : 'default'} dot>
                           {u.isActive ? 'Active' : 'Inactive'}
                         </Badge>
-                        <Button
-                          size="sm"
+                        <IconButton
+                          label="Unlink user from this agent"
                           variant="ghost"
                           onClick={() => unlinkMutation.mutate(u.id)}
                           loading={unlinkMutation.isPending}
-                          title="Unlink"
                         >
                           <Unlink className="h-3.5 w-3.5 text-danger" />
-                        </Button>
+                        </IconButton>
                       </div>
                     </div>
                   ))}
