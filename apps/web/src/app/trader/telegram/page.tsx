@@ -17,17 +17,18 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Toggle } from '@/components/ui/toggle';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { cn } from '@/lib/utils';
 
-interface TelegramSettings {
-  is_connected: boolean;
-  bot_username?: string;
-  connect_url?: string;
-  notifications: {
-    payin: boolean;
-    payout: boolean;
-    appeals: boolean;
-  };
+/** Matches Prisma / GET /api/telegram/settings response. */
+interface TelegramSettingsApi {
+  id: string;
+  traderId: string;
+  chatId: string | null;
+  notifyPayin: boolean;
+  notifyPayout: boolean;
+  notifyAppeals: boolean;
+  isActive: boolean;
 }
 
 export default function TelegramPage() {
@@ -35,29 +36,38 @@ export default function TelegramPage() {
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['trader', 'telegram'],
-    queryFn: () => api.get<TelegramSettings>('/api/trader/telegram/settings'),
+    queryFn: () => api.get<TelegramSettingsApi>(internalPaths.telegramSettings),
   });
 
   const connectMutation = useMutation({
-    mutationFn: () => api.post<{ connect_url: string }>('/api/trader/telegram/connect'),
+    mutationFn: () => api.post<{ token: string }>(internalPaths.telegramConnect),
     onSuccess: (data) => {
-      if (data.connect_url) {
-        window.open(data.connect_url, '_blank');
+      const bot = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME?.replace(/^@/, '');
+      if (bot && data.token) {
+        window.open(`https://t.me/${bot}?start=${encodeURIComponent(data.token)}`, '_blank');
+      } else if (data.token) {
+        void navigator.clipboard.writeText(data.token);
+        alert(
+          'Connect token copied. Open your Telegram bot and send /start with this token if your deployment uses a custom linking flow.',
+        );
       }
       queryClient.invalidateQueries({ queryKey: ['trader', 'telegram'] });
     },
   });
 
   const disconnectMutation = useMutation({
-    mutationFn: () => api.post('/api/trader/telegram/disconnect'),
+    mutationFn: () =>
+      api.patch(internalPaths.telegramSettings, {
+        isActive: false,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trader', 'telegram'] });
     },
   });
 
   const toggleNotification = useMutation({
-    mutationFn: (update: Partial<TelegramSettings['notifications']>) =>
-      api.patch('/api/trader/telegram/notifications', update),
+    mutationFn: (update: Partial<Pick<TelegramSettingsApi, 'notifyPayin' | 'notifyPayout' | 'notifyAppeals'>>) =>
+      api.patch(internalPaths.telegramSettings, update),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trader', 'telegram'] });
     },
@@ -71,7 +81,7 @@ export default function TelegramPage() {
     );
   }
 
-  const isConnected = settings?.is_connected ?? false;
+  const isConnected = Boolean(settings?.isActive && settings?.chatId);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -83,7 +93,6 @@ export default function TelegramPage() {
         </div>
       </div>
 
-      {/* Connection Status */}
       <Card>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -107,9 +116,9 @@ export default function TelegramPage() {
                   {isConnected ? 'Connected' : 'Not Connected'}
                 </Badge>
               </div>
-              {isConnected && settings?.bot_username && (
+              {isConnected && settings?.chatId && (
                 <p className="text-sm text-text-muted">
-                  Connected via @{settings.bot_username}
+                  Chat linked (id <span className="font-mono text-xs">{settings.chatId}</span>)
                 </p>
               )}
               {!isConnected && (
@@ -141,7 +150,6 @@ export default function TelegramPage() {
         </div>
       </Card>
 
-      {/* Notification Toggles */}
       <Card className={cn(!isConnected && 'opacity-50 pointer-events-none')}>
         <div className="flex items-center gap-2 mb-6">
           <Bell className="h-5 w-5 text-text-muted" />
@@ -160,8 +168,8 @@ export default function TelegramPage() {
               </div>
             </div>
             <Toggle
-              checked={settings?.notifications.payin ?? false}
-              onChange={(checked) => toggleNotification.mutate({ payin: checked })}
+              checked={settings?.notifyPayin ?? false}
+              onChange={(checked) => toggleNotification.mutate({ notifyPayin: checked })}
               disabled={!isConnected}
             />
           </div>
@@ -177,8 +185,8 @@ export default function TelegramPage() {
               </div>
             </div>
             <Toggle
-              checked={settings?.notifications.payout ?? false}
-              onChange={(checked) => toggleNotification.mutate({ payout: checked })}
+              checked={settings?.notifyPayout ?? false}
+              onChange={(checked) => toggleNotification.mutate({ notifyPayout: checked })}
               disabled={!isConnected}
             />
           </div>
@@ -194,8 +202,8 @@ export default function TelegramPage() {
               </div>
             </div>
             <Toggle
-              checked={settings?.notifications.appeals ?? false}
-              onChange={(checked) => toggleNotification.mutate({ appeals: checked })}
+              checked={settings?.notifyAppeals ?? false}
+              onChange={(checked) => toggleNotification.mutate({ notifyAppeals: checked })}
               disabled={!isConnected}
             />
           </div>

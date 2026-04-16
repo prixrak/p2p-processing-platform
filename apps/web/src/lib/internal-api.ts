@@ -43,6 +43,8 @@ export const internalPaths = {
 
   directions: '/api/directions',
   direction: (id: string) => `/api/directions/${id}`,
+  /** Toggle direction online/offline (no body). */
+  directionToggle: (id: string) => `/api/directions/${id}/toggle`,
 
   currencies: '/api/currencies',
   currency: (id: string) => `/api/currencies/${id}`,
@@ -87,6 +89,13 @@ export const internalPaths = {
   referralUnlinkUser: (userId: string) => `/api/referrals/users/${userId}/unlink`,
   referralMe: '/api/referral/me',
   referralMeStatistics: '/api/referral/me/statistics',
+
+  /** Trader Telegram integration (JWT). */
+  telegramSettings: '/api/telegram/settings',
+  telegramConnect: '/api/telegram/connect',
+
+  /** Appeals — GET returns `{ items, total, page, limit }`. */
+  appeals: '/api/appeals',
 
   /**
    * Endpoints not yet implemented on the Nest API.

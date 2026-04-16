@@ -18,7 +18,6 @@ import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
 import { Modal } from '@/components/ui/modal';
 import { Select } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { formatCurrency, formatDate, formatDateFull, shortId, cn } from '@/lib/utils';
 import { payinStatusVariant } from '@/lib/status-helpers';
@@ -26,9 +25,11 @@ import { PayInOrderStatus } from '@p2p/shared';
 import { AUTO_REFRESH_INTERVALS } from '@p2p/shared';
 import type { OrderDto } from '@p2p/shared';
 
-interface PayInListResponse {
-  orders: OrderDto[];
+interface PayInListApiResponse {
+  items: OrderDto[];
   total: number;
+  page: number;
+  limit: number;
 }
 
 function CountdownTimer({ autocloseAt }: { autocloseAt: number | null }) {
@@ -68,26 +69,25 @@ function CountdownTimer({ autocloseAt }: { autocloseAt: number | null }) {
 export default function PayInOrdersPage() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
   const [autoRefresh, setAutoRefresh] = useState<number>(0);
   const [selectedOrder, setSelectedOrder] = useState<OrderDto | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
   const queryParams: Record<string, string> = {};
   if (statusFilter) queryParams.status = statusFilter;
-  if (dateFrom) queryParams.date_from = dateFrom;
-  if (dateTo) queryParams.date_to = dateTo;
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['trader', 'payin-orders', queryParams],
-    queryFn: () => api.get<PayInListResponse>('/api/trader/payin/orders', queryParams),
+    queryFn: async () => {
+      const res = await api.get<PayInListApiResponse>('/api/trader/payin/orders', queryParams);
+      return { orders: res.items, total: res.total };
+    },
     refetchInterval: autoRefresh > 0 ? autoRefresh * 1000 : false,
   });
 
   const confirmMutation = useMutation({
     mutationFn: (orderId: string) =>
-      api.post(`/api/trader/payin/orders/${orderId}/confirm`),
+      api.post(`/api/trader/payin/orders/${orderId}/confirm`, { orderId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trader', 'payin-orders'] });
       setSelectedOrder(null);
@@ -227,18 +227,6 @@ export default function PayInOrdersPage() {
               onChange={(e) => setStatusFilter(e.target.value)}
               placeholder="All statuses"
             />
-            <Input
-              label="From Date"
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
-            <Input
-              label="To Date"
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
           </div>
           <div className="mt-4 flex justify-end gap-2">
             <Button
@@ -246,8 +234,6 @@ export default function PayInOrdersPage() {
               size="sm"
               onClick={() => {
                 setStatusFilter('');
-                setDateFrom('');
-                setDateTo('');
               }}
             >
               Clear

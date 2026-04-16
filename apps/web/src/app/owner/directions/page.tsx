@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Power, PowerOff, Pencil } from 'lucide-react';
+import { DirectionType } from '@p2p/shared';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
@@ -25,16 +26,51 @@ interface Direction {
   isOnline: boolean;
 }
 
-interface DirectionsResponse {
+interface DirectionApiRow {
+  id: string;
+  name: string;
+  type: DirectionType;
+  fromCurrency: string;
+  toCurrency: string;
+  rate: unknown;
+  percentFee: unknown;
+  minAmount: unknown;
+  maxAmount: unknown;
+  isOnline: boolean;
+}
+
+interface DirectionsTableData {
   data: Direction[];
-  total: number;
-  page: number;
   totalPages: number;
 }
 
-const emptyForm = {
+function mapDirection(d: DirectionApiRow): Direction {
+  return {
+    id: d.id,
+    name: d.name,
+    type: d.type as 'PAYIN' | 'PAYOUT',
+    fromCurrency: d.fromCurrency,
+    toCurrency: d.toCurrency,
+    rate: Number(d.rate),
+    fee: Number(d.percentFee),
+    minAmount: Number(d.minAmount),
+    maxAmount: Number(d.maxAmount),
+    isOnline: d.isOnline,
+  };
+}
+
+const emptyForm: {
+  name: string;
+  type: 'PAYIN' | 'PAYOUT';
+  fromCurrency: string;
+  toCurrency: string;
+  rate: number;
+  fee: number;
+  minAmount: number;
+  maxAmount: number;
+} = {
   name: '',
-  type: 'PAYIN' as const,
+  type: 'PAYIN',
   fromCurrency: '',
   toCurrency: '',
   rate: 1,
@@ -45,22 +81,34 @@ const emptyForm = {
 
 export default function DirectionsPage() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
   const [editItem, setEditItem] = useState<Direction | null>(null);
   const [form, setForm] = useState(emptyForm);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['owner', 'directions', page],
-    queryFn: () =>
-      api.get<DirectionsResponse>(
-        `${internalPaths.directions}?page=${page}&limit=20`,
-      ),
+    queryKey: ['owner', 'directions'],
+    queryFn: async () => {
+      const rows = await api.get<DirectionApiRow[]>(internalPaths.directions);
+      const mapped = rows.map(mapDirection);
+      return {
+        data: mapped,
+        totalPages: 1,
+      } satisfies DirectionsTableData;
+    },
   });
 
   const createDirection = useMutation({
-    mutationFn: (payload: typeof form) =>
-      api.post(internalPaths.directions, payload),
+    mutationFn: (payload: typeof emptyForm) =>
+      api.post(internalPaths.directions, {
+        name: payload.name.trim(),
+        type: payload.type,
+        fromCurrency: payload.fromCurrency.trim().toUpperCase(),
+        toCurrency: payload.toCurrency.trim().toUpperCase(),
+        minAmount: payload.minAmount,
+        maxAmount: payload.maxAmount,
+        rate: payload.rate,
+        percentFee: payload.fee,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'directions'] });
       setShowCreate(false);
@@ -69,8 +117,16 @@ export default function DirectionsPage() {
   });
 
   const updateDirection = useMutation({
-    mutationFn: (payload: Partial<Direction> & { id: string }) =>
-      api.patch(internalPaths.direction(payload.id), payload),
+    mutationFn: (args: { id: string; form: typeof emptyForm }) =>
+      api.put(internalPaths.direction(args.id), {
+        name: args.form.name.trim(),
+        fromCurrency: args.form.fromCurrency.trim().toUpperCase(),
+        toCurrency: args.form.toCurrency.trim().toUpperCase(),
+        minAmount: args.form.minAmount,
+        maxAmount: args.form.maxAmount,
+        rate: args.form.rate,
+        percentFee: args.form.fee,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'directions'] });
       setEditItem(null);
@@ -78,8 +134,7 @@ export default function DirectionsPage() {
   });
 
   const toggleOnline = useMutation({
-    mutationFn: ({ id, isOnline }: { id: string; isOnline: boolean }) =>
-      api.patch(internalPaths.direction(id), { isOnline: !isOnline }),
+    mutationFn: ({ id }: { id: string }) => api.patch(internalPaths.directionToggle(id)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'directions'] }),
   });
 
@@ -158,7 +213,7 @@ export default function DirectionsPage() {
           <Button
             variant={d.isOnline ? 'danger' : 'success'}
             size="sm"
-            onClick={() => toggleOnline.mutate({ id: d.id, isOnline: d.isOnline })}
+            onClick={() => toggleOnline.mutate({ id: d.id })}
             title={d.isOnline ? 'Go Offline' : 'Go Online'}
           >
             {d.isOnline ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
@@ -168,7 +223,7 @@ export default function DirectionsPage() {
     },
   ];
 
-  const formFields = (
+  const formFields = (opts: { lockType: boolean }) => (
     <>
       <Input
         label="Name"
@@ -177,15 +232,27 @@ export default function DirectionsPage() {
         placeholder="Card RUB → USDT"
         required
       />
-      <Select
-        label="Type"
-        options={[
-          { value: 'PAYIN', label: 'Pay-In' },
-          { value: 'PAYOUT', label: 'Pay-Out' },
-        ]}
-        value={form.type}
-        onChange={(e) => setForm({ ...form, type: e.target.value as 'PAYIN' | 'PAYOUT' })}
-      />
+      {opts.lockType ? (
+        <div>
+          <p className="text-sm font-medium text-text-secondary">Type</p>
+          <Badge color={form.type === 'PAYIN' ? 'green' : 'blue'} className="mt-1">
+            {form.type}
+          </Badge>
+          <p className="text-xs text-text-muted mt-1">
+            Direction type cannot be changed; create a new direction if needed.
+          </p>
+        </div>
+      ) : (
+        <Select
+          label="Type"
+          options={[
+            { value: 'PAYIN', label: 'Pay-In' },
+            { value: 'PAYOUT', label: 'Pay-Out' },
+          ]}
+          value={form.type}
+          onChange={(e) => setForm({ ...form, type: e.target.value as 'PAYIN' | 'PAYOUT' })}
+        />
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Input
           label="From Currency"
@@ -260,9 +327,8 @@ export default function DirectionsPage() {
         columns={columns}
         data={data?.data ?? []}
         isLoading={isLoading}
-        page={page}
+        page={1}
         totalPages={data?.totalPages}
-        onPageChange={setPage}
         emptyMessage="No directions configured"
       />
 
@@ -274,7 +340,7 @@ export default function DirectionsPage() {
             createDirection.mutate(form);
           }}
         >
-          {formFields}
+          {formFields({ lockType: false })}
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" type="button" onClick={() => setShowCreate(false)}>
               Cancel
@@ -295,10 +361,10 @@ export default function DirectionsPage() {
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (editItem) updateDirection.mutate({ id: editItem.id, ...form });
+            if (editItem) updateDirection.mutate({ id: editItem.id, form });
           }}
         >
-          {formFields}
+          {formFields({ lockType: true })}
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" type="button" onClick={() => setEditItem(null)}>
               Cancel

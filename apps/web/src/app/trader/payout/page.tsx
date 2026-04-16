@@ -85,7 +85,10 @@ export default function PayOutOrdersPage() {
 
   const failMutation = useMutation({
     mutationFn: (orderId: string) =>
-      api.post(`/api/trader/payout/orders/${orderId}/fail`),
+      api.post(`/api/trader/payout/orders/${orderId}/fail`, {
+        orderId,
+        reason: 'Marked as failed by trader',
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trader', 'payout-orders'] });
       setSelectedOrder(null);

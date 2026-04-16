@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Lock, Unlock, Percent, Trash2 } from 'lucide-react';
+import { UserRole } from '@p2p/shared';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
@@ -30,6 +32,7 @@ interface MerchantsResponse {
 
 interface MerchantApiRow {
   id: string;
+  userId: string;
   name: string;
   isLock: boolean;
   createdAt: string;
@@ -77,7 +80,7 @@ export default function MerchantsPage() {
     maxAmount: 0,
     defaultCommissionPercent: 5,
   });
-  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [form, setForm] = useState({ userId: '', name: '' });
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner', 'merchants', page],
@@ -98,6 +101,35 @@ export default function MerchantsPage() {
     },
   });
 
+  const { data: linkUsers } = useQuery({
+    queryKey: ['owner', 'users', 'merchant-link-candidates'],
+    queryFn: async () => {
+      const raw = await api.get<{
+        data: Array<{ id: string; email: string; role: string }>;
+      }>(`${internalPaths.users}?page=1&limit=500`);
+      return raw.data;
+    },
+    enabled: showCreate,
+  });
+
+  const { data: linkedMerchantUserIds } = useQuery({
+    queryKey: ['owner', 'merchants', 'linked-user-ids'],
+    queryFn: async () => {
+      const raw = await api.get<{
+        data: Array<{ userId: string }>;
+      }>(`${internalPaths.merchants}?page=1&limit=500`);
+      return new Set(raw.data.map((m) => m.userId));
+    },
+    enabled: showCreate,
+  });
+
+  const merchantUserSelectOptions = useMemo(() => {
+    if (!linkUsers || !linkedMerchantUserIds) return [];
+    return linkUsers
+      .filter((u) => u.role === UserRole.MERCHANT && !linkedMerchantUserIds.has(u.id))
+      .map((u) => ({ value: u.id, label: u.email }));
+  }, [linkUsers, linkedMerchantUserIds]);
+
   const { data: merchantDirections, isLoading: dirsLoading } = useQuery({
     queryKey: ['owner', 'merchant-directions', directionsModal?.id],
     queryFn: () =>
@@ -106,12 +138,16 @@ export default function MerchantsPage() {
   });
 
   const createMerchant = useMutation({
-    mutationFn: (payload: typeof form) =>
-      api.post(internalPaths.merchants, payload),
+    mutationFn: (payload: { userId: string; name: string }) =>
+      api.post(internalPaths.merchants, {
+        userId: payload.userId,
+        name: payload.name.trim(),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'merchants'] });
+      queryClient.invalidateQueries({ queryKey: ['owner', 'merchants', 'linked-user-ids'] });
       setShowCreate(false);
-      setForm({ name: '', email: '', password: '' });
+      setForm({ userId: '', name: '' });
     },
   });
 
@@ -229,7 +265,7 @@ export default function MerchantsPage() {
           </p>
         </div>
         <Button onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4" /> Connect Merchant
+          <Plus className="h-4 w-4" /> Link merchant profile
         </Button>
       </div>
 
@@ -243,43 +279,44 @@ export default function MerchantsPage() {
         emptyMessage="No merchants found"
       />
 
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Connect New Merchant">
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Link merchant profile">
+        <p className="text-sm text-text-muted">
+          Create a user with role Merchant on the Users page first, then pick that account and set the
+          display name for the payment profile.
+        </p>
         <form
-          className="space-y-4"
+          className="space-y-4 pt-2"
           onSubmit={(e) => {
             e.preventDefault();
             createMerchant.mutate(form);
           }}
         >
+          <Select
+            label="User (role: merchant)"
+            placeholder="Select user…"
+            options={merchantUserSelectOptions}
+            value={form.userId}
+            onChange={(e) => setForm({ ...form, userId: e.target.value })}
+            required
+          />
+          {showCreate && merchantUserSelectOptions.length === 0 && linkUsers && linkedMerchantUserIds && (
+            <p className="text-xs text-amber-500">
+              No eligible users: add a user with role Merchant that does not already have a merchant profile.
+            </p>
+          )}
           <Input
-            label="Merchant Name"
+            label="Merchant display name"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="Acme Corp"
-            required
-          />
-          <Input
-            label="Contact Email"
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            placeholder="merchant@example.com"
-            required
-          />
-          <Input
-            label="Password"
-            type="password"
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            placeholder="••••••••"
             required
           />
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" type="button" onClick={() => setShowCreate(false)}>
               Cancel
             </Button>
-            <Button type="submit" loading={createMerchant.isPending}>
-              Connect
+            <Button type="submit" loading={createMerchant.isPending} disabled={!form.userId}>
+              Link profile
             </Button>
           </div>
         </form>
