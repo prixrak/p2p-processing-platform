@@ -97,7 +97,7 @@ export default function BanksPage() {
     {
       key: 'logo',
       header: 'Logo',
-      className: 'w-16',
+      className: 'w-16 text-center',
       render: (b: Bank) =>
         b.logoUrl ? (
           <img
@@ -121,6 +121,7 @@ export default function BanksPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (b: Bank) => (
         <Badge color={b.status === 'active' ? 'green' : 'red'}>{b.status}</Badge>
       ),
@@ -128,6 +129,7 @@ export default function BanksPage() {
     {
       key: 'actions',
       header: 'Actions',
+      className: 'text-end',
       render: (b: Bank) => (
         <div className="flex items-center gap-2">
           <IconButton label="Edit bank" onClick={() => openEdit(b)}>

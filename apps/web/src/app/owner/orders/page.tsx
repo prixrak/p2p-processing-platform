@@ -5,10 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Eye, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
-import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Tabs } from '@/components/ui/tabs';
@@ -109,6 +107,7 @@ export default function OrdersPage() {
     {
       key: 'id',
       header: 'Order ID',
+      className: 'font-mono tabular-nums text-end',
       render: (o: Order) => (
         <span className="font-mono text-sm text-text-primary">{o.id.slice(0, 12)}</span>
       ),
@@ -130,6 +129,7 @@ export default function OrdersPage() {
     {
       key: 'amount',
       header: 'Amount',
+      className: 'text-end tabular-nums',
       render: (o: Order) => (
         <span className="font-mono text-sm font-medium text-text-primary">
           {o.amount.toLocaleString()} {o.currency}
@@ -139,6 +139,7 @@ export default function OrdersPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (o: Order) => (
         <Badge color={statusColor[o.status] ?? 'default'}>{o.status}</Badge>
       ),
@@ -155,6 +156,7 @@ export default function OrdersPage() {
     {
       key: 'actions',
       header: 'Actions',
+      className: 'text-end',
       render: (o: Order) => (
         <div className="flex items-center gap-1">
           <IconButton label="View order details" onClick={() => setDetailOrder(o.id)}>
@@ -208,20 +210,22 @@ export default function OrdersPage() {
         onChange={(k) => { setTab(k); setPage(1); }}
       />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Input
-          placeholder="Search by ID or merchant..."
+      <FilterBar>
+        <FilterInput
+          label="Search"
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="w-72"
+          onChange={(v) => { setSearch(v); setPage(1); }}
+          placeholder="Search by ID or merchant..."
+          className="w-72 min-w-[12rem]"
         />
-        <Select
-          options={statusOptions}
+        <FilterSelect
+          label="Status"
           value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          onChange={(v) => { setStatusFilter(v); setPage(1); }}
+          options={statusOptions}
           className="w-40"
         />
-      </div>
+      </FilterBar>
 
       <DataTable
         columns={columns}

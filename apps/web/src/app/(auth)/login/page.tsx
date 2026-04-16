@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { useAuth } from '@/hooks/use-auth';
 import { ApiError } from '@/lib/api';
+import { UserRole } from '@p2p/shared';
 import { getDashboardPathForRole } from '@/lib/role-dashboard';
 
 export default function LoginPage() {
@@ -39,7 +40,7 @@ export default function LoginPage() {
       const result = await login(email, password);
       if (!result.requires2FA) {
         const currentUser = useAuth.getState().user;
-        router.replace(getDashboardPathForRole(currentUser?.role ?? 'TRADER'));
+        router.replace(getDashboardPathForRole(currentUser?.role ?? UserRole.TRADER));
       }
     } catch (err) {
       if (err instanceof ApiError) {
@@ -59,7 +60,7 @@ export default function LoginPage() {
     try {
       await verify2FA(code2FA);
       const currentUser = useAuth.getState().user;
-      router.replace(getDashboardPathForRole(currentUser?.role ?? 'TRADER'));
+      router.replace(getDashboardPathForRole(currentUser?.role ?? UserRole.TRADER));
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);

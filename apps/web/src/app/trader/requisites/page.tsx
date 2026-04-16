@@ -264,12 +264,12 @@ export default function RequisitesPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {requisites.map((req) => (
-            <Card key={req.id} className="space-y-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
+            <Card key={req.id}>
+              <div className="flex flex-col gap-4">
+                <div className="flex gap-3">
                   <div
                     className={cn(
-                      'flex h-10 w-10 items-center justify-center rounded-lg',
+                      'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
                       req.is_active ? 'bg-accent-green/10' : 'bg-bg-hover',
                     )}
                   >
@@ -283,61 +283,66 @@ export default function RequisitesPage() {
                       />
                     )}
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm font-medium text-text-primary">
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="break-all font-mono text-sm font-medium text-text-primary">
                         {req.number}
                       </span>
-                      <Badge variant={req.is_active ? 'success' : 'muted'} dot>
+                      <Badge variant={req.is_active ? 'success' : 'muted'} dot className="shrink-0">
                         {req.is_active ? 'Active' : 'Inactive'}
                       </Badge>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
-                      <span>{req.owner}</span>
-                      <span>&middot;</span>
-                      <span>{req.bank_name}</span>
-                      <span>&middot;</span>
-                      <Badge variant="default">{req.type}</Badge>
-                      {req.accepts_other_banks && (
-                        <Badge variant="info" className="text-[10px]">
-                          Other banks
+                    <div className="flex flex-col gap-1 text-xs text-text-muted sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
+                      <span className="break-words">{req.owner}</span>
+                      <span className="hidden text-text-muted/60 sm:inline" aria-hidden>
+                        ·
+                      </span>
+                      <span className="break-words">{req.bank_name}</span>
+                      <span className="flex flex-wrap items-center gap-2">
+                        <Badge variant="default" className="shrink-0">
+                          {req.type}
                         </Badge>
-                      )}
+                        {req.accepts_other_banks && (
+                          <Badge variant="info" className="shrink-0 text-[10px]">
+                            Other banks
+                          </Badge>
+                        )}
+                      </span>
                     </div>
                   </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-start">
+                    <Button size="sm" variant="ghost" onClick={() => openEditModal(req)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={req.is_active ? 'danger' : 'success'}
+                      onClick={() =>
+                        toggleMutation.mutate({ id: req.id, makeActive: !req.is_active })
+                      }
+                      loading={toggleMutation.isPending}
+                    >
+                      {req.is_active ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
+                      {req.is_active ? 'Disable' : 'Enable'}
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => openEditModal(req)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={req.is_active ? 'danger' : 'success'}
-                    onClick={() =>
-                      toggleMutation.mutate({ id: req.id, makeActive: !req.is_active })
-                    }
-                    loading={toggleMutation.isPending}
-                  >
-                    {req.is_active ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
-                    {req.is_active ? 'Disable' : 'Enable'}
-                  </Button>
+
+                <div className="space-y-3 border-t border-border-primary pt-1">
+                  <ProgressBar label="Volume Used" value={req.used_amount} max={req.limit_amount} />
+                  <ProgressBar
+                    label="Operations Used"
+                    value={req.used_operations}
+                    max={req.limit_operations}
+                  />
                 </div>
-              </div>
 
-              <div className="space-y-3">
-                <ProgressBar label="Volume Used" value={req.used_amount} max={req.limit_amount} />
-                <ProgressBar
-                  label="Operations Used"
-                  value={req.used_operations}
-                  max={req.limit_operations}
-                />
-              </div>
-
-              <div className="flex items-center justify-between rounded-lg bg-bg-secondary px-3 py-2 text-xs">
-                <span className="text-text-muted">Amount Range</span>
-                <span className="text-text-secondary font-medium">
-                  {req.min_amount.toLocaleString()} – {req.max_amount.toLocaleString()}
-                </span>
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-0.5 rounded-lg bg-bg-secondary px-3 py-2.5 text-xs">
+                  <span className="text-text-muted">Amount range</span>
+                  <span className="text-end tabular-nums font-medium text-text-secondary">
+                    {req.min_amount.toLocaleString()} – {req.max_amount.toLocaleString()}
+                  </span>
+                </div>
               </div>
             </Card>
           ))}

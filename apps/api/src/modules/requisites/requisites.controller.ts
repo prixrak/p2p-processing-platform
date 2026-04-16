@@ -25,7 +25,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Audited } from '../../common/decorators/audited.decorator';
-import { UserRole } from '@p2p/shared';
+import { AuditAction, AuditEntityType, UserRole } from '@p2p/shared';
 
 @ApiTags('Requisites')
 @ApiBearerAuth()
@@ -39,7 +39,7 @@ export class RequisitesController {
   @Post('my')
   @Roles(UserRole.TRADER)
   @ApiOperation({ summary: 'Create own requisite (trader)' })
-  @Audited('CREATE', 'Requisite')
+  @Audited(AuditAction.CREATE, AuditEntityType.Requisite)
   async createMy(
     @CurrentUser('traderId') traderId: string,
     @Body() dto: CreateRequisiteDto,
@@ -70,7 +70,7 @@ export class RequisitesController {
   @Post('trader/:traderId')
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Create requisite for a trader (admin)' })
-  @Audited('CREATE', 'Requisite')
+  @Audited(AuditAction.CREATE, AuditEntityType.Requisite)
   create(
     @Param('traderId', ParseUUIDPipe) traderId: string,
     @Body() dto: CreateRequisiteDto,
@@ -107,7 +107,7 @@ export class RequisitesController {
   @Put(':id')
   @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Update requisite' })
-  @Audited('UPDATE', 'Requisite')
+  @Audited(AuditAction.UPDATE, AuditEntityType.Requisite)
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRequisiteDto,
@@ -121,7 +121,7 @@ export class RequisitesController {
   @Delete(':id')
   @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Delete requisite' })
-  @Audited('DELETE', 'Requisite')
+  @Audited(AuditAction.DELETE, AuditEntityType.Requisite)
   async delete(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: { role: string; traderId?: string },
@@ -134,7 +134,7 @@ export class RequisitesController {
   @Patch(':id/activate')
   @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Activate requisite' })
-  @Audited('ACTIVATE', 'Requisite')
+  @Audited(AuditAction.ACTIVATE, AuditEntityType.Requisite)
   async activate(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: { role: string; traderId?: string },
@@ -147,7 +147,7 @@ export class RequisitesController {
   @Patch(':id/deactivate')
   @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Deactivate requisite' })
-  @Audited('DEACTIVATE', 'Requisite')
+  @Audited(AuditAction.DEACTIVATE, AuditEntityType.Requisite)
   async deactivate(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: { role: string; traderId?: string },

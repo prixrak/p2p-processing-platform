@@ -14,6 +14,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
+import { UserRole } from '@p2p/shared';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 interface ReferralProfile {
@@ -38,8 +39,8 @@ export default function ReferralDashboard() {
     queryFn: () => api.get<ReferralProfile>('/api/referral/me'),
   });
 
-  const traderCount = profile?.referrals.filter((u) => u.role === 'TRADER').length ?? 0;
-  const merchantCount = profile?.referrals.filter((u) => u.role === 'MERCHANT').length ?? 0;
+  const traderCount = profile?.referrals.filter((u) => u.role === UserRole.TRADER).length ?? 0;
+  const merchantCount = profile?.referrals.filter((u) => u.role === UserRole.MERCHANT).length ?? 0;
   const activeCount = profile?.referrals.filter((u) => u.isActive).length ?? 0;
 
   return (

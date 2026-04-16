@@ -104,7 +104,8 @@ export default function AuditLogPage() {
     {
       key: 'timestamp',
       header: 'Timestamp',
-      render: (row) => (
+      className: 'font-mono tabular-nums',
+      render: (row: AuditEntry) => (
         <span className="text-xs text-text-muted font-mono whitespace-nowrap">
           {format(new Date(row.timestamp), 'dd.MM.yy HH:mm:ss')}
         </span>
@@ -113,7 +114,7 @@ export default function AuditLogPage() {
     {
       key: 'actor',
       header: 'Actor',
-      render: (row) => (
+      render: (row: AuditEntry) => (
         <div>
           <span className="text-text-primary text-sm">{row.actor}</span>
           <span className="text-text-muted text-xs ml-1.5">({row.actorRole})</span>
@@ -123,7 +124,8 @@ export default function AuditLogPage() {
     {
       key: 'action',
       header: 'Action',
-      render: (row) => (
+      className: 'text-center',
+      render: (row: AuditEntry) => (
         <Badge
           variant={
             row.action.includes('delete') || row.action.includes('disable')
@@ -140,7 +142,7 @@ export default function AuditLogPage() {
     {
       key: 'entity',
       header: 'Entity',
-      render: (row) => (
+      render: (row: AuditEntry) => (
         <div>
           <span className="text-text-primary text-sm">{row.entity}</span>
           <span className="text-text-muted text-xs ml-1.5 font-mono">
@@ -152,7 +154,7 @@ export default function AuditLogPage() {
     {
       key: 'details',
       header: 'Details',
-      render: (row) => (
+      render: (row: AuditEntry) => (
         <span className="text-text-muted text-xs max-w-[200px] truncate block">
           {row.details || '—'}
         </span>

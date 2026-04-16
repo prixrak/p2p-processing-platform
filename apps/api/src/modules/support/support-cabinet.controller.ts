@@ -18,7 +18,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserRole } from '@p2p/shared';
+import { UserRole, DirectionType } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
 
 @ApiTags('Support Cabinet')
@@ -47,7 +47,7 @@ export class SupportCabinetController {
   ) {
     const take = limit ?? 20;
     const skip = ((page ?? 1) - 1) * take;
-    const isPayout = type === 'PAYOUT';
+    const isPayout = type === DirectionType.PAYOUT;
 
     if (isPayout) {
       const where: Record<string, unknown> = {};
@@ -76,7 +76,7 @@ export class SupportCabinetController {
       return {
         data: orders.map((o) => ({
           id: o.id,
-          type: 'PAYOUT' as const,
+          type: DirectionType.PAYOUT,
           merchantName: o.merchant?.name ?? '—',
           traderName: o.trader?.user?.email ?? '',
           amount: Number(o.amount),
@@ -116,7 +116,7 @@ export class SupportCabinetController {
     return {
       data: orders.map((o) => ({
         id: o.id,
-        type: 'PAYIN' as const,
+        type: DirectionType.PAYIN,
         merchantName: o.merchant?.name ?? '—',
         traderName: o.trader?.user?.email ?? '',
         amount: Number(o.amount),
@@ -147,7 +147,7 @@ export class SupportCabinetController {
     if (payinOrder) {
       return {
         id: payinOrder.id,
-        type: 'PAYIN',
+        type: DirectionType.PAYIN,
         merchantName: payinOrder.merchant?.name ?? '—',
         traderName: payinOrder.trader?.user?.email ?? '',
         amount: Number(payinOrder.amount),
@@ -176,7 +176,7 @@ export class SupportCabinetController {
     if (payoutOrder) {
       return {
         id: payoutOrder.id,
-        type: 'PAYOUT',
+        type: DirectionType.PAYOUT,
         merchantName: payoutOrder.merchant?.name ?? '—',
         traderName: payoutOrder.trader?.user?.email ?? '',
         amount: Number(payoutOrder.amount),
@@ -237,7 +237,7 @@ export class SupportCabinetController {
       data: appeals.map((a) => ({
         id: a.id,
         orderId: a.payinOrderId,
-        orderType: 'PAYIN',
+        orderType: DirectionType.PAYIN,
         merchantName: a.payinOrder?.merchant?.name ?? '—',
         traderName: a.payinOrder?.trader?.user?.email ?? '',
         amount: Number(a.payinOrder?.amount ?? 0),
@@ -275,7 +275,7 @@ export class SupportCabinetController {
     return {
       id: appeal.id,
       orderId: appeal.payinOrderId,
-      orderType: 'PAYIN',
+      orderType: DirectionType.PAYIN,
       merchantName: appeal.payinOrder?.merchant?.name ?? '—',
       traderName: appeal.payinOrder?.trader?.user?.email ?? '',
       amount: Number(appeal.payinOrder?.amount ?? 0),

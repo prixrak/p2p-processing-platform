@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { clsx } from 'clsx';
 import { ChevronDown, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react';
 import { Tooltip } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 
 interface Column<T> {
   key: string;
@@ -59,7 +59,7 @@ export function DataTable<T>({
 
   if (isLoading) {
     return (
-      <div className={clsx('bg-bg-card border border-border-primary rounded-xl overflow-hidden', className)}>
+      <div className={cn('bg-bg-card border border-border-primary rounded-xl overflow-hidden', className)}>
         <div className="p-12 text-center">
           <div className="inline-block w-6 h-6 border-2 border-accent-blue border-t-transparent rounded-full animate-spin" />
           <p className="mt-3 text-sm text-text-muted">Loading...</p>
@@ -69,18 +69,18 @@ export function DataTable<T>({
   }
 
   return (
-    <div className={clsx('space-y-4', className)}>
+    <div className={cn('space-y-4', className)}>
       <div className="bg-bg-card border border-border-primary rounded-xl overflow-x-auto">
         <div className="min-w-0">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border-primary">
-                {expandable && <th className="w-10" />}
+              <tr className="border-b border-border-primary bg-bg-secondary">
+                {expandable && <th className="w-10 align-middle" />}
                 {columns.map((col) => (
                   <th
                     key={col.key}
-                    className={clsx(
-                      'px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider',
+                    className={cn(
+                      'align-middle px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider',
                       col.className,
                     )}
                   >
@@ -177,14 +177,14 @@ function TableRow<T>({
   return (
     <>
       <tr
-        className={clsx(
+        className={cn(
           'bg-bg-card transition-colors hover:bg-bg-hover/50',
           onRowClick && 'cursor-pointer',
         )}
         onClick={() => onRowClick?.(row)}
       >
         {expandable && (
-          <td className="px-2 py-3">
+          <td className="align-middle px-2 py-3">
             <Tooltip content={isExpanded ? 'Collapse row' : 'Expand row'} side="top">
               <span className="inline-flex">
                 <button
@@ -199,7 +199,7 @@ function TableRow<T>({
                 >
                   <ChevronDown
                     size={14}
-                    className={clsx(
+                    className={cn(
                       'transition-transform',
                       !isExpanded && '-rotate-90',
                     )}
@@ -212,7 +212,7 @@ function TableRow<T>({
         {columns.map((col) => (
           <td
             key={col.key}
-            className={clsx('px-4 py-3 text-text-primary', col.className)}
+            className={cn('align-middle px-4 py-3 text-text-primary', col.className)}
           >
             {col.render
               ? col.render(row)

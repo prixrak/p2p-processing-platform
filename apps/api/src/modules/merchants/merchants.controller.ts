@@ -21,7 +21,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Audited } from '../../common/decorators/audited.decorator';
-import { UserRole } from '@p2p/shared';
+import { AuditAction, AuditEntityType, UserRole } from '@p2p/shared';
 
 @ApiTags('Merchants')
 @ApiBearerAuth()
@@ -33,7 +33,7 @@ export class MerchantsController {
   @Post()
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Create a new merchant' })
-  @Audited('CREATE', 'Merchant')
+  @Audited(AuditAction.CREATE, AuditEntityType.Merchant)
   create(@Body() dto: CreateMerchantDto) {
     return this.merchantsService.create(dto);
   }
@@ -96,7 +96,7 @@ export class MerchantsController {
   @Patch(':id/lock')
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Lock merchant' })
-  @Audited('LOCK', 'Merchant')
+  @Audited(AuditAction.LOCK, AuditEntityType.Merchant)
   lock(@Param('id', ParseUUIDPipe) id: string) {
     return this.merchantsService.lock(id);
   }
@@ -104,7 +104,7 @@ export class MerchantsController {
   @Patch(':id/unlock')
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Unlock merchant' })
-  @Audited('UNLOCK', 'Merchant')
+  @Audited(AuditAction.UNLOCK, AuditEntityType.Merchant)
   unlock(@Param('id', ParseUUIDPipe) id: string) {
     return this.merchantsService.unlock(id);
   }

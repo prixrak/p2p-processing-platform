@@ -90,26 +90,28 @@ export default function AdminOrdersPage() {
     {
       key: 'id',
       header: 'ID',
-      render: (row) => (
+      className: 'font-mono tabular-nums text-end',
+      render: (row: Order) => (
         <span className="font-mono text-xs text-text-muted">{row.id.slice(0, 8)}...</span>
       ),
     },
     {
       key: 'externalId',
       header: 'External ID',
-      render: (row) => (
+      className: 'font-mono tabular-nums text-end',
+      render: (row: Order) => (
         <span className="font-mono text-xs">{row.externalId?.slice(0, 12) ?? '—'}</span>
       ),
     },
     {
       key: 'merchantName',
       header: 'Merchant',
-      render: (row) => <span className="text-text-primary">{row.merchantName}</span>,
+      render: (row: Order) => <span className="text-text-primary">{row.merchantName}</span>,
     },
     {
       key: 'traderName',
       header: 'Trader',
-      render: (row) => (
+      render: (row: Order) => (
         <span className={row.traderName ? 'text-text-primary' : 'text-text-muted'}>
           {row.traderName ?? 'Unassigned'}
         </span>
@@ -118,7 +120,8 @@ export default function AdminOrdersPage() {
     {
       key: 'amount',
       header: 'Amount',
-      render: (row) => (
+      className: 'text-end tabular-nums',
+      render: (row: Order) => (
         <span className="font-mono text-text-primary">
           {row.amount.toLocaleString()} {row.currency}
         </span>
@@ -128,22 +131,24 @@ export default function AdminOrdersPage() {
     {
       key: 'status',
       header: 'Status',
-      render: (row) => <StatusBadge status={row.status} />,
+      className: 'text-center',
+      render: (row: Order) => <StatusBadge status={row.status} />,
     },
     {
       key: 'createdAt',
       header: 'Created',
-      render: (row) => (
+      render: (row: Order) => (
         <span className="text-xs text-text-muted">
           {format(new Date(row.createdAt), 'dd.MM.yy HH:mm')}
         </span>
       ),
     },
     ...(tab === 'pay-out'
-      ? [
+        ? [
           {
             key: 'assign' as const,
             header: '',
+            className: 'text-end',
             render: (row: Order) =>
               !row.traderName ? (
                 assigningOrder === row.id ? (

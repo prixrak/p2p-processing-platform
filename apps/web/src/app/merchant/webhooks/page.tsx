@@ -55,7 +55,8 @@ export default function WebhooksPage() {
     {
       key: 'timestamp',
       header: 'Timestamp',
-      render: (row) => (
+      className: 'font-mono tabular-nums',
+      render: (row: WebhookLog) => (
         <span className="text-xs text-text-muted font-mono whitespace-nowrap">
           {format(new Date(row.timestamp), 'dd.MM.yy HH:mm:ss')}
         </span>
@@ -64,14 +65,16 @@ export default function WebhooksPage() {
     {
       key: 'method',
       header: 'Method',
-      render: (row) => (
+      className: 'text-center',
+      render: (row: WebhookLog) => (
         <span className="text-xs font-medium text-accent-blue">{row.method}</span>
       ),
     },
     {
       key: 'statusCode',
       header: 'Status Code',
-      render: (row) => (
+      className: 'text-end tabular-nums font-mono',
+      render: (row: WebhookLog) => (
         <span
           className={`font-mono text-sm ${
             row.statusCode && row.statusCode >= 200 && row.statusCode < 300
@@ -86,7 +89,7 @@ export default function WebhooksPage() {
     {
       key: 'url',
       header: 'URL',
-      render: (row) => (
+      render: (row: WebhookLog) => (
         <span className="text-xs text-text-secondary font-mono max-w-[250px] truncate block">
           {row.url}
         </span>
@@ -95,7 +98,8 @@ export default function WebhooksPage() {
     {
       key: 'orderId',
       header: 'Order ID',
-      render: (row) => (
+      className: 'font-mono tabular-nums text-end',
+      render: (row: WebhookLog) => (
         <span className="font-mono text-xs text-text-muted">
           {row.orderId.slice(0, 8)}...
         </span>
@@ -104,7 +108,8 @@ export default function WebhooksPage() {
     {
       key: 'status',
       header: 'Delivery',
-      render: (row) => (
+      className: 'text-center',
+      render: (row: WebhookLog) => (
         <Badge variant={statusVariant[row.status] ?? 'muted'}>
           {row.status.toUpperCase()}
         </Badge>
@@ -113,12 +118,14 @@ export default function WebhooksPage() {
     {
       key: 'attempts',
       header: 'Attempts',
-      render: (row) => <span className="text-text-muted text-xs">{row.attempts}</span>,
+      className: 'text-end tabular-nums',
+      render: (row: WebhookLog) => <span className="text-text-muted text-xs">{row.attempts}</span>,
     },
     {
       key: 'actions',
       header: '',
-      render: (row) =>
+      className: 'text-end',
+      render: (row: WebhookLog) =>
         row.status !== 'sent' ? (
           <Button
             size="sm"

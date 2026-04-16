@@ -112,6 +112,7 @@ export default function SettlementsPage() {
     {
       key: 'id',
       header: 'ID',
+      className: 'font-mono tabular-nums text-end',
       render: (row: Settlement) => (
         <span className="font-mono text-xs text-text-muted">{row.id.slice(0, 8)}</span>
       ),
@@ -126,6 +127,7 @@ export default function SettlementsPage() {
     {
       key: 'type',
       header: 'Type',
+      className: 'text-center',
       render: (row: Settlement) => (
         <span className={row.type === 'CREDIT' ? 'text-accent-green' : 'text-accent-red'}>
           {row.type}
@@ -135,6 +137,7 @@ export default function SettlementsPage() {
     {
       key: 'amount',
       header: 'Amount',
+      className: 'text-end tabular-nums font-mono',
       render: (row: Settlement) => (
         <span className="font-mono text-text-primary">
           {row.type === 'CREDIT' ? '+' : '-'}

@@ -50,6 +50,7 @@ export default function AppealsPage() {
     {
       key: 'id',
       header: 'Appeal',
+      className: 'font-mono tabular-nums text-end',
       render: (row: AppealDto) => (
         <span className="font-mono text-xs text-text-muted">{shortId(row.id)}</span>
       ),
@@ -57,6 +58,7 @@ export default function AppealsPage() {
     {
       key: 'paid_amount',
       header: 'Reported paid',
+      className: 'text-end tabular-nums',
       render: (row: AppealDto) => (
         <span className="font-medium">{row.paid_amount.toLocaleString()}</span>
       ),
@@ -64,6 +66,7 @@ export default function AppealsPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (row: AppealDto) => (
         <Badge variant={appealStatusVariant[row.status]} dot>
           {row.status}
@@ -73,6 +76,7 @@ export default function AppealsPage() {
     {
       key: 'proofs',
       header: 'Proofs',
+      className: 'text-end tabular-nums',
       render: (row: AppealDto) => (
         <span className="text-text-muted text-sm">
           {row.proofs_of_payment.length} file{row.proofs_of_payment.length !== 1 ? 's' : ''}
@@ -89,6 +93,7 @@ export default function AppealsPage() {
     {
       key: 'actions',
       header: '',
+      className: 'text-end w-12',
       render: (row: AppealDto) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           <IconButton label="View appeal details" onClick={() => setSelectedAppeal(row)}>

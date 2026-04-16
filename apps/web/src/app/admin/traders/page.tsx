@@ -175,7 +175,7 @@ export default function TradersPage() {
     {
       key: 'name',
       header: 'Name',
-      render: (row) => (
+      render: (row: Trader) => (
         <span className="font-medium text-text-primary">{row.name}</span>
       ),
     },
@@ -183,29 +183,34 @@ export default function TradersPage() {
     {
       key: 'status',
       header: 'Status',
-      render: (row) => <StatusBadge status={row.status} />,
+      className: 'text-center',
+      render: (row: Trader) => <StatusBadge status={row.status} />,
     },
     {
       key: 'activeRequisitesCount',
       header: 'Requisites',
-      render: (row) => <span>{row.activeRequisitesCount}</span>,
+      className: 'text-end tabular-nums',
+      render: (row: Trader) => <span>{row.activeRequisitesCount}</span>,
     },
     {
       key: 'totalVolume',
       header: 'Volume',
-      render: (row) => (
+      className: 'text-end tabular-nums',
+      render: (row: Trader) => (
         <span className="font-mono">${row.totalVolume.toLocaleString()}</span>
       ),
     },
     {
       key: 'ordersCount',
       header: 'Orders',
-      render: (row) => <span>{row.ordersCount}</span>,
+      className: 'text-end tabular-nums',
+      render: (row: Trader) => <span>{row.ordersCount}</span>,
     },
     {
       key: 'payoutLimits',
       header: 'Payout Limits',
-      render: (row) => (
+      className: 'text-end tabular-nums font-mono',
+      render: (row: Trader) => (
         <span className="text-xs text-text-muted font-mono">
           {row.payoutMinLimit === 0 && row.payoutMaxLimit === 0
             ? 'No limit'
@@ -216,7 +221,8 @@ export default function TradersPage() {
     {
       key: 'actions',
       header: '',
-      render: (row) => (
+      className: 'text-end',
+      render: (row: Trader) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           <IconButton
             label="Set payout pool limits"

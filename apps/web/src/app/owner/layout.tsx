@@ -16,10 +16,11 @@ import {
   Globe,
   CreditCard,
 } from 'lucide-react';
+import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
 import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
 
-const OWNER_ALLOWED = ['OWNER'] as const;
+const OWNER_ALLOWED = [UserRole.OWNER] as const;
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/owner', icon: LayoutDashboard },

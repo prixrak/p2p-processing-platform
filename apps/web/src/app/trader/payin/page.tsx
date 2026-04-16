@@ -20,6 +20,7 @@ import { Table } from '@/components/ui/table';
 import { Modal } from '@/components/ui/modal';
 import { Select } from '@/components/ui/select';
 import { api } from '@/lib/api';
+import { usePayinTraderRealtime } from '@/lib/payin-realtime';
 import { formatCurrency, formatDate, formatDateFull, shortId, cn } from '@/lib/utils';
 import { payinStatusVariant } from '@/lib/status-helpers';
 import { PayInOrderStatus } from '@p2p/shared';
@@ -69,6 +70,7 @@ function CountdownTimer({ autocloseAt }: { autocloseAt: number | null }) {
 
 export default function PayInOrdersPage() {
   const queryClient = useQueryClient();
+  usePayinTraderRealtime(queryClient);
   const [statusFilter, setStatusFilter] = useState('');
   const [autoRefresh, setAutoRefresh] = useState<number>(0);
   const [selectedOrder, setSelectedOrder] = useState<OrderDto | null>(null);
@@ -118,6 +120,7 @@ export default function PayInOrdersPage() {
     {
       key: 'id',
       header: 'ID',
+      className: 'font-mono tabular-nums text-end',
       render: (row: OrderDto) => (
         <span className="font-mono text-xs text-text-muted">{shortId(row.id)}</span>
       ),
@@ -125,6 +128,7 @@ export default function PayInOrdersPage() {
     {
       key: 'amount',
       header: 'Amount',
+      className: 'text-end tabular-nums',
       render: (row: OrderDto) => (
         <span className="font-medium">{formatCurrency(row.amount)}</span>
       ),
@@ -132,6 +136,7 @@ export default function PayInOrdersPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (row: OrderDto) => (
         <Badge variant={payinStatusVariant[row.status]} dot>
           {row.status}
@@ -141,6 +146,7 @@ export default function PayInOrdersPage() {
     {
       key: 'timer',
       header: 'Timer',
+      className: 'text-end font-mono tabular-nums',
       render: (row: OrderDto) => <CountdownTimer autocloseAt={row.autoclose_at} />,
     },
     {
@@ -153,6 +159,7 @@ export default function PayInOrdersPage() {
     {
       key: 'actions',
       header: 'Actions',
+      className: 'text-end',
       render: (row: OrderDto) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           {row.status === PayInOrderStatus.VERIFIED && (

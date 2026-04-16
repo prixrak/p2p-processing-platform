@@ -199,6 +199,7 @@ export default function MerchantsPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (m: Merchant) => (
         <Badge color={m.status === 'active' ? 'green' : 'red'}>
           {m.status}
@@ -208,6 +209,7 @@ export default function MerchantsPage() {
     {
       key: 'balance',
       header: 'Balance',
+      className: 'text-end tabular-nums',
       render: (m: Merchant) => (
         <span className="font-mono text-sm text-text-primary">
           {(m.balance ?? 0).toLocaleString()} {m.currency ?? '—'}
@@ -217,6 +219,7 @@ export default function MerchantsPage() {
     {
       key: 'orders',
       header: 'Orders',
+      className: 'text-end tabular-nums',
       render: (m: Merchant) => (
         <span className="text-sm text-text-secondary">
           {(m.ordersCount ?? 0).toLocaleString()}
@@ -235,6 +238,7 @@ export default function MerchantsPage() {
     {
       key: 'actions',
       header: 'Actions',
+      className: 'text-end',
       render: (m: Merchant) => (
         <div className="flex items-center gap-2">
           <IconButton

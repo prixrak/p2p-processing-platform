@@ -26,12 +26,12 @@ const { headers, bodyString } = buildP2pExternalHmacHeaders({
   publicKey,
   secret,
   body: {
-    request_id: "postman2",
-    amount: 1000,
+    request_id: "postman5",
+    amount: 1001,
     currency: "UAH",
     user_full_name: "Test User",
   },
-  // apiUrl: "/api/external/v1/payin/upload_order",
+  // apiUrl: `${EXTERNAL_API_V1_PREFIX}/payin/upload_order`,
 });
 
 console.log("--- headers (copy into Postman) ---");

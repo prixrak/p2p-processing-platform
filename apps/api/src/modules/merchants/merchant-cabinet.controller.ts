@@ -16,7 +16,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserRole } from '@p2p/shared';
+import { UserRole, DirectionType } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
 import { MerchantsService } from './merchants.service';
 import { MerchantDirectionsService } from '../merchant-directions/merchant-directions.service';
@@ -276,7 +276,7 @@ export class MerchantCabinetController {
 
     return keys.map((k) => ({
       id: k.id,
-      direction: k.direction === 'PAYIN' ? 'PAY_IN' : 'PAY_OUT',
+      direction: k.direction === DirectionType.PAYIN ? 'PAY_IN' : 'PAY_OUT',
       publicKey: k.publicKey,
       secretKeyMasked: 'sk_••••••••••••',
       createdAt: k.createdAt.toISOString(),

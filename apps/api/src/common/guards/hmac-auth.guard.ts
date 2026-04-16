@@ -11,7 +11,11 @@ import { Request } from 'express';
 import { PrismaService } from '../../config/prisma.service';
 import { NonceStoreService } from '../services/nonce-store.service';
 import { decryptSecret } from '../utils/crypto';
-import { NONCE_VALIDITY_SECONDS } from '@p2p/shared';
+import {
+  NONCE_VALIDITY_SECONDS,
+  DirectionType,
+  ExternalApiHeadersLower,
+} from '@p2p/shared';
 
 /**
  * Guard for merchant external API requests.
@@ -64,9 +68,11 @@ export class HmacAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
 
     // ── 1. Require all three headers ───────────────────────────────────────
-    const apiKey = request.headers['x-api-key'] as string | undefined;
-    const apiPayload = request.headers['x-api-payload'] as string | undefined;
-    const apiSignature = request.headers['x-api-signature'] as string | undefined;
+    const apiKey = request.headers[ExternalApiHeadersLower.API_KEY] as string | undefined;
+    const apiPayload = request.headers[ExternalApiHeadersLower.API_PAYLOAD] as string | undefined;
+    const apiSignature = request.headers[ExternalApiHeadersLower.API_SIGNATURE] as
+      | string
+      | undefined;
 
     if (!apiKey || !apiPayload || !apiSignature) {
       throw new ForbiddenException('Missing authentication headers');
@@ -92,7 +98,9 @@ export class HmacAuthGuard implements CanActivate {
 
     // ── 5. Key direction ───────────────────────────────────────────────────
     // Pay-In key cannot be used for Pay-Out and vice versa.
-    const expectedDirection = request.path.includes('/payin/') ? 'PAYIN' : 'PAYOUT';
+    const expectedDirection = request.path.includes('/payin/')
+      ? DirectionType.PAYIN
+      : DirectionType.PAYOUT;
     if (merchantApiKey.direction !== expectedDirection) {
       throw new UnauthorizedException('API key direction mismatch');
     }

@@ -2,12 +2,12 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDownCircle, ArrowUpCircle, RefreshCw, DollarSign } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, DollarSign } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
-import { Input } from '@/components/ui/input';
+import { FilterBar, FilterInput } from '@/components/ui/filters';
 
 interface BalanceTx {
   id: string;
@@ -82,6 +82,7 @@ export default function BalanceHistoryPage() {
     {
       key: 'amount',
       header: 'Amount',
+      className: 'text-end tabular-nums',
       render: (tx: BalanceTx) => (
         <span
           className={`font-mono font-semibold ${isCredit(tx.type) ? 'text-green-400' : 'text-red-400'}`}
@@ -131,29 +132,29 @@ export default function BalanceHistoryPage() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <Input
-          placeholder="Currency (UAH)"
+      <FilterBar>
+        <FilterInput
+          label="Currency"
           value={currency}
-          onChange={(e) => { setCurrency(e.target.value.toUpperCase()); setPage(1); }}
+          onChange={(v) => { setCurrency(v.toUpperCase()); setPage(1); }}
+          placeholder="UAH"
           className="w-32"
         />
-        <Input
+        <FilterInput
           type="date"
           label="From"
           value={dateFrom}
-          onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+          onChange={(v) => { setDateFrom(v); setPage(1); }}
           className="w-40"
         />
-        <Input
+        <FilterInput
           type="date"
           label="To"
           value={dateTo}
-          onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+          onChange={(v) => { setDateTo(v); setPage(1); }}
           className="w-40"
         />
-      </div>
+      </FilterBar>
 
       <DataTable
         columns={columns}

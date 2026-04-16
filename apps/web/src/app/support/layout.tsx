@@ -1,10 +1,11 @@
 'use client';
 
 import { LayoutDashboard, FileText, AlertTriangle, Wallet } from 'lucide-react';
+import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
 import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
 
-const SUPPORT_ALLOWED = ['SUPPORT'] as const;
+const SUPPORT_ALLOWED = [UserRole.SUPPORT] as const;
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/support', icon: LayoutDashboard },

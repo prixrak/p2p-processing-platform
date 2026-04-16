@@ -6,8 +6,7 @@ import { Eye, FileImage, MessageSquare } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Textarea } from '@/components/ui/textarea';
@@ -105,6 +104,7 @@ export default function DisputesPage() {
     {
       key: 'order',
       header: 'Order',
+      className: 'font-mono tabular-nums',
       render: (d: Dispute) => (
         <div>
           <p className="font-mono text-sm text-text-primary">{d.orderId.slice(0, 12)}</p>
@@ -129,6 +129,7 @@ export default function DisputesPage() {
     {
       key: 'amount',
       header: 'Amount',
+      className: 'text-end tabular-nums',
       render: (d: Dispute) => (
         <span className="font-mono text-sm text-text-primary">
           {d.amount.toLocaleString()} {d.currency}
@@ -145,6 +146,7 @@ export default function DisputesPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (d: Dispute) => (
         <Badge color={statusColor[d.status] ?? 'default'}>{d.status}</Badge>
       ),
@@ -161,7 +163,7 @@ export default function DisputesPage() {
     {
       key: 'actions',
       header: '',
-      className: 'w-12',
+      className: 'w-12 text-center',
       render: (d: Dispute) => (
         <IconButton label="View dispute details" onClick={() => setDetailId(d.id)}>
           <Eye className="h-3.5 w-3.5" />
@@ -188,12 +190,15 @@ export default function DisputesPage() {
         onChange={(k) => { setTab(k); setPage(1); }}
       />
 
-      <Input
-        placeholder="Search by order ID or merchant..."
-        value={search}
-        onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-        className="w-72"
-      />
+      <FilterBar>
+        <FilterInput
+          label="Search"
+          value={search}
+          onChange={(v) => { setSearch(v); setPage(1); }}
+          placeholder="Search by order ID or merchant..."
+          className="w-72 min-w-[12rem]"
+        />
+      </FilterBar>
 
       <DataTable
         columns={columns}

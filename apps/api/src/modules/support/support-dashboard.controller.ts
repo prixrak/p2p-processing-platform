@@ -7,7 +7,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { UserRole } from '@p2p/shared';
+import { UserRole, DirectionType } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
 
 @ApiTags('Support Dashboard')
@@ -70,7 +70,7 @@ export class SupportDashboardController {
       })),
       flaggedOrders: flaggedPayins.map((o) => ({
         id: o.id,
-        type: 'PAYIN',
+        type: DirectionType.PAYIN,
         amount: Number(o.amount),
         currency: o.currency,
         status: o.status,

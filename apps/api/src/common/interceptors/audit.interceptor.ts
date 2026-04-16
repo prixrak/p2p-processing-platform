@@ -9,19 +9,22 @@ import { Observable, tap } from 'rxjs';
 import { Request } from 'express';
 import { AuditService } from '../../modules/audit/audit.service';
 import { PrismaService } from '../../config/prisma.service';
+import { AuditEntityType, type AuditEntityTypeValue } from '@p2p/shared';
 import { AUDITED_KEY, AuditedMetadata } from '../decorators/audited.decorator';
 
-/** Map entityType → Prisma table so we can fetch the before-state. */
-const ENTITY_TABLE_MAP: Record<string, string> = {
-  PayinOrder: 'payinOrder',
-  PayoutOrder: 'payoutOrder',
-  Trader: 'traderProfile',
-  Merchant: 'merchant',
-  User: 'user',
-  Requisite: 'requisite',
-  Bank: 'bank',
-  PlatformSetting: 'platformSetting',
-  Direction: 'direction',
+/** Map entityType → Prisma delegate name so we can fetch the before-state. */
+const ENTITY_TABLE_MAP: Record<AuditEntityTypeValue, string> = {
+  [AuditEntityType.PayinOrder]: 'payinOrder',
+  [AuditEntityType.PayoutOrder]: 'payoutOrder',
+  [AuditEntityType.Trader]: 'traderProfile',
+  [AuditEntityType.Merchant]: 'merchant',
+  [AuditEntityType.User]: 'user',
+  [AuditEntityType.Requisite]: 'requisite',
+  [AuditEntityType.Bank]: 'bank',
+  [AuditEntityType.PlatformSetting]: 'platformSetting',
+  [AuditEntityType.Direction]: 'direction',
+  [AuditEntityType.Settlement]: 'settlement',
+  [AuditEntityType.Currency]: 'currency',
 };
 
 @Injectable()
@@ -98,7 +101,7 @@ export class AuditInterceptor implements NestInterceptor {
     );
   }
 
-  private async fetchEntity(entityType: string, entityId: string | null): Promise<unknown> {
+  private async fetchEntity(entityType: AuditEntityTypeValue, entityId: string | null): Promise<unknown> {
     if (!entityId) return null;
     const table = ENTITY_TABLE_MAP[entityType];
     if (!table) return null;
@@ -108,7 +111,8 @@ export class AuditInterceptor implements NestInterceptor {
       if (!model?.findUnique) return null;
 
       // PlatformSetting uses "key" as PK, everything else uses "id"
-      const where = entityType === 'PlatformSetting' ? { key: entityId } : { id: entityId };
+      const where =
+        entityType === AuditEntityType.PlatformSetting ? { key: entityId } : { id: entityId };
       return await model.findUnique({ where });
     } catch {
       return null;

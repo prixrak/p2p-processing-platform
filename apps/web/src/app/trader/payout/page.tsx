@@ -105,6 +105,7 @@ export default function PayOutOrdersPage() {
     {
       key: 'id',
       header: 'ID',
+      className: 'font-mono tabular-nums text-end',
       render: (row: PayOutOrderApiDto) => (
         <span className="font-mono text-xs text-text-muted">{shortId(row.id)}</span>
       ),
@@ -112,6 +113,7 @@ export default function PayOutOrdersPage() {
     {
       key: 'amount',
       header: 'Amount',
+      className: 'text-end tabular-nums',
       render: (row: PayOutOrderApiDto) => (
         <span className="font-semibold text-accent-blue">{formatCurrency(row.amount, row.currency)}</span>
       ),
@@ -119,6 +121,7 @@ export default function PayOutOrdersPage() {
     {
       key: 'currency',
       header: 'Currency',
+      className: 'text-center',
       render: (row: PayOutOrderApiDto) => (
         <span className="text-text-secondary">{row.currency}</span>
       ),
@@ -145,6 +148,7 @@ export default function PayOutOrdersPage() {
     {
       key: 'actions',
       header: 'Actions',
+      className: 'text-end',
       render: (row: PayOutOrderApiDto) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           <Button
@@ -168,6 +172,7 @@ export default function PayOutOrdersPage() {
     {
       key: 'id',
       header: 'ID',
+      className: 'font-mono tabular-nums text-end',
       render: (row: PayOutOrderApiDto) => (
         <span className="font-mono text-xs text-text-muted">{shortId(row.id)}</span>
       ),
@@ -175,6 +180,7 @@ export default function PayOutOrdersPage() {
     {
       key: 'amount',
       header: 'Amount',
+      className: 'text-end tabular-nums',
       render: (row: PayOutOrderApiDto) => (
         <span className="font-medium">{formatCurrency(row.amount, row.currency)}</span>
       ),
@@ -182,6 +188,7 @@ export default function PayOutOrdersPage() {
     {
       key: 'currency',
       header: 'Currency',
+      className: 'text-center',
       render: (row: PayOutOrderApiDto) => (
         <span className="text-text-secondary">{row.currency}</span>
       ),
@@ -201,6 +208,7 @@ export default function PayOutOrdersPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (row: PayOutOrderApiDto) => (
         <Badge variant={payoutStatusVariant[row.status]} dot>
           {row.status}
@@ -217,6 +225,7 @@ export default function PayOutOrdersPage() {
     {
       key: 'actions',
       header: 'Actions',
+      className: 'text-end',
       render: (row: PayOutOrderApiDto) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           {row.status === PayOutOrderStatus.NEW && (

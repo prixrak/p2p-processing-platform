@@ -2,16 +2,21 @@ import {
     Body,
     Controller,
     Get,
+    Header,
+    MessageEvent,
     Param,
     ParseUUIDPipe,
     Post,
     Query,
+    Sse,
     UploadedFiles,
     UseGuards,
     UseInterceptors,
 } from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { SkipThrottle } from '@nestjs/throttler';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiProduces, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { PayInOrderStatus, UserRole } from '@p2p/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -32,6 +37,7 @@ import {
     UploadOrderDto
 } from './dto';
 import { PayinService } from './payin.service';
+import { PayinRealtimeService } from './payin-realtime.service';
 
 @ApiTags('Pay-In (External)')
 @ApiSecurity('hmac-auth')
@@ -144,7 +150,23 @@ export class PayinController {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('trader/payin')
 export class PayinInternalController {
-  constructor(private readonly payinService: PayinService) {}
+  constructor(
+    private readonly payinService: PayinService,
+    private readonly payinRealtime: PayinRealtimeService,
+  ) {}
+
+  @SkipThrottle()
+  @Sse('stream')
+  @Header('X-Accel-Buffering', 'no')
+  @Header('Cache-Control', 'no-cache')
+  @Roles(UserRole.TRADER)
+  @ApiOperation({ summary: 'SSE stream for Pay-In order updates for this trader' })
+  @ApiProduces('text/event-stream')
+  streamTraderPayin(
+    @CurrentUser('traderId') traderId: string,
+  ): Observable<MessageEvent> {
+    return this.payinRealtime.streamForTrader(traderId);
+  }
 
   @Get('orders')
   @Roles(UserRole.TRADER)

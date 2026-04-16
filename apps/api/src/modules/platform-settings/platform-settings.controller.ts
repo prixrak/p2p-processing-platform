@@ -20,7 +20,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Audited } from '../../common/decorators/audited.decorator';
-import { UserRole } from '@p2p/shared';
+import { AuditAction, AuditEntityType, UserRole } from '@p2p/shared';
 import {
   PlatformSettingsService,
   PLATFORM_SETTING_KEYS,
@@ -69,7 +69,7 @@ export class PlatformSettingsController {
 
   @Put(':key')
   @Roles(UserRole.OWNER)
-  @Audited('UPDATE', 'PlatformSetting')
+  @Audited(AuditAction.UPDATE, AuditEntityType.PlatformSetting)
   @ApiOperation({ summary: 'Set a single platform setting (Owner only)' })
   upsertOne(
     @Param('key') key: PlatformSettingKey,
@@ -81,7 +81,7 @@ export class PlatformSettingsController {
 
   @Put()
   @Roles(UserRole.OWNER)
-  @Audited('UPDATE', 'PlatformSetting')
+  @Audited(AuditAction.UPDATE, AuditEntityType.PlatformSetting)
   @ApiOperation({ summary: 'Bulk-update multiple platform settings (Owner only)' })
   upsertMany(
     @Body() dto: UpsertManySettingsDto,

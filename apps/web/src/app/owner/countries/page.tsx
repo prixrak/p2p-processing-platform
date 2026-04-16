@@ -60,6 +60,7 @@ export default function CountriesPage() {
     {
       key: 'code',
       header: 'Code',
+      className: 'font-mono text-center',
       render: (c: Country) => (
         <span className="font-mono text-sm text-text-secondary">{c.code}</span>
       ),
@@ -67,6 +68,7 @@ export default function CountriesPage() {
     {
       key: 'currency',
       header: 'Currency',
+      className: 'font-mono text-center',
       render: (c: Country) => (
         <span className="font-mono text-sm font-semibold">{c.currency}</span>
       ),
@@ -74,6 +76,7 @@ export default function CountriesPage() {
     {
       key: 'methods',
       header: 'Payment methods',
+      className: 'text-end tabular-nums',
       render: (c: Country) => (
         <span className="text-sm text-text-muted">{c._count?.paymentMethods ?? 0}</span>
       ),
@@ -81,6 +84,7 @@ export default function CountriesPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (c: Country) => (
         <Badge color={c.isActive ? 'green' : 'red'}>{c.isActive ? 'active' : 'inactive'}</Badge>
       ),
@@ -88,7 +92,7 @@ export default function CountriesPage() {
     {
       key: 'actions',
       header: '',
-      className: 'w-24',
+      className: 'w-24 text-center',
       render: (c: Country) => (
         <IconButton
           label={c.isActive ? 'Deactivate country' : 'Activate country'}

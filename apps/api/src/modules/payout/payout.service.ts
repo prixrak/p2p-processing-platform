@@ -13,6 +13,7 @@ import {
   isValidPayOutTransition,
   WebhookMethod,
   MAX_PAGE_SIZE,
+  DirectionType,
 } from '@p2p/shared';
 import type { PayOutOrderApiDto, ProfileDto, DetailsDto } from '@p2p/shared';
 import { BalanceTransactionType } from '@prisma/client';
@@ -45,7 +46,7 @@ export class PayoutService {
     }
 
     const direction = await this.prisma.direction.findFirst({
-      where: { type: 'PAYOUT', fromCurrency: dto.currency, isOnline: true },
+      where: { type: DirectionType.PAYOUT, fromCurrency: dto.currency, isOnline: true },
     });
     if (!direction) {
       throw new BadRequestException(`No active PAYOUT direction for ${dto.currency}`);
@@ -111,7 +112,7 @@ export class PayoutService {
     });
 
     const direction = await this.prisma.direction.findFirst({
-      where: { type: 'PAYOUT', isOnline: true },
+      where: { type: DirectionType.PAYOUT, isOnline: true },
     });
 
     const balances: Record<string, number> = {};

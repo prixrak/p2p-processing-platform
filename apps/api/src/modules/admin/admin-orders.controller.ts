@@ -29,6 +29,7 @@ import {
   isValidPayInTransition,
   isValidPayOutTransition,
   WebhookMethod,
+  DirectionType,
 } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
 import { IsString } from 'class-validator';
@@ -50,7 +51,7 @@ export class AdminOrdersController {
 
   @Get()
   @ApiOperation({ summary: 'List all orders (payin or payout) with filters' })
-  @ApiQuery({ name: 'type', required: false, enum: ['PAYIN', 'PAYOUT'] })
+  @ApiQuery({ name: 'type', required: false, enum: DirectionType })
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'merchant', required: false })
@@ -74,7 +75,10 @@ export class AdminOrdersController {
   ) {
     const skip = (page - 1) * limit;
     const orderType = type ?? direction;
-    const isPayin = !orderType || orderType.toUpperCase() === 'PAYIN' || orderType === 'PAY_IN';
+    const isPayin =
+      !orderType ||
+      orderType.toUpperCase() === DirectionType.PAYIN ||
+      orderType === 'PAY_IN';
 
     const dateFilter: Record<string, Date> = {};
     if (dateFrom) dateFilter.gte = new Date(dateFrom);
@@ -117,7 +121,7 @@ export class AdminOrdersController {
       return {
         data: orders.map((o) => ({
           id: o.id,
-          type: 'PAYIN',
+          type: DirectionType.PAYIN,
           externalId: o.requestId,
           merchantName: o.merchant.name,
           traderName: o.trader?.user?.email ?? null,
@@ -169,7 +173,7 @@ export class AdminOrdersController {
       return {
         data: orders.map((o) => ({
           id: o.id,
-          type: 'PAYOUT',
+          type: DirectionType.PAYOUT,
           externalId: o.requestId,
           merchantName: o.merchant.name,
           traderName: o.trader?.user?.email ?? null,
@@ -189,12 +193,12 @@ export class AdminOrdersController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get order details by ID (payin or payout)' })
-  @ApiQuery({ name: 'type', required: false, enum: ['PAYIN', 'PAYOUT'] })
+  @ApiQuery({ name: 'type', required: false, enum: DirectionType })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('type') type?: string,
   ) {
-    const isPayin = !type || type.toUpperCase() !== 'PAYOUT';
+    const isPayin = !type || type.toUpperCase() !== DirectionType.PAYOUT;
 
     if (isPayin) {
       const order = await this.prisma.payinOrder.findUnique({
@@ -230,7 +234,7 @@ export class AdminOrdersController {
 
       return {
         id: order.id,
-        type: 'PAYIN',
+        type: DirectionType.PAYIN,
         externalId: order.requestId,
         merchantName: order.merchant.name,
         traderName: order.trader?.user?.email ?? null,
@@ -284,7 +288,7 @@ export class AdminOrdersController {
 
   @Patch(':id/status')
   @ApiOperation({ summary: 'Update order status (admin override with state-machine validation)' })
-  @ApiQuery({ name: 'type', required: false, enum: ['PAYIN', 'PAYOUT'] })
+  @ApiQuery({ name: 'type', required: false, enum: DirectionType })
   async updateStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateOrderStatusDto,
@@ -292,7 +296,7 @@ export class AdminOrdersController {
   ) {
     if (!dto.status) throw new BadRequestException('status is required');
     const targetStatus = dto.status.toUpperCase();
-    const isPayin = !type || type.toUpperCase() !== 'PAYOUT';
+    const isPayin = !type || type.toUpperCase() !== DirectionType.PAYOUT;
 
     if (isPayin) {
       const order = await this.prisma.payinOrder.findUnique({ where: { id } });
@@ -392,7 +396,7 @@ export class AdminOrdersController {
   }) {
     return {
       id: order.id,
-      type: 'PAYOUT',
+      type: DirectionType.PAYOUT,
       externalId: order.requestId,
       merchantName: order.merchant.name,
       traderName: order.trader?.user?.email ?? null,

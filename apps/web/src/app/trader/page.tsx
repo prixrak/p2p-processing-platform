@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import {
   TrendingUp,
@@ -15,6 +15,7 @@ import { StatCard, Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table } from '@/components/ui/table';
 import { api } from '@/lib/api';
+import { usePayinTraderRealtime } from '@/lib/payin-realtime';
 import { formatCurrency, formatDate, shortId } from '@/lib/utils';
 import type { PayInOrderStatus, PayOutOrderStatus } from '@p2p/shared';
 
@@ -52,6 +53,8 @@ const statusBadgeVariant: Record<string, 'success' | 'warning' | 'danger' | 'inf
 
 export default function TraderDashboard() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  usePayinTraderRealtime(queryClient);
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['trader', 'dashboard-stats'],
     queryFn: () => api.get<DashboardStats>('/api/trader/dashboard/stats'),
@@ -66,6 +69,7 @@ export default function TraderDashboard() {
     {
       key: 'type',
       header: 'Type',
+      className: 'text-center',
       render: (row: RecentOrder) => (
         <div className="flex items-center gap-2">
           {row.type === 'payin' ? (
@@ -80,6 +84,7 @@ export default function TraderDashboard() {
     {
       key: 'id',
       header: 'ID',
+      className: 'font-mono tabular-nums text-end',
       render: (row: RecentOrder) => (
         <span className="font-mono text-xs text-text-muted">{shortId(row.id)}</span>
       ),
@@ -87,6 +92,7 @@ export default function TraderDashboard() {
     {
       key: 'amount',
       header: 'Amount',
+      className: 'text-end tabular-nums',
       render: (row: RecentOrder) => (
         <span className="font-medium">{formatCurrency(row.amount, row.currency)}</span>
       ),
@@ -94,6 +100,7 @@ export default function TraderDashboard() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (row: RecentOrder) => (
         <Badge variant={statusBadgeVariant[row.status] ?? 'muted'} dot>
           {row.status}

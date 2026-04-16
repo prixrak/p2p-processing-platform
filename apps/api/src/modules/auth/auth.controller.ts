@@ -16,6 +16,7 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Audited } from '../../common/decorators/audited.decorator';
+import { AuditAction, AuditEntityType } from '@p2p/shared';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -26,7 +27,7 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login with email and password' })
-  @Audited('LOGIN', 'User')
+  @Audited(AuditAction.LOGIN, AuditEntityType.User)
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto.email, dto.password);
   }
@@ -66,7 +67,7 @@ export class AuthController {
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Setup and enable 2FA in one step (provide TOTP code to confirm)' })
-  @Audited('ENABLE_2FA', 'User')
+  @Audited(AuditAction.ENABLE_2FA, AuditEntityType.User)
   async enable2FA(
     @Req() req: Request,
     @Body('code') code: string,
@@ -84,7 +85,7 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Complete login with 2FA code' })
-  @Audited('LOGIN_2FA', 'User')
+  @Audited(AuditAction.LOGIN_2FA, AuditEntityType.User)
   async verify2FALogin(
     @Body('tempToken') tempToken: string,
     @Body('code') code: string,

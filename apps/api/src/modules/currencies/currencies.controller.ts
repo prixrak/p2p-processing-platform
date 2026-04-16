@@ -13,7 +13,7 @@ import {
   ApiOperation,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { UserRole } from '@p2p/shared';
+import { AuditAction, AuditEntityType, UserRole } from '@p2p/shared';
 import { CurrenciesService } from './currencies.service';
 import { CreateCurrencyDto, UpdateCurrencyDto } from './dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -44,7 +44,7 @@ export class CurrenciesController {
   @Post()
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Create currency' })
-  @Audited('CREATE', 'Currency')
+  @Audited(AuditAction.CREATE, AuditEntityType.Currency)
   create(@Body() dto: CreateCurrencyDto) {
     return this.currenciesService.create(dto);
   }
@@ -52,7 +52,7 @@ export class CurrenciesController {
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Update currency (e.g. activate/deactivate)' })
-  @Audited('UPDATE', 'Currency')
+  @Audited(AuditAction.UPDATE, AuditEntityType.Currency)
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCurrencyDto,

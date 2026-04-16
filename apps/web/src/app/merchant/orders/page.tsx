@@ -48,21 +48,24 @@ export default function MerchantOrdersPage() {
     {
       key: 'id',
       header: 'ID',
-      render: (row) => (
+      className: 'font-mono tabular-nums text-end',
+      render: (row: MerchantOrder) => (
         <span className="font-mono text-xs text-text-muted">{row.id.slice(0, 8)}...</span>
       ),
     },
     {
       key: 'externalId',
       header: 'External ID',
-      render: (row) => (
+      className: 'font-mono tabular-nums text-end',
+      render: (row: MerchantOrder) => (
         <span className="font-mono text-xs">{row.externalId?.slice(0, 12) ?? '—'}</span>
       ),
     },
     {
       key: 'amount',
       header: 'Amount',
-      render: (row) => (
+      className: 'text-end tabular-nums',
+      render: (row: MerchantOrder) => (
         <span className="font-mono text-text-primary">
           {row.amount.toLocaleString()} {row.currency}
         </span>
@@ -72,19 +75,20 @@ export default function MerchantOrdersPage() {
     {
       key: 'status',
       header: 'Status',
-      render: (row) => <StatusBadge status={row.status} />,
+      className: 'text-center',
+      render: (row: MerchantOrder) => <StatusBadge status={row.status} />,
     },
     {
       key: 'customerEmail',
       header: 'Customer',
-      render: (row) => (
+      render: (row: MerchantOrder) => (
         <span className="text-text-muted text-xs">{row.customerEmail ?? '—'}</span>
       ),
     },
     {
       key: 'createdAt',
       header: 'Created',
-      render: (row) => (
+      render: (row: MerchantOrder) => (
         <span className="text-xs text-text-muted">
           {format(new Date(row.createdAt), 'dd.MM.yy HH:mm')}
         </span>
@@ -93,7 +97,7 @@ export default function MerchantOrdersPage() {
     {
       key: 'completedAt',
       header: 'Completed',
-      render: (row) => (
+      render: (row: MerchantOrder) => (
         <span className="text-xs text-text-muted">
           {row.completedAt
             ? format(new Date(row.completedAt), 'dd.MM.yy HH:mm')

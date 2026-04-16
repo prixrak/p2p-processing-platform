@@ -24,10 +24,15 @@ export function ProgressBar({
   return (
     <div className={cn('flex flex-col gap-1', className)}>
       {(label || showValues) && (
-        <div className="flex items-center justify-between text-xs">
-          {label && <span className="text-text-muted">{label}</span>}
+        <div className="flex items-baseline justify-between gap-3 text-xs">
+          {label && <span className="shrink-0 text-text-muted">{label}</span>}
           {showValues && (
-            <span className={cn('font-medium', isFull ? 'text-accent-red' : 'text-text-secondary')}>
+            <span
+              className={cn(
+                'min-w-0 text-end tabular-nums font-medium',
+                isFull ? 'text-accent-red' : 'text-text-secondary',
+              )}
+            >
               {value.toLocaleString()} / {max.toLocaleString()}
             </span>
           )}

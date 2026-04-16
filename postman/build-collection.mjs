@@ -4,6 +4,10 @@
 import { writeFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import {
+  EXTERNAL_API_V1_PREFIX,
+  ExternalApiHeaders,
+} from "../scripts/external-api-contract.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -29,12 +33,12 @@ const hmacPrerequest = [
   "const pub = isPayout ? pm.collectionVariables.get('payout_public_key') : pm.collectionVariables.get('payin_public_key');",
   "if (!secret || !pub) { console.warn('Set payin_* or payout_* collection variables'); return; }",
   "const sig = CryptoJS.HmacSHA512(apiPayload, secret).toString(CryptoJS.enc.Hex);",
-  "pm.request.headers.remove('X-API-KEY');",
-  "pm.request.headers.remove('X-API-PAYLOAD');",
-  "pm.request.headers.remove('X-API-SIGNATURE');",
-  "pm.request.headers.add({ key: 'X-API-KEY', value: pub });",
-  "pm.request.headers.add({ key: 'X-API-PAYLOAD', value: apiPayload });",
-  "pm.request.headers.add({ key: 'X-API-SIGNATURE', value: sig });",
+  `pm.request.headers.remove('${ExternalApiHeaders.API_KEY}');`,
+  `pm.request.headers.remove('${ExternalApiHeaders.API_PAYLOAD}');`,
+  `pm.request.headers.remove('${ExternalApiHeaders.API_SIGNATURE}');`,
+  `pm.request.headers.add({ key: '${ExternalApiHeaders.API_KEY}', value: pub });`,
+  `pm.request.headers.add({ key: '${ExternalApiHeaders.API_PAYLOAD}', value: apiPayload });`,
+  `pm.request.headers.add({ key: '${ExternalApiHeaders.API_SIGNATURE}', value: sig });`,
 ];
 
 const multipartUpdateProofs = [
@@ -56,12 +60,12 @@ const multipartUpdateProofs = [
   "const secret = pm.collectionVariables.get('payin_secret');",
   "const pub = pm.collectionVariables.get('payin_public_key');",
   "const sig = CryptoJS.HmacSHA512(apiPayload, secret).toString(CryptoJS.enc.Hex);",
-  "pm.request.headers.remove('X-API-KEY');",
-  "pm.request.headers.remove('X-API-PAYLOAD');",
-  "pm.request.headers.remove('X-API-SIGNATURE');",
-  "pm.request.headers.add({ key: 'X-API-KEY', value: pub });",
-  "pm.request.headers.add({ key: 'X-API-PAYLOAD', value: apiPayload });",
-  "pm.request.headers.add({ key: 'X-API-SIGNATURE', value: sig });",
+  `pm.request.headers.remove('${ExternalApiHeaders.API_KEY}');`,
+  `pm.request.headers.remove('${ExternalApiHeaders.API_PAYLOAD}');`,
+  `pm.request.headers.remove('${ExternalApiHeaders.API_SIGNATURE}');`,
+  `pm.request.headers.add({ key: '${ExternalApiHeaders.API_KEY}', value: pub });`,
+  `pm.request.headers.add({ key: '${ExternalApiHeaders.API_PAYLOAD}', value: apiPayload });`,
+  `pm.request.headers.add({ key: '${ExternalApiHeaders.API_SIGNATURE}', value: sig });`,
 ];
 
 const multipartAppeal = [
@@ -85,12 +89,12 @@ const multipartAppeal = [
   "const secret = pm.collectionVariables.get('payin_secret');",
   "const pub = pm.collectionVariables.get('payin_public_key');",
   "const sig = CryptoJS.HmacSHA512(apiPayload, secret).toString(CryptoJS.enc.Hex);",
-  "pm.request.headers.remove('X-API-KEY');",
-  "pm.request.headers.remove('X-API-PAYLOAD');",
-  "pm.request.headers.remove('X-API-SIGNATURE');",
-  "pm.request.headers.add({ key: 'X-API-KEY', value: pub });",
-  "pm.request.headers.add({ key: 'X-API-PAYLOAD', value: apiPayload });",
-  "pm.request.headers.add({ key: 'X-API-SIGNATURE', value: sig });",
+  `pm.request.headers.remove('${ExternalApiHeaders.API_KEY}');`,
+  `pm.request.headers.remove('${ExternalApiHeaders.API_PAYLOAD}');`,
+  `pm.request.headers.remove('${ExternalApiHeaders.API_SIGNATURE}');`,
+  `pm.request.headers.add({ key: '${ExternalApiHeaders.API_KEY}', value: pub });`,
+  `pm.request.headers.add({ key: '${ExternalApiHeaders.API_PAYLOAD}', value: apiPayload });`,
+  `pm.request.headers.add({ key: '${ExternalApiHeaders.API_SIGNATURE}', value: sig });`,
 ];
 
 const loginTest = [
@@ -163,13 +167,13 @@ const collection = {
     {
       name: "External / Pay-In (HMAC)",
       item: [
-        req("upload_order", "POST", "/api/external/v1/payin/upload_order", {
+        req("upload_order", "POST", `${EXTERNAL_API_V1_PREFIX}/payin/upload_order`, {
           request_id: "postman-{{$timestamp}}",
           amount: 100,
           currency: "UAH",
           user_full_name: "Test User",
         }),
-        req("update_order", "POST", "/api/external/v1/payin/update_order", {
+        req("update_order", "POST", `${EXTERNAL_API_V1_PREFIX}/payin/update_order`, {
           id: "00000000-0000-0000-0000-000000000000",
           status: "VERIFIED",
         }),
@@ -188,28 +192,28 @@ const collection = {
               ],
             },
             url: {
-              raw: "{{baseUrl}}/api/external/v1/payin/update_order_with_proofs",
+              raw: `{{baseUrl}}${EXTERNAL_API_V1_PREFIX}/payin/update_order_with_proofs`,
               host: ["{{baseUrl}}"],
               path: ["api", "external", "v1", "payin", "update_order_with_proofs"],
             },
           },
         },
-        req("order_info", "POST", "/api/external/v1/payin/order_info", {
+        req("order_info", "POST", `${EXTERNAL_API_V1_PREFIX}/payin/order_info`, {
           id: "00000000-0000-0000-0000-000000000000",
         }),
-        req("info", "POST", "/api/external/v1/payin/info", {}),
-        req("h2h_init", "POST", "/api/external/v1/payin/h2h_init", {
+        req("info", "POST", `${EXTERNAL_API_V1_PREFIX}/payin/info`, {}),
+        req("h2h_init", "POST", `${EXTERNAL_API_V1_PREFIX}/payin/h2h_init`, {
           request_id: "h2h-{{$timestamp}}",
           amount: 100,
           currency: "UAH",
           redirect_url: "https://example.com/return",
         }),
-        req("h2h_check_availability", "POST", "/api/external/v1/payin/h2h_check_availability", {
+        req("h2h_check_availability", "POST", `${EXTERNAL_API_V1_PREFIX}/payin/h2h_check_availability`, {
           request_id: "chk-{{$timestamp}}",
           amount: 100,
           currency: "UAH",
         }),
-        req("banks", "POST", "/api/external/v1/payin/banks", { currency: "UAH" }),
+        req("banks", "POST", `${EXTERNAL_API_V1_PREFIX}/payin/banks`, { currency: "UAH" }),
         {
           name: "appeal_send (multipart)",
           event: [{ listen: "prerequest", script: { type: "text/javascript", exec: multipartAppeal } }],
@@ -226,7 +230,7 @@ const collection = {
               ],
             },
             url: {
-              raw: "{{baseUrl}}/api/external/v1/payin/appeal/send",
+              raw: `{{baseUrl}}${EXTERNAL_API_V1_PREFIX}/payin/appeal/send`,
               host: ["{{baseUrl}}"],
               path: ["api", "external", "v1", "payin", "appeal", "send"],
             },
@@ -237,16 +241,16 @@ const collection = {
     {
       name: "External / Pay-Out (HMAC)",
       item: [
-        req("order_upload", "POST", "/api/external/v1/payout/order_upload", {
+        req("order_upload", "POST", `${EXTERNAL_API_V1_PREFIX}/payout/order_upload`, {
           request_id: "po-{{$timestamp}}",
           currency: "UAH",
           amount: 100,
           details: { type: "CARD", number: "4111111111111111", owner: "Test" },
         }),
-        req("order_info", "POST", "/api/external/v1/payout/order_info", {
+        req("order_info", "POST", `${EXTERNAL_API_V1_PREFIX}/payout/order_info`, {
           id: "00000000-0000-0000-0000-000000000000",
         }),
-        req("info", "POST", "/api/external/v1/payout/info", {}),
+        req("info", "POST", `${EXTERNAL_API_V1_PREFIX}/payout/info`, {}),
       ],
     },
     {

@@ -1,10 +1,11 @@
 'use client';
 
 import { LayoutDashboard, BarChart3 } from 'lucide-react';
+import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
 import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
 
-const REFERRAL_ALLOWED = ['REFERRAL'] as const;
+const REFERRAL_ALLOWED = [UserRole.REFERRAL] as const;
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/referral', icon: LayoutDashboard },

@@ -30,6 +30,10 @@
 
 import { createHmac } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import {
+  EXTERNAL_API_V1_PREFIX,
+  ExternalApiHeaders,
+} from './external-api-contract.mjs';
 
 /**
  * @param {object} opts
@@ -56,9 +60,9 @@ export function buildP2pExternalHmacHeaders({ publicKey, secret, body, apiUrl })
   return {
     headers: {
       'Content-Type': 'application/json',
-      'X-API-KEY': publicKey,
-      'X-API-PAYLOAD': apiPayload,
-      'X-API-SIGNATURE': signature,
+      [ExternalApiHeaders.API_KEY]: publicKey,
+      [ExternalApiHeaders.API_PAYLOAD]: apiPayload,
+      [ExternalApiHeaders.API_SIGNATURE]: signature,
     },
     bodyString,
   };
@@ -70,7 +74,7 @@ if (isMain) {
   const publicKey = process.env.P2P_PUBLIC_KEY;
   const secret = process.env.P2P_SECRET;
   const apiUrl =
-    process.env.P2P_API_URL ?? '/api/external/v1/payin/upload_order';
+    process.env.P2P_API_URL ?? `${EXTERNAL_API_V1_PREFIX}/payin/upload_order`;
 
   if (!publicKey || !secret) {
     console.error(

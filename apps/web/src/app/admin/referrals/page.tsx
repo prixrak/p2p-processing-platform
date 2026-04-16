@@ -107,6 +107,7 @@ export default function ReferralsAdminPage() {
     {
       key: 'percent',
       header: 'Commission %',
+      className: 'text-end tabular-nums',
       render: (row: ReferralAgent) => (
         <div className="flex items-center gap-1">
           <Percent className="h-3.5 w-3.5 text-accent-blue" />
@@ -117,6 +118,7 @@ export default function ReferralsAdminPage() {
     {
       key: 'balance',
       header: 'Balance',
+      className: 'text-end tabular-nums font-mono',
       render: (row: ReferralAgent) => (
         <span className="font-mono text-sm">{formatCurrency(row.balance, row.currency)}</span>
       ),
@@ -124,6 +126,7 @@ export default function ReferralsAdminPage() {
     {
       key: 'referred',
       header: 'Referred',
+      className: 'text-end tabular-nums',
       render: (row: ReferralAgent) => (
         <span className="text-sm text-text-secondary">{row.referrals.length} users</span>
       ),
@@ -131,6 +134,7 @@ export default function ReferralsAdminPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (row: ReferralAgent) => (
         <Badge variant={row.user.isActive ? 'success' : 'default'} dot>
           {row.user.isActive ? 'Active' : 'Inactive'}
@@ -149,6 +153,7 @@ export default function ReferralsAdminPage() {
     {
       key: 'actions',
       header: '',
+      className: 'text-end',
       render: (row: ReferralAgent) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           <IconButton

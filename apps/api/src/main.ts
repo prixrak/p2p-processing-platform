@@ -4,6 +4,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { config } from '@p2p/config';
+import { ExternalApiHeaders } from '@p2p/shared';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -35,7 +36,7 @@ async function bootstrap() {
       .setVersion('1.0')
       .addBearerAuth()
       .addApiKey(
-        { type: 'apiKey', name: 'X-API-KEY', in: 'header' },
+        { type: 'apiKey', name: ExternalApiHeaders.API_KEY, in: 'header' },
         'hmac-auth',
       )
       .build();
@@ -45,6 +46,8 @@ async function bootstrap() {
   }
 
   await app.listen(config.app.port);
+  // SSE (Pay-In streams): place behind a reverse proxy with buffering disabled, e.g. nginx
+  // `proxy_buffering off;`, `proxy_read_timeout` large enough, and/or `add_header X-Accel-Buffering no`.
   console.log(`API running on http://localhost:${config.app.port}`);
   if (config.app.nodeEnv !== 'production') {
     console.log(`Swagger docs at http://localhost:${config.app.port}/api/docs`);

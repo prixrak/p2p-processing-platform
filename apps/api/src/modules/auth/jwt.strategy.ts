@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { config } from '@p2p/config';
+import { UserRole } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
 
 export interface JwtPayload {
@@ -41,7 +42,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role: user.role,
     };
 
-    if (user.role === 'TRADER') {
+    if (user.role === UserRole.TRADER) {
       const trader = await this.prisma.traderProfile.findUnique({
         where: { userId: user.id },
         select: { id: true },
@@ -49,7 +50,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       result.traderId = trader?.id ?? null;
     }
 
-    if (user.role === 'MERCHANT') {
+    if (user.role === UserRole.MERCHANT) {
       const merchant = await this.prisma.merchant.findUnique({
         where: { userId: user.id },
         select: { id: true },

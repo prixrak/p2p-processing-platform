@@ -1,5 +1,10 @@
 import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { createHmac } from 'crypto';
+import {
+  DirectionType,
+  EXTERNAL_API_V1_PREFIX,
+  ExternalApiHeadersLower,
+} from '@p2p/shared';
 import { HmacAuthGuard } from './hmac-auth.guard';
 import { PrismaService } from '../../config/prisma.service';
 import { NonceStoreService } from '../services/nonce-store.service';
@@ -22,13 +27,13 @@ describe('HmacAuthGuard', () => {
   const publicKey = 'pk-unit-test';
   const secretKeyHash = encryptSecret(secret);
   const merchantId = 'merchant-unit-1';
-  const payinUploadPath = '/api/external/v1/payin/upload_order';
+  const payinUploadPath = `${EXTERNAL_API_V1_PREFIX}/payin/upload_order`;
 
   const payinMerchantKey = {
     id: 'key-1',
     publicKey,
     secretKeyHash,
-    direction: 'PAYIN' as const,
+    direction: DirectionType.PAYIN,
     merchantId,
     merchant: { isLock: false },
   };
@@ -79,9 +84,9 @@ describe('HmacAuthGuard', () => {
     const ctx = createExecutionContext({
       path: payinUploadPath,
       headers: {
-        'x-api-key': publicKey,
-        'x-api-payload': apiPayload,
-        'x-api-signature': signature,
+        [ExternalApiHeadersLower.API_KEY]: publicKey,
+        [ExternalApiHeadersLower.API_PAYLOAD]: apiPayload,
+        [ExternalApiHeadersLower.API_SIGNATURE]: signature,
         'content-type': 'application/json',
       },
       rawBody: Buffer.from(raw, 'utf-8'),
@@ -92,7 +97,7 @@ describe('HmacAuthGuard', () => {
   it('throws UnauthorizedException when key direction does not match path', async () => {
     prisma.merchantApiKey.findFirst.mockResolvedValueOnce({
       ...payinMerchantKey,
-      direction: 'PAYOUT',
+      direction: DirectionType.PAYOUT,
     });
     const nonce = Math.floor(Date.now() / 1000);
     const { raw, apiPayload, signature } = signBody({
@@ -105,9 +110,9 @@ describe('HmacAuthGuard', () => {
     const ctx = createExecutionContext({
       path: payinUploadPath,
       headers: {
-        'x-api-key': publicKey,
-        'x-api-payload': apiPayload,
-        'x-api-signature': signature,
+        [ExternalApiHeadersLower.API_KEY]: publicKey,
+        [ExternalApiHeadersLower.API_PAYLOAD]: apiPayload,
+        [ExternalApiHeadersLower.API_SIGNATURE]: signature,
         'content-type': 'application/json',
       },
       rawBody: Buffer.from(raw, 'utf-8'),
@@ -127,9 +132,9 @@ describe('HmacAuthGuard', () => {
     const ctx = createExecutionContext({
       path: payinUploadPath,
       headers: {
-        'x-api-key': publicKey,
-        'x-api-payload': apiPayload,
-        'x-api-signature': '0'.repeat(128),
+        [ExternalApiHeadersLower.API_KEY]: publicKey,
+        [ExternalApiHeadersLower.API_PAYLOAD]: apiPayload,
+        [ExternalApiHeadersLower.API_SIGNATURE]: '0'.repeat(128),
         'content-type': 'application/json',
       },
       rawBody: Buffer.from(raw, 'utf-8'),
@@ -149,9 +154,9 @@ describe('HmacAuthGuard', () => {
     const ctx = createExecutionContext({
       path: payinUploadPath,
       headers: {
-        'x-api-key': publicKey,
-        'x-api-payload': apiPayload,
-        'x-api-signature': signature,
+        [ExternalApiHeadersLower.API_KEY]: publicKey,
+        [ExternalApiHeadersLower.API_PAYLOAD]: apiPayload,
+        [ExternalApiHeadersLower.API_SIGNATURE]: signature,
         'content-type': 'application/json',
       },
       rawBody: Buffer.from(raw, 'utf-8'),
@@ -172,9 +177,9 @@ describe('HmacAuthGuard', () => {
     const ctx = createExecutionContext({
       path: payinUploadPath,
       headers: {
-        'x-api-key': publicKey,
-        'x-api-payload': apiPayload,
-        'x-api-signature': signature,
+        [ExternalApiHeadersLower.API_KEY]: publicKey,
+        [ExternalApiHeadersLower.API_PAYLOAD]: apiPayload,
+        [ExternalApiHeadersLower.API_SIGNATURE]: signature,
         'content-type': 'application/json',
       },
       rawBody: Buffer.from(raw, 'utf-8'),
@@ -198,9 +203,9 @@ describe('HmacAuthGuard', () => {
     const ctx = createExecutionContext({
       path: payinUploadPath,
       headers: {
-        'x-api-key': publicKey,
-        'x-api-payload': apiPayload,
-        'x-api-signature': signature,
+        [ExternalApiHeadersLower.API_KEY]: publicKey,
+        [ExternalApiHeadersLower.API_PAYLOAD]: apiPayload,
+        [ExternalApiHeadersLower.API_SIGNATURE]: signature,
         'content-type': 'application/json',
       },
       rawBody: Buffer.from(raw, 'utf-8'),
@@ -220,9 +225,9 @@ describe('HmacAuthGuard', () => {
     const ctx = createExecutionContext({
       path: payinUploadPath,
       headers: {
-        'x-api-key': publicKey,
-        'x-api-payload': apiPayload,
-        'x-api-signature': signature,
+        [ExternalApiHeadersLower.API_KEY]: publicKey,
+        [ExternalApiHeadersLower.API_PAYLOAD]: apiPayload,
+        [ExternalApiHeadersLower.API_SIGNATURE]: signature,
         'content-type': 'application/json',
       },
       rawBody: Buffer.from(JSON.stringify({ tampered: true }), 'utf-8'),
@@ -242,9 +247,9 @@ describe('HmacAuthGuard', () => {
     const req: Record<string, unknown> = {
       path: payinUploadPath,
       headers: {
-        'x-api-key': publicKey,
-        'x-api-payload': apiPayload,
-        'x-api-signature': signature,
+        [ExternalApiHeadersLower.API_KEY]: publicKey,
+        [ExternalApiHeadersLower.API_PAYLOAD]: apiPayload,
+        [ExternalApiHeadersLower.API_SIGNATURE]: signature,
         'content-type': 'application/json',
       },
       rawBody: Buffer.from(raw, 'utf-8'),

@@ -13,6 +13,10 @@ export const PLATFORM_SETTING_KEYS = [
 
 export type PlatformSettingKey = (typeof PLATFORM_SETTING_KEYS)[number];
 
+/** Single source for callers that read this key (e.g. Pay-In autoclose TTL). */
+export const PLATFORM_SETTING_PAYIN_AUTOCLOSE_MINUTES =
+  'payin_autoclose_minutes' as const satisfies PlatformSettingKey;
+
 const DEFAULTS: Record<PlatformSettingKey, string> = {
   payin_autoclose_minutes: '30',
   default_payin_commission_percent: '0',

@@ -18,7 +18,7 @@ import {
   ApiBearerAuth,
   ApiQuery,
 } from '@nestjs/swagger';
-import { UserRole } from '@p2p/shared';
+import { AuditAction, AuditEntityType, UserRole } from '@p2p/shared';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -49,7 +49,7 @@ export class UsersController {
   @Post()
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Create user (admin/owner)' })
-  @Audited('CREATE_USER', 'User')
+  @Audited(AuditAction.CREATE_USER, AuditEntityType.User)
   async create(@Body() dto: CreateUserDto) {
     return this.usersService.create(dto.email, dto.password, dto.role);
   }
@@ -64,7 +64,7 @@ export class UsersController {
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Update user (admin/owner)' })
-  @Audited('UPDATE_USER', 'User')
+  @Audited(AuditAction.UPDATE_USER, AuditEntityType.User)
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() data: UpdateUserDto,
@@ -75,7 +75,7 @@ export class UsersController {
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Deactivate user (soft delete)' })
-  @Audited('DEACTIVATE_USER', 'User')
+  @Audited(AuditAction.DEACTIVATE_USER, AuditEntityType.User)
   async deactivate(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.deactivate(id);
   }

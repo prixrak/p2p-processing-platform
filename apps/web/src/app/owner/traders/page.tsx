@@ -9,8 +9,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
-import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 
 interface Trader {
   id: string;
@@ -131,7 +130,7 @@ export default function TradersPage() {
           cardNumber: r.number,
           status: r.isActive ? 'active' : 'inactive',
         })),
-        recentOrders: [],
+        recentOrders: [] as TraderDetails['recentOrders'],
       } satisfies TraderDetails;
     },
     enabled: !!detailTrader,
@@ -159,6 +158,7 @@ export default function TradersPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (t: Trader) => (
         <Badge color={t.status === 'active' ? 'green' : 'red'}>{t.status}</Badge>
       ),
@@ -166,6 +166,7 @@ export default function TradersPage() {
     {
       key: 'balance',
       header: 'Balance',
+      className: 'text-end tabular-nums',
       render: (t: Trader) => (
         <span className="font-mono text-sm text-text-primary">
           {t.balance.toLocaleString()} {t.currency}
@@ -175,6 +176,7 @@ export default function TradersPage() {
     {
       key: 'orders',
       header: 'Orders',
+      className: 'text-end tabular-nums',
       render: (t: Trader) => (
         <span className="text-sm text-text-secondary">{t.completedOrders.toLocaleString()}</span>
       ),
@@ -182,6 +184,7 @@ export default function TradersPage() {
     {
       key: 'rate',
       header: 'Success Rate',
+      className: 'text-end tabular-nums',
       render: (t: Trader) => (
         <span className={`text-sm font-medium ${t.successRate >= 95 ? 'text-success' : t.successRate >= 80 ? 'text-warning' : 'text-danger'}`}>
           {t.successRate}%
@@ -191,6 +194,7 @@ export default function TradersPage() {
     {
       key: 'response',
       header: 'Avg Response',
+      className: 'text-end tabular-nums',
       render: (t: Trader) => (
         <span className="text-sm text-text-secondary">{t.avgResponseTime}s</span>
       ),
@@ -198,6 +202,7 @@ export default function TradersPage() {
     {
       key: 'actions',
       header: 'Actions',
+      className: 'text-end',
       render: (t: Trader) => (
         <div className="flex items-center gap-2">
           <IconButton label="View trader details" onClick={() => setDetailTrader(t.id)}>
@@ -226,24 +231,26 @@ export default function TradersPage() {
         <p className="mt-1 text-sm text-text-muted">Manage traders, view performance and requisites</p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Input
-          placeholder="Search traders..."
+      <FilterBar>
+        <FilterInput
+          label="Search"
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="w-64"
+          onChange={(v) => { setSearch(v); setPage(1); }}
+          placeholder="Search traders..."
+          className="w-64 min-w-[12rem]"
         />
-        <Select
+        <FilterSelect
+          label="Status"
+          value={statusFilter}
+          onChange={(v) => { setStatusFilter(v); setPage(1); }}
           options={[
             { value: '', label: 'All Statuses' },
             { value: 'active', label: 'Active' },
             { value: 'inactive', label: 'Inactive' },
           ]}
-          value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
           className="w-40"
         />
-      </div>
+      </FilterBar>
 
       <DataTable
         columns={columns}

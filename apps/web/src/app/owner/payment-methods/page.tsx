@@ -83,6 +83,7 @@ export default function PaymentMethodsPage() {
     {
       key: 'country',
       header: 'Country',
+      className: 'font-mono text-center',
       render: (m: PaymentMethod) => (
         <span className="font-mono text-sm">{m.country.code} / {m.country.currency}</span>
       ),
@@ -90,6 +91,7 @@ export default function PaymentMethodsPage() {
     {
       key: 'flowType',
       header: 'Flow',
+      className: 'text-center',
       render: (m: PaymentMethod) => (
         <Badge color="blue">{FLOW_LABELS[m.flowType] ?? m.flowType}</Badge>
       ),
@@ -104,6 +106,7 @@ export default function PaymentMethodsPage() {
     {
       key: 'availability',
       header: 'Direction',
+      className: 'text-center',
       render: (m: PaymentMethod) => (
         <Badge color={AVAIL_COLOR[m.availability] ?? 'blue'}>
           {AVAIL_LABELS[m.availability] ?? m.availability}
@@ -113,6 +116,7 @@ export default function PaymentMethodsPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (m: PaymentMethod) => (
         <Badge color={m.isActive ? 'green' : 'red'}>{m.isActive ? 'active' : 'inactive'}</Badge>
       ),
@@ -120,7 +124,7 @@ export default function PaymentMethodsPage() {
     {
       key: 'actions',
       header: '',
-      className: 'w-24',
+      className: 'w-24 text-center',
       render: (m: PaymentMethod) => (
         <IconButton
           label={m.isActive ? 'Deactivate payment method' : 'Activate payment method'}

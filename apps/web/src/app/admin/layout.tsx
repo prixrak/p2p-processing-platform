@@ -11,10 +11,11 @@ import {
   Globe,
   CreditCard,
 } from 'lucide-react';
+import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
 import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
 
-const ADMIN_ALLOWED = ['ADMIN'] as const;
+const ADMIN_ALLOWED = [UserRole.ADMIN] as const;
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },

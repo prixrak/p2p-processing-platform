@@ -3,16 +3,21 @@ import {
   Get,
   Post,
   Param,
-  Body,
   UploadedFiles,
   UseInterceptors,
   ParseUUIDPipe,
   NotFoundException,
+  Sse,
+  Header,
+  MessageEvent,
 } from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { SkipThrottle } from '@nestjs/throttler';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiConsumes, ApiProduces } from '@nestjs/swagger';
 import { MAX_FILE_SIZE_BYTES } from '@p2p/shared';
 import { PayinService } from './payin.service';
+import { PayinRealtimeService } from './payin-realtime.service';
 import { FilesService, UploadedFile as UploadedFileType } from '../files/files.service';
 
 @ApiTags('Payment Page')
@@ -21,7 +26,18 @@ export class PaymentPageController {
   constructor(
     private readonly payinService: PayinService,
     private readonly filesService: FilesService,
+    private readonly payinRealtime: PayinRealtimeService,
   ) {}
+
+  @SkipThrottle()
+  @Sse(':id/stream')
+  @Header('X-Accel-Buffering', 'no')
+  @Header('Cache-Control', 'no-cache')
+  @ApiOperation({ summary: 'SSE stream for Pay-In order updates for this order' })
+  @ApiProduces('text/event-stream')
+  streamOrderPayin(@Param('id', ParseUUIDPipe) id: string): Observable<MessageEvent> {
+    return this.payinRealtime.streamForOrder(id);
+  }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get public order info for payment page' })

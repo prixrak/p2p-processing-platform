@@ -131,6 +131,7 @@ export default function UsersPage() {
     {
       key: 'role',
       header: 'Role',
+      className: 'text-center',
       render: (u: User) => (
         <Badge color={roleColors[u.role] ?? 'default'}>
           {u.role.toLowerCase()}
@@ -140,6 +141,7 @@ export default function UsersPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (u: User) => (
         <Badge color={u.status === 'active' ? 'green' : 'red'}>
           {u.status}
@@ -158,6 +160,7 @@ export default function UsersPage() {
     {
       key: 'actions',
       header: 'Actions',
+      className: 'text-end',
       render: (u: User) => (
         <div className="flex items-center gap-2">
           {u.role === UserRole.OWNER ? (

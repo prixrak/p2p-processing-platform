@@ -61,6 +61,7 @@ export default function CurrenciesPage() {
     {
       key: 'code',
       header: 'Code',
+      className: 'font-mono text-end',
       render: (c: Currency) => (
         <span className="font-mono text-sm font-semibold text-text-primary">{c.code}</span>
       ),
@@ -75,6 +76,7 @@ export default function CurrenciesPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (c: Currency) => (
         <Badge color={c.status === 'active' ? 'green' : 'red'}>{c.status}</Badge>
       ),
@@ -82,7 +84,7 @@ export default function CurrenciesPage() {
     {
       key: 'actions',
       header: 'Actions',
-      className: 'w-24',
+      className: 'w-24 text-end',
       render: (c: Currency) => (
         <IconButton
           label={c.status === 'active' ? 'Deactivate currency' : 'Activate currency'}

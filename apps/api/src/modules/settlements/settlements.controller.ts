@@ -23,7 +23,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Audited } from '../../common/decorators/audited.decorator';
-import { UserRole } from '@p2p/shared';
+import { AuditAction, AuditEntityType, UserRole } from '@p2p/shared';
 
 @ApiTags('Settlements')
 @ApiBearerAuth()
@@ -35,7 +35,7 @@ export class SettlementsController {
 
   @Post()
   @ApiOperation({ summary: 'Create a settlement (credit/debit trader balance)' })
-  @Audited('CREATE', 'Settlement')
+  @Audited(AuditAction.CREATE, AuditEntityType.Settlement)
   create(
     @CurrentUser('id') adminId: string,
     @Body() dto: CreateSettlementDto,

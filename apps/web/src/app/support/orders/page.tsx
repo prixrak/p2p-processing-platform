@@ -5,8 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Eye } from 'lucide-react';
 import { api } from '@/lib/api';
 import { IconButton } from '@/components/ui/icon-button';
-import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Tabs } from '@/components/ui/tabs';
@@ -96,6 +95,7 @@ export default function SupportOrdersPage() {
     {
       key: 'id',
       header: 'Order ID',
+      className: 'font-mono tabular-nums text-end',
       render: (o: Order) => (
         <span className="font-mono text-sm text-text-primary">{o.id.slice(0, 12)}</span>
       ),
@@ -117,6 +117,7 @@ export default function SupportOrdersPage() {
     {
       key: 'amount',
       header: 'Amount',
+      className: 'text-end tabular-nums',
       render: (o: Order) => (
         <span className="font-mono text-sm font-medium text-text-primary">
           {o.amount.toLocaleString()} {o.currency}
@@ -126,6 +127,7 @@ export default function SupportOrdersPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (o: Order) => (
         <Badge color={statusColor[o.status] ?? 'default'}>{o.status}</Badge>
       ),
@@ -142,7 +144,7 @@ export default function SupportOrdersPage() {
     {
       key: 'actions',
       header: '',
-      className: 'w-12',
+      className: 'w-12 text-center',
       render: (o: Order) => (
         <IconButton label="View order details" onClick={() => setDetailOrder(o.id)}>
           <Eye className="h-3.5 w-3.5" />
@@ -167,27 +169,30 @@ export default function SupportOrdersPage() {
         onChange={(k) => { setTab(k); setPage(1); }}
       />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Select
-          options={statusOptions}
+      <FilterBar>
+        <FilterSelect
+          label="Status"
           value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-          className="w-40"
+          onChange={(v) => { setStatusFilter(v); setPage(1); }}
+          options={statusOptions}
           placeholder="Status"
+          className="w-40"
         />
-        <Input
-          placeholder="Merchant name..."
+        <FilterInput
+          label="Merchant"
           value={merchantFilter}
-          onChange={(e) => { setMerchantFilter(e.target.value); setPage(1); }}
-          className="w-48"
+          onChange={(v) => { setMerchantFilter(v); setPage(1); }}
+          placeholder="Merchant name..."
+          className="w-48 min-w-[10rem]"
         />
-        <Input
-          placeholder="Trader name..."
+        <FilterInput
+          label="Trader"
           value={traderFilter}
-          onChange={(e) => { setTraderFilter(e.target.value); setPage(1); }}
-          className="w-48"
+          onChange={(v) => { setTraderFilter(v); setPage(1); }}
+          placeholder="Trader name..."
+          className="w-48 min-w-[10rem]"
         />
-      </div>
+      </FilterBar>
 
       <DataTable
         columns={columns}

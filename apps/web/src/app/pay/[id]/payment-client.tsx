@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Copy,
   Check,
@@ -21,8 +21,19 @@ import { CountdownTimer } from '@/components/ui/countdown-timer';
 import { FileUpload } from '@/components/ui/file-upload';
 import { confirmPayment, api } from '@/lib/api';
 import { formatErrorMessage } from '@/lib/format-error';
+import { usePayinOrderRealtime } from '@/lib/payin-realtime';
 
 type Step = 'viewing' | 'uploading' | 'confirming' | 'success' | 'error' | 'expired';
+
+/** Trader has recorded payment (timer no longer relevant on the pay page). */
+function isTraderPaymentRecordedStatus(status: PayInOrderStatus): boolean {
+  return (
+    status === PayInOrderStatus.PAID ||
+    status === PayInOrderStatus.UNDERPAID ||
+    status === PayInOrderStatus.OVERPAID ||
+    status === PayInOrderStatus.APPEAL
+  );
+}
 
 function isSafeRedirectUrl(url: string | undefined | null): url is string {
   if (!url) return false;
@@ -40,7 +51,12 @@ interface PaymentClientProps {
 
 export function PaymentClient({ order }: PaymentClientProps) {
   const [step, setStep] = useState<Step>(() => {
-    if (order.status === PayInOrderStatus.VERIFIED || order.status === PayInOrderStatus.PAID) return 'success';
+    if (
+      order.status === PayInOrderStatus.VERIFIED ||
+      isTraderPaymentRecordedStatus(order.status)
+    ) {
+      return 'success';
+    }
     if (order.status === PayInOrderStatus.CANCELED) return 'expired';
     return 'viewing';
   });
@@ -51,26 +67,32 @@ export function PaymentClient({ order }: PaymentClientProps) {
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
 
   const [currentOrder, setCurrentOrder] = useState(order);
-  const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+
+  const syncOrderFromServer = useCallback(async () => {
+    try {
+      const fresh = await api.get<OrderDto>(`/api/pay/${order.id}`);
+      setCurrentOrder(fresh);
+      if (fresh.status === PayInOrderStatus.CANCELED) setStep('expired');
+      if (
+        fresh.status === PayInOrderStatus.VERIFIED ||
+        isTraderPaymentRecordedStatus(fresh.status)
+      ) {
+        setStep('success');
+      }
+    } catch {
+      /* network error — skip */
+    }
+  }, [order.id]);
+
+  usePayinOrderRealtime(order.id, step !== 'success' && step !== 'expired', () => {
+    void syncOrderFromServer();
+  });
 
   useEffect(() => {
-    if (step === 'success' || step === 'expired') return;
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const fresh = await api.get<OrderDto>(`/api/pay/${order.id}`);
-        setCurrentOrder(fresh);
-        if (fresh.status === PayInOrderStatus.CANCELED) setStep('expired');
-        if (fresh.status === PayInOrderStatus.PAID || fresh.status === PayInOrderStatus.VERIFIED) {
-          setStep('success');
-        }
-      } catch {
-        // Network error -- skip this cycle
-      }
-    }, 5000);
-
-    return () => clearInterval(pollRef.current);
-  }, [order.id, step]);
+    if (isTraderPaymentRecordedStatus(currentOrder.status)) {
+      setStep('success');
+    }
+  }, [currentOrder.status]);
 
   const cardNumber = currentOrder.payment_detail?.number ?? currentOrder.requisite_number;
   const ownerName = currentOrder.payment_detail?.owner ?? currentOrder.requisite_owner;
@@ -168,8 +190,12 @@ export function PaymentClient({ order }: PaymentClientProps) {
       <div className="rounded-2xl border border-accent/20 bg-gradient-to-b from-accent/[0.06] to-transparent p-5">
         <div className="flex items-center justify-between">
           <span className="text-sm text-text-secondary">Amount to pay</span>
-          {currentOrder.autoclose_at && (
-            <CountdownTimer targetTimestamp={currentOrder.autoclose_at} onExpire={handleTimerExpire} />
+          {isTraderPaymentRecordedStatus(currentOrder.status) ? (
+            <span className="text-xs font-medium text-success">Done</span>
+          ) : (
+            currentOrder.autoclose_at && (
+              <CountdownTimer targetTimestamp={currentOrder.autoclose_at} onExpire={handleTimerExpire} />
+            )
           )}
         </div>
         <p className="mt-2 text-3xl font-bold tracking-tight text-text-primary">

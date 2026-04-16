@@ -14,6 +14,7 @@ import {
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 import { clsx } from 'clsx';
+import { cn } from '@/lib/utils';
 
 export interface SelectOption {
   label: string;
@@ -24,6 +25,10 @@ export interface SelectOption {
 export interface SelectProps
   extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'children' | 'onChange' | 'size'> {
   label?: string;
+  /** Overrides default label typography (e.g. filter bars use text-xs). */
+  labelClassName?: string;
+  /** Extra classes on the outer flex wrapper (e.g. gap-1 for filters). */
+  rootClassName?: string;
   error?: string;
   options: SelectOption[];
   placeholder?: string;
@@ -46,6 +51,8 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(function Select(
   {
     className,
     label,
+    labelClassName,
+    rootClassName,
     error,
     options,
     placeholder,
@@ -125,10 +132,16 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(function Select(
   }, [open]);
 
   return (
-    <div ref={setRefs} className="flex w-full min-w-0 flex-col gap-1.5">
+    <div
+      ref={setRefs}
+      className={cn('flex w-full min-w-0 flex-col gap-1.5', rootClassName)}
+    >
       {name ? <input type="hidden" name={name} value={strValue} readOnly /> : null}
       {label && (
-        <label htmlFor={selectId} className="text-sm font-medium text-text-secondary">
+        <label
+          htmlFor={selectId}
+          className={cn('text-sm font-medium text-text-secondary', labelClassName)}
+        >
           {label}
           {required ? <span className="text-accent-red"> *</span> : null}
         </label>

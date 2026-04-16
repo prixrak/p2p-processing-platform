@@ -17,6 +17,7 @@ import {
   WebhookMethod,
   DirectionType,
   MAX_PAGE_SIZE,
+  PAYIN_ORDER_REALTIME_EVENT_TYPE,
 } from '@p2p/shared';
 import type {
   OrderDto,
@@ -31,7 +32,10 @@ import { BalanceTransactionType } from '@prisma/client';
 import { config } from '@p2p/config';
 import { validateCallbackUrl } from '../../common/utils/url-validator';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
-import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
+import {
+  PlatformSettingsService,
+  PLATFORM_SETTING_PAYIN_AUTOCLOSE_MINUTES,
+} from '../platform-settings/platform-settings.service';
 import {
   UploadOrderDto,
   UpdateOrderDto,
@@ -43,6 +47,7 @@ import {
   TraderOrderFiltersDto,
   TraderConfirmPaidDto,
 } from './dto';
+import { PayinRealtimeService } from './payin-realtime.service';
 
 const ORDER_INCLUDE = {
   requisite: { include: { bank: true } },
@@ -63,10 +68,26 @@ export class PayinService {
     private readonly merchantDirectionsService: MerchantDirectionsService,
     private readonly balanceTxService: BalanceTransactionsService,
     private readonly platformSettings: PlatformSettingsService,
+    private readonly payinRealtime: PayinRealtimeService,
   ) {}
 
+  private emitPayinOrderRealtime(order: {
+    id: string;
+    traderId: string | null;
+    merchantId: string;
+    status: PayInOrderStatus;
+  }): void {
+    void this.payinRealtime.publish({
+      type: PAYIN_ORDER_REALTIME_EVENT_TYPE,
+      orderId: order.id,
+      status: order.status,
+      traderId: order.traderId,
+      merchantId: order.merchantId,
+    });
+  }
+
   private async getAutocloseMs(): Promise<number> {
-    const setting = await this.platformSettings.findOne('payin_autoclose_minutes');
+    const setting = await this.platformSettings.findOne(PLATFORM_SETTING_PAYIN_AUTOCLOSE_MINUTES);
     const minutes = Math.max(1, parseInt(setting.value, 10) || 30);
     return minutes * 60 * 1000;
   }
@@ -82,7 +103,7 @@ export class PayinService {
     const merchantCommissionPct =
       await this.merchantDirectionsService.getEffectiveCommissionPercent(
         merchantId,
-        'PAYIN',
+        DirectionType.PAYIN,
         dto.currency,
         dto.amount,
       );
@@ -155,6 +176,13 @@ export class PayinService {
         return created;
       });
 
+      this.emitPayinOrderRealtime({
+        id: order.id,
+        traderId: order.traderId,
+        merchantId: order.merchantId,
+        status: order.status as PayInOrderStatus,
+      });
+
       return {
         order: this.toOrderDto(order),
         form_uri: `${config.app.frontendUrl}/pay/${order.id}`,
@@ -203,6 +231,13 @@ export class PayinService {
     if (dto.status === PayInOrderStatus.CANCELED && order.requisiteId) {
       await this.requisitesService.releaseUsage(order.requisiteId, Number(order.amount));
     }
+
+    this.emitPayinOrderRealtime({
+      id: updated.id,
+      traderId: updated.traderId,
+      merchantId: updated.merchantId,
+      status: updated.status as PayInOrderStatus,
+    });
 
     return this.toOrderDto(updated);
   }
@@ -269,6 +304,13 @@ export class PayinService {
       include: ORDER_INCLUDE,
     });
 
+    this.emitPayinOrderRealtime({
+      id: refreshed.id,
+      traderId: refreshed.traderId,
+      merchantId: refreshed.merchantId,
+      status: refreshed.status as PayInOrderStatus,
+    });
+
     return this.toOrderDto(refreshed);
   }
 
@@ -288,7 +330,7 @@ export class PayinService {
     });
 
     const direction = await this.prisma.direction.findFirst({
-      where: { type: 'PAYIN', isOnline: true },
+      where: { type: DirectionType.PAYIN, isOnline: true },
     });
 
     const balances: Record<string, number> = {};
@@ -396,6 +438,13 @@ export class PayinService {
         return created;
       });
 
+      this.emitPayinOrderRealtime({
+        id: order.id,
+        traderId: order.traderId,
+        merchantId: order.merchantId,
+        status: order.status as PayInOrderStatus,
+      });
+
       return { order: this.toOrderDto(order) };
     } catch (error) {
       this.handleUniqueConstraint(error);
@@ -468,6 +517,13 @@ export class PayinService {
       await this.createPayinWebhookEntry(tx, result);
 
       return result;
+    });
+
+    this.emitPayinOrderRealtime({
+      id: updated.id,
+      traderId: updated.traderId,
+      merchantId: updated.merchantId,
+      status: updated.status as PayInOrderStatus,
     });
 
     return this.toOrderDto(updated);
@@ -546,6 +602,13 @@ export class PayinService {
       return result;
     });
 
+    this.emitPayinOrderRealtime({
+      id: updated.id,
+      traderId: updated.traderId,
+      merchantId: updated.merchantId,
+      status: updated.status as PayInOrderStatus,
+    });
+
     return this.toOrderDto(updated);
   }
 
@@ -579,6 +642,13 @@ export class PayinService {
     if (order.requisiteId) {
       await this.requisitesService.releaseUsage(order.requisiteId, Number(order.amount));
     }
+
+    this.emitPayinOrderRealtime({
+      id: updated.id,
+      traderId: updated.traderId,
+      merchantId: updated.merchantId,
+      status: updated.status as PayInOrderStatus,
+    });
 
     return this.toOrderDto(updated);
   }
@@ -794,6 +864,13 @@ export class PayinService {
       await this.createPayinWebhookEntry(tx, result);
 
       return result;
+    });
+
+    this.emitPayinOrderRealtime({
+      id: updated.id,
+      traderId: updated.traderId,
+      merchantId: updated.merchantId,
+      status: updated.status as PayInOrderStatus,
     });
 
     return this.toOrderDto(updated);

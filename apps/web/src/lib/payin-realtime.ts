@@ -1,0 +1,176 @@
+import { useEffect, useRef } from 'react';
+import type { QueryClient } from '@tanstack/react-query';
+import { PAYIN_ORDER_REALTIME_EVENT_TYPE, type PayinOrderRealtimeEvent } from '@p2p/shared';
+import { getToken } from '@/lib/auth';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
+
+const RECONNECT_MS = 5000;
+
+/**
+ * Reads an SSE response until the stream closes or `signal` aborts.
+ * Parses `data:` lines (single-line JSON payloads).
+ */
+export async function consumeSseStream(
+  path: string,
+  options: {
+    onMessage: (data: string) => void;
+    signal?: AbortSignal;
+    headers?: Record<string, string>;
+  },
+): Promise<void> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'text/event-stream',
+      ...options.headers,
+    },
+    signal: options.signal,
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw new Error(`SSE failed: ${res.status}`);
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) {
+    throw new Error('SSE: no response body');
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split(/\r?\n/);
+      buffer = parts.pop() ?? '';
+      for (const line of parts) {
+        if (!line.startsWith('data:')) continue;
+        const payload = line.startsWith('data: ') ? line.slice(6) : line.slice(5);
+        options.onMessage(payload.trim());
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+    const t = setTimeout(resolve, ms);
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(t);
+        reject(new DOMException('Aborted', 'AbortError'));
+      },
+      { once: true },
+    );
+  });
+}
+
+/**
+ * Subscribes to Pay-In updates for the logged-in trader (Bearer token).
+ * Invalidates list and dashboard queries when an event arrives; reconnects on disconnect.
+ */
+export function usePayinTraderRealtime(queryClient: QueryClient): void {
+  useEffect(() => {
+    const ac = new AbortController();
+    let cancelled = false;
+
+    const run = async () => {
+      while (!cancelled) {
+        const token = getToken();
+        if (!token) break;
+
+        try {
+          await consumeSseStream('/api/trader/payin/stream', {
+            signal: ac.signal,
+            headers: { Authorization: `Bearer ${token}` },
+            onMessage: (raw) => {
+              try {
+                const evt = JSON.parse(raw) as PayinOrderRealtimeEvent;
+                if (evt.type === PAYIN_ORDER_REALTIME_EVENT_TYPE) {
+                  queryClient.invalidateQueries({ queryKey: ['trader', 'payin-orders'] });
+                  queryClient.invalidateQueries({ queryKey: ['trader', 'recent-orders'] });
+                  queryClient.invalidateQueries({ queryKey: ['trader', 'dashboard-stats'] });
+                }
+              } catch {
+                /* malformed line */
+              }
+            },
+          });
+        } catch (e) {
+          if ((e as Error).name === 'AbortError' || ac.signal.aborted) break;
+        }
+
+        if (cancelled || ac.signal.aborted) break;
+        try {
+          await sleep(RECONNECT_MS, ac.signal);
+        } catch {
+          break;
+        }
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [queryClient]);
+}
+
+/**
+ * Public Pay-In page: subscribe to order-scoped SSE and run `onUpdate` on each event.
+ */
+export function usePayinOrderRealtime(
+  orderId: string,
+  enabled: boolean,
+  onUpdate: () => void,
+): void {
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
+
+  useEffect(() => {
+    if (!enabled) return;
+    const ac = new AbortController();
+    let cancelled = false;
+
+    const run = async () => {
+      while (!cancelled) {
+        try {
+          await consumeSseStream(`/api/pay/${orderId}/stream`, {
+            signal: ac.signal,
+            onMessage: () => {
+              onUpdateRef.current();
+            },
+          });
+        } catch (e) {
+          if ((e as Error).name === 'AbortError' || ac.signal.aborted) break;
+        }
+
+        if (cancelled || ac.signal.aborted) break;
+        try {
+          await sleep(RECONNECT_MS, ac.signal);
+        } catch {
+          break;
+        }
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [orderId, enabled]);
+}

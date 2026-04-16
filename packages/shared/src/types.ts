@@ -52,6 +52,18 @@ export interface OrderResponseDto {
   form_uri: string;
 }
 
+export const PAYIN_ORDER_REALTIME_EVENT_TYPE = 'payin_order_updated' as const;
+
+/** Payload published over Redis and sent to SSE clients when a Pay-In order changes. */
+export interface PayinOrderRealtimeEvent {
+  type: typeof PAYIN_ORDER_REALTIME_EVENT_TYPE;
+  orderId: string;
+  status: PayInOrderStatus;
+  /** When set, also published to the trader-wide channel. */
+  traderId?: string | null;
+  merchantId: string;
+}
+
 export interface H2HOrderResponseDto {
   order: OrderDto;
 }

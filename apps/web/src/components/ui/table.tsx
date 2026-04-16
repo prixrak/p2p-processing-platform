@@ -33,7 +33,7 @@ export function Table<T>({
               <th
                 key={col.key}
                 className={cn(
-                  'px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted',
+                  'align-middle px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted',
                   col.className,
                 )}
               >
@@ -69,7 +69,7 @@ export function Table<T>({
                 )}
               >
                 {columns.map((col) => (
-                  <td key={col.key} className={cn('px-4 py-3 text-text-primary', col.className)}>
+                  <td key={col.key} className={cn('align-middle px-4 py-3 text-text-primary', col.className)}>
                     {col.render
                       ? col.render(row)
                       : String((row as Record<string, unknown>)[col.key] ?? '')}

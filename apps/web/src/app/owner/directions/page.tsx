@@ -203,6 +203,7 @@ export default function DirectionsPage() {
     {
       key: 'type',
       header: 'Type',
+      className: 'text-center',
       render: (d: Direction) => (
         <Badge color={d.type === 'PAYIN' ? 'green' : 'blue'}>{d.type}</Badge>
       ),
@@ -210,6 +211,7 @@ export default function DirectionsPage() {
     {
       key: 'rate',
       header: 'Rate',
+      className: 'text-end tabular-nums font-mono',
       render: (d: Direction) => (
         <span className="font-mono text-sm text-text-primary">{d.rate.toFixed(4)}</span>
       ),
@@ -217,6 +219,7 @@ export default function DirectionsPage() {
     {
       key: 'fee',
       header: 'Fee',
+      className: 'text-end tabular-nums font-mono',
       render: (d: Direction) => (
         <span className="font-mono text-sm text-text-secondary">{d.fee}%</span>
       ),
@@ -224,6 +227,7 @@ export default function DirectionsPage() {
     {
       key: 'amounts',
       header: 'Min / Max',
+      className: 'text-end tabular-nums',
       render: (d: Direction) => (
         <span className="text-sm text-text-secondary">
           {d.minAmount.toLocaleString()} — {d.maxAmount.toLocaleString()}
@@ -233,6 +237,7 @@ export default function DirectionsPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (d: Direction) => (
         <Badge color={d.isOnline ? 'green' : 'red'}>{d.isOnline ? 'Online' : 'Offline'}</Badge>
       ),
@@ -240,6 +245,7 @@ export default function DirectionsPage() {
     {
       key: 'actions',
       header: 'Actions',
+      className: 'text-end',
       render: (d: Direction) => (
         <div className="flex items-center gap-2">
           <IconButton label="Edit direction" onClick={() => openEdit(d)}>

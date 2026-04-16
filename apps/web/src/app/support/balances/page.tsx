@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Tabs } from '@/components/ui/tabs';
-import { Input } from '@/components/ui/input';
+import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
 
@@ -53,6 +53,7 @@ export default function BalancesPage() {
     {
       key: 'balance',
       header: 'Available Balance',
+      className: 'text-end tabular-nums',
       render: (b: BalanceEntry) => (
         <span className="font-mono text-sm font-medium text-text-primary">
           {b.balance.toLocaleString()} {b.currency}
@@ -62,6 +63,7 @@ export default function BalancesPage() {
     {
       key: 'frozen',
       header: 'Frozen',
+      className: 'text-end tabular-nums',
       render: (b: BalanceEntry) => (
         <span className={`font-mono text-sm ${b.frozenBalance > 0 ? 'text-warning' : 'text-text-muted'}`}>
           {b.frozenBalance.toLocaleString()} {b.currency}
@@ -71,6 +73,7 @@ export default function BalancesPage() {
     {
       key: 'total',
       header: 'Total',
+      className: 'text-end tabular-nums',
       render: (b: BalanceEntry) => (
         <span className="font-mono text-sm font-medium text-accent">
           {(b.balance + b.frozenBalance).toLocaleString()} {b.currency}
@@ -80,6 +83,7 @@ export default function BalancesPage() {
     {
       key: 'status',
       header: 'Status',
+      className: 'text-center',
       render: (b: BalanceEntry) => (
         <Badge color={b.status === 'active' ? 'green' : 'red'}>{b.status}</Badge>
       ),
@@ -102,12 +106,15 @@ export default function BalancesPage() {
         onChange={(k) => { setTab(k); setPage(1); setSearch(''); }}
       />
 
-      <Input
-        placeholder={`Search ${tab}...`}
-        value={search}
-        onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-        className="w-64"
-      />
+      <FilterBar>
+        <FilterInput
+          label="Search"
+          value={search}
+          onChange={(v) => { setSearch(v); setPage(1); }}
+          placeholder={`Search ${tab}...`}
+          className="w-64 min-w-[12rem]"
+        />
+      </FilterBar>
 
       <DataTable
         columns={columns}

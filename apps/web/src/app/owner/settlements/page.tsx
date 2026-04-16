@@ -66,6 +66,7 @@ export default function SettlementsPage() {
     {
       key: 'id',
       header: 'Settlement ID',
+      className: 'font-mono tabular-nums text-end',
       render: (s: Settlement) => (
         <span className="font-mono text-sm text-text-primary">{s.id.slice(0, 12)}</span>
       ),
@@ -73,6 +74,7 @@ export default function SettlementsPage() {
     {
       key: 'type',
       header: 'Type',
+      className: 'text-center',
       render: (s: Settlement) => (
         <Badge color={typeColor[s.type] ?? 'default'}>{s.type}</Badge>
       ),
@@ -89,6 +91,7 @@ export default function SettlementsPage() {
     {
       key: 'amount',
       header: 'Amount',
+      className: 'text-end tabular-nums',
       render: (s: Settlement) => (
         <span className="font-mono text-sm font-medium text-text-primary">
           {s.amount.toLocaleString()} {s.currency}
@@ -114,6 +117,7 @@ export default function SettlementsPage() {
     {
       key: 'actions',
       header: 'Actions',
+      className: 'text-end',
       render: (s: Settlement) => (
         <IconButton label="View settlement details" onClick={() => setDetailId(s.id)}>
           <Eye className="h-3.5 w-3.5" />

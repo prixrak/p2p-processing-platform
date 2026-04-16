@@ -9,10 +9,11 @@ import {
   BarChart3,
   Percent,
 } from 'lucide-react';
+import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
 import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
 
-const MERCHANT_ALLOWED = ['MERCHANT'] as const;
+const MERCHANT_ALLOWED = [UserRole.MERCHANT] as const;
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/merchant', icon: LayoutDashboard },

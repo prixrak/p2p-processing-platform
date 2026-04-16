@@ -4,8 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
-import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
 
@@ -124,6 +123,7 @@ export default function AuditPage() {
     {
       key: 'timestamp',
       header: 'Time',
+      className: 'font-mono tabular-nums',
       render: (e: AuditEntry) => (
         <span className="whitespace-nowrap text-sm text-text-muted">
           {new Date(e.timestamp).toLocaleString()}
@@ -143,6 +143,7 @@ export default function AuditPage() {
     {
       key: 'action',
       header: 'Action',
+      className: 'text-center',
       render: (e: AuditEntry) => (
         <Badge color={actionColors[e.action] ?? 'default'}>{e.action}</Badge>
       ),
@@ -198,14 +199,18 @@ export default function AuditPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <Input
-          placeholder="Actor user UUID (optional)…"
+      <FilterBar>
+        <FilterInput
+          label="Actor ID"
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="w-60"
+          onChange={(v) => { setSearch(v); setPage(1); }}
+          placeholder="User UUID (optional)…"
+          className="w-60 min-w-[12rem]"
         />
-        <Select
+        <FilterSelect
+          label="Action"
+          value={actionFilter}
+          onChange={(v) => { setActionFilter(v); setPage(1); }}
           options={[
             { value: '', label: 'All Actions' },
             { value: 'CREATE', label: 'Create' },
@@ -214,11 +219,12 @@ export default function AuditPage() {
             { value: 'UPDATE_USER', label: 'Update user' },
             { value: 'LOGIN', label: 'Login' },
           ]}
-          value={actionFilter}
-          onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
           className="w-40"
         />
-        <Select
+        <FilterSelect
+          label="Entity"
+          value={entityFilter}
+          onChange={(v) => { setEntityFilter(v); setPage(1); }}
           options={[
             { value: '', label: 'All Entities' },
             { value: 'User', label: 'User' },
@@ -228,25 +234,23 @@ export default function AuditPage() {
             { value: 'Requisite', label: 'Requisite' },
             { value: 'Direction', label: 'Direction' },
           ]}
-          value={entityFilter}
-          onChange={(e) => { setEntityFilter(e.target.value); setPage(1); }}
           className="w-40"
         />
-        <Input
+        <FilterInput
           label="From"
           type="date"
           value={dateFrom}
-          onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+          onChange={(v) => { setDateFrom(v); setPage(1); }}
           className="w-40"
         />
-        <Input
+        <FilterInput
           label="To"
           type="date"
           value={dateTo}
-          onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+          onChange={(v) => { setDateTo(v); setPage(1); }}
           className="w-40"
         />
-      </div>
+      </FilterBar>
 
       <DataTable
         columns={columns}

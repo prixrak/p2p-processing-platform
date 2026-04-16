@@ -6,7 +6,10 @@
       "Bash(python3 -c \" import sys try: import PyPDF2 with open\\('tz_api.pdf', 'rb'\\) as f: r = PyPDF2.PdfReader\\(f\\) for i, page in enumerate\\(r.pages\\): print\\(f'=== PAGE {i+1} ==='\\) print\\(page.extract_text\\(\\)\\) except ImportError: print\\('no PyPDF2'\\) \")",
       "Bash(pdftotext \"/Users/armanpetrosian/Downloads/pz/my projects/p2p/tz_api.pdf\" -)",
       "Bash(pip3 install *)",
-      "Bash(python3 -c \" from pdfminer.high_level import extract_text text = extract_text\\('/Users/armanpetrosian/Downloads/pz/my projects/p2p/tz_api.pdf'\\) print\\(text\\) \")"
+      "Bash(python3 -c \" from pdfminer.high_level import extract_text text = extract_text\\('/Users/armanpetrosian/Downloads/pz/my projects/p2p/tz_api.pdf'\\) print\\(text\\) \")",
+      "Read(//Users/armanpetrosian/Downloads/pz/my\\\\ projects/p2p/**)",
+      "Read(//Users/armanpetrosian/Downloads/pz/my\\\\ projects/p2p/apps/web/src/app/trader/payin/**)",
+      "Read(//Users/armanpetrosian/Downloads/pz/my\\\\ projects/p2p/apps/web/src/app/trader/payout/**)"
     ]
   }
 }

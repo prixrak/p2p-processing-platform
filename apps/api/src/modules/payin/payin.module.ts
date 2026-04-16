@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PayinService } from './payin.service';
+import { PayinRealtimeService } from './payin-realtime.service';
 import { PayinController, PayinInternalController } from './payin.controller';
 import { PaymentPageController } from './payment-page.controller';
 import { RequisitesModule } from '../requisites/requisites.module';
@@ -12,7 +13,7 @@ import { PlatformSettingsModule } from '../platform-settings/platform-settings.m
 @Module({
   imports: [RequisitesModule, BanksModule, FilesModule, MerchantDirectionsModule, BalanceTransactionsModule, PlatformSettingsModule],
   controllers: [PayinController, PayinInternalController, PaymentPageController],
-  providers: [PayinService],
+  providers: [PayinService, PayinRealtimeService],
   exports: [PayinService],
 })
 export class PayinModule {}
