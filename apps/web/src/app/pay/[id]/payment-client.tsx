@@ -20,6 +20,7 @@ import { PayInOrderStatus } from '@p2p/shared';
 import { CountdownTimer } from '@/components/ui/countdown-timer';
 import { FileUpload } from '@/components/ui/file-upload';
 import { confirmPayment, api } from '@/lib/api';
+import { formatErrorMessage } from '@/lib/format-error';
 
 type Step = 'viewing' | 'uploading' | 'confirming' | 'success' | 'error' | 'expired';
 
@@ -50,7 +51,7 @@ export function PaymentClient({ order }: PaymentClientProps) {
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
 
   const [currentOrder, setCurrentOrder] = useState(order);
-  const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   useEffect(() => {
     if (step === 'success' || step === 'expired') return;
@@ -75,6 +76,7 @@ export function PaymentClient({ order }: PaymentClientProps) {
   const ownerName = currentOrder.payment_detail?.owner ?? currentOrder.requisite_owner;
   const bankName = currentOrder.payment_detail?.bank_name ?? currentOrder.bank;
   const bankCode = currentOrder.payment_detail?.code;
+  const currencyCode = (currentOrder.currency ?? '').trim() || 'UAH';
 
   const copyToClipboard = useCallback(async (text: string) => {
     try {
@@ -108,9 +110,7 @@ export function PaymentClient({ order }: PaymentClientProps) {
       }
     } catch (err) {
       setStep('error');
-      setErrorMessage(
-        err instanceof Error ? err.message : 'Something went wrong. Please try again.',
-      );
+      setErrorMessage(formatErrorMessage(err));
     }
   }, [order.id, order.redirect_url, files]);
 
@@ -168,13 +168,13 @@ export function PaymentClient({ order }: PaymentClientProps) {
       <div className="rounded-2xl border border-accent/20 bg-gradient-to-b from-accent/[0.06] to-transparent p-5">
         <div className="flex items-center justify-between">
           <span className="text-sm text-text-secondary">Amount to pay</span>
-          {order.autoclose_at && (
-            <CountdownTimer targetTimestamp={order.autoclose_at} onExpire={handleTimerExpire} />
+          {currentOrder.autoclose_at && (
+            <CountdownTimer targetTimestamp={currentOrder.autoclose_at} onExpire={handleTimerExpire} />
           )}
         </div>
         <p className="mt-2 text-3xl font-bold tracking-tight text-text-primary">
-          {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          <span className="ml-2 text-lg font-medium text-text-secondary">UAH</span>
+          {currentOrder.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <span className="ml-2 text-lg font-medium text-text-secondary">{currencyCode}</span>
         </p>
       </div>
 
@@ -258,7 +258,8 @@ export function PaymentClient({ order }: PaymentClientProps) {
             <div className="min-w-0 flex-1">
               <p className="text-xs text-text-muted">Exact amount</p>
               <p className="mt-0.5 text-sm font-semibold text-text-primary">
-                {order.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UAH
+                {currentOrder.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                {currencyCode}
               </p>
             </div>
           </div>
@@ -299,11 +300,17 @@ export function PaymentClient({ order }: PaymentClientProps) {
         <div className="flex items-start gap-2.5 rounded-xl bg-danger-muted px-4 py-3">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
           <div>
-            <p className="text-sm font-medium text-danger">Confirmation failed</p>
+            <p className="text-sm font-medium text-danger">Could not record your confirmation</p>
             <p className="mt-0.5 text-xs text-danger/70">{errorMessage}</p>
           </div>
         </div>
       )}
+
+      <div className="rounded-xl border border-border-primary bg-surface-tertiary/40 px-4 py-3 text-xs leading-relaxed text-text-secondary">
+        <span className="font-medium text-text-primary">Payer:</span> transfer the exact amount first, then tap
+        below so the merchant knows you sent the payment. The trader confirms when they see the funds on
+        their side.
+      </div>
 
       {/* Confirm button */}
       <button
@@ -327,7 +334,7 @@ export function PaymentClient({ order }: PaymentClientProps) {
         ) : (
           <>
             <Check className="h-4 w-4" />
-            I&apos;ve paid
+            I&apos;ve sent the payment
           </>
         )}
       </button>

@@ -34,6 +34,17 @@ export class MerchantCabinetController {
     private readonly merchantDirectionsService: MerchantDirectionsService,
   ) {}
 
+  @Get('balances')
+  @ApiOperation({ summary: 'Get own merchant balances' })
+  async getBalances(@CurrentUser('merchantId') merchantId: string) {
+    const merchant = await this.merchantsService.findById(merchantId);
+    return merchant.balances.map((b) => ({
+      currency: b.currency,
+      available: Number(b.amount),
+      frozen: 0,
+    }));
+  }
+
   @Get('orders')
   @ApiOperation({ summary: 'List merchant orders (payin+payout)' })
   @ApiQuery({ name: 'direction', required: false })

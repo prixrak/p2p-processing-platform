@@ -157,7 +157,7 @@ export class PayinService {
 
       return {
         order: this.toOrderDto(order),
-        form_uri: `${config.app.baseUrl}/pay/${order.id}`,
+        form_uri: `${config.app.frontendUrl}/pay/${order.id}`,
       };
     } catch (error) {
       this.handleUniqueConstraint(error);
@@ -644,6 +644,7 @@ export class PayinService {
       autoclose_at: order.autocloseAt
         ? Math.floor(order.autocloseAt.getTime() / 1000)
         : null,
+      currency: order.currency,
       amount: Number(order.amount),
       commission: Number(order.commission),
       partner_amount: Number(order.partnerAmount),

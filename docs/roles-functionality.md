@@ -136,7 +136,7 @@ Traffic source. Primary interaction is via the External API. Additionally receiv
 - HMAC-SHA512 signed requests (X-API-KEY, X-API-PAYLOAD, X-API-SIGNATURE)
 - Separate key pairs for Pay-In and Pay-Out
 - Nonce (Unix timestamp) — 5-minute validity window
-- Two auth versions: v1 (standard) and v2 (extended, with `api_path` + `nonce` in body)
+- Two auth versions: v1 (standard) and v2 (extended, with `api_url` + `nonce` in body)
 - Special multipart auth scheme for file-upload endpoints
 
 ### 4.4 Webhook Notifications (inbound to merchant)

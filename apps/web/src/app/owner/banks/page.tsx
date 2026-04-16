@@ -34,10 +34,17 @@ export default function BanksPage() {
 
   const createBank = useMutation({
     mutationFn: async () => {
-      const fd = new FormData();
-      fd.append('name', form.name);
-      if (logo) fd.append('logo', logo);
-      return api.upload(internalPaths.banks, fd);
+      let logoFileId: string | undefined;
+      if (logo) {
+        const fd = new FormData();
+        fd.append('file', logo);
+        const uploaded = await api.upload<{ id: string }>(internalPaths.fileUpload, fd);
+        logoFileId = uploaded.id;
+      }
+      return api.post(internalPaths.banks, {
+        name: form.name.trim(),
+        ...(logoFileId ? { logoFileId } : {}),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'banks'] });
@@ -48,10 +55,17 @@ export default function BanksPage() {
   const updateBank = useMutation({
     mutationFn: async () => {
       if (!editItem) return;
-      const fd = new FormData();
-      fd.append('name', form.name);
-      if (logo) fd.append('logo', logo);
-      return api.upload(internalPaths.bank(editItem.id), fd);
+      let logoFileId: string | undefined;
+      if (logo) {
+        const fd = new FormData();
+        fd.append('file', logo);
+        const uploaded = await api.upload<{ id: string }>(internalPaths.fileUpload, fd);
+        logoFileId = uploaded.id;
+      }
+      return api.put(internalPaths.bank(editItem.id), {
+        name: form.name.trim(),
+        ...(logoFileId ? { logoFileId } : {}),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'banks'] });

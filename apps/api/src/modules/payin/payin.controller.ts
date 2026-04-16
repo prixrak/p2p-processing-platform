@@ -1,38 +1,37 @@
 import {
-  Controller,
-  Post,
-  Get,
-  Body,
-  UseGuards,
-  UploadedFiles,
-  UseInterceptors,
-  Query,
-  Param,
-  ParseUUIDPipe,
+    Body,
+    Controller,
+    Get,
+    Param,
+    ParseUUIDPipe,
+    Post,
+    Query,
+    UploadedFiles,
+    UseGuards,
+    UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiConsumes, ApiSecurity, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { PayInOrderStatus, UserRole } from '@p2p/shared';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { MerchantId } from '../../common/decorators/merchant.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { HmacAuthGuard } from '../../common/guards/hmac-auth.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { MerchantId } from '../../common/decorators/merchant.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { PayinService } from './payin.service';
 import {
-  UploadOrderDto,
-  UpdateOrderDto,
-  OrderInfoDto,
-  H2hInitDto,
-  H2hCheckAvailabilityDto,
-  BanksQueryDto,
-  AppealSendDto,
-  TraderConfirmPaidDto,
-  TraderCancelOrderDto,
-  TraderOrderFiltersDto,
+    AppealSendDto,
+    BanksQueryDto,
+    H2hCheckAvailabilityDto,
+    H2hInitDto,
+    OrderInfoDto,
+    TraderConfirmPaidDto,
+    TraderOrderFiltersDto,
+    UpdateOrderDto,
+    UploadOrderDto
 } from './dto';
+import { PayinService } from './payin.service';
 
 @ApiTags('Pay-In (External)')
 @ApiSecurity('hmac-auth')

@@ -53,6 +53,8 @@ export const internalPaths = {
   user: (id: string) => `/api/users/${id}`,
 
   banksAdmin: '/api/banks/admin',
+  /** Multipart field name: `file`. Returns `{ id, ... }`. */
+  fileUpload: '/api/files/upload',
   banks: '/api/banks',
   bank: (id: string | number) => `/api/banks/${id}`,
   bankActivate: (id: string | number) => `/api/banks/${id}/activate`,

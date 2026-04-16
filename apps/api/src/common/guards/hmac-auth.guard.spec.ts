@@ -22,6 +22,7 @@ describe('HmacAuthGuard', () => {
   const publicKey = 'pk-unit-test';
   const secretKeyHash = encryptSecret(secret);
   const merchantId = 'merchant-unit-1';
+  const payinUploadPath = '/api/external/v1/payin/upload_order';
 
   const payinMerchantKey = {
     id: 'key-1',
@@ -49,8 +50,9 @@ describe('HmacAuthGuard', () => {
     guard = new HmacAuthGuard(prisma as unknown as PrismaService, nonceStore as unknown as NonceStoreService);
   });
 
-  function signBody(body: Record<string, unknown>) {
-    const raw = JSON.stringify(body);
+  /** v2 HMAC: non-empty `api_url` in body → plaintext secret as key; must match request.path. */
+  function signBody(body: Record<string, unknown>, apiUrl: string = payinUploadPath) {
+    const raw = JSON.stringify({ ...body, api_url: apiUrl });
     const apiPayload = Buffer.from(raw, 'utf-8').toString('base64');
     const signature = createHmac('sha512', secret).update(apiPayload).digest('hex');
     return { raw, apiPayload, signature };
@@ -58,7 +60,7 @@ describe('HmacAuthGuard', () => {
 
   it('throws ForbiddenException when headers are missing', async () => {
     const ctx = createExecutionContext({
-      path: '/api/external/v1/payin/upload_order',
+      path: payinUploadPath,
       headers: {},
     });
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
@@ -75,7 +77,7 @@ describe('HmacAuthGuard', () => {
       nonce,
     });
     const ctx = createExecutionContext({
-      path: '/api/external/v1/payin/upload_order',
+      path: payinUploadPath,
       headers: {
         'x-api-key': publicKey,
         'x-api-payload': apiPayload,
@@ -101,7 +103,7 @@ describe('HmacAuthGuard', () => {
       nonce,
     });
     const ctx = createExecutionContext({
-      path: '/api/external/v1/payin/upload_order',
+      path: payinUploadPath,
       headers: {
         'x-api-key': publicKey,
         'x-api-payload': apiPayload,
@@ -123,7 +125,7 @@ describe('HmacAuthGuard', () => {
       nonce,
     });
     const ctx = createExecutionContext({
-      path: '/api/external/v1/payin/upload_order',
+      path: payinUploadPath,
       headers: {
         'x-api-key': publicKey,
         'x-api-payload': apiPayload,
@@ -145,7 +147,7 @@ describe('HmacAuthGuard', () => {
       nonce: oldNonce,
     });
     const ctx = createExecutionContext({
-      path: '/api/external/v1/payin/upload_order',
+      path: payinUploadPath,
       headers: {
         'x-api-key': publicKey,
         'x-api-payload': apiPayload,
@@ -168,7 +170,7 @@ describe('HmacAuthGuard', () => {
       nonce,
     });
     const ctx = createExecutionContext({
-      path: '/api/external/v1/payin/upload_order',
+      path: payinUploadPath,
       headers: {
         'x-api-key': publicKey,
         'x-api-payload': apiPayload,
@@ -194,7 +196,7 @@ describe('HmacAuthGuard', () => {
       nonce,
     });
     const ctx = createExecutionContext({
-      path: '/api/external/v1/payin/upload_order',
+      path: payinUploadPath,
       headers: {
         'x-api-key': publicKey,
         'x-api-payload': apiPayload,
@@ -216,7 +218,7 @@ describe('HmacAuthGuard', () => {
       nonce,
     });
     const ctx = createExecutionContext({
-      path: '/api/external/v1/payin/upload_order',
+      path: payinUploadPath,
       headers: {
         'x-api-key': publicKey,
         'x-api-payload': apiPayload,
@@ -238,7 +240,7 @@ describe('HmacAuthGuard', () => {
       nonce,
     });
     const req: Record<string, unknown> = {
-      path: '/api/external/v1/payin/upload_order',
+      path: payinUploadPath,
       headers: {
         'x-api-key': publicKey,
         'x-api-payload': apiPayload,

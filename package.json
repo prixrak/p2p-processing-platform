@@ -19,7 +19,8 @@
     "db:generate": "npm run generate --workspace=packages/prisma",
     "db:seed": "npm run seed --workspace=packages/prisma",
     "db:bootstrap": "npm run bootstrap --workspace=packages/prisma",
-    "db:studio": "npm run studio --workspace=packages/prisma"
+    "db:studio": "npm run studio --workspace=packages/prisma",
+    "hmac:example": "node scripts/example-external-hmac.mjs"
   },
   "engines": {
     "node": ">=20.0.0"

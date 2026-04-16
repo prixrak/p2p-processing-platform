@@ -101,8 +101,39 @@ export default function TradersPage() {
 
   const { data: details } = useQuery({
     queryKey: ['owner', 'trader-details', detailTrader],
-    queryFn: () =>
-      api.get<TraderDetails>(internalPaths.trader(detailTrader!)),
+    queryFn: async () => {
+      const raw = await api.get<{
+        id: string;
+        isActive: boolean;
+        user: { email: string };
+        balances: Array<{ currency: string; amount: unknown }>;
+        requisites: Array<{
+          id: string;
+          bank?: { name: string } | null;
+          number: string;
+          isActive: boolean;
+        }>;
+      }>(internalPaths.trader(detailTrader!));
+      const primary = raw.balances[0];
+      return {
+        id: raw.id,
+        name: raw.user.email.split('@')[0] ?? raw.user.email,
+        email: raw.user.email,
+        status: raw.isActive ? 'active' : 'inactive',
+        balance: primary ? Number(primary.amount) : 0,
+        currency: primary?.currency ?? '—',
+        completedOrders: 0,
+        successRate: 0,
+        avgResponseTime: 0,
+        requisites: raw.requisites.map((r) => ({
+          id: r.id,
+          bank: r.bank?.name ?? '—',
+          cardNumber: r.number,
+          status: r.isActive ? 'active' : 'inactive',
+        })),
+        recentOrders: [],
+      } satisfies TraderDetails;
+    },
     enabled: !!detailTrader,
   });
 

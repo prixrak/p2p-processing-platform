@@ -52,7 +52,10 @@ export class OrderUploadDto {
   @IsNumber()
   nonce?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      'Request URL or path for HMAC v2; must match this endpoint (e.g. /api/external/v1/payout/order_upload).',
+  })
   @IsOptional()
   @IsString()
   api_url?: string;

@@ -155,27 +155,27 @@ export default function PayInOrdersPage() {
       header: 'Actions',
       render: (row: OrderDto) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          {(row.status === PayInOrderStatus.VERIFIED || row.status === PayInOrderStatus.NEW) && (
-            <>
-              <Button
-                size="sm"
-                variant="success"
-                onClick={() => confirmMutation.mutate(row.id)}
-                loading={confirmMutation.isPending}
-              >
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Confirm
-              </Button>
-              <Button
-                size="sm"
-                variant="danger"
-                onClick={() => cancelMutation.mutate(row.id)}
-                loading={cancelMutation.isPending}
-              >
-                <XCircle className="h-3.5 w-3.5" />
-                Cancel
-              </Button>
-            </>
+          {row.status === PayInOrderStatus.VERIFIED && (
+            <Button
+              size="sm"
+              variant="success"
+              onClick={() => confirmMutation.mutate(row.id)}
+              loading={confirmMutation.isPending}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Confirm receipt
+            </Button>
+          )}
+          {(row.status === PayInOrderStatus.NEW || row.status === PayInOrderStatus.VERIFIED) && (
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => cancelMutation.mutate(row.id)}
+              loading={cancelMutation.isPending}
+            >
+              <XCircle className="h-3.5 w-3.5" />
+              Cancel
+            </Button>
           )}
           <IconButton label="View order details" onClick={() => setSelectedOrder(row)}>
             <Eye className="h-3.5 w-3.5" />
@@ -264,6 +264,7 @@ export default function PayInOrdersPage() {
               <DetailRow label="Order ID" value={selectedOrder.id} mono />
               <DetailRow label="Request ID" value={selectedOrder.request_id} mono />
               <DetailRow label="Amount" value={formatCurrency(selectedOrder.amount)} />
+              <DetailRow label="Currency" value={selectedOrder.currency || '—'} />
               <DetailRow label="Commission" value={formatCurrency(selectedOrder.commission)} />
               <DetailRow label="Partner Amount" value={formatCurrency(selectedOrder.partner_amount)} />
               <DetailRow label="Rate" value={String(selectedOrder.rate)} />
@@ -296,27 +297,35 @@ export default function PayInOrdersPage() {
               </div>
             )}
 
-            <div className="flex justify-end gap-2 pt-2">
-              {(selectedOrder.status === PayInOrderStatus.VERIFIED ||
-                selectedOrder.status === PayInOrderStatus.NEW) && (
-                <>
-                  <Button
-                    variant="success"
-                    onClick={() => confirmMutation.mutate(selectedOrder.id)}
-                    loading={confirmMutation.isPending}
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    Confirm Paid
-                  </Button>
-                  <Button
-                    variant="danger"
-                    onClick={() => cancelMutation.mutate(selectedOrder.id)}
-                    loading={cancelMutation.isPending}
-                  >
-                    <XCircle className="h-4 w-4" />
-                    Cancel Order
-                  </Button>
-                </>
+            {selectedOrder.status === PayInOrderStatus.NEW && (
+              <p className="rounded-lg border border-border-primary bg-surface-tertiary/50 px-4 py-3 text-xs leading-relaxed text-text-secondary">
+                <span className="font-medium text-text-primary">Waiting for payer:</span> they must confirm
+                they sent the transfer (status becomes VERIFIED). Only then you can confirm you received the
+                funds. You can cancel this order if needed.
+              </p>
+            )}
+
+            <div className="flex flex-wrap justify-end gap-2 pt-2">
+              {selectedOrder.status === PayInOrderStatus.VERIFIED && (
+                <Button
+                  variant="success"
+                  onClick={() => confirmMutation.mutate(selectedOrder.id)}
+                  loading={confirmMutation.isPending}
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Confirm receipt
+                </Button>
+              )}
+              {(selectedOrder.status === PayInOrderStatus.NEW ||
+                selectedOrder.status === PayInOrderStatus.VERIFIED) && (
+                <Button
+                  variant="danger"
+                  onClick={() => cancelMutation.mutate(selectedOrder.id)}
+                  loading={cancelMutation.isPending}
+                >
+                  <XCircle className="h-4 w-4" />
+                  Cancel order
+                </Button>
               )}
             </div>
           </div>

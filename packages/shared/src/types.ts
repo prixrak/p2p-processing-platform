@@ -32,6 +32,8 @@ export interface OrderDto {
   created_at: number;
   confirmed_at: number | null;
   autoclose_at: number | null;
+  /** ISO currency code (e.g. UAH), matches the order in DB */
+  currency: string;
   amount: number;
   commission: number;
   partner_amount: number;

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { clsx } from 'clsx';
 
 export interface CountdownTimerProps {
+  /** Unix timestamp in seconds (external API) or milliseconds (Date.now scale). */
   targetTimestamp: number | string | Date;
   onExpire?: () => void;
   className?: string;
@@ -17,8 +18,13 @@ interface TimeLeft {
   total: number;
 }
 
-function computeTimeLeft(target: number): TimeLeft {
-  const total = Math.max(0, target - Date.now());
+/** API timestamps are Unix seconds; JS uses ms. Values below ~year 2001 in ms are treated as seconds. */
+function toUnixMs(value: number): number {
+  return value < 1_000_000_000_000 ? value * 1000 : value;
+}
+
+function computeTimeLeft(targetMs: number): TimeLeft {
+  const total = Math.max(0, targetMs - Date.now());
   return {
     hours: Math.floor(total / 3_600_000),
     minutes: Math.floor((total % 3_600_000) / 60_000),
@@ -37,13 +43,18 @@ export function CountdownTimer({
   className,
   showLabels = false,
 }: CountdownTimerProps) {
-  const target =
+  const targetMs =
     typeof targetTimestamp === 'number'
-      ? targetTimestamp
+      ? toUnixMs(targetTimestamp)
       : new Date(targetTimestamp).getTime();
 
-  const [timeLeft, setTimeLeft] = useState<TimeLeft>(() => computeTimeLeft(target));
+  const [timeLeft, setTimeLeft] = useState<TimeLeft>(() => computeTimeLeft(targetMs));
   const [expired, setExpired] = useState(false);
+
+  useEffect(() => {
+    setExpired(false);
+    setTimeLeft(computeTimeLeft(targetMs));
+  }, [targetMs]);
 
   const handleExpire = useCallback(() => {
     setExpired(true);
@@ -54,7 +65,7 @@ export function CountdownTimer({
     if (expired) return;
 
     const interval = setInterval(() => {
-      const tl = computeTimeLeft(target);
+      const tl = computeTimeLeft(targetMs);
       setTimeLeft(tl);
       if (tl.total <= 0) {
         handleExpire();
@@ -63,7 +74,7 @@ export function CountdownTimer({
     }, 1_000);
 
     return () => clearInterval(interval);
-  }, [target, expired, handleExpire]);
+  }, [targetMs, expired, handleExpire]);
 
   const isUrgent = !expired && timeLeft.total > 0 && timeLeft.total < 60_000;
 
@@ -81,7 +92,7 @@ export function CountdownTimer({
       )}
     >
       {expired ? (
-        <span>Expired</span>
+        <span>Time&apos;s up</span>
       ) : (
         <>
           <span>{pad(timeLeft.hours)}</span>

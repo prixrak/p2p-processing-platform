@@ -132,7 +132,42 @@ export default function TradersPage() {
 
   const { data: traderDetail, isLoading: detailLoading } = useQuery<TraderDetail>({
     queryKey: ['admin', 'traders', selectedTrader?.id],
-    queryFn: () => api.get(internalPaths.trader(selectedTrader!.id)),
+    queryFn: async () => {
+      const raw = await api.get<{
+        id: string;
+        isActive: boolean;
+        user: { email: string };
+        balances: Array<{ currency: string; amount: unknown }>;
+        requisites: Array<{
+          id: string;
+          type: string;
+          number: string;
+          bank?: { name: string } | null;
+          currency: string;
+          isActive: boolean;
+        }>;
+      }>(internalPaths.trader(selectedTrader!.id));
+      return {
+        id: raw.id,
+        name: raw.user.email.split('@')[0] ?? raw.user.email,
+        email: raw.user.email,
+        status: raw.isActive ? 'active' : 'inactive',
+        balances: raw.balances.map((b) => ({
+          currency: b.currency,
+          available: Number(b.amount),
+          frozen: 0,
+        })),
+        requisites: raw.requisites.map((r) => ({
+          id: r.id,
+          type: r.type,
+          number: r.number,
+          bank: r.bank ?? null,
+          currency: r.currency,
+          isActive: r.isActive,
+        })),
+        orders: [],
+      } satisfies TraderDetail;
+    },
     enabled: !!selectedTrader,
   });
 

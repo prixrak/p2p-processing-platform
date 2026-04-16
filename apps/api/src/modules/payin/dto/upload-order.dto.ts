@@ -34,7 +34,10 @@ export class UploadOrderDto {
   @IsNumber()
   nonce?: number;
 
-  @ApiPropertyOptional({ description: 'Current API URL (service field)' })
+  @ApiPropertyOptional({
+    description:
+      'Request URL or path for HMAC v2 (e.g. /api/external/v1/payin/upload_order or full https URL); must match this endpoint.',
+  })
   @IsOptional()
   @IsString()
   api_url?: string;
