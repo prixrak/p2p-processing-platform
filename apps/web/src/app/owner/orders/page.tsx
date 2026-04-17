@@ -1,16 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Eye, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { IconButton } from '@/components/ui/icon-button';
 import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Tabs } from '@/components/ui/tabs';
 import { DataTable } from '@/components/ui/data-table';
+import {
+  badgeVariantForPayin,
+  badgeVariantForPayout,
+  nextPayinStatuses,
+  nextPayoutStatuses,
+  payinStatusFilterOptions,
+  payoutStatusFilterOptions,
+} from '@/lib/order-status-ui';
 
 interface Order {
   id: string;
@@ -44,25 +53,6 @@ interface OrderDetails {
   statusHistory: { status: string; timestamp: string; actor: string }[];
 }
 
-const statusOptions = [
-  { value: '', label: 'All Statuses' },
-  { value: 'PENDING', label: 'Pending' },
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'COMPLETED', label: 'Completed' },
-  { value: 'CANCELLED', label: 'Cancelled' },
-  { value: 'DISPUTE', label: 'Dispute' },
-  { value: 'FAILED', label: 'Failed' },
-];
-
-const statusColor: Record<string, 'green' | 'yellow' | 'red' | 'blue' | 'default'> = {
-  COMPLETED: 'green',
-  ACTIVE: 'blue',
-  PENDING: 'yellow',
-  FAILED: 'red',
-  CANCELLED: 'red',
-  DISPUTE: 'red',
-};
-
 export default function OrdersPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState('PAYIN');
@@ -70,6 +60,11 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
   const [detailOrder, setDetailOrder] = useState<string | null>(null);
+
+  const statusFilterOptions = useMemo(
+    () => (tab === 'PAYIN' ? payinStatusFilterOptions : payoutStatusFilterOptions),
+    [tab],
+  );
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner', 'orders', tab, page, statusFilter, search],
@@ -141,7 +136,15 @@ export default function OrdersPage() {
       header: 'Status',
       className: 'text-center',
       render: (o: Order) => (
-        <Badge color={statusColor[o.status] ?? 'default'}>{o.status}</Badge>
+        <Badge
+          variant={
+            o.type === 'PAYOUT'
+              ? badgeVariantForPayout(o.status)
+              : badgeVariantForPayin(o.status)
+          }
+        >
+          {o.status}
+        </Badge>
       ),
     },
     {
@@ -157,40 +160,31 @@ export default function OrdersPage() {
       key: 'actions',
       header: 'Actions',
       className: 'text-end',
-      render: (o: Order) => (
-        <div className="flex items-center gap-1">
-          <IconButton label="View order details" onClick={() => setDetailOrder(o.id)}>
-            <Eye className="h-3.5 w-3.5" />
-          </IconButton>
-          {o.status === 'ACTIVE' && (
-            <>
-              <IconButton
-                label="Mark order completed"
-                variant="success"
-                onClick={() => updateStatus.mutate({ id: o.id, status: 'COMPLETED' })}
-              >
-                <CheckCircle className="h-3.5 w-3.5" />
-              </IconButton>
-              <IconButton
-                label="Cancel order"
-                variant="danger"
-                onClick={() => updateStatus.mutate({ id: o.id, status: 'CANCELLED' })}
-              >
-                <XCircle className="h-3.5 w-3.5" />
-              </IconButton>
-            </>
-          )}
-          {o.status === 'FAILED' && (
-            <IconButton
-              label="Retry order (set to pending)"
-              variant="ghost"
-              onClick={() => updateStatus.mutate({ id: o.id, status: 'PENDING' })}
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
+      render: (o: Order) => {
+        const next =
+          o.type === 'PAYOUT'
+            ? nextPayoutStatuses(o.status)
+            : nextPayinStatuses(o.status);
+        return (
+          <div className="flex flex-wrap items-center justify-end gap-1">
+            <IconButton label="View order details" onClick={() => setDetailOrder(o.id)}>
+              <Eye className="h-3.5 w-3.5" />
             </IconButton>
-          )}
-        </div>
-      ),
+            {next.map((s) => (
+              <Button
+                key={s}
+                size="sm"
+                variant="secondary"
+                className="!px-2 !py-1 text-[10px] font-medium uppercase"
+                loading={updateStatus.isPending}
+                onClick={() => updateStatus.mutate({ id: o.id, status: s })}
+              >
+                → {s}
+              </Button>
+            ))}
+          </div>
+        );
+      },
     },
   ];
 
@@ -207,7 +201,11 @@ export default function OrdersPage() {
           { key: 'PAYOUT', label: 'Pay-Out' },
         ]}
         active={tab}
-        onChange={(k) => { setTab(k); setPage(1); }}
+        onChange={(k) => {
+          setTab(k);
+          setPage(1);
+          setStatusFilter('');
+        }}
       />
 
       <FilterBar>
@@ -222,7 +220,7 @@ export default function OrdersPage() {
           label="Status"
           value={statusFilter}
           onChange={(v) => { setStatusFilter(v); setPage(1); }}
-          options={statusOptions}
+          options={statusFilterOptions}
           className="w-40"
         />
       </FilterBar>
@@ -252,7 +250,15 @@ export default function OrdersPage() {
               </div>
               <div>
                 <p className="text-xs text-text-muted">Status</p>
-                <Badge color={statusColor[details.status] ?? 'default'}>{details.status}</Badge>
+                <Badge
+                  variant={
+                    details.type === 'PAYOUT'
+                      ? badgeVariantForPayout(details.status)
+                      : badgeVariantForPayin(details.status)
+                  }
+                >
+                  {details.status}
+                </Badge>
               </div>
               <div>
                 <p className="text-xs text-text-muted">Amount</p>
@@ -296,7 +302,7 @@ export default function OrdersPage() {
                       className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary px-3 py-2"
                     >
                       <div className="flex items-center gap-2">
-                        <Badge color={statusColor[h.status] ?? 'default'}>{h.status}</Badge>
+                        <Badge variant="muted">{h.status}</Badge>
                         <span className="text-xs text-text-muted">by {h.actor}</span>
                       </div>
                       <span className="text-xs text-text-muted">

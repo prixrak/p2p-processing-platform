@@ -8,28 +8,19 @@ import {
   Percent,
   DollarSign,
   Clock,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
 } from 'lucide-react';
+import { PayInOrderStatus } from '@p2p/shared';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { StatCard } from '@/components/ui/stat-card';
+import { payinStatusLabel } from '@/lib/order-status-ui';
 
 interface PlatformStats {
   totalTraffic: number;
-  ordersByStatus: {
-    new: number;
-    pending: number;
-    processing: number;
-    completed: number;
-    failed: number;
-    cancelled: number;
-    expired: number;
-  };
+  /** Lowercase Pay-In status keys from API (`groupBy` payin orders). */
+  ordersByStatus: Record<string, number>;
   conversionRate: number;
   totalCommissions: number;
-  avgProcessingTime: number;
   totalOrders: number;
 }
 
@@ -78,59 +69,27 @@ export default function StatisticsPage() {
       </div>
 
       <div>
-        <h2 className="text-lg font-semibold text-text-primary mb-4">
+        <h2 className="text-lg font-semibold text-text-primary mb-1">
           Orders by Status
         </h2>
+        <p className="text-xs text-text-muted mb-4">
+          Pay-In order counts in the selected period (same window as other metrics)
+        </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          <StatusStatCard
-            label="New"
-            value={loading ? 0 : stats.ordersByStatus.new}
-            icon={<Clock size={16} />}
-            color="text-accent-blue"
-            bgColor="bg-accent-blue/10"
-          />
-          <StatusStatCard
-            label="Pending"
-            value={loading ? 0 : stats.ordersByStatus.pending}
-            icon={<Clock size={16} />}
-            color="text-accent-yellow"
-            bgColor="bg-accent-yellow/10"
-          />
-          <StatusStatCard
-            label="Processing"
-            value={loading ? 0 : stats.ordersByStatus.processing}
-            icon={<AlertTriangle size={16} />}
-            color="text-accent-yellow"
-            bgColor="bg-accent-yellow/10"
-          />
-          <StatusStatCard
-            label="Completed"
-            value={loading ? 0 : stats.ordersByStatus.completed}
-            icon={<CheckCircle size={16} />}
-            color="text-accent-green"
-            bgColor="bg-accent-green/10"
-          />
-          <StatusStatCard
-            label="Failed"
-            value={loading ? 0 : stats.ordersByStatus.failed}
-            icon={<XCircle size={16} />}
-            color="text-accent-red"
-            bgColor="bg-accent-red/10"
-          />
-          <StatusStatCard
-            label="Cancelled"
-            value={loading ? 0 : stats.ordersByStatus.cancelled}
-            icon={<XCircle size={16} />}
-            color="text-accent-red"
-            bgColor="bg-accent-red/10"
-          />
-          <StatusStatCard
-            label="Expired"
-            value={loading ? 0 : stats.ordersByStatus.expired}
-            icon={<Clock size={16} />}
-            color="text-text-muted"
-            bgColor="bg-bg-tertiary"
-          />
+          {(Object.values(PayInOrderStatus) as PayInOrderStatus[]).map((status) => {
+            const key = status.toLowerCase();
+            const value = loading ? 0 : (stats.ordersByStatus[key] ?? 0);
+            return (
+              <StatusStatCard
+                key={status}
+                label={payinStatusLabel(status)}
+                value={value}
+                icon={<Clock size={16} />}
+                color="text-accent-blue"
+                bgColor="bg-accent-blue/10"
+              />
+            );
+          })}
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeftRight } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -9,6 +9,7 @@ import { StatusBadge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
 import { FilterBar, FilterSelect, FilterInput } from '@/components/ui/filters';
 import { format } from 'date-fns';
+import { payinStatusFilterOptions, payoutStatusFilterOptions } from '@/lib/order-status-ui';
 
 interface MerchantOrder {
   id: string;
@@ -31,6 +32,11 @@ export default function MerchantOrdersPage() {
   const [dateTo, setDateTo] = useState('');
 
   const direction = tab === 'pay-in' ? 'PAY_IN' : 'PAY_OUT';
+
+  const statusFilterOptions = useMemo(
+    () => (tab === 'pay-in' ? payinStatusFilterOptions : payoutStatusFilterOptions),
+    [tab],
+  );
 
   const { data: orders = [], isLoading } = useQuery<MerchantOrder[]>({
     queryKey: ['merchant', 'orders', { direction, statusFilter, search, dateFrom, dateTo }],
@@ -125,7 +131,10 @@ export default function MerchantOrdersPage() {
           { key: 'pay-out', label: 'Pay-Out' },
         ]}
         active={tab}
-        onChange={setTab}
+        onChange={(k) => {
+          setTab(k);
+          setStatusFilter('');
+        }}
       />
 
       <FilterBar>
@@ -133,16 +142,7 @@ export default function MerchantOrdersPage() {
           label="Status"
           value={statusFilter}
           onChange={setStatusFilter}
-          options={[
-            { value: '', label: 'All statuses' },
-            { value: 'new', label: 'New' },
-            { value: 'pending', label: 'Pending' },
-            { value: 'processing', label: 'Processing' },
-            { value: 'completed', label: 'Completed' },
-            { value: 'failed', label: 'Failed' },
-            { value: 'cancelled', label: 'Cancelled' },
-            { value: 'expired', label: 'Expired' },
-          ]}
+          options={statusFilterOptions}
         />
         <FilterInput
           label="Search"

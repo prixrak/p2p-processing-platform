@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftRight } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -12,6 +12,7 @@ import { FilterBar, FilterSelect, FilterInput } from '@/components/ui/filters';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { format } from 'date-fns';
+import { payinStatusFilterOptions, payoutStatusFilterOptions } from '@/lib/order-status-ui';
 
 interface Order {
   id: string;
@@ -44,6 +45,11 @@ export default function AdminOrdersPage() {
   const [selectedTrader, setSelectedTrader] = useState('');
 
   const direction = tab === 'pay-in' ? 'PAY_IN' : 'PAY_OUT';
+
+  const statusFilterOptions = useMemo(
+    () => (tab === 'pay-in' ? payinStatusFilterOptions : payoutStatusFilterOptions),
+    [tab],
+  );
 
   interface AdminOrdersResponse {
     data: Order[];
@@ -223,7 +229,10 @@ export default function AdminOrdersPage() {
           { key: 'pay-out', label: 'Pay-Out' },
         ]}
         active={tab}
-        onChange={setTab}
+        onChange={(k) => {
+          setTab(k);
+          setStatusFilter('');
+        }}
       />
 
       <FilterBar>
@@ -231,18 +240,7 @@ export default function AdminOrdersPage() {
           label="Status"
           value={statusFilter}
           onChange={setStatusFilter}
-          options={[
-            { value: '', label: 'All statuses' },
-            { value: 'new', label: 'New' },
-            { value: 'pending', label: 'Pending' },
-            { value: 'processing', label: 'Processing' },
-            { value: 'awaiting_payment', label: 'Awaiting Payment' },
-            { value: 'completed', label: 'Completed' },
-            { value: 'failed', label: 'Failed' },
-            { value: 'cancelled', label: 'Cancelled' },
-            { value: 'expired', label: 'Expired' },
-            { value: 'disputed', label: 'Disputed' },
-          ]}
+          options={statusFilterOptions}
         />
         <FilterInput
           label="Merchant"

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Users, ToggleLeft, ToggleRight, SlidersHorizontal, Power, PowerOff } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -69,12 +69,9 @@ export default function TradersPage() {
   const [minLimit, setMinLimit] = useState('');
   const [maxLimit, setMaxLimit] = useState('');
 
-  const { data: traders = [], isLoading } = useQuery<Trader[]>({
-    queryKey: ['admin', 'traders', { status: statusFilter, search }],
+  const { data: tradersRaw = [], isLoading } = useQuery<Trader[]>({
+    queryKey: ['admin', 'traders', 'list'],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (statusFilter) params.set('status', statusFilter);
-      if (search) params.set('search', search);
       const res = await api.get<{
         data: Array<{
           id: string;
@@ -86,7 +83,7 @@ export default function TradersPage() {
           payoutMinLimit?: number | string | null;
           payoutMaxLimit?: number | string | null;
         }>;
-      }>(`${internalPaths.traders}?${params}`);
+      }>(`${internalPaths.traders}?page=1&limit=500`);
       return res.data.map((p) => ({
         id: p.id,
         name: p.user.email.split('@')[0] ?? 'Trader',
@@ -100,6 +97,21 @@ export default function TradersPage() {
       }));
     },
   });
+
+  const traders = useMemo(() => {
+    let list = tradersRaw;
+    if (statusFilter === 'active') list = list.filter((t) => t.status === 'active');
+    if (statusFilter === 'inactive') list = list.filter((t) => t.status === 'inactive');
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (t) =>
+          t.email.toLowerCase().includes(q) ||
+          t.name.toLowerCase().includes(q),
+      );
+    }
+    return list;
+  }, [tradersRaw, statusFilter, search]);
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
@@ -281,8 +293,7 @@ export default function TradersPage() {
           options={[
             { value: '', label: 'All statuses' },
             { value: 'active', label: 'Active' },
-            { value: 'disabled', label: 'Disabled' },
-            { value: 'pending', label: 'Pending' },
+            { value: 'inactive', label: 'Inactive' },
           ]}
         />
       </FilterBar>

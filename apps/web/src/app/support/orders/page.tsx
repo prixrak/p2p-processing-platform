@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Eye } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -10,6 +10,12 @@ import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Tabs } from '@/components/ui/tabs';
 import { DataTable } from '@/components/ui/data-table';
+import {
+  badgeVariantForPayin,
+  badgeVariantForPayout,
+  payinStatusFilterOptions,
+  payoutStatusFilterOptions,
+} from '@/lib/order-status-ui';
 
 interface Order {
   id: string;
@@ -43,25 +49,6 @@ interface OrderDetails {
   statusHistory: { status: string; timestamp: string; actor: string }[];
 }
 
-const statusOptions = [
-  { value: '', label: 'All Statuses' },
-  { value: 'PENDING', label: 'Pending' },
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'COMPLETED', label: 'Completed' },
-  { value: 'CANCELLED', label: 'Cancelled' },
-  { value: 'DISPUTE', label: 'Dispute' },
-  { value: 'FAILED', label: 'Failed' },
-];
-
-const statusColor: Record<string, 'green' | 'yellow' | 'red' | 'blue' | 'default'> = {
-  COMPLETED: 'green',
-  ACTIVE: 'blue',
-  PENDING: 'yellow',
-  FAILED: 'red',
-  CANCELLED: 'red',
-  DISPUTE: 'red',
-};
-
 export default function SupportOrdersPage() {
   const [tab, setTab] = useState('PAYIN');
   const [page, setPage] = useState(1);
@@ -69,6 +56,11 @@ export default function SupportOrdersPage() {
   const [merchantFilter, setMerchantFilter] = useState('');
   const [traderFilter, setTraderFilter] = useState('');
   const [detailOrder, setDetailOrder] = useState<string | null>(null);
+
+  const statusFilterOptions = useMemo(
+    () => (tab === 'PAYIN' ? payinStatusFilterOptions : payoutStatusFilterOptions),
+    [tab],
+  );
 
   const { data, isLoading } = useQuery({
     queryKey: ['support', 'orders', tab, page, statusFilter, merchantFilter, traderFilter],
@@ -129,7 +121,15 @@ export default function SupportOrdersPage() {
       header: 'Status',
       className: 'text-center',
       render: (o: Order) => (
-        <Badge color={statusColor[o.status] ?? 'default'}>{o.status}</Badge>
+        <Badge
+          variant={
+            o.type === 'PAYOUT'
+              ? badgeVariantForPayout(o.status)
+              : badgeVariantForPayin(o.status)
+          }
+        >
+          {o.status}
+        </Badge>
       ),
     },
     {
@@ -166,7 +166,11 @@ export default function SupportOrdersPage() {
           { key: 'PAYOUT', label: 'Pay-Out' },
         ]}
         active={tab}
-        onChange={(k) => { setTab(k); setPage(1); }}
+        onChange={(k) => {
+          setTab(k);
+          setPage(1);
+          setStatusFilter('');
+        }}
       />
 
       <FilterBar>
@@ -174,7 +178,7 @@ export default function SupportOrdersPage() {
           label="Status"
           value={statusFilter}
           onChange={(v) => { setStatusFilter(v); setPage(1); }}
-          options={statusOptions}
+          options={statusFilterOptions}
           placeholder="Status"
           className="w-40"
         />
@@ -219,7 +223,15 @@ export default function SupportOrdersPage() {
               </div>
               <div>
                 <p className="text-xs text-text-muted">Status</p>
-                <Badge color={statusColor[details.status] ?? 'default'}>{details.status}</Badge>
+                <Badge
+                  variant={
+                    details.type === 'PAYOUT'
+                      ? badgeVariantForPayout(details.status)
+                      : badgeVariantForPayin(details.status)
+                  }
+                >
+                  {details.status}
+                </Badge>
               </div>
               <div>
                 <p className="text-xs text-text-muted">Amount</p>
@@ -263,7 +275,7 @@ export default function SupportOrdersPage() {
                       className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary px-3 py-2"
                     >
                       <div className="flex items-center gap-2">
-                        <Badge color={statusColor[h.status] ?? 'default'}>{h.status}</Badge>
+                        <Badge variant="muted">{h.status}</Badge>
                         <span className="text-xs text-text-muted">by {h.actor}</span>
                       </div>
                       <span className="text-xs text-text-muted">

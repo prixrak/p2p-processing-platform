@@ -47,12 +47,26 @@ const roleColors: Record<UserRole, 'blue' | 'green' | 'yellow' | 'red' | 'defaul
   [UserRole.REFERRAL]: 'default',
 };
 
+/** Matches API `CREATABLE_USER_ROLES` / `UPDATABLE_ROLES` (no OWNER / REFERRAL). */
 const roleOptions = [
   { value: UserRole.ADMIN, label: 'Admin' },
   { value: UserRole.TRADER, label: 'Trader' },
   { value: UserRole.MERCHANT, label: 'Merchant' },
   { value: UserRole.SUPPORT, label: 'Support' },
 ];
+
+const roleLabel: Record<UserRole, string> = {
+  [UserRole.OWNER]: 'Owner',
+  [UserRole.ADMIN]: 'Admin',
+  [UserRole.TRADER]: 'Trader',
+  [UserRole.MERCHANT]: 'Merchant',
+  [UserRole.SUPPORT]: 'Support',
+  [UserRole.REFERRAL]: 'Referral',
+};
+
+function canUpdateRole(role: UserRole): boolean {
+  return roleOptions.some((o) => o.value === role);
+}
 
 export default function UsersPage() {
   const queryClient = useQueryClient();
@@ -134,7 +148,7 @@ export default function UsersPage() {
       className: 'text-center',
       render: (u: User) => (
         <Badge color={roleColors[u.role] ?? 'default'}>
-          {u.role.toLowerCase()}
+          {roleLabel[u.role]}
         </Badge>
       ),
     },
@@ -163,8 +177,10 @@ export default function UsersPage() {
       className: 'text-end',
       render: (u: User) => (
         <div className="flex items-center gap-2">
-          {u.role === UserRole.OWNER ? (
-            <span className="text-xs text-text-muted">—</span>
+          {!canUpdateRole(u.role) ? (
+            <Badge color={roleColors[u.role] ?? 'default'} className="min-w-[5rem] justify-center">
+              {roleLabel[u.role]}
+            </Badge>
           ) : (
             <Select
               options={roleOptions}
