@@ -16,9 +16,10 @@ import {
   ApiOperation,
   ApiBearerAuth,
   ApiQuery,
+  ApiOkResponse,
 } from '@nestjs/swagger';
 import { TradersService } from './traders.service';
-import { GetStatisticsDto, SetPayoutLimitsDto } from './dto';
+import { GetStatisticsDto, SetPayoutLimitsDto, TraderStatisticsResponseDto } from './dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -50,6 +51,10 @@ export class TradersController {
   @Get('me/statistics')
   @Roles(UserRole.TRADER)
   @ApiOperation({ summary: 'Get own statistics' })
+  @ApiQuery({ name: 'period', required: false, enum: ['24h', '7d', '30d', '90d'] })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo', required: false })
+  @ApiOkResponse({ type: TraderStatisticsResponseDto })
   async getMyStatistics(
     @CurrentUser('id') userId: string,
     @Query() dto: GetStatisticsDto,
@@ -87,6 +92,10 @@ export class TradersController {
   @Get(':id/statistics')
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Get trader statistics' })
+  @ApiQuery({ name: 'period', required: false, enum: ['24h', '7d', '30d', '90d'] })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo', required: false })
+  @ApiOkResponse({ type: TraderStatisticsResponseDto })
   getStatistics(
     @Param('id', ParseUUIDPipe) id: string,
     @Query() dto: GetStatisticsDto,

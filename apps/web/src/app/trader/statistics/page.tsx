@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   BarChart3,
@@ -13,29 +14,64 @@ import {
 } from 'lucide-react';
 import { StatCard, Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { formatCurrency } from '@/lib/utils';
+import {
+  TraderVolumeChart,
+  TraderPayinStatusChart,
+  TraderPayoutStatusChart,
+} from '@/components/charts/trader-statistics-charts';
 
 interface TraderStatistics {
-  total_volume: number;
-  total_orders: number;
-  successful_orders: number;
-  canceled_orders: number;
-  conversion_rate: number;
+  traderId: string;
   currency: string;
-  volume_by_day?: { date: string; volume: number }[];
-  orders_by_status?: Record<string, number>;
+  period: '24h' | '7d' | '30d' | '90d' | null;
+  dateFrom: string | null;
+  dateTo: string | null;
+  totalVolume: number;
+  totalOrders: number;
+  successfulOrders: number;
+  canceledOrders: number;
+  conversionRate: number;
+  volumeByDay: Array<{
+    date: string;
+    payinVolume: number;
+    payoutVolume: number;
+    totalVolume: number;
+  }>;
+  ordersByStatus: {
+    payIn: Record<string, number>;
+    payout: Record<string, number>;
+  };
 }
 
+const PERIOD_OPTIONS = [
+  { value: '24h', label: 'Last 24 hours' },
+  { value: '7d', label: 'Last 7 days' },
+  { value: '30d', label: 'Last 30 days' },
+  { value: '90d', label: 'Last 90 days' },
+];
+
 export default function StatisticsPage() {
-  const { data: stats, isLoading, refetch } = useQuery({
-    queryKey: ['trader', 'statistics'],
-    queryFn: () => api.get<TraderStatistics>('/api/trader/statistics'),
+  const [period, setPeriod] = useState('7d');
+
+  const { data: stats, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ['trader', 'statistics', period],
+    queryFn: () =>
+      api.get<TraderStatistics>(internalPaths.traderMeStatistics, { period }),
   });
+
+  const loading = isLoading || !stats;
+  const busy = isLoading || isFetching;
+
+  const hasVolume =
+    stats?.volumeByDay?.some((d) => d.totalVolume > 0) ?? false;
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <BarChart3 className="h-6 w-6 text-accent-blue" />
           <div>
@@ -43,35 +79,44 @@ export default function StatisticsPage() {
             <p className="text-sm text-text-muted">Your personal trading analytics</p>
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Select
+            options={PERIOD_OPTIONS}
+            value={period}
+            onChange={(e) => setPeriod(e.target.value)}
+            className="w-44"
+            rootClassName="gap-1"
+          />
+          <Button variant="secondary" size="sm" onClick={() => refetch()} disabled={busy}>
+            <RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard
           title="Total Volume"
-          value={isLoading ? '...' : formatCurrency(stats?.total_volume ?? 0, stats?.currency)}
+          value={loading ? '…' : formatCurrency(stats?.totalVolume ?? 0, stats?.currency ?? 'UAH')}
           icon={TrendingUp}
         />
         <StatCard
           title="Total Orders"
-          value={isLoading ? '...' : (stats?.total_orders ?? 0)}
+          value={loading ? '…' : (stats?.totalOrders ?? 0)}
           icon={ShoppingCart}
         />
         <StatCard
           title="Successful"
-          value={isLoading ? '...' : (stats?.successful_orders ?? 0)}
+          value={loading ? '…' : (stats?.successfulOrders ?? 0)}
           icon={CheckCircle2}
         />
         <StatCard
-          title="Canceled"
-          value={isLoading ? '...' : (stats?.canceled_orders ?? 0)}
+          title="Canceled / failed"
+          value={loading ? '…' : (stats?.canceledOrders ?? 0)}
           icon={XCircle}
         />
         <StatCard
           title="Conversion Rate"
-          value={isLoading ? '...' : `${(stats?.conversion_rate ?? 0).toFixed(1)}%`}
+          value={loading ? '…' : `${(stats?.conversionRate ?? 0).toFixed(1)}%`}
           icon={Percent}
         />
       </div>
@@ -80,67 +125,54 @@ export default function StatisticsPage() {
         <Card>
           <div className="flex items-center gap-2 mb-4">
             <LineChart className="h-5 w-5 text-text-muted" />
-            <h2 className="text-lg font-semibold text-text-primary">Volume Over Time</h2>
+            <h2 className="text-lg font-semibold text-text-primary">Volume over time</h2>
           </div>
-          {stats?.volume_by_day?.length ? (
-            <div className="overflow-x-auto">
-              <div className="flex items-end gap-1" style={{ minHeight: 200 }}>
-                {stats.volume_by_day.map((d) => {
-                  const max = Math.max(...stats.volume_by_day!.map((v) => v.volume), 1);
-                  const h = (d.volume / max) * 160;
-                  return (
-                    <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
-                      <div
-                        className="w-full max-w-[32px] rounded-t bg-accent/60"
-                        style={{ height: Math.max(h, 2) }}
-                        title={`${d.volume.toLocaleString()} ${stats.currency ?? ''}`}
-                      />
-                      <span className="text-[10px] text-text-muted">
-                        {new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          <p className="text-xs text-text-muted mb-4">
+            Successful pay-in (paid) and pay-out (completed) volume, {stats?.currency ?? 'UAH'} only
+          </p>
+          {loading ? (
+            <div className="h-72 rounded-lg bg-bg-tertiary animate-pulse" />
           ) : (
-            <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border-secondary">
-              <p className="text-sm text-text-muted">No volume data yet</p>
-            </div>
+            <TraderVolumeChart
+              data={stats?.volumeByDay ?? []}
+              currency={stats?.currency ?? 'UAH'}
+              empty={!hasVolume}
+            />
           )}
         </Card>
 
         <Card>
           <div className="flex items-center gap-2 mb-4">
             <BarChart3 className="h-5 w-5 text-text-muted" />
-            <h2 className="text-lg font-semibold text-text-primary">Orders by Status</h2>
+            <h2 className="text-lg font-semibold text-text-primary">Orders by status</h2>
           </div>
-          <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-border-secondary">
-            <div className="text-center">
-              <BarChart3 className="mx-auto h-8 w-8 text-text-muted mb-2" />
-              <p className="text-sm text-text-muted">Chart placeholder</p>
-              <p className="text-xs text-text-muted mt-1">
-                Integrate with a charting library (e.g., recharts)
-              </p>
+          <p className="text-xs text-text-muted mb-4">Pay-In and Pay-Out counts in the selected window</p>
+          <div className="space-y-8">
+            <div>
+              <h3 className="text-sm font-medium text-text-secondary mb-2">Pay-In</h3>
+              {loading ? (
+                <div className="h-64 rounded-lg bg-bg-tertiary animate-pulse" />
+              ) : (
+                <TraderPayinStatusChart counts={stats?.ordersByStatus.payIn ?? {}} />
+              )}
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-text-secondary mb-2">Pay-Out</h3>
+              {loading ? (
+                <div className="h-64 rounded-lg bg-bg-tertiary animate-pulse" />
+              ) : (
+                <TraderPayoutStatusChart counts={stats?.ordersByStatus.payout ?? {}} />
+              )}
             </div>
           </div>
         </Card>
       </div>
 
-      {stats?.orders_by_status && (
+      {!loading && stats && stats.totalOrders === 0 && (
         <Card>
-          <h2 className="text-lg font-semibold text-text-primary mb-4">Status Breakdown</h2>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {Object.entries(stats.orders_by_status).map(([status, count]) => (
-              <div
-                key={status}
-                className="flex items-center justify-between rounded-lg bg-bg-secondary px-4 py-3"
-              >
-                <span className="text-sm text-text-secondary">{status}</span>
-                <span className="text-sm font-semibold text-text-primary">{count}</span>
-              </div>
-            ))}
-          </div>
+          <p className="text-sm text-text-muted text-center py-6">
+            No orders in this period. Try a longer range or wait for new activity.
+          </p>
         </Card>
       )}
     </div>

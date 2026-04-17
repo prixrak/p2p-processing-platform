@@ -25,8 +25,9 @@ The dev server proxies `/api` to the backend. Override the upstream with:
 ## Usage
 
 1. **Pay-In** / **Pay-Out** keys default from [`src/dev-defaults.ts`](src/dev-defaults.ts) on first load (override or clear `localStorage`). Replace with your merchant keys as needed.
-2. Choose an endpoint, edit the JSON body (or multipart fields). For JSON, **HMAC v2** merges `api_url` and `nonce` before signing — open **“JSON actually signed”** to see the exact payload. Use **Refresh preview nonce** / **Write nonce into JSON** to manage replay-safe timestamps.
-3. **Send request** and read the formatted response.
+2. Choose an endpoint; sample JSON / multipart fields are generated per request (fresh timestamps). With **HMAC v2**, `api_url` and `nonce` appear in the JSON editor. **Refresh nonce (updates JSON)** sets a new Unix second and writes it into the body.
+3. **Signing headers** (`X-API-KEY`, `X-API-PAYLOAD`, `X-API-SIGNATURE`) are shown and editable. They auto-sync from the JSON body or multipart formula unless **Lock** is on. JSON sends use the UTF-8 body decoded from `X-API-PAYLOAD` (so the payload and body stay aligned unless you edit them independently on purpose).
+4. **Send request** and read the formatted response.
 
 Multipart endpoints (`update_order_with_proofs`, `appeal/send`) build the canonical payload string required by `HmacAuthGuard` and append `files` as in the API.
 

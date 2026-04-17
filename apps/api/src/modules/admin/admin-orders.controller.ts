@@ -30,6 +30,7 @@ import {
   isValidPayOutTransition,
   WebhookMethod,
   DirectionType,
+  ORDER_LIST_DIRECTION,
 } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
 import { IsString } from 'class-validator';
@@ -78,7 +79,7 @@ export class AdminOrdersController {
     const isPayin =
       !orderType ||
       orderType.toUpperCase() === DirectionType.PAYIN ||
-      orderType === 'PAY_IN';
+      orderType === ORDER_LIST_DIRECTION.PAY_IN;
 
     const dateFilter: Record<string, Date> = {};
     if (dateFrom) dateFilter.gte = new Date(dateFrom);

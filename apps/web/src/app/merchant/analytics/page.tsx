@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   BarChart3,
@@ -9,9 +10,14 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { StatCard } from '@/components/ui/stat-card';
+import { Select } from '@/components/ui/select';
 
 interface MerchantAnalytics {
+  period: '24h' | '7d' | '30d' | '90d' | null;
+  dateFrom: string | null;
+  dateTo: string | null;
   totalVolume: number;
   payInVolume: number;
   payOutVolume: number;
@@ -22,24 +28,42 @@ interface MerchantAnalytics {
   avgOrderAmount: number;
 }
 
+const PERIOD_OPTIONS = [
+  { value: '24h', label: 'Last 24 hours' },
+  { value: '7d', label: 'Last 7 days' },
+  { value: '30d', label: 'Last 30 days' },
+  { value: '90d', label: 'Last 90 days' },
+];
+
 export default function AnalyticsPage() {
+  const [period, setPeriod] = useState('7d');
+
   const { data: analytics, isLoading } = useQuery<MerchantAnalytics>({
-    queryKey: ['merchant', 'analytics'],
-    queryFn: () => api.get('/api/merchant/analytics'),
+    queryKey: ['merchant', 'analytics', period],
+    queryFn: () =>
+      api.get<MerchantAnalytics>(internalPaths.merchantAnalytics, { period }),
   });
 
   const loading = isLoading || !analytics;
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-          <BarChart3 size={24} />
-          Analytics
-        </h1>
-        <p className="text-sm text-text-muted mt-1">
-          Volume, order counts, and conversion metrics
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+            <BarChart3 size={24} />
+            Analytics
+          </h1>
+          <p className="text-sm text-text-muted mt-1">
+            Volume, order counts, and conversion metrics
+          </p>
+        </div>
+        <Select
+          options={PERIOD_OPTIONS}
+          value={period}
+          onChange={(e) => setPeriod(e.target.value)}
+          className="w-44"
+        />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

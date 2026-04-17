@@ -16,11 +16,17 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserRole, DirectionType } from '@p2p/shared';
+import {
+  UserRole,
+  ORDER_LIST_DIRECTION,
+  directionTypeToOrderListDirection,
+} from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
 import { MerchantsService } from './merchants.service';
 import { MerchantDirectionsService } from '../merchant-directions/merchant-directions.service';
 import { GenerateApiKeysDto } from './dto';
+import { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
+import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
 
 @ApiTags('Merchant Cabinet')
 @ApiBearerAuth()
@@ -69,7 +75,7 @@ export class MerchantCabinetController {
     if (dateTo) dateFilter.lte = new Date(dateTo);
     const createdAt = Object.keys(dateFilter).length ? dateFilter : undefined;
 
-    const isPayout = direction === 'PAY_OUT';
+    const isPayout = direction === ORDER_LIST_DIRECTION.PAY_OUT;
     const take = limit ?? 50;
     const skip = ((page ?? 1) - 1) * take;
 
@@ -94,7 +100,7 @@ export class MerchantCabinetController {
       return orders.map((o) => ({
         id: o.id,
         externalId: o.requestId,
-        type: 'PAY_OUT',
+        type: ORDER_LIST_DIRECTION.PAY_OUT,
         amount: Number(o.amount),
         currency: o.currency,
         status: o.status,
@@ -125,7 +131,7 @@ export class MerchantCabinetController {
     return orders.map((o) => ({
       id: o.id,
       externalId: o.requestId,
-      type: 'PAY_IN',
+      type: ORDER_LIST_DIRECTION.PAY_IN,
       amount: Number(o.amount),
       currency: o.currency,
       status: o.status,
@@ -138,7 +144,16 @@ export class MerchantCabinetController {
 
   @Get('analytics')
   @ApiOperation({ summary: 'Get merchant analytics' })
-  async getAnalytics(@CurrentUser('merchantId') merchantId: string) {
+  @ApiQuery({ name: 'period', required: false, enum: ['24h', '7d', '30d', '90d'] })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo', required: false })
+  async getAnalytics(
+    @CurrentUser('merchantId') merchantId: string,
+    @Query() query: StatisticsQueryDto,
+  ) {
+    const window = resolveStatisticsWindow(query);
+    const createdAt = { gte: window.from, lte: window.to };
+
     const [
       payinAgg,
       payoutAgg,
@@ -147,18 +162,18 @@ export class MerchantCabinetController {
       payinSuccessful,
     ] = await Promise.all([
       this.prisma.payinOrder.aggregate({
-        where: { merchantId, status: 'PAID' },
+        where: { merchantId, status: 'PAID', createdAt },
         _sum: { amount: true },
         _count: true,
       }),
       this.prisma.payoutOrder.aggregate({
-        where: { merchantId, status: 'COMPLETED' },
+        where: { merchantId, status: 'COMPLETED', createdAt },
         _sum: { amount: true },
         _count: true,
       }),
-      this.prisma.payinOrder.count({ where: { merchantId } }),
-      this.prisma.payoutOrder.count({ where: { merchantId } }),
-      this.prisma.payinOrder.count({ where: { merchantId, status: 'PAID' } }),
+      this.prisma.payinOrder.count({ where: { merchantId, createdAt } }),
+      this.prisma.payoutOrder.count({ where: { merchantId, createdAt } }),
+      this.prisma.payinOrder.count({ where: { merchantId, status: 'PAID', createdAt } }),
     ]);
 
     const payInVolume = Number(payinAgg._sum.amount ?? 0);
@@ -167,6 +182,9 @@ export class MerchantCabinetController {
     const successfulTotal = payinSuccessful + (payoutAgg._count ?? 0);
 
     return {
+      period: window.period,
+      dateFrom: window.dateFrom,
+      dateTo: window.dateTo,
       totalVolume: payInVolume + payOutVolume,
       payInVolume,
       payOutVolume,
@@ -276,7 +294,7 @@ export class MerchantCabinetController {
 
     return keys.map((k) => ({
       id: k.id,
-      direction: k.direction === DirectionType.PAYIN ? 'PAY_IN' : 'PAY_OUT',
+      direction: directionTypeToOrderListDirection(k.direction),
       publicKey: k.publicKey,
       secretKeyMasked: 'sk_••••••••••••',
       createdAt: k.createdAt.toISOString(),

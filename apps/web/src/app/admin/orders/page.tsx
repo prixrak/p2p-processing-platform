@@ -12,6 +12,12 @@ import { FilterBar, FilterSelect, FilterInput } from '@/components/ui/filters';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { format } from 'date-fns';
+import {
+  ORDER_LIST_UI_TAB,
+  isOrderListPayOutTab,
+  orderListUiTabToDirection,
+  type OrderListUiTab,
+} from '@p2p/shared';
 import { payinStatusFilterOptions, payoutStatusFilterOptions } from '@/lib/order-status-ui';
 
 interface Order {
@@ -35,7 +41,7 @@ interface TraderOption {
 
 export default function AdminOrdersPage() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState('pay-in');
+  const [tab, setTab] = useState<OrderListUiTab>(ORDER_LIST_UI_TAB.PAY_IN);
   const [statusFilter, setStatusFilter] = useState('');
   const [merchantFilter, setMerchantFilter] = useState('');
   const [traderFilter, setTraderFilter] = useState('');
@@ -44,10 +50,10 @@ export default function AdminOrdersPage() {
   const [assigningOrder, setAssigningOrder] = useState<string | null>(null);
   const [selectedTrader, setSelectedTrader] = useState('');
 
-  const direction = tab === 'pay-in' ? 'PAY_IN' : 'PAY_OUT';
+  const direction = orderListUiTabToDirection(tab);
 
   const statusFilterOptions = useMemo(
-    () => (tab === 'pay-in' ? payinStatusFilterOptions : payoutStatusFilterOptions),
+    () => (tab === ORDER_LIST_UI_TAB.PAY_IN ? payinStatusFilterOptions : payoutStatusFilterOptions),
     [tab],
   );
 
@@ -149,7 +155,7 @@ export default function AdminOrdersPage() {
         </span>
       ),
     },
-    ...(tab === 'pay-out'
+    ...(isOrderListPayOutTab(tab)
         ? [
           {
             key: 'assign' as const,
@@ -225,12 +231,12 @@ export default function AdminOrdersPage() {
 
       <Tabs
         tabs={[
-          { key: 'pay-in', label: 'Pay-In' },
-          { key: 'pay-out', label: 'Pay-Out' },
+          { key: ORDER_LIST_UI_TAB.PAY_IN, label: 'Pay-In' },
+          { key: ORDER_LIST_UI_TAB.PAY_OUT, label: 'Pay-Out' },
         ]}
         active={tab}
         onChange={(k) => {
-          setTab(k);
+          setTab(k as OrderListUiTab);
           setStatusFilter('');
         }}
       />

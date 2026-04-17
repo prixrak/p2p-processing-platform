@@ -22,6 +22,8 @@ export const internalPaths = {
 
   traders: '/api/traders',
   trader: (id: string) => `/api/traders/${id}`,
+  /** Trader cabinet: own statistics (JWT). Query: period | dateFrom & dateTo */
+  traderMeStatistics: '/api/traders/me/statistics',
   traderBalances: (id: string) => `/api/traders/${id}/balances`,
   traderActivate: (id: string) => `/api/traders/${id}/activate`,
   traderDeactivate: (id: string) => `/api/traders/${id}/deactivate`,
@@ -38,6 +40,8 @@ export const internalPaths = {
 
   merchants: '/api/merchants',
   merchant: (id: string) => `/api/merchants/${id}`,
+  /** Merchant cabinet (JWT) — query: period | dateFrom & dateTo */
+  merchantAnalytics: '/api/merchant/analytics',
   merchantLock: (id: string) => `/api/merchants/${id}/lock`,
   merchantUnlock: (id: string) => `/api/merchants/${id}/unlock`,
 

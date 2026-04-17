@@ -16,10 +16,11 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Badge } from '@/components/ui/badge';
+import { ORDER_LIST_DIRECTION, type OrderListDirection } from '@p2p/shared';
 
 interface ApiKeyPair {
   id: string;
-  direction: 'PAY_IN' | 'PAY_OUT';
+  direction: OrderListDirection;
   publicKey: string;
   secretKeyMasked: string;
   createdAt: string;
@@ -69,8 +70,8 @@ export default function ApiKeysPage() {
     setTimeout(() => setCopied(null), 2000);
   }
 
-  const payInKeys = keys.filter((k) => k.direction === 'PAY_IN');
-  const payOutKeys = keys.filter((k) => k.direction === 'PAY_OUT');
+  const payInKeys = keys.filter((k) => k.direction === ORDER_LIST_DIRECTION.PAY_IN);
+  const payOutKeys = keys.filter((k) => k.direction === ORDER_LIST_DIRECTION.PAY_OUT);
 
   return (
     <div className="space-y-8 animate-fade-in">

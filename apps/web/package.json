@@ -10,18 +10,19 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@p2p/shared": "*",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@tanstack/react-query": "^5.60.0",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.460.0",
     "next": "^15.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@tanstack/react-query": "^5.60.0",
-    "tailwindcss": "^4.0.0",
-    "@tailwindcss/postcss": "^4.0.0",
-    "clsx": "^2.1.1",
+    "recharts": "^3.8.1",
     "tailwind-merge": "^2.6.0",
-    "lucide-react": "^0.460.0",
-    "date-fns": "^4.1.0",
-    "zustand": "^5.0.0",
-    "@p2p/shared": "*"
+    "tailwindcss": "^4.0.0",
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

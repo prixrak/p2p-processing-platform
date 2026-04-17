@@ -8,11 +8,8 @@ export interface ExternalEndpoint {
   id: string;
   label: string;
   direction: Direction;
-  /** Path after prefix, e.g. `payin/upload_order` */
   path: string;
   kind: EndpointKind;
-  /** Default JSON string for `json` kind */
-  defaultJson: string;
   multipart?: 'update_order_with_proofs' | 'appeal_send';
 }
 
@@ -27,17 +24,6 @@ export const EXTERNAL_ENDPOINTS: ExternalEndpoint[] = [
     direction: 'payin',
     path: p('payin/upload_order'),
     kind: 'json',
-    defaultJson: JSON.stringify(
-      {
-        request_id: `req-${Date.now()}`,
-        amount: 1000,
-        currency: 'UAH',
-        user_full_name: 'Test User',
-        nonce: Math.floor(Date.now() / 1000),
-      },
-      null,
-      2,
-    ),
   },
   {
     id: 'payin-update_order',
@@ -45,16 +31,6 @@ export const EXTERNAL_ENDPOINTS: ExternalEndpoint[] = [
     direction: 'payin',
     path: p('payin/update_order'),
     kind: 'json',
-    defaultJson: JSON.stringify(
-      {
-        id: '',
-        request_id: '',
-        status: 'VERIFIED',
-        nonce: Math.floor(Date.now() / 1000),
-      },
-      null,
-      2,
-    ),
   },
   {
     id: 'payin-update_order_with_proofs',
@@ -63,7 +39,6 @@ export const EXTERNAL_ENDPOINTS: ExternalEndpoint[] = [
     path: p('payin/update_order_with_proofs'),
     kind: 'multipart',
     multipart: 'update_order_with_proofs',
-    defaultJson: '',
   },
   {
     id: 'payin-order_info',
@@ -71,15 +46,6 @@ export const EXTERNAL_ENDPOINTS: ExternalEndpoint[] = [
     direction: 'payin',
     path: p('payin/order_info'),
     kind: 'json',
-    defaultJson: JSON.stringify(
-      {
-        id: '',
-        request_id: '',
-        nonce: Math.floor(Date.now() / 1000),
-      },
-      null,
-      2,
-    ),
   },
   {
     id: 'payin-info',
@@ -87,7 +53,6 @@ export const EXTERNAL_ENDPOINTS: ExternalEndpoint[] = [
     direction: 'payin',
     path: p('payin/info'),
     kind: 'json',
-    defaultJson: JSON.stringify({}, null, 2),
   },
   {
     id: 'payin-h2h_init',
@@ -95,18 +60,6 @@ export const EXTERNAL_ENDPOINTS: ExternalEndpoint[] = [
     direction: 'payin',
     path: p('payin/h2h_init'),
     kind: 'json',
-    defaultJson: JSON.stringify(
-      {
-        request_id: `h2h-${Date.now()}`,
-        amount: 500,
-        currency: 'UAH',
-        redirect_url: 'https://example.com/done',
-        user_full_name: 'H2H User',
-        nonce: Math.floor(Date.now() / 1000),
-      },
-      null,
-      2,
-    ),
   },
   {
     id: 'payin-h2h_check_availability',
@@ -114,16 +67,6 @@ export const EXTERNAL_ENDPOINTS: ExternalEndpoint[] = [
     direction: 'payin',
     path: p('payin/h2h_check_availability'),
     kind: 'json',
-    defaultJson: JSON.stringify(
-      {
-        request_id: `chk-${Date.now()}`,
-        amount: 500,
-        currency: 'UAH',
-        nonce: Math.floor(Date.now() / 1000),
-      },
-      null,
-      2,
-    ),
   },
   {
     id: 'payin-banks',
@@ -131,14 +74,6 @@ export const EXTERNAL_ENDPOINTS: ExternalEndpoint[] = [
     direction: 'payin',
     path: p('payin/banks'),
     kind: 'json',
-    defaultJson: JSON.stringify(
-      {
-        currency: 'UAH',
-        nonce: Math.floor(Date.now() / 1000),
-      },
-      null,
-      2,
-    ),
   },
   {
     id: 'payin-appeal_send',
@@ -147,7 +82,6 @@ export const EXTERNAL_ENDPOINTS: ExternalEndpoint[] = [
     path: p('payin/appeal/send'),
     kind: 'multipart',
     multipart: 'appeal_send',
-    defaultJson: '',
   },
   {
     id: 'payout-order_upload',
@@ -155,17 +89,6 @@ export const EXTERNAL_ENDPOINTS: ExternalEndpoint[] = [
     direction: 'payout',
     path: p('payout/order_upload'),
     kind: 'json',
-    defaultJson: JSON.stringify(
-      {
-        request_id: `po-${Date.now()}`,
-        currency: 'UAH',
-        amount: 100,
-        details: { type: 'CARD', number: '4111111111111111', owner: 'Test', code: '' },
-        nonce: Math.floor(Date.now() / 1000),
-      },
-      null,
-      2,
-    ),
   },
   {
     id: 'payout-order_info',
@@ -173,15 +96,6 @@ export const EXTERNAL_ENDPOINTS: ExternalEndpoint[] = [
     direction: 'payout',
     path: p('payout/order_info'),
     kind: 'json',
-    defaultJson: JSON.stringify(
-      {
-        id: '',
-        request_id: '',
-        nonce: Math.floor(Date.now() / 1000),
-      },
-      null,
-      2,
-    ),
   },
   {
     id: 'payout-info',
@@ -189,6 +103,151 @@ export const EXTERNAL_ENDPOINTS: ExternalEndpoint[] = [
     direction: 'payout',
     path: p('payout/info'),
     kind: 'json',
-    defaultJson: JSON.stringify({}, null, 2),
   },
 ];
+
+/** Fresh sample JSON each time (timestamps, ids). */
+export function getDefaultJsonForEndpoint(endpoint: ExternalEndpoint): string {
+  const sec = Math.floor(Date.now() / 1000);
+  const ms = Date.now();
+  const rid = `req-${ms}`;
+  const uuidPlaceholder = '00000000-0000-0000-0000-000000000001';
+
+  switch (endpoint.id) {
+    case 'payin-upload_order':
+      return JSON.stringify(
+        {
+          request_id: rid,
+          amount: 1000,
+          currency: 'UAH',
+          user_full_name: 'Test User',
+          user_id: 'merchant-user-1',
+          callback_url: 'https://example.com/webhook/payin',
+          nonce: sec,
+        },
+        null,
+        2,
+      );
+    case 'payin-update_order':
+      return JSON.stringify(
+        {
+          id: uuidPlaceholder,
+          request_id: '',
+          status: 'VERIFIED',
+          nonce: sec,
+        },
+        null,
+        2,
+      );
+    case 'payin-order_info':
+      return JSON.stringify(
+        {
+          id: uuidPlaceholder,
+          request_id: '',
+          nonce: sec,
+        },
+        null,
+        2,
+      );
+    case 'payin-info':
+      return JSON.stringify({}, null, 2);
+    case 'payin-h2h_init':
+      return JSON.stringify(
+        {
+          request_id: `h2h-${ms}`,
+          amount: 500,
+          currency: 'UAH',
+          redirect_url: 'https://example.com/payment-done',
+          user_full_name: 'H2H Test User',
+          user_id: 'h2h-user-1',
+          callback_url: 'https://example.com/webhook/payin',
+          nonce: sec,
+        },
+        null,
+        2,
+      );
+    case 'payin-h2h_check_availability':
+      return JSON.stringify(
+        {
+          request_id: `chk-${ms}`,
+          amount: 500,
+          currency: 'UAH',
+          nonce: sec,
+        },
+        null,
+        2,
+      );
+    case 'payin-banks':
+      return JSON.stringify(
+        {
+          currency: 'UAH',
+          nonce: sec,
+        },
+        null,
+        2,
+      );
+    case 'payout-order_upload':
+      return JSON.stringify(
+        {
+          request_id: `po-${ms}`,
+          currency: 'UAH',
+          amount: 100,
+          details: {
+            type: 'CARD',
+            number: '4111111111111111',
+            owner: 'Test Recipient',
+            code: '',
+          },
+          callback_url: 'https://example.com/webhook/payout',
+          nonce: sec,
+        },
+        null,
+        2,
+      );
+    case 'payout-order_info':
+      return JSON.stringify(
+        {
+          id: uuidPlaceholder,
+          request_id: '',
+          nonce: sec,
+        },
+        null,
+        2,
+      );
+    case 'payout-info':
+      return JSON.stringify({}, null, 2);
+    default:
+      return JSON.stringify({ nonce: sec }, null, 2);
+  }
+}
+
+export type MultipartFormDefaults = {
+  status: 'VERIFIED' | 'CANCELED';
+  proofId: string;
+  proofNonce: string;
+  appealOrderId: string;
+  appealPaidAmount: string;
+  appealNonce: string;
+};
+
+export function getDefaultMultipartFields(
+  endpoint: ExternalEndpoint,
+): Partial<MultipartFormDefaults> | null {
+  const sec = Math.floor(Date.now() / 1000);
+  const ms = Date.now();
+  if (endpoint.multipart === 'update_order_with_proofs') {
+    return {
+      status: 'VERIFIED',
+      proofId: '00000000-0000-0000-0000-000000000001',
+      proofNonce: String(sec),
+    };
+  }
+  if (endpoint.multipart === 'appeal_send') {
+    return {
+      appealOrderId: '00000000-0000-0000-0000-000000000002',
+      appealPaidAmount: '100',
+      appealNonce: String(ms),
+    };
+  }
+  return null;
+}

@@ -9,6 +9,11 @@ import { StatusBadge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
 import { FilterBar, FilterSelect, FilterInput } from '@/components/ui/filters';
 import { format } from 'date-fns';
+import {
+  ORDER_LIST_UI_TAB,
+  orderListUiTabToDirection,
+  type OrderListUiTab,
+} from '@p2p/shared';
 import { payinStatusFilterOptions, payoutStatusFilterOptions } from '@/lib/order-status-ui';
 
 interface MerchantOrder {
@@ -25,16 +30,16 @@ interface MerchantOrder {
 }
 
 export default function MerchantOrdersPage() {
-  const [tab, setTab] = useState('pay-in');
+  const [tab, setTab] = useState<OrderListUiTab>(ORDER_LIST_UI_TAB.PAY_IN);
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
-  const direction = tab === 'pay-in' ? 'PAY_IN' : 'PAY_OUT';
+  const direction = orderListUiTabToDirection(tab);
 
   const statusFilterOptions = useMemo(
-    () => (tab === 'pay-in' ? payinStatusFilterOptions : payoutStatusFilterOptions),
+    () => (tab === ORDER_LIST_UI_TAB.PAY_IN ? payinStatusFilterOptions : payoutStatusFilterOptions),
     [tab],
   );
 
@@ -127,12 +132,12 @@ export default function MerchantOrdersPage() {
 
       <Tabs
         tabs={[
-          { key: 'pay-in', label: 'Pay-In' },
-          { key: 'pay-out', label: 'Pay-Out' },
+          { key: ORDER_LIST_UI_TAB.PAY_IN, label: 'Pay-In' },
+          { key: ORDER_LIST_UI_TAB.PAY_OUT, label: 'Pay-Out' },
         ]}
         active={tab}
         onChange={(k) => {
-          setTab(k);
+          setTab(k as OrderListUiTab);
           setStatusFilter('');
         }}
       />

@@ -5,13 +5,51 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
+import type { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
+import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
+
+function enumerateDaysUTC(from: Date, to: Date): string[] {
+  const out: string[] = [];
+  const d = new Date(from);
+  d.setUTCHours(0, 0, 0, 0);
+  const end = new Date(to);
+  end.setUTCHours(0, 0, 0, 0);
+  while (d <= end) {
+    out.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return out;
+}
+
+function statusRecordToLowercase(
+  rows: Array<{ status: string; _count: { _all: number } }>,
+): Record<string, number> {
+  const r: Record<string, number> = {};
+  for (const row of rows) {
+    r[row.status.toLowerCase()] = row._count._all;
+  }
+  return r;
+}
 
 @Injectable()
 export class TradersService {
   private readonly logger = new Logger(TradersService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  private async pickDisplayCurrency(traderId: string): Promise<string> {
+    const balances = await this.prisma.traderBalance.findMany({
+      where: { traderId },
+      orderBy: { currency: 'asc' },
+      take: 1,
+    });
+    if (balances.length > 0) {
+      return balances[0].currency;
+    }
+    return 'UAH';
+  }
 
   async getProfile(traderId: string) {
     const trader = await this.prisma.traderProfile.findUnique({
@@ -58,10 +96,7 @@ export class TradersService {
     });
   }
 
-  async getStatistics(
-    traderId: string,
-    dateRange?: { dateFrom?: string; dateTo?: string },
-  ) {
+  async getStatistics(traderId: string, query: StatisticsQueryDto) {
     const trader = await this.prisma.traderProfile.findUnique({
       where: { id: traderId },
     });
@@ -69,51 +104,143 @@ export class TradersService {
       throw new NotFoundException(`Trader ${traderId} not found`);
     }
 
-    const dateFilter: { createdAt?: { gte?: Date; lte?: Date } } = {};
-    if (dateRange?.dateFrom || dateRange?.dateTo) {
-      dateFilter.createdAt = {};
-      if (dateRange.dateFrom) {
-        dateFilter.createdAt.gte = new Date(dateRange.dateFrom);
-      }
-      if (dateRange.dateTo) {
-        dateFilter.createdAt.lte = new Date(dateRange.dateTo);
-      }
+    const window = resolveStatisticsWindow(query);
+    const currency = await this.pickDisplayCurrency(traderId);
+
+    const dateWhere = {
+      gte: window.from,
+      lte: window.to,
+    };
+
+    const basePayin = { traderId, currency, createdAt: dateWhere };
+    const basePayout = { traderId, currency, createdAt: dateWhere };
+
+    const [
+      payinTotal,
+      payoutTotal,
+      payinPaidSum,
+      payoutCompletedSum,
+      payinPaidCount,
+      payoutCompletedCount,
+      payinCanceledCount,
+      payoutFailedCount,
+      payinGroup,
+      payoutGroup,
+      payinByDay,
+      payoutByDay,
+    ] = await Promise.all([
+      this.prisma.payinOrder.count({ where: basePayin }),
+      this.prisma.payoutOrder.count({ where: basePayout }),
+      this.prisma.payinOrder.aggregate({
+        where: { ...basePayin, status: 'PAID' },
+        _sum: { amount: true },
+      }),
+      this.prisma.payoutOrder.aggregate({
+        where: { ...basePayout, status: 'COMPLETED' },
+        _sum: { amount: true },
+      }),
+      this.prisma.payinOrder.count({
+        where: { ...basePayin, status: 'PAID' },
+      }),
+      this.prisma.payoutOrder.count({
+        where: { ...basePayout, status: 'COMPLETED' },
+      }),
+      this.prisma.payinOrder.count({
+        where: { ...basePayin, status: 'CANCELED' },
+      }),
+      this.prisma.payoutOrder.count({
+        where: {
+          ...basePayout,
+          status: { in: ['FAILED', 'UPLOAD_FAILED'] },
+        },
+      }),
+      this.prisma.payinOrder.groupBy({
+        by: ['status'],
+        where: basePayin,
+        _count: { _all: true },
+      }),
+      this.prisma.payoutOrder.groupBy({
+        by: ['status'],
+        where: basePayout,
+        _count: { _all: true },
+      }),
+      this.prisma.$queryRaw<Array<{ day: Date; volume: Prisma.Decimal }>>(
+        Prisma.sql`
+          SELECT (date_trunc('day', created_at AT TIME ZONE 'UTC'))::date AS day,
+                 COALESCE(SUM(amount), 0) AS volume
+          FROM payin_orders
+          WHERE trader_id = ${traderId}::uuid
+            AND currency = ${currency}
+            AND status = 'PAID'
+            AND created_at >= ${window.from}
+            AND created_at <= ${window.to}
+          GROUP BY 1
+          ORDER BY 1
+        `,
+      ),
+      this.prisma.$queryRaw<Array<{ day: Date; volume: Prisma.Decimal }>>(
+        Prisma.sql`
+          SELECT (date_trunc('day', created_at AT TIME ZONE 'UTC'))::date AS day,
+                 COALESCE(SUM(amount), 0) AS volume
+          FROM payout_orders
+          WHERE trader_id = ${traderId}::uuid
+            AND currency = ${currency}
+            AND status = 'COMPLETED'
+            AND created_at >= ${window.from}
+            AND created_at <= ${window.to}
+          GROUP BY 1
+          ORDER BY 1
+        `,
+      ),
+    ]);
+
+    const totalOrders = payinTotal + payoutTotal;
+    const successfulOrders = payinPaidCount + payoutCompletedCount;
+    const canceledOrders = payinCanceledCount + payoutFailedCount;
+    const totalVolume =
+      Number(payinPaidSum._sum.amount ?? 0) + Number(payoutCompletedSum._sum.amount ?? 0);
+    const conversionRate =
+      totalOrders > 0 ? (successfulOrders / totalOrders) * 100 : 0;
+
+    const payinVolMap = new Map<string, number>();
+    for (const row of payinByDay) {
+      const key = row.day instanceof Date ? row.day.toISOString().slice(0, 10) : String(row.day);
+      payinVolMap.set(key, Number(row.volume));
+    }
+    const payoutVolMap = new Map<string, number>();
+    for (const row of payoutByDay) {
+      const key = row.day instanceof Date ? row.day.toISOString().slice(0, 10) : String(row.day);
+      payoutVolMap.set(key, Number(row.volume));
     }
 
-    const [payinOrders, payoutOrders, totalPayins, totalPayouts] =
-      await Promise.all([
-        this.prisma.payinOrder.count({
-          where: { traderId, ...dateFilter },
-        }),
-        this.prisma.payoutOrder.count({
-          where: { traderId, ...dateFilter },
-        }),
-        this.prisma.payinOrder.aggregate({
-          where: {
-            traderId,
-            status: 'PAID',
-            ...dateFilter,
-          },
-          _sum: { amount: true },
-        }),
-        this.prisma.payoutOrder.aggregate({
-          where: {
-            traderId,
-            status: 'COMPLETED',
-            ...dateFilter,
-          },
-          _sum: { amount: true },
-        }),
-      ]);
+    const dayKeys = enumerateDaysUTC(window.from, window.to);
+    const volumeByDay = dayKeys.map((date) => {
+      const payinVolume = payinVolMap.get(date) ?? 0;
+      const payoutVolume = payoutVolMap.get(date) ?? 0;
+      return {
+        date,
+        payinVolume,
+        payoutVolume,
+        totalVolume: payinVolume + payoutVolume,
+      };
+    });
 
     return {
       traderId,
-      payinOrdersCount: payinOrders,
-      payoutOrdersCount: payoutOrders,
-      totalPayinAmount: totalPayins._sum.amount ?? 0,
-      totalPayoutAmount: totalPayouts._sum.amount ?? 0,
-      dateFrom: dateRange?.dateFrom ?? null,
-      dateTo: dateRange?.dateTo ?? null,
+      currency,
+      period: window.period,
+      dateFrom: window.dateFrom,
+      dateTo: window.dateTo,
+      totalVolume,
+      totalOrders,
+      successfulOrders,
+      canceledOrders,
+      conversionRate,
+      volumeByDay,
+      ordersByStatus: {
+        payIn: statusRecordToLowercase(payinGroup),
+        payout: statusRecordToLowercase(payoutGroup),
+      },
     };
   }
 
