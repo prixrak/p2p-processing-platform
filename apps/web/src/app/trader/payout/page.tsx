@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowUpFromLine,
@@ -21,9 +21,10 @@ import { Table } from '@/components/ui/table';
 import { Modal } from '@/components/ui/modal';
 import { Select } from '@/components/ui/select';
 import { api } from '@/lib/api';
+import { usePayOutTraderRealtime } from '@/lib/payin-realtime';
 import { formatCurrency, formatDate, formatDateFull, shortId, cn } from '@/lib/utils';
 import { payoutStatusVariant } from '@/lib/status-helpers';
-import { PayOutOrderStatus, AUTO_REFRESH_INTERVALS } from '@p2p/shared';
+import { PayOutOrderStatus } from '@p2p/shared';
 import type { PayOutOrderApiDto } from '@p2p/shared';
 
 interface PayOutListResponse {
@@ -35,28 +36,32 @@ type TabType = 'orders' | 'pool';
 
 export default function PayOutOrdersPage() {
   const queryClient = useQueryClient();
+  usePayOutTraderRealtime(queryClient);
   const [activeTab, setActiveTab] = useState<TabType>('pool');
   const [statusFilter, setStatusFilter] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<PayOutOrderApiDto | null>(null);
   const [showFilters, setShowFilters] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(10);
 
   const queryParams: Record<string, string> = {};
   if (statusFilter) queryParams.status = statusFilter;
 
-  const refetchInterval = autoRefresh > 0 ? autoRefresh * 1000 : false;
-
   const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
     queryKey: ['trader', 'payout-orders', queryParams],
     queryFn: () => api.get<PayOutListResponse>('/api/trader/payout/orders', queryParams),
-    refetchInterval,
   });
 
   const { data: poolData, isLoading: poolLoading, refetch: refetchPool } = useQuery({
     queryKey: ['trader', 'payout-pool'],
     queryFn: () => api.get<PayOutListResponse>('/api/trader/payout/pool'),
-    refetchInterval,
   });
+
+  useEffect(() => {
+    if (!selectedOrder) return;
+    const fromOrders = ordersData?.orders?.find((o) => o.id === selectedOrder.id);
+    const fromPool = poolData?.orders?.find((o) => o.id === selectedOrder.id);
+    const fresh = fromOrders ?? fromPool;
+    if (fresh) setSelectedOrder(fresh);
+  }, [ordersData?.orders, poolData?.orders, selectedOrder?.id]);
 
   const takeFromPoolMutation = useMutation({
     mutationFn: (orderId: string) =>
@@ -295,14 +300,6 @@ export default function PayOutOrdersPage() {
               Filters
             </Button>
           )}
-          <Select
-            options={[
-              { value: '0', label: 'Off' },
-              ...AUTO_REFRESH_INTERVALS.map((s) => ({ value: String(s), label: `${s}s` })),
-            ]}
-            value={String(autoRefresh)}
-            onChange={(e) => setAutoRefresh(Number(e.target.value))}
-          />
           <Button variant="secondary" size="sm" onClick={handleRefetch}>
             <RefreshCw className="h-4 w-4" />
           </Button>

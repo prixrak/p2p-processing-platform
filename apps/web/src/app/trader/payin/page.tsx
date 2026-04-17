@@ -24,7 +24,6 @@ import { usePayinTraderRealtime } from '@/lib/payin-realtime';
 import { formatCurrency, formatDate, formatDateFull, shortId, cn } from '@/lib/utils';
 import { payinStatusVariant } from '@/lib/status-helpers';
 import { PayInOrderStatus } from '@p2p/shared';
-import { AUTO_REFRESH_INTERVALS } from '@p2p/shared';
 import type { OrderDto } from '@p2p/shared';
 
 interface PayInListApiResponse {
@@ -72,7 +71,6 @@ export default function PayInOrdersPage() {
   const queryClient = useQueryClient();
   usePayinTraderRealtime(queryClient);
   const [statusFilter, setStatusFilter] = useState('');
-  const [autoRefresh, setAutoRefresh] = useState<number>(0);
   const [selectedOrder, setSelectedOrder] = useState<OrderDto | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -85,8 +83,13 @@ export default function PayInOrdersPage() {
       const res = await api.get<PayInListApiResponse>('/api/trader/payin/orders', queryParams);
       return { orders: res.items, total: res.total };
     },
-    refetchInterval: autoRefresh > 0 ? autoRefresh * 1000 : false,
   });
+
+  useEffect(() => {
+    if (!selectedOrder || !data?.orders) return;
+    const fresh = data.orders.find((o) => o.id === selectedOrder.id);
+    if (fresh) setSelectedOrder(fresh);
+  }, [data?.orders, selectedOrder?.id]);
 
   const confirmMutation = useMutation({
     mutationFn: (orderId: string) =>
@@ -110,11 +113,6 @@ export default function PayInOrdersPage() {
     value: s,
     label: s,
   }));
-
-  const refreshOptions = [
-    { value: '0', label: 'Off' },
-    ...AUTO_REFRESH_INTERVALS.map((s) => ({ value: String(s), label: `${s}s` })),
-  ];
 
   const columns = [
     {
@@ -205,16 +203,6 @@ export default function PayInOrdersPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Select
-            options={refreshOptions}
-            value={String(autoRefresh)}
-            onChange={(e) => setAutoRefresh(Number(e.target.value))}
-          />
-          {autoRefresh > 0 && (
-            <Badge variant="info" dot>
-              Auto-refresh {autoRefresh}s
-            </Badge>
-          )}
           <Button variant="secondary" size="sm" onClick={() => setShowFilters(!showFilters)}>
             <Filter className="h-4 w-4" />
             Filters

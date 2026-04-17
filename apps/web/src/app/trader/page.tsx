@@ -15,7 +15,7 @@ import { StatCard, Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table } from '@/components/ui/table';
 import { api } from '@/lib/api';
-import { usePayinTraderRealtime } from '@/lib/payin-realtime';
+import { usePayinTraderRealtime, usePayOutTraderRealtime } from '@/lib/payin-realtime';
 import { formatCurrency, formatDate, shortId } from '@/lib/utils';
 import type { PayInOrderStatus, PayOutOrderStatus } from '@p2p/shared';
 
@@ -55,6 +55,7 @@ export default function TraderDashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
   usePayinTraderRealtime(queryClient);
+  usePayOutTraderRealtime(queryClient);
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['trader', 'dashboard-stats'],
     queryFn: () => api.get<DashboardStats>('/api/trader/dashboard/stats'),

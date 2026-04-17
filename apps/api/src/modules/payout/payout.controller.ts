@@ -7,9 +7,13 @@ import {
   Query,
   UseGuards,
   ParseUUIDPipe,
+  Sse,
+  Header,
+  MessageEvent,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiSecurity, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
+import { Observable } from 'rxjs';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
+import { ApiTags, ApiOperation, ApiSecurity, ApiBearerAuth, ApiProduces } from '@nestjs/swagger';
 import { UserRole } from '@p2p/shared';
 import { HmacAuthGuard } from '../../common/guards/hmac-auth.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -18,6 +22,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { MerchantId } from '../../common/decorators/merchant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PayoutService } from './payout.service';
+import { PayoutRealtimeService } from './payout-realtime.service';
 import {
   OrderUploadDto,
   PayoutOrderInfoDto,
@@ -64,7 +69,23 @@ export class PayoutController {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('trader/payout')
 export class PayoutInternalController {
-  constructor(private readonly payoutService: PayoutService) {}
+  constructor(
+    private readonly payoutService: PayoutService,
+    private readonly payoutRealtime: PayoutRealtimeService,
+  ) {}
+
+  @SkipThrottle()
+  @Sse('stream')
+  @Header('X-Accel-Buffering', 'no')
+  @Header('Cache-Control', 'no-cache')
+  @Roles(UserRole.TRADER)
+  @ApiOperation({ summary: 'SSE stream for Pay-Out orders and pool updates for this trader' })
+  @ApiProduces('text/event-stream')
+  streamTraderPayout(
+    @CurrentUser('traderId') traderId: string,
+  ): Observable<MessageEvent> {
+    return this.payoutRealtime.streamForTrader(traderId);
+  }
 
   /**
    * GET /api/trader/payout/pool

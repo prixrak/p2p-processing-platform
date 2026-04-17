@@ -6,6 +6,19 @@ import {
   AppealStatus,
 } from './enums';
 
+export const PAYOUT_ORDER_REALTIME_EVENT_TYPE = 'payout_order_updated' as const;
+
+/** Payload published over Redis and sent to SSE clients when a Pay-Out order changes. */
+export interface PayOutOrderRealtimeEvent {
+  type: typeof PAYOUT_ORDER_REALTIME_EVENT_TYPE;
+  orderId: string;
+  status: PayOutOrderStatus;
+  traderId?: string | null;
+  merchantId: string;
+  /** When true, public pool list may have changed (subscribe on payout:pool). */
+  poolChanged?: boolean;
+}
+
 // --- Pay-In Models ---
 
 export interface PaymentDetailsShortDto {

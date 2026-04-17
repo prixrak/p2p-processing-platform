@@ -1,6 +1,11 @@
 import { useEffect, useRef } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
-import { PAYIN_ORDER_REALTIME_EVENT_TYPE, type PayinOrderRealtimeEvent } from '@p2p/shared';
+import {
+  PAYIN_ORDER_REALTIME_EVENT_TYPE,
+  PAYOUT_ORDER_REALTIME_EVENT_TYPE,
+  type PayinOrderRealtimeEvent,
+  type PayOutOrderRealtimeEvent,
+} from '@p2p/shared';
 import { getToken } from '@/lib/auth';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
@@ -102,6 +107,60 @@ export function usePayinTraderRealtime(queryClient: QueryClient): void {
                   queryClient.invalidateQueries({ queryKey: ['trader', 'payin-orders'] });
                   queryClient.invalidateQueries({ queryKey: ['trader', 'recent-orders'] });
                   queryClient.invalidateQueries({ queryKey: ['trader', 'dashboard-stats'] });
+                }
+              } catch {
+                /* malformed line */
+              }
+            },
+          });
+        } catch (e) {
+          if ((e as Error).name === 'AbortError' || ac.signal.aborted) break;
+        }
+
+        if (cancelled || ac.signal.aborted) break;
+        try {
+          await sleep(RECONNECT_MS, ac.signal);
+        } catch {
+          break;
+        }
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [queryClient]);
+}
+
+/**
+ * Subscribes to Pay-Out pool + trader order updates (Bearer token).
+ */
+export function usePayOutTraderRealtime(queryClient: QueryClient): void {
+  useEffect(() => {
+    const ac = new AbortController();
+    let cancelled = false;
+
+    const run = async () => {
+      while (!cancelled) {
+        const token = getToken();
+        if (!token) break;
+
+        try {
+          await consumeSseStream('/api/trader/payout/stream', {
+            signal: ac.signal,
+            headers: { Authorization: `Bearer ${token}` },
+            onMessage: (raw) => {
+              try {
+                const evt = JSON.parse(raw) as PayOutOrderRealtimeEvent;
+                if (evt.type === PAYOUT_ORDER_REALTIME_EVENT_TYPE) {
+                  void queryClient.invalidateQueries({ queryKey: ['trader', 'payout-orders'] });
+                  void queryClient.invalidateQueries({ queryKey: ['trader', 'payout-pool'] });
+                  void queryClient.invalidateQueries({ queryKey: ['trader', 'recent-orders'] });
+                  void queryClient.invalidateQueries({ queryKey: ['trader', 'dashboard-stats'] });
+                  void queryClient.refetchQueries({ queryKey: ['trader', 'payout-orders'] });
+                  void queryClient.refetchQueries({ queryKey: ['trader', 'payout-pool'] });
                 }
               } catch {
                 /* malformed line */

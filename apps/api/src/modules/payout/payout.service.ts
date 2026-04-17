@@ -14,12 +14,14 @@ import {
   WebhookMethod,
   MAX_PAGE_SIZE,
   DirectionType,
+  PAYOUT_ORDER_REALTIME_EVENT_TYPE,
 } from '@p2p/shared';
 import type { PayOutOrderApiDto, ProfileDto, DetailsDto } from '@p2p/shared';
 import { BalanceTransactionType } from '@prisma/client';
 import { validateCallbackUrl } from '../../common/utils/url-validator';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
 import { OrderUploadDto, PayoutOrderInfoDto, PayoutListFiltersDto } from './dto';
+import { PayoutRealtimeService } from './payout-realtime.service';
 
 const ORDER_INCLUDE = {} as const;
 
@@ -32,7 +34,19 @@ export class PayoutService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly balanceTxService: BalanceTransactionsService,
+    private readonly payoutRealtime: PayoutRealtimeService,
   ) {}
+
+  private emitPayoutOrderRealtime(order: PayoutOrderRow, poolChanged: boolean): void {
+    void this.payoutRealtime.publish({
+      type: PAYOUT_ORDER_REALTIME_EVENT_TYPE,
+      orderId: order.id,
+      status: order.status as PayOutOrderStatus,
+      traderId: order.traderId,
+      merchantId: order.merchantId,
+      poolChanged,
+    });
+  }
 
   // ─── External: order_upload ───
 
@@ -79,6 +93,8 @@ export class PayoutService {
 
         return created;
       });
+
+      this.emitPayoutOrderRealtime(order, true);
 
       return this.toPayOutOrderApiDto(order);
     } catch (error) {
@@ -245,6 +261,8 @@ export class PayoutService {
       return result;
     });
 
+    this.emitPayoutOrderRealtime(updated, true);
+
     return this.toPayOutOrderApiDto(updated);
   }
 
@@ -283,6 +301,8 @@ export class PayoutService {
 
       return result;
     });
+
+    this.emitPayoutOrderRealtime(updated, true);
 
     return this.toPayOutOrderApiDto(updated);
   }
@@ -349,6 +369,8 @@ export class PayoutService {
       return result;
     });
 
+    this.emitPayoutOrderRealtime(updated, false);
+
     return this.toPayOutOrderApiDto(updated);
   }
 
@@ -377,6 +399,8 @@ export class PayoutService {
 
       return result;
     });
+
+    this.emitPayoutOrderRealtime(updated, false);
 
     return this.toPayOutOrderApiDto(updated);
   }
@@ -409,6 +433,8 @@ export class PayoutService {
 
       return result;
     });
+
+    this.emitPayoutOrderRealtime(updated, false);
 
     return this.toPayOutOrderApiDto(updated);
   }

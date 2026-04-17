@@ -9,6 +9,7 @@
   "scripts": {
     "dev:api": "npm run dev --workspace=apps/api",
     "dev:web": "npm run dev --workspace=apps/web",
+    "dev:external-playground": "npm run dev --workspace=apps/external-api-playground",
     "build:api": "npm run build --workspace=apps/api",
     "build:web": "npm run build --workspace=apps/web",
     "lint": "npm run lint --workspaces --if-present",
