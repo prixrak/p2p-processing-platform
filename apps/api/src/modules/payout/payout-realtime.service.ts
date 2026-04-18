@@ -1,8 +1,9 @@
 import { Injectable, Logger, MessageEvent, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { Observable } from 'rxjs';
+import { EMPTY, Observable, timer } from 'rxjs';
+import { catchError, retry } from 'rxjs/operators';
 import Redis from 'ioredis';
-import { config } from '@p2p/config';
 import type { PayOutOrderRealtimeEvent } from '@p2p/shared';
+import { createRedisConnectionOptions } from '../../common/redis-connection-options';
 
 export function payoutOrderChannel(orderId: string): string {
   return `payout:order:${orderId}`;
@@ -27,11 +28,7 @@ export class PayoutRealtimeService implements OnModuleInit, OnModuleDestroy {
   private publisher!: Redis;
 
   onModuleInit(): void {
-    this.publisher = new Redis({
-      host: config.redis.host,
-      port: config.redis.port,
-      maxRetriesPerRequest: null,
-    });
+    this.publisher = new Redis(createRedisConnectionOptions());
   }
 
   onModuleDestroy(): void {
@@ -59,11 +56,34 @@ export class PayoutRealtimeService implements OnModuleInit, OnModuleDestroy {
 
   /** Trader stream: own orders + public pool changes. */
   streamForTrader(traderId: string): Observable<MessageEvent> {
-    return this.createSseObservable([payoutTraderChannel(traderId), payoutPoolChannel()]);
+    return this.pipeSseResilience(
+      this.createSseObservable([payoutTraderChannel(traderId), payoutPoolChannel()]),
+      traderId,
+    );
   }
 
   streamForMerchant(merchantId: string): Observable<MessageEvent> {
-    return this.createSseObservable([payoutMerchantChannel(merchantId)]);
+    return this.pipeSseResilience(
+      this.createSseObservable([payoutMerchantChannel(merchantId)]),
+      merchantId,
+    );
+  }
+
+  private pipeSseResilience(
+    stream: Observable<MessageEvent>,
+    streamId: string,
+  ): Observable<MessageEvent> {
+    return stream.pipe(
+      retry({
+        count: 5,
+        delay: (_err, retryCount) =>
+          timer(Math.min(500 * 2 ** Math.max(0, retryCount - 1), 16_000)),
+      }),
+      catchError((err: unknown) => {
+        this.logger.error({ err, streamId }, 'payout SSE stream failed after retries');
+        return EMPTY;
+      }),
+    );
   }
 
   private createSseObservable(channels: string[]): Observable<MessageEvent> {

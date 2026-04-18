@@ -2,9 +2,11 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { createHmac } from 'crypto';
+import { config } from '@p2p/config';
 import { PrismaService } from '../config/prisma.service';
 import { decryptSecret } from '../common/utils/crypto';
 import { validateCallbackUrl } from '../common/utils/url-validator';
+import { readResponseBodyLimited } from '../common/utils/read-response-body-limited';
 import { WEBHOOK_MAX_RETRIES, WEBHOOK_RETRY_DELAYS_MS } from '@p2p/shared';
 import { ApiKeyDirection } from '@prisma/client';
 
@@ -21,6 +23,17 @@ export class WebhookProcessor extends WorkerHost {
   }
 
   async process(job: Job<WebhookJobData>): Promise<void> {
+    try {
+      await this.runJob(job);
+    } catch (err) {
+      this.logger.error(
+        `Webhook job unexpected failure ${job.id}: ${err instanceof Error ? err.stack : String(err)}`,
+      );
+      throw err;
+    }
+  }
+
+  private async runJob(job: Job<WebhookJobData>): Promise<void> {
     const { outboxId } = job.data;
 
     const outbox = await this.prisma.webhookOutbox.findUnique({
@@ -89,22 +102,29 @@ export class WebhookProcessor extends WorkerHost {
 
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+      const timeoutMs = config.http.webhookFetchTimeoutMs;
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-      const res = await fetch(outbox.callbackUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Webhook-Signature': signature,
-          'X-Webhook-Id': outbox.id,
-        },
-        body: payloadStr,
-        signal: controller.signal,
-      });
+      let res: Response;
+      try {
+        res = await fetch(outbox.callbackUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Webhook-Signature': signature,
+            'X-Webhook-Id': outbox.id,
+          },
+          body: payloadStr,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
 
-      clearTimeout(timeout);
       responseStatus = res.status;
-      responseBody = await res.text().catch(() => null);
+      responseBody = (
+        await readResponseBodyLimited(res, config.http.webhookMaxResponseBodyBytes).catch(() => '')
+      ).substring(0, 4096);
 
       await this.prisma.webhookLog.create({
         data: {

@@ -20,6 +20,10 @@ export class TelegramProcessor extends WorkerHost {
       return;
     }
 
+    const controller = new AbortController();
+    const timeoutMs = config.http.telegramFetchTimeoutMs;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
     try {
       const res = await fetch(
         `https://api.telegram.org/bot${config.telegram.botToken}/sendMessage`,
@@ -31,6 +35,7 @@ export class TelegramProcessor extends WorkerHost {
             text: message,
             parse_mode: 'HTML',
           }),
+          signal: controller.signal,
         },
       );
 
@@ -44,6 +49,8 @@ export class TelegramProcessor extends WorkerHost {
     } catch (err) {
       this.logger.error(`Failed to send Telegram message: ${err}`);
       throw err;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 }

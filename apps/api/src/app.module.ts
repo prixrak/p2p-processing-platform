@@ -5,7 +5,9 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { config } from '@p2p/config';
 import { PrismaModule } from './config/prisma.module';
 import { SecurityModule } from './common/security.module';
+import { ApiLoggingModule } from './common/logging/logging.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
 import { AuthModule } from './modules/auth/auth.module';
@@ -40,6 +42,7 @@ import { PlatformSettingsModule } from './modules/platform-settings/platform-set
 
 @Module({
   imports: [
+    ApiLoggingModule,
     PrismaModule,
     SecurityModule,
     ThrottlerModule.forRoot([{
@@ -90,6 +93,10 @@ import { PlatformSettingsModule } from './modules/platform-settings/platform-set
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_FILTER,
+      useClass: PrismaExceptionFilter,
     },
     {
       provide: APP_FILTER,

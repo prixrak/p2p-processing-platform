@@ -223,6 +223,12 @@ export function App() {
     setStatusLine('');
   }, [endpoint.path, useV2]);
 
+  /** Appeal/send: set nonce to a fresh `Date.now()` string (matches default). */
+  const refreshAppealNonce = useCallback(() => {
+    setMultipart((m) => ({ ...m, appealNonce: String(Date.now()) }));
+    setStatusLine('');
+  }, []);
+
   const publicKey = endpoint.direction === 'payin' ? keys.payinPublicKey : keys.payoutPublicKey;
   const secret = endpoint.direction === 'payin' ? keys.payinSecret : keys.payoutSecret;
 
@@ -776,9 +782,15 @@ export function App() {
                   setMultipart((m) => ({ ...m, appealNonce: e.target.value }))
                 }
               />
+              <div style={btnRow}>
+                <button type="button" style={btnSecondary} onClick={() => refreshAppealNonce()}>
+                  Refresh nonce
+                </button>
+              </div>
               <p style={help}>
                 Must match <code>order_id=…;paid_amount=…;nonce=…</code> in the signed form fields.
-                Default is milliseconds (e.g. <code>Date.now()</code>).
+                Default is milliseconds (e.g. <code>Date.now()</code>). Use Refresh to get a new value if
+                the server rejected the nonce.
               </p>
               <label style={label}>Proof files</label>
               <input

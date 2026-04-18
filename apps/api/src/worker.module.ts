@@ -1,0 +1,26 @@
+import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
+import { config } from '@p2p/config';
+import { PrismaModule } from './config/prisma.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { TelegramModule } from './modules/telegram/telegram.module';
+
+/**
+ * Minimal module for background queue workers without an HTTP server.
+ * Run via `npm run start:worker` (API HTTP uses `main.ts` instead).
+ */
+@Module({
+  imports: [
+    PrismaModule,
+    BullModule.forRoot({
+      connection: {
+        host: config.redis.host,
+        port: config.redis.port,
+      },
+    }),
+    BullModule.registerQueue({ name: 'telegram' }),
+    WebhooksModule,
+    TelegramModule,
+  ],
+})
+export class WorkerModule {}

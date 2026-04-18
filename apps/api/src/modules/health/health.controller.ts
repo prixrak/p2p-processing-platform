@@ -7,6 +7,16 @@ import { PrismaService } from '../../config/prisma.service';
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
+  @Get('live')
+  @ApiOperation({ summary: 'Liveness probe (no dependency checks); use behind a load balancer' })
+  live() {
+    return {
+      status: 'live',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    };
+  }
+
   @Get()
   @ApiOperation({ summary: 'Health check' })
   async check() {

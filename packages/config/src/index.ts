@@ -41,4 +41,14 @@ export const config = {
     nodeEnv: optional('NODE_ENV', 'development'),
     encryptionKey: optional('ENCRYPTION_KEY', 'dev-encryption-key-change-me-in-prod'),
   },
+  http: {
+    /** JSON and urlencoded body size (Express body-parser limit), e.g. 1mb */
+    jsonBodyLimit: optional('HTTP_JSON_BODY_LIMIT', '1mb'),
+    urlencodedBodyLimit: optional('HTTP_URLENCODED_BODY_LIMIT', '1mb'),
+    /** 0 = disabled. Max time a request may run before HTTP 408 (does not apply to SSE). */
+    requestTimeoutMs: parseInt(optional('HTTP_REQUEST_TIMEOUT_MS', '120000'), 10),
+    webhookFetchTimeoutMs: parseInt(optional('HTTP_WEBHOOK_FETCH_TIMEOUT_MS', '15000'), 10),
+    webhookMaxResponseBodyBytes: parseInt(optional('HTTP_WEBHOOK_MAX_RESPONSE_BYTES', '262144'), 10),
+    telegramFetchTimeoutMs: parseInt(optional('HTTP_TELEGRAM_FETCH_TIMEOUT_MS', '20000'), 10),
+  },
 };
