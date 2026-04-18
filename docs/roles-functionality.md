@@ -268,3 +268,16 @@ Full unrestricted access to all platform functions. Inherits all Administrator f
 | Global financial settings | | | | | x |
 | Manage directions & currencies | | | | | x |
 | Full audit log | | x | | | x |
+
+---
+
+## Appendix B — Admin vs Owner web UI (implementation note)
+
+The web app uses **separate routes** (`/admin/*` for `ADMIN`, `/owner/*` for `OWNER`), but the **JWT API** often allows **both roles** for the same actions (e.g. `POST /api/traders/:id/payout-limits`, `POST /api/settlements`). To avoid duplicated behaviour, the following screens share logic:
+
+| Feature | Admin route | Owner route | Shared module (web) |
+|---------|-------------|-------------|----------------------|
+| Traders (payout pool limits, activate/deactivate, requisite toggles, detail modal) | `/admin/traders` | `/owner/traders` | `@/features/traders` (`PayoutLimitsModal`, `TraderDetailModal`, `staffTraderKeys`) |
+| Create settlement | `/admin/settlements` | `/owner/settlements` | `@/features/settlements/settlement-create-modal` |
+
+Other Owner-only areas (users, merchants, directions, banks, global settings) remain under `/owner` only.

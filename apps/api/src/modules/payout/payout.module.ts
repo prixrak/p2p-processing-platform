@@ -8,6 +8,6 @@ import { BalanceTransactionsModule } from '../balance-transactions/balance-trans
   imports: [BalanceTransactionsModule],
   controllers: [PayoutController, PayoutInternalController],
   providers: [PayoutService, PayoutRealtimeService],
-  exports: [PayoutService],
+  exports: [PayoutService, PayoutRealtimeService],
 })
 export class PayoutModule {}

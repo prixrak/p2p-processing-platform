@@ -5,13 +5,18 @@ import {
   Post,
   Param,
   Query,
+  Sse,
+  Header,
+  MessageEvent,
   UseGuards,
   ParseUUIDPipe,
   DefaultValuePipe,
   ParseIntPipe,
   ForbiddenException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiProduces } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
+import { merge, type Observable } from 'rxjs';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -27,6 +32,8 @@ import { MerchantDirectionsService } from '../merchant-directions/merchant-direc
 import { GenerateApiKeysDto } from './dto';
 import { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
+import { PayinRealtimeService } from '../payin/payin-realtime.service';
+import { PayoutRealtimeService } from '../payout/payout-realtime.service';
 
 @ApiTags('Merchant Cabinet')
 @ApiBearerAuth()
@@ -38,7 +45,24 @@ export class MerchantCabinetController {
     private readonly prisma: PrismaService,
     private readonly merchantsService: MerchantsService,
     private readonly merchantDirectionsService: MerchantDirectionsService,
+    private readonly payinRealtime: PayinRealtimeService,
+    private readonly payoutRealtime: PayoutRealtimeService,
   ) {}
+
+  @SkipThrottle()
+  @Sse('orders/stream')
+  @Header('X-Accel-Buffering', 'no')
+  @Header('Cache-Control', 'no-cache')
+  @ApiOperation({ summary: 'SSE stream for Pay-In and Pay-Out order updates for this merchant' })
+  @ApiProduces('text/event-stream')
+  streamOrders(
+    @CurrentUser('merchantId') merchantId: string,
+  ): Observable<MessageEvent> {
+    return merge(
+      this.payinRealtime.streamForMerchant(merchantId),
+      this.payoutRealtime.streamForMerchant(merchantId),
+    );
+  }
 
   @Get('balances')
   @ApiOperation({ summary: 'Get own merchant balances' })

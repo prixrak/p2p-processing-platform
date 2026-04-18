@@ -14,6 +14,6 @@ import { PlatformSettingsModule } from '../platform-settings/platform-settings.m
   imports: [RequisitesModule, BanksModule, FilesModule, MerchantDirectionsModule, BalanceTransactionsModule, PlatformSettingsModule],
   controllers: [PayinController, PayinInternalController, PaymentPageController],
   providers: [PayinService, PayinRealtimeService],
-  exports: [PayinService],
+  exports: [PayinService, PayinRealtimeService],
 })
 export class PayinModule {}

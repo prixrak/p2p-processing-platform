@@ -14,6 +14,11 @@ export function payinTraderChannel(traderId: string): string {
   return `payin:trader:${traderId}`;
 }
 
+/** Redis pub/sub channel for all Pay-In orders belonging to a merchant (cabinet SSE). */
+export function payinMerchantChannel(merchantId: string): string {
+  return `payin:merchant:${merchantId}`;
+}
+
 /**
  * Publishes Pay-In order change notifications and exposes SSE streams backed by Redis pub/sub.
  * Use a dedicated connection for PUBLISH; each SSE connection uses duplicate() + SUBSCRIBE.
@@ -43,6 +48,7 @@ export class PayinRealtimeService implements OnModuleInit, OnModuleDestroy {
     try {
       const ops: Promise<number>[] = [
         this.publisher.publish(payinOrderChannel(event.orderId), payload),
+        this.publisher.publish(payinMerchantChannel(event.merchantId), payload),
       ];
       if (event.traderId) {
         ops.push(this.publisher.publish(payinTraderChannel(event.traderId), payload));
@@ -61,6 +67,10 @@ export class PayinRealtimeService implements OnModuleInit, OnModuleDestroy {
   streamForOrder(orderId: string): Observable<MessageEvent> {
     const channel = payinOrderChannel(orderId);
     return this.createSseObservable(channel);
+  }
+
+  streamForMerchant(merchantId: string): Observable<MessageEvent> {
+    return this.createSseObservable(payinMerchantChannel(merchantId));
   }
 
   private createSseObservable(channel: string): Observable<MessageEvent> {

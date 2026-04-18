@@ -17,6 +17,10 @@ export function payoutPoolChannel(): string {
   return 'payout:pool';
 }
 
+export function payoutMerchantChannel(merchantId: string): string {
+  return `payout:merchant:${merchantId}`;
+}
+
 @Injectable()
 export class PayoutRealtimeService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PayoutRealtimeService.name);
@@ -39,6 +43,7 @@ export class PayoutRealtimeService implements OnModuleInit, OnModuleDestroy {
     try {
       const ops: Promise<number>[] = [
         this.publisher.publish(payoutOrderChannel(event.orderId), payload),
+        this.publisher.publish(payoutMerchantChannel(event.merchantId), payload),
       ];
       if (event.traderId) {
         ops.push(this.publisher.publish(payoutTraderChannel(event.traderId), payload));
@@ -55,6 +60,10 @@ export class PayoutRealtimeService implements OnModuleInit, OnModuleDestroy {
   /** Trader stream: own orders + public pool changes. */
   streamForTrader(traderId: string): Observable<MessageEvent> {
     return this.createSseObservable([payoutTraderChannel(traderId), payoutPoolChannel()]);
+  }
+
+  streamForMerchant(merchantId: string): Observable<MessageEvent> {
+    return this.createSseObservable([payoutMerchantChannel(merchantId)]);
   }
 
   private createSseObservable(channels: string[]): Observable<MessageEvent> {

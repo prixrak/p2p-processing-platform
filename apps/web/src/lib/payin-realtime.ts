@@ -189,6 +189,61 @@ export function usePayOutTraderRealtime(queryClient: QueryClient): void {
 }
 
 /**
+ * Merchant cabinet: Pay-In + Pay-Out order updates (Bearer token).
+ */
+export function useMerchantOrdersRealtime(queryClient: QueryClient): void {
+  useEffect(() => {
+    const ac = new AbortController();
+    let cancelled = false;
+
+    const run = async () => {
+      while (!cancelled) {
+        const token = getToken();
+        if (!token) break;
+
+        try {
+          await consumeSseStream('/api/merchant/orders/stream', {
+            signal: ac.signal,
+            headers: { Authorization: `Bearer ${token}` },
+            onMessage: (raw) => {
+              try {
+                const parsed = JSON.parse(raw) as PayinOrderRealtimeEvent | PayOutOrderRealtimeEvent;
+                if (
+                  parsed.type === PAYIN_ORDER_REALTIME_EVENT_TYPE ||
+                  parsed.type === PAYOUT_ORDER_REALTIME_EVENT_TYPE
+                ) {
+                  void queryClient.invalidateQueries({ queryKey: ['merchant', 'orders'] });
+                  void queryClient.invalidateQueries({ queryKey: ['merchant', 'stats'] });
+                  void queryClient.invalidateQueries({ queryKey: ['merchant', 'balances'] });
+                  void queryClient.invalidateQueries({ queryKey: ['merchant', 'analytics'] });
+                }
+              } catch {
+                /* malformed line */
+              }
+            },
+          });
+        } catch (e) {
+          if ((e as Error).name === 'AbortError' || ac.signal.aborted) break;
+        }
+
+        if (cancelled || ac.signal.aborted) break;
+        try {
+          await sleep(RECONNECT_MS, ac.signal);
+        } catch {
+          break;
+        }
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [queryClient]);
+}
+
+/**
  * Public Pay-In page: subscribe to order-scoped SSE and run `onUpdate` on each event.
  */
 export function usePayinOrderRealtime(

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { DEFAULT_DEV_KEYS } from './dev-defaults';
+import {
+  DEFAULT_DEV_KEYS,
+  DEV_KEY_PRESETS,
+  findDevKeyPresetId,
+} from './dev-defaults';
 import {
   EXTERNAL_ENDPOINTS,
   getDefaultJsonForEndpoint,
@@ -95,6 +99,17 @@ export function App() {
     () => EXTERNAL_ENDPOINTS.filter((e) => e.direction === 'payout'),
     [],
   );
+
+  const activeKeyPresetId = useMemo(
+    () => findDevKeyPresetId(keys) ?? '__custom__',
+    [keys],
+  );
+
+  const applyKeyPreset = useCallback((id: string) => {
+    if (id === '__custom__') return;
+    const preset = DEV_KEY_PRESETS.find((p) => p.id === id);
+    if (preset) setKeys({ ...preset.keys });
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(LS.payinPk, keys.payinPublicKey);
@@ -511,6 +526,24 @@ export function App() {
       <div className="pg-main">
         <aside className="pg-panel pg-scroll" style={{ display: 'flex', flexDirection: 'column' }}>
           <h2 style={sectionTitle}>API keys</h2>
+          <label style={{ ...label, marginTop: 0 }}>Key pair preset</label>
+          <select
+            style={input}
+            value={activeKeyPresetId}
+            onChange={(e) => applyKeyPreset(e.target.value)}
+          >
+            {activeKeyPresetId === '__custom__' && (
+              <option value="__custom__">Custom (manual edit)</option>
+            )}
+            {DEV_KEY_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <p style={{ ...help, margin: '0 0 0.65rem' }}>
+            Applies Pay-In and Pay-Out keys together. You can still edit the fields below.
+          </p>
           <div style={keyGroupPayin}>
             <div style={keyGroupLabel}>Pay-In</div>
             <label style={label}>Public (pk_payin_…)</label>

@@ -4,9 +4,11 @@ import { MerchantsController } from './merchants.controller';
 import { MerchantDashboardController } from './merchant-dashboard.controller';
 import { MerchantCabinetController } from './merchant-cabinet.controller';
 import { MerchantDirectionsModule } from '../merchant-directions/merchant-directions.module';
+import { PayinModule } from '../payin/payin.module';
+import { PayoutModule } from '../payout/payout.module';
 
 @Module({
-  imports: [MerchantDirectionsModule],
+  imports: [MerchantDirectionsModule, PayinModule, PayoutModule],
   controllers: [MerchantsController, MerchantDashboardController, MerchantCabinetController],
   providers: [MerchantsService],
   exports: [MerchantsService],

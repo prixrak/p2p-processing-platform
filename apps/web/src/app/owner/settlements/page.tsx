@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Eye, Plus } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Eye } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { SettlementCreateModal } from '@/features/settlements/settlement-create-modal';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
@@ -38,10 +39,10 @@ const typeColor: Record<string, 'green' | 'red'> = {
 };
 
 export default function SettlementsPage() {
-  const queryClient = useQueryClient();
   const [tab, setTab] = useState('ALL');
   const [page, setPage] = useState(1);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner', 'settlements', tab, page],
@@ -128,11 +129,14 @@ export default function SettlementsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary">Settlements</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Admin-created balance adjustments (credits and debits) for traders
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Settlements</h1>
+          <p className="mt-1 text-sm text-text-muted">
+            Balance adjustments (credits and debits) for traders
+          </p>
+        </div>
+        <Button onClick={() => setShowForm(true)}>New Settlement</Button>
       </div>
 
       <Tabs
@@ -153,6 +157,12 @@ export default function SettlementsPage() {
         totalPages={totalPages}
         onPageChange={setPage}
         emptyMessage="No settlements found"
+      />
+
+      <SettlementCreateModal
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        queryPrefix="owner"
       />
 
       <Modal

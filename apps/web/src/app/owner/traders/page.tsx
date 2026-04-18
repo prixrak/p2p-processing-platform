@@ -1,222 +1,173 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, ShieldOff, Eye } from 'lucide-react';
+import { Users, ToggleLeft, ToggleRight, SlidersHorizontal } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
-import { IconButton } from '@/components/ui/icon-button';
-import { Badge } from '@/components/ui/badge';
-import { Modal } from '@/components/ui/modal';
+import {
+  PayoutLimitsModal,
+  TraderDetailModal,
+  staffTraderKeys,
+  type PayoutLimitsTrader,
+} from '@/features/traders';
 import { DataTable } from '@/components/ui/data-table';
+import { StatusBadge } from '@/components/ui/badge';
 import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
+import { IconButton } from '@/components/ui/icon-button';
 
 interface Trader {
   id: string;
   name: string;
   email: string;
   status: string;
-  balance: number;
-  currency: string;
-  completedOrders: number;
-  successRate: number;
-  avgResponseTime: number;
-  createdAt: string;
-}
-
-interface TradersResponse {
-  data: Trader[];
-  total: number;
-  page: number;
-  totalPages: number;
-}
-
-interface TraderDetails {
-  id: string;
-  name: string;
-  email: string;
-  status: string;
-  balance: number;
-  currency: string;
-  completedOrders: number;
-  successRate: number;
-  avgResponseTime: number;
-  requisites: { id: string; bank: string; cardNumber: string; status: string }[];
-  recentOrders: { id: string; type: string; amount: number; status: string; createdAt: string }[];
+  activeRequisitesCount: number;
+  totalVolume: number;
+  ordersCount: number;
+  payoutMinLimit?: number;
+  payoutMaxLimit?: number;
 }
 
 export default function TradersPage() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
-  const [detailTrader, setDetailTrader] = useState<string | null>(null);
+  const [limitsTrader, setLimitsTrader] = useState<PayoutLimitsTrader | null>(null);
+  const [detailTraderId, setDetailTraderId] = useState<string | null>(null);
+  const [detailTraderName, setDetailTraderName] = useState('');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['owner', 'traders', page, statusFilter, search],
+  const { data: tradersRaw = [], isLoading } = useQuery<Trader[]>({
+    queryKey: staffTraderKeys.list('owner'),
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: '20' });
-      if (statusFilter) params.set('status', statusFilter);
-      if (search) params.set('search', search);
-      const raw = await api.get<{
+      const res = await api.get<{
         data: Array<{
           id: string;
           isActive: boolean;
           user: { email: string };
-          balances: Array<{ amount: unknown; currency: string }>;
-          createdAt: string;
-          completedOrders?: number;
-          successRate?: number;
+          requisites?: unknown[];
+          ordersCount?: number;
+          totalVolume?: number;
+          payoutMinLimit?: number | string | null;
+          payoutMaxLimit?: number | string | null;
         }>;
-        total: number;
-        page: number;
-        limit: number;
-      }>(`${internalPaths.traders}?${params}`);
-      const limit = raw.limit || 20;
-      return {
-        data: raw.data.map((p) => {
-          const email = p.user.email;
-          const primary =
-            p.balances.find((b) => Number(b.amount) !== 0) ?? p.balances[0];
-          return {
-            id: p.id,
-            name: email.split('@')[0] ?? email,
-            email,
-            status: p.isActive ? 'active' : 'inactive',
-            balance: primary ? Number(primary.amount) : 0,
-            currency: primary?.currency ?? '—',
-            completedOrders: p.completedOrders ?? 0,
-            successRate: p.successRate ?? 0,
-            avgResponseTime: 0,
-            createdAt: p.createdAt,
-          };
-        }),
-        total: raw.total,
-        page: raw.page,
-        totalPages: Math.max(1, Math.ceil(raw.total / limit)),
-      } satisfies TradersResponse;
+      }>(`${internalPaths.traders}?page=1&limit=500`);
+      return res.data.map((p) => ({
+        id: p.id,
+        name: p.user.email.split('@')[0] ?? 'Trader',
+        email: p.user.email,
+        status: p.isActive ? 'active' : 'inactive',
+        activeRequisitesCount: Array.isArray(p.requisites) ? p.requisites.length : 0,
+        totalVolume: p.totalVolume ?? 0,
+        ordersCount: p.ordersCount ?? 0,
+        payoutMinLimit: p.payoutMinLimit ? Number(p.payoutMinLimit) : 0,
+        payoutMaxLimit: p.payoutMaxLimit ? Number(p.payoutMaxLimit) : 0,
+      }));
     },
   });
 
-  const { data: details } = useQuery({
-    queryKey: ['owner', 'trader-details', detailTrader],
-    queryFn: async () => {
-      const raw = await api.get<{
-        id: string;
-        isActive: boolean;
-        user: { email: string };
-        balances: Array<{ currency: string; amount: unknown }>;
-        requisites: Array<{
-          id: string;
-          bank?: { name: string } | null;
-          number: string;
-          isActive: boolean;
-        }>;
-      }>(internalPaths.trader(detailTrader!));
-      const primary = raw.balances[0];
-      return {
-        id: raw.id,
-        name: raw.user.email.split('@')[0] ?? raw.user.email,
-        email: raw.user.email,
-        status: raw.isActive ? 'active' : 'inactive',
-        balance: primary ? Number(primary.amount) : 0,
-        currency: primary?.currency ?? '—',
-        completedOrders: 0,
-        successRate: 0,
-        avgResponseTime: 0,
-        requisites: raw.requisites.map((r) => ({
-          id: r.id,
-          bank: r.bank?.name ?? '—',
-          cardNumber: r.number,
-          status: r.isActive ? 'active' : 'inactive',
-        })),
-        recentOrders: [] as TraderDetails['recentOrders'],
-      } satisfies TraderDetails;
-    },
-    enabled: !!detailTrader,
-  });
+  const traders = useMemo(() => {
+    let list = tradersRaw;
+    if (statusFilter === 'active') list = list.filter((t) => t.status === 'active');
+    if (statusFilter === 'inactive') list = list.filter((t) => t.status === 'inactive');
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (t) =>
+          t.email.toLowerCase().includes(q) ||
+          t.name.toLowerCase().includes(q),
+      );
+    }
+    return list;
+  }, [tradersRaw, statusFilter, search]);
 
-  const toggleStatus = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      status === 'active'
-        ? api.patch(internalPaths.traderDeactivate(id))
-        : api.patch(internalPaths.traderActivate(id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'traders'] }),
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      enabled
+        ? api.patch(internalPaths.traderActivate(id))
+        : api.patch(internalPaths.traderDeactivate(id)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['owner', 'traders'] });
+    },
   });
 
   const columns = [
     {
       key: 'name',
-      header: 'Trader',
-      render: (t: Trader) => (
-        <div>
-          <p className="font-medium text-text-primary">{t.name}</p>
-          <p className="text-xs text-text-muted">{t.email}</p>
-        </div>
+      header: 'Name',
+      render: (row: Trader) => (
+        <span className="font-medium text-text-primary">{row.name}</span>
       ),
     },
+    { key: 'email', header: 'Email' },
     {
       key: 'status',
       header: 'Status',
       className: 'text-center',
-      render: (t: Trader) => (
-        <Badge color={t.status === 'active' ? 'green' : 'red'}>{t.status}</Badge>
-      ),
+      render: (row: Trader) => <StatusBadge status={row.status} />,
     },
     {
-      key: 'balance',
-      header: 'Balance',
+      key: 'activeRequisitesCount',
+      header: 'Requisites',
       className: 'text-end tabular-nums',
-      render: (t: Trader) => (
-        <span className="font-mono text-sm text-text-primary">
-          {t.balance.toLocaleString()} {t.currency}
-        </span>
+      render: (row: Trader) => <span>{row.activeRequisitesCount}</span>,
+    },
+    {
+      key: 'totalVolume',
+      header: 'Volume',
+      className: 'text-end tabular-nums',
+      render: (row: Trader) => (
+        <span className="font-mono">${row.totalVolume.toLocaleString()}</span>
       ),
     },
     {
-      key: 'orders',
+      key: 'ordersCount',
       header: 'Orders',
       className: 'text-end tabular-nums',
-      render: (t: Trader) => (
-        <span className="text-sm text-text-secondary">{t.completedOrders.toLocaleString()}</span>
-      ),
+      render: (row: Trader) => <span>{row.ordersCount}</span>,
     },
     {
-      key: 'rate',
-      header: 'Success Rate',
-      className: 'text-end tabular-nums',
-      render: (t: Trader) => (
-        <span className={`text-sm font-medium ${t.successRate >= 95 ? 'text-success' : t.successRate >= 80 ? 'text-warning' : 'text-danger'}`}>
-          {t.successRate}%
+      key: 'payoutLimits',
+      header: 'Payout Limits',
+      className: 'text-end tabular-nums font-mono',
+      render: (row: Trader) => (
+        <span className="text-xs text-text-muted font-mono">
+          {row.payoutMinLimit === 0 && row.payoutMaxLimit === 0
+            ? 'No limit'
+            : `${row.payoutMinLimit ?? 0} – ${row.payoutMaxLimit ?? 0}`}
         </span>
-      ),
-    },
-    {
-      key: 'response',
-      header: 'Avg Response',
-      className: 'text-end tabular-nums',
-      render: (t: Trader) => (
-        <span className="text-sm text-text-secondary">{t.avgResponseTime}s</span>
       ),
     },
     {
       key: 'actions',
-      header: 'Actions',
+      header: '',
       className: 'text-end',
-      render: (t: Trader) => (
-        <div className="flex items-center gap-2">
-          <IconButton label="View trader details" onClick={() => setDetailTrader(t.id)}>
-            <Eye className="h-3.5 w-3.5" />
+      render: (row: Trader) => (
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <IconButton
+            label="Set payout pool limits"
+            variant="ghost"
+            onClick={() => {
+              setLimitsTrader({
+                id: row.id,
+                name: row.name,
+                payoutMinLimit: row.payoutMinLimit ?? 0,
+                payoutMaxLimit: row.payoutMaxLimit ?? 0,
+              });
+            }}
+            className="!min-h-8 !min-w-8 !p-1"
+          >
+            <SlidersHorizontal size={16} />
           </IconButton>
           <IconButton
-            label={t.status === 'active' ? 'Deactivate trader' : 'Activate trader'}
-            variant={t.status === 'active' ? 'danger' : 'success'}
-            onClick={() => toggleStatus.mutate({ id: t.id, status: t.status })}
+            label={row.status === 'active' ? 'Disable trader' : 'Enable trader'}
+            variant="ghost"
+            onClick={() => toggleMutation.mutate({ id: row.id, enabled: row.status !== 'active' })}
+            className="!min-h-8 !min-w-8 !p-1"
           >
-            {t.status === 'active' ? (
-              <ShieldOff className="h-3.5 w-3.5" />
+            {row.status === 'active' ? (
+              <ToggleRight size={20} className="text-accent-green" />
             ) : (
-              <ShieldCheck className="h-3.5 w-3.5" />
+              <ToggleLeft size={20} />
             )}
           </IconButton>
         </div>
@@ -226,111 +177,62 @@ export default function TradersPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary">Traders</h1>
-        <p className="mt-1 text-sm text-text-muted">Manage traders, view performance and requisites</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+            <Users size={24} />
+            Traders
+          </h1>
+          <p className="text-sm text-text-muted mt-1">
+            Manage platform traders and their activity
+          </p>
+        </div>
       </div>
 
       <FilterBar>
         <FilterInput
           label="Search"
           value={search}
-          onChange={(v) => { setSearch(v); setPage(1); }}
-          placeholder="Search traders..."
-          className="w-64 min-w-[12rem]"
+          onChange={setSearch}
+          placeholder="Name or email..."
         />
         <FilterSelect
           label="Status"
           value={statusFilter}
-          onChange={(v) => { setStatusFilter(v); setPage(1); }}
+          onChange={setStatusFilter}
           options={[
-            { value: '', label: 'All Statuses' },
+            { value: '', label: 'All statuses' },
             { value: 'active', label: 'Active' },
             { value: 'inactive', label: 'Inactive' },
           ]}
-          className="w-40"
         />
       </FilterBar>
 
       <DataTable
         columns={columns}
-        data={data?.data ?? []}
+        data={traders}
+        keyExtractor={(t) => t.id}
         isLoading={isLoading}
-        page={page}
-        totalPages={data?.totalPages}
-        onPageChange={setPage}
         emptyMessage="No traders found"
+        onRowClick={(row) => {
+          setDetailTraderId(row.id);
+          setDetailTraderName(row.name);
+        }}
       />
 
-      <Modal
-        open={!!detailTrader}
-        onClose={() => setDetailTrader(null)}
-        title={`Trader — ${details?.name ?? ''}`}
-        className="max-w-2xl"
-      >
-        {details && (
-          <div className="space-y-5">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="rounded-lg border border-border-primary bg-surface-primary p-3 text-center">
-                <p className="text-lg font-bold text-text-primary">{details.completedOrders}</p>
-                <p className="text-xs text-text-muted">Orders</p>
-              </div>
-              <div className="rounded-lg border border-border-primary bg-surface-primary p-3 text-center">
-                <p className="text-lg font-bold text-success">{details.successRate}%</p>
-                <p className="text-xs text-text-muted">Success Rate</p>
-              </div>
-              <div className="rounded-lg border border-border-primary bg-surface-primary p-3 text-center">
-                <p className="text-lg font-bold text-text-primary">{details.avgResponseTime}s</p>
-                <p className="text-xs text-text-muted">Avg Response</p>
-              </div>
-            </div>
+      <PayoutLimitsModal
+        trader={limitsTrader}
+        onClose={() => setLimitsTrader(null)}
+        queryPrefix="owner"
+      />
 
-            {details.requisites?.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-sm font-medium text-text-secondary">Requisites</h4>
-                <div className="space-y-2">
-                  {details.requisites.map((r) => (
-                    <div
-                      key={r.id}
-                      className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary px-3 py-2"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-text-primary">{r.bank}</p>
-                        <p className="font-mono text-xs text-text-muted">{r.cardNumber}</p>
-                      </div>
-                      <Badge color={r.status === 'active' ? 'green' : 'red'}>{r.status}</Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {details.recentOrders?.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-sm font-medium text-text-secondary">Recent Orders</h4>
-                <div className="space-y-2">
-                  {details.recentOrders.map((o) => (
-                    <div
-                      key={o.id}
-                      className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary px-3 py-2"
-                    >
-                      <div>
-                        <p className="text-sm text-text-primary">
-                          {o.type} — {o.id.slice(0, 8)}
-                        </p>
-                        <p className="text-xs text-text-muted">
-                          {new Date(o.createdAt).toLocaleString()}
-                        </p>
-                      </div>
-                      <span className="font-mono text-sm text-text-primary">{o.amount}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
+      <TraderDetailModal
+        open={!!detailTraderId}
+        onClose={() => setDetailTraderId(null)}
+        traderId={detailTraderId}
+        traderName={detailTraderName}
+        queryPrefix="owner"
+      />
     </div>
   );
 }
