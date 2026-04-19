@@ -1,4 +1,5 @@
-FROM node:20-alpine AS base
+# Target linux/amd64 for AWS EC2; avoids arm64 images when building on Apple Silicon.
+FROM --platform=linux/amd64 node:20-alpine AS base
 WORKDIR /app
 
 FROM base AS deps
