@@ -10,6 +10,7 @@ RUN npm ci --workspace=apps/web --workspace=packages/shared
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN mkdir -p apps/web/public
 ENV NEXT_TELEMETRY_DISABLED=1
 # Baked into client bundle at build time — override when building the image
 ARG NEXT_PUBLIC_API_URL=https://api.p2p-processing-dev.com
