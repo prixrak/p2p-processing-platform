@@ -33,7 +33,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=${API_PUBLIC_URL:-https://api.yourdomain.com}
+      - NEXT_PUBLIC_API_URL=${API_PUBLIC_URL:-https://api.p2p-processing-dev.com}
     restart: always
     depends_on:
       api:

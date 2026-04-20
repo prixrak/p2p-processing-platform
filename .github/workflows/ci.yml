@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 env:
   NODE_VERSION: '20'
@@ -102,7 +103,7 @@ jobs:
       - name: Build Web
         run: npm run build --workspace=@p2p/web
         env:
-          NEXT_PUBLIC_API_URL: ${{ vars.API_URL }}
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || vars.API_URL }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -141,7 +142,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            NEXT_PUBLIC_API_URL=${{ vars.API_URL }}
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || vars.API_URL }}
 
   deploy:
     runs-on: ubuntu-latest
@@ -155,37 +156,31 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 20m
           script: |
-            cd /opt/p2p
+            set -euo pipefail
+            # Must match the app directory on the server (see repository variable EC2_APP_PATH).
+            APP_DIR="${{ vars.EC2_APP_PATH }}"
+            APP_DIR="${APP_DIR:-/home/ubuntu/p2p}"
+            cd "$APP_DIR"
 
-            # Pull secrets from AWS Secrets Manager → .env.prod
-            aws secretsmanager get-secret-value \
-              --secret-id "p2p/production" \
-              --region eu-central-1 \
-              --query 'SecretString' \
-              --output text | python3 -c "
-            import json, sys
-            data = json.load(sys.stdin)
-            for k, v in data.items():
-                print(f'{k}={v}')
-            " > .env.prod
-            chmod 600 .env.prod
+            set -a
+            # shellcheck source=/dev/null
+            source .env.prod
+            set +a
 
-            # Login to ECR
-            aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-central-1.amazonaws.com
+            export IMAGE_TAG="${{ github.sha }}"
 
-            # Pull latest images
-            export ECR_REGISTRY=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-central-1.amazonaws.com
-            export IMAGE_TAG=${{ github.sha }}
+            aws ecr get-login-password --region "${AWS_REGION}" \
+              | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+
             docker compose -f docker-compose.prod.yml pull api web
 
-            # Run database migrations
-            docker compose -f docker-compose.prod.yml run --rm api npx prisma migrate deploy --schema=./prisma/schema.prisma
+            docker compose -f docker-compose.prod.yml run --rm --no-deps api \
+              npx prisma migrate deploy --schema=prisma/schema.prisma
 
-            # Restart services (zero-downtime)
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
-            # Cleanup old images
             docker image prune -f
 
             echo "Deploy complete: ${{ github.sha }}"
