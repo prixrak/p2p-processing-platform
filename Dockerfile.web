@@ -1,4 +1,7 @@
-FROM node:20-alpine AS base
+# syntax=docker/dockerfile:1
+# ECR Public mirror of docker.io/library/node — more reliable for CI than Docker Hub alone.
+ARG TARGETPLATFORM=linux/amd64
+FROM --platform=$TARGETPLATFORM public.ecr.aws/docker/library/node:20-alpine AS base
 WORKDIR /app
 
 FROM base AS deps

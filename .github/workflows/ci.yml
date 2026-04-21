@@ -124,6 +124,7 @@ jobs:
         with:
           context: .
           file: Dockerfile.api
+          platforms: linux/amd64
           push: true
           tags: |
             ${{ env.ECR_REGISTRY }}/p2p-api:latest
@@ -136,6 +137,7 @@ jobs:
         with:
           context: .
           file: Dockerfile.web
+          platforms: linux/amd64
           push: true
           tags: |
             ${{ env.ECR_REGISTRY }}/p2p-web:latest
