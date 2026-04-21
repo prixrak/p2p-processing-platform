@@ -30,12 +30,13 @@ services:
 
   web:
     image: ${ECR_REGISTRY}/p2p-web:${IMAGE_TAG:-latest}
-    env_file: .env.prod
     ports:
       - "3000:3000"
     environment:
-      # Overrides env_file when needed; NEXT_PUBLIC_* in client bundle is still mostly build-time.
+      # Do not use env_file here: avoid injecting api secrets into the Next container.
+      # Pass only what Next needs; use `docker compose --env-file .env.prod` so ${...} resolves.
       - NEXT_PUBLIC_API_URL=${API_PUBLIC_URL:-https://api.p2p-processing-dev.com}
+      - EXTERNAL_PLAYGROUND_ENABLED=${EXTERNAL_PLAYGROUND_ENABLED:-false}
     restart: always
     depends_on:
       api:

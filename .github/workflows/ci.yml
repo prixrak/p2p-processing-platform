@@ -177,12 +177,12 @@ jobs:
               | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
             # Pull while api/web keep running (~short switchover only on up -d). Needs enough root EBS (~50 GiB+).
-            docker compose -f docker-compose.prod.yml pull api web
+            docker compose --env-file .env.prod -f docker-compose.prod.yml pull api web
 
-            docker compose -f docker-compose.prod.yml run --rm --no-deps api \
+            docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm --no-deps api \
               npx prisma migrate deploy --schema=prisma/schema.prisma
 
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --remove-orphans
 
             # Remove old p2p image layers after new containers reference the new images.
             docker image prune -af
