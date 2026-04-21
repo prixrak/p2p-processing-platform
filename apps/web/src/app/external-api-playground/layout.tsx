@@ -4,7 +4,7 @@ import '@/features/external-api-playground/external-api-playground.css';
 export const dynamic = 'force-dynamic';
 
 function playgroundAllowed(): boolean {
-  const v = process.env.EXTERNAL_PLAYGROUND_ENABLED;
+  const v = process.env.EXTERNAL_PLAYGROUND_ENABLED?.trim().toLowerCase();
   return v === 'true' || v === '1';
 }
 

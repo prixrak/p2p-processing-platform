@@ -36,7 +36,8 @@ services:
       # Do not use env_file here: avoid injecting api secrets into the Next container.
       # Pass only what Next needs; use `docker compose --env-file .env.prod` so ${...} resolves.
       - NEXT_PUBLIC_API_URL=${API_PUBLIC_URL:-https://api.p2p-processing-dev.com}
-      - EXTERNAL_PLAYGROUND_ENABLED=${EXTERNAL_PLAYGROUND_ENABLED:-false}
+      # Default on so a plain `docker compose -f docker-compose.prod.yml up` still works; set false in .env.prod to lock down.
+      - EXTERNAL_PLAYGROUND_ENABLED=${EXTERNAL_PLAYGROUND_ENABLED:-true}
     restart: always
     depends_on:
       api:
