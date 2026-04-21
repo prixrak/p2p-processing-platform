@@ -1,8 +1,14 @@
 'use client';
 
-import { notFound } from 'next/navigation';
-
-/** Build-time stub when `INCLUDE_EXTERNAL_PLAYGROUND` excludes the real playground from the bundle. */
+/** Shown when the image was built without `INCLUDE_EXTERNAL_PLAYGROUND=true` (real module not in bundle). */
 export function ExternalApiPlayground() {
-  notFound();
+  return (
+    <main style={{ padding: '1.5rem', fontFamily: 'system-ui' }}>
+      <h1>External API Playground</h1>
+      <p>
+        This build does not include the playground. Rebuild the web image with{' '}
+        <code>INCLUDE_EXTERNAL_PLAYGROUND=true</code>.
+      </p>
+    </main>
+  );
 }
