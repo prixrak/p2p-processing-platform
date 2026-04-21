@@ -23,8 +23,6 @@ RUN npm run build --workspace=apps/web
 FROM base AS runner
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-# Runtime: set to "true" to allow /external-api-playground (middleware)
-ENV EXTERNAL_PLAYGROUND_ENABLED=false
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/apps/web/public ./apps/web/public
