@@ -15,11 +15,16 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Baked into client bundle at build time — override when building the image
 ARG NEXT_PUBLIC_API_URL=https://api.p2p-processing-dev.com
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+# Include External API playground in the client bundle (set to false to strip via webpack alias)
+ARG INCLUDE_EXTERNAL_PLAYGROUND=true
+ENV INCLUDE_EXTERNAL_PLAYGROUND=${INCLUDE_EXTERNAL_PLAYGROUND}
 RUN npm run build --workspace=apps/web
 
 FROM base AS runner
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# Runtime: set to "true" to allow /external-api-playground (middleware)
+ENV EXTERNAL_PLAYGROUND_ENABLED=false
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/apps/web/public ./apps/web/public

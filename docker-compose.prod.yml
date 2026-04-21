@@ -34,6 +34,7 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=${API_PUBLIC_URL:-https://api.p2p-processing-dev.com}
+      - EXTERNAL_PLAYGROUND_ENABLED=${EXTERNAL_PLAYGROUND_ENABLED:-false}
     restart: always
     depends_on:
       api:

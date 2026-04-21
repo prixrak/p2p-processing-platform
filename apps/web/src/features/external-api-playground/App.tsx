@@ -17,6 +17,7 @@ import {
   mergeJsonForSigning,
   utf8FromBase64,
 } from './hmac';
+import { externalApiUrl } from '@/lib/external-api-url';
 
 const LS = {
   payinPk: 'p2p-external-playground-payin-pk',
@@ -28,6 +29,14 @@ const LS = {
 } as const;
 
 function loadKeys() {
+  if (typeof window === 'undefined') {
+    return {
+      payinPublicKey: DEFAULT_DEV_KEYS.payinPublicKey,
+      payinSecret: DEFAULT_DEV_KEYS.payinSecret,
+      payoutPublicKey: DEFAULT_DEV_KEYS.payoutPublicKey,
+      payoutSecret: DEFAULT_DEV_KEYS.payoutSecret,
+    };
+  }
   return {
     payinPublicKey:
       localStorage.getItem(LS.payinPk) ?? DEFAULT_DEV_KEYS.payinPublicKey,
@@ -55,10 +64,14 @@ function parseUnixNonce(s: string): number | null {
 
 export function App() {
   const [keys, setKeys] = useState(loadKeys);
-  const [endpointId, setEndpointId] = useState(
-    () => localStorage.getItem(LS.lastEndpoint) ?? EXTERNAL_ENDPOINTS[0].id,
+  const [endpointId, setEndpointId] = useState(() =>
+    typeof window !== 'undefined'
+      ? (localStorage.getItem(LS.lastEndpoint) ?? EXTERNAL_ENDPOINTS[0].id)
+      : EXTERNAL_ENDPOINTS[0].id,
   );
-  const [useV2, setUseV2] = useState(() => localStorage.getItem(LS.useV2) === '1');
+  const [useV2, setUseV2] = useState(
+    () => typeof window !== 'undefined' && localStorage.getItem(LS.useV2) === '1',
+  );
   const useV2Ref = useRef(useV2);
   useV2Ref.current = useV2;
   const prevUseV2ForToggle = useRef<boolean | undefined>(undefined);
@@ -350,7 +363,7 @@ export function App() {
     setStatusLine('');
     setResponseText('');
     try {
-      const res = await fetch(endpoint.path, {
+      const res = await fetch(externalApiUrl(endpoint.path), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -400,7 +413,7 @@ export function App() {
           fd.append('files', multipart.proofFiles[i]);
         }
       }
-      const res = await fetch(endpoint.path, {
+      const res = await fetch(externalApiUrl(endpoint.path), {
         method: 'POST',
         headers: {
           [ExternalApiHeaders.API_KEY]: pk,
@@ -462,7 +475,7 @@ export function App() {
           fd.append('files', multipart.appealFiles[i]);
         }
       }
-      const res = await fetch(endpoint.path, {
+      const res = await fetch(externalApiUrl(endpoint.path), {
         method: 'POST',
         headers: {
           [ExternalApiHeaders.API_KEY]: pk,
@@ -515,8 +528,8 @@ export function App() {
             External API playground
           </h1>
           <p style={{ margin: '0.2rem 0 0', color: '#8e95a3', fontSize: '0.78rem' }}>
-            <code>/api/external/v1</code> · keys in <code>localStorage</code> · proxy{' '}
-            <code>EXTERNAL_PLAYGROUND_API_TARGET</code>
+            <code>/api/external/v1</code> · keys in <code>localStorage</code> · API base{' '}
+            <code>NEXT_PUBLIC_API_URL</code>
           </p>
         </div>
         <button

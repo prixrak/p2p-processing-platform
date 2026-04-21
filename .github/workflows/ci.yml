@@ -104,6 +104,7 @@ jobs:
         run: npm run build --workspace=@p2p/web
         env:
           NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || vars.API_URL }}
+          INCLUDE_EXTERNAL_PLAYGROUND: 'true'
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -143,6 +144,7 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || vars.API_URL }}
+            INCLUDE_EXTERNAL_PLAYGROUND=true
 
   deploy:
     runs-on: ubuntu-latest

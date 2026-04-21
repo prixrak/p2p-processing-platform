@@ -1,4 +1,4 @@
-:root {
+.external-api-playground-root {
   font-family:
     system-ui,
     -apple-system,
@@ -10,35 +10,30 @@
   background: #12141a;
 }
 
-* {
+.external-api-playground-root * {
   box-sizing: border-box;
 }
 
-html,
-body {
+.external-api-playground-root {
   margin: 0;
   height: 100%;
+  min-height: 100dvh;
   overflow: hidden;
 }
 
-#root {
-  height: 100%;
-  overflow: hidden;
-}
-
-button,
-input,
-select,
-textarea {
+.external-api-playground-root button,
+.external-api-playground-root input,
+.external-api-playground-root select,
+.external-api-playground-root textarea {
   font: inherit;
 }
 
-a {
+.external-api-playground-root a {
   color: #8ab4ff;
 }
 
 /* Main 3-column workspace: keys | body | (headers + response) */
-.pg-main {
+.external-api-playground-root .pg-main {
   flex: 1;
   min-height: 0;
   display: grid;
@@ -47,7 +42,7 @@ a {
   align-items: stretch;
 }
 
-.pg-right-stack {
+.external-api-playground-root .pg-right-stack {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -56,51 +51,51 @@ a {
 }
 
 /* Signing block: natural height (no inner scroll); Response uses remaining space */
-.pg-right-stack > .pg-panel:last-child {
+.external-api-playground-root .pg-right-stack > .pg-panel:last-child {
   flex: 1 1 0;
   min-height: 0;
 }
 
-.pg-scroll {
+.external-api-playground-root .pg-scroll {
   overflow: auto;
   min-height: 0;
   flex: 1 1 0;
 }
 
 @media (max-width: 1100px) {
-  .pg-main {
+  .external-api-playground-root .pg-main {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto 1fr;
     overflow: auto;
   }
 
-  .pg-right-stack {
+  .external-api-playground-root .pg-right-stack {
     flex: 1 1 auto;
     max-height: none;
   }
 }
 
-.pg-panel {
+.external-api-playground-root .pg-panel {
   background: #1a1d26;
   border-radius: 10px;
   padding: 1rem 1.1rem;
   border: 1px solid #2a2f3c;
 }
 
-.pg-panel h2,
-.pg-panel h3 {
+.external-api-playground-root .pg-panel h2,
+.external-api-playground-root .pg-panel h3 {
   margin-top: 0;
 }
 
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
-button:focus-visible {
+.external-api-playground-root input:focus-visible,
+.external-api-playground-root select:focus-visible,
+.external-api-playground-root textarea:focus-visible,
+.external-api-playground-root button:focus-visible {
   outline: 2px solid #5c6bc0;
   outline-offset: 1px;
 }
 
-button:disabled {
+.external-api-playground-root button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
