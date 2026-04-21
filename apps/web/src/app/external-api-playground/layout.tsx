@@ -3,9 +3,10 @@ import '@/features/external-api-playground/external-api-playground.css';
 
 export const dynamic = 'force-dynamic';
 
-function playgroundAllowed(): boolean {
+/** Opt-out: block only when explicitly disabled. Missing/unset env must not 404 (Docker/standalone often omits vars). */
+function playgroundBlocked(): boolean {
   const v = process.env.EXTERNAL_PLAYGROUND_ENABLED?.trim().toLowerCase();
-  return v === 'true' || v === '1';
+  return v === 'false' || v === '0' || v === 'no' || v === 'off';
 }
 
 export default function ExternalApiPlaygroundLayout({
@@ -13,7 +14,7 @@ export default function ExternalApiPlaygroundLayout({
 }: {
   children: React.ReactNode;
 }) {
-  if (!playgroundAllowed()) {
+  if (playgroundBlocked()) {
     notFound();
   }
 
