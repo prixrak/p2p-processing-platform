@@ -127,6 +127,7 @@ describe('isValidPayInTransition', () => {
     expect(isValidPayInTransition(PayInOrderStatus.PENDING, PayInOrderStatus.NEW)).toBe(true);
     expect(isValidPayInTransition(PayInOrderStatus.NEW, PayInOrderStatus.VERIFIED)).toBe(true);
     expect(isValidPayInTransition(PayInOrderStatus.VERIFIED, PayInOrderStatus.PAID)).toBe(true);
+    expect(isValidPayInTransition(PayInOrderStatus.CANCELED, PayInOrderStatus.PAID)).toBe(true);
     expect(isValidPayInTransition(PayInOrderStatus.PAID, PayInOrderStatus.APPEAL)).toBe(true);
   });
 
@@ -173,12 +174,11 @@ describe('isValidPayOutTransition', () => {
 });
 
 describe('Pay-In non-terminal “resolved” statuses still allow APPEAL', () => {
-  it('PAID, UNDERPAID, OVERPAID, and CANCELED can move to APPEAL only', () => {
+  it('PAID, UNDERPAID, and OVERPAID can move to APPEAL only', () => {
     for (const from of [
       PayInOrderStatus.PAID,
       PayInOrderStatus.UNDERPAID,
       PayInOrderStatus.OVERPAID,
-      PayInOrderStatus.CANCELED,
     ]) {
       expect(PAYIN_TRANSITIONS[from]).toEqual([PayInOrderStatus.APPEAL]);
       expect(isValidPayInTransition(from, PayInOrderStatus.APPEAL)).toBe(true);
@@ -186,6 +186,36 @@ describe('Pay-In non-terminal “resolved” statuses still allow APPEAL', () =>
         if (to !== PayInOrderStatus.APPEAL) {
           expect(isValidPayInTransition(from, to)).toBe(false);
         }
+      }
+    }
+  });
+
+  it('CANCELED can move to APPEAL or to paid outcomes (PAID / UNDERPAID / OVERPAID)', () => {
+    const from = PayInOrderStatus.CANCELED;
+    expect(new Set(PAYIN_TRANSITIONS[from])).toEqual(
+      new Set([
+        PayInOrderStatus.APPEAL,
+        PayInOrderStatus.PAID,
+        PayInOrderStatus.UNDERPAID,
+        PayInOrderStatus.OVERPAID,
+      ]),
+    );
+    for (const to of [
+      PayInOrderStatus.APPEAL,
+      PayInOrderStatus.PAID,
+      PayInOrderStatus.UNDERPAID,
+      PayInOrderStatus.OVERPAID,
+    ]) {
+      expect(isValidPayInTransition(from, to)).toBe(true);
+    }
+    for (const to of ALL_PAY_IN_STATUSES) {
+      if (
+        to !== PayInOrderStatus.APPEAL &&
+        to !== PayInOrderStatus.PAID &&
+        to !== PayInOrderStatus.UNDERPAID &&
+        to !== PayInOrderStatus.OVERPAID
+      ) {
+        expect(isValidPayInTransition(from, to)).toBe(false);
       }
     }
   });

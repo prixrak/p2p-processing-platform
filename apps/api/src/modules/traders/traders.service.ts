@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -57,7 +58,10 @@ export class TradersService {
       include: {
         user: { select: { email: true, role: true, isActive: true } },
         balances: true,
-        requisites: { include: { bank: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
+        requisites: {
+          include: { bank: { select: { name: true } }, group: true },
+          orderBy: { createdAt: 'desc' },
+        },
         telegramSettings: true,
       },
     });
@@ -321,6 +325,31 @@ export class TradersService {
       where: { id: traderId },
       data: { isActive: false },
     });
+  }
+
+  /**
+   * Trader self-service: pause or resume receiving new Pay-In requisites selection and Pay-Out pool access.
+   * Inactive (admin-disabled) accounts cannot change this flag.
+   */
+  async setAcceptingOrders(traderId: string, acceptingOrders: boolean) {
+    const trader = await this.prisma.traderProfile.findUnique({
+      where: { id: traderId },
+    });
+    if (!trader) {
+      throw new NotFoundException(`Trader ${traderId} not found`);
+    }
+    if (!trader.isActive) {
+      throw new ForbiddenException('Your account is disabled. Contact support.');
+    }
+
+    const updated = await this.prisma.traderProfile.update({
+      where: { id: traderId },
+      data: { acceptingOrders },
+    });
+
+    this.logger.log(`Trader ${traderId} set accepting_orders=${acceptingOrders}`);
+
+    return updated;
   }
 
   async setPayoutLimits(

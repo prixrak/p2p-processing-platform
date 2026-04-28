@@ -7,11 +7,17 @@ import {
   IsNumber,
   IsInt,
   Min,
+  IsUUID,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RequisiteType } from '@p2p/shared';
 
 export class CreateRequisiteDto {
+  @ApiProperty({ description: 'Parent requisite group (currency and pay-in routing come from the group)' })
+  @IsUUID()
+  @IsNotEmpty()
+  groupId: string;
+
   @ApiProperty({ enum: RequisiteType })
   @IsEnum(RequisiteType)
   @IsNotEmpty()
@@ -65,9 +71,4 @@ export class CreateRequisiteDto {
   @Min(0)
   @IsOptional()
   limitTotalOps?: number;
-
-  @ApiPropertyOptional({ description: 'Currency code', default: 'UAH' })
-  @IsString()
-  @IsOptional()
-  currency?: string;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -16,7 +16,7 @@ import { Table } from '@/components/ui/table';
 import { Modal } from '@/components/ui/modal';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
-import { formatDate, formatDateFull, shortId, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, formatDateFull, shortId, cn } from '@/lib/utils';
 import { AppealStatus } from '@p2p/shared';
 import type { AppealDto } from '@p2p/shared';
 
@@ -46,21 +46,71 @@ export default function AppealsPage() {
 
   const appeals = data?.items ?? [];
 
+  const { currentAppeals, historyAppeals } = useMemo(() => {
+    const current: AppealDto[] = [];
+    const history: AppealDto[] = [];
+    for (const a of appeals) {
+      if (a.status === AppealStatus.OPEN) current.push(a);
+      else history.push(a);
+    }
+    return { currentAppeals: current, historyAppeals: history };
+  }, [appeals]);
+
   const columns = [
     {
       key: 'id',
-      header: 'Appeal',
+      header: 'Appeal ID',
       className: 'font-mono tabular-nums text-end',
       render: (row: AppealDto) => (
         <span className="font-mono text-xs text-text-muted">{shortId(row.id)}</span>
       ),
     },
     {
-      key: 'paid_amount',
-      header: 'Reported paid',
+      key: 'payin_order_id',
+      header: 'Pay-In order',
+      className: 'font-mono tabular-nums text-end',
+      render: (row: AppealDto) => (
+        <span className="font-mono text-xs text-text-muted" title={row.payin_order_id}>
+          {shortId(row.payin_order_id)}
+        </span>
+      ),
+    },
+    {
+      key: 'order_amount',
+      header: 'Order amount',
       className: 'text-end tabular-nums',
       render: (row: AppealDto) => (
-        <span className="font-medium">{row.paid_amount.toLocaleString()}</span>
+        <span className="text-text-primary">
+          {formatCurrency(row.order_amount, row.currency)}
+        </span>
+      ),
+    },
+    {
+      key: 'paid_amount',
+      header: 'Paid (reported)',
+      className: 'text-end tabular-nums',
+      render: (row: AppealDto) => (
+        <span className="font-medium">
+          {formatCurrency(row.paid_amount, row.currency)}
+        </span>
+      ),
+    },
+    {
+      key: 'requisite',
+      header: 'Requisite',
+      render: (row: AppealDto) => (
+        <div className="max-w-[14rem] truncate text-sm text-text-primary" title={requisiteLabel(row)}>
+          {requisiteShort(row)}
+        </div>
+      ),
+    },
+    {
+      key: 'requisite_owner',
+      header: 'Owner',
+      render: (row: AppealDto) => (
+        <span className="max-w-[10rem] truncate text-sm text-text-muted" title={row.requisite_owner}>
+          {row.requisite_owner || '—'}
+        </span>
       ),
     },
     {
@@ -122,14 +172,39 @@ export default function AppealsPage() {
         </Button>
       </div>
 
-      <Table
-        columns={columns}
-        data={appeals}
-        keyExtractor={(row) => row.id}
-        loading={isLoading}
-        onRowClick={(row) => setSelectedAppeal(row)}
-        emptyMessage="No appeals found"
-      />
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold text-text-primary">Current</h2>
+          <p className="text-sm text-text-muted">
+            Open appeals that still need a decision from the platform.
+          </p>
+        </div>
+        <Table
+          columns={columns}
+          data={currentAppeals}
+          keyExtractor={(row) => row.id}
+          loading={isLoading}
+          onRowClick={(row) => setSelectedAppeal(row)}
+          emptyMessage="No open appeals"
+        />
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold text-text-primary">History</h2>
+          <p className="text-sm text-text-muted">
+            Completed appeals: accepted (resolved) or rejected (cancelled).
+          </p>
+        </div>
+        <Table
+          columns={columns}
+          data={historyAppeals}
+          keyExtractor={(row) => row.id}
+          loading={isLoading}
+          onRowClick={(row) => setSelectedAppeal(row)}
+          emptyMessage="No completed appeals yet"
+        />
+      </section>
 
       <Modal
         open={!!selectedAppeal}
@@ -139,15 +214,26 @@ export default function AppealsPage() {
       >
         {selectedAppeal && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <DetailRow label="Appeal ID" value={selectedAppeal.id} mono />
-              <DetailRow label="Paid amount (reported)" value={String(selectedAppeal.paid_amount)} />
+              <DetailRow label="Pay-In order ID" value={selectedAppeal.payin_order_id} mono />
+              <DetailRow label="Created" value={formatDateFull(selectedAppeal.created_at)} />
+              <DetailRow
+                label="Order amount"
+                value={formatCurrency(selectedAppeal.order_amount, selectedAppeal.currency)}
+              />
+              <DetailRow
+                label="Paid amount (reported by payer)"
+                value={formatCurrency(selectedAppeal.paid_amount, selectedAppeal.currency)}
+              />
+              <DetailRow label="Bank" value={selectedAppeal.bank || '—'} />
+              <DetailRow label="Requisite (number)" value={selectedAppeal.requisite_number || '—'} mono />
+              <DetailRow label="Card / account owner" value={selectedAppeal.requisite_owner || '—'} />
               <DetailRow label="Status">
                 <Badge variant={appealStatusVariant[selectedAppeal.status]} dot>
                   {selectedAppeal.status}
                 </Badge>
               </DetailRow>
-              <DetailRow label="Created" value={formatDateFull(selectedAppeal.created_at)} />
             </div>
 
             {selectedAppeal.proofs_of_payment.length > 0 && (
@@ -207,6 +293,15 @@ export default function AppealsPage() {
       </Modal>
     </div>
   );
+}
+
+function requisiteShort(row: AppealDto): string {
+  const parts = [row.requisite_number, row.bank].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : '—';
+}
+
+function requisiteLabel(row: AppealDto): string {
+  return requisiteShort(row);
 }
 
 function DetailRow({

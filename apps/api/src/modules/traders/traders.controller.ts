@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import { TradersService } from './traders.service';
 import { GetStatisticsDto, SetPayoutLimitsDto, TraderStatisticsResponseDto } from './dto';
+import { UpdateTraderAcceptingOrdersDto } from './dto/update-trader-accepting-orders.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -61,6 +62,24 @@ export class TradersController {
   ) {
     const profile = await this.tradersService.getProfileByUserId(userId);
     return this.tradersService.getStatistics(profile.id, dto);
+  }
+
+  @Patch('me/accepting-orders')
+  @Roles(UserRole.TRADER)
+  @ApiOperation({ summary: 'Pause or resume receiving new Pay-In and Pay-Out assignments' })
+  async patchMyAcceptingOrders(
+    @CurrentUser('id') userId: string,
+    @Body() dto: UpdateTraderAcceptingOrdersDto,
+  ) {
+    const profile = await this.tradersService.getProfileByUserId(userId);
+    const updated = await this.tradersService.setAcceptingOrders(
+      profile.id,
+      dto.accepting_orders,
+    );
+    return {
+      accepting_orders: updated.acceptingOrders,
+      account_active: updated.isActive,
+    };
   }
 
   @Get()

@@ -21,7 +21,10 @@ export class TraderDashboardController {
 
   @Get('stats')
   @ApiOperation({ summary: 'Get trader dashboard stats' })
-  async getStats(@CurrentUser('traderId') traderId: string) {
+  async getStats(
+    @CurrentUser('traderId') traderId: string,
+    @CurrentUser('id') userId: string,
+  ) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -31,6 +34,7 @@ export class TraderDashboardController {
       successfulOrders,
       totalOrders,
       activeRequisites,
+      profile,
     ] = await Promise.all([
       this.prisma.payinOrder.aggregate({
         where: { traderId, status: 'PAID' },
@@ -46,7 +50,15 @@ export class TraderDashboardController {
         where: { traderId },
       }),
       this.prisma.requisite.count({
-        where: { traderId, isActive: true },
+        where: {
+          traderId,
+          isActive: true,
+          group: { isActive: true, archivedAt: null },
+        },
+      }),
+      this.prisma.traderProfile.findUnique({
+        where: { userId },
+        select: { acceptingOrders: true, isActive: true },
       }),
     ]);
 
@@ -60,6 +72,8 @@ export class TraderDashboardController {
       success_rate: successRate,
       active_requisites: activeRequisites,
       currency: 'UAH',
+      accepting_orders: profile?.acceptingOrders ?? true,
+      account_active: profile?.isActive ?? true,
     };
   }
 

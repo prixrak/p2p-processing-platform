@@ -35,7 +35,19 @@ export interface AppealDto {
   id: string;
   status: AppealStatus;
   created_at: number;
+  /** Pay-In order this appeal refers to */
+  payin_order_id: string;
+  /** Requested amount on the Pay-In order */
+  order_amount: number;
+  currency: string;
+  /** Amount the payer reported sending (may differ from the order amount) */
   paid_amount: number;
+  /** Payment requisite number/account from the order */
+  requisite_number: string;
+  /** Card/account holder name from requisite */
+  requisite_owner: string;
+  /** Bank label for the requisite, if any */
+  bank: string;
   proofs_of_payment: string[];
 }
 

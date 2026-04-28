@@ -256,10 +256,19 @@ async function main() {
   // ─── Requisites (idempotent) ───
   const existingReqs = await prisma.requisite.count({ where: { traderId: traderProfile.id } });
   if (existingReqs === 0) {
+    const seedGroup = await prisma.requisiteGroup.create({
+      data: {
+        traderId: traderProfile.id,
+        name: 'Seed UAH',
+        currency: 'UAH',
+        paymentMethodId: cardP2P.id,
+      },
+    });
     await prisma.requisite.createMany({
       data: [
         {
           traderId: traderProfile.id,
+          requisiteGroupId: seedGroup.id,
           type: 'CARD',
           number: '5375411234567890',
           owner: 'Test Trader',
@@ -272,6 +281,7 @@ async function main() {
         },
         {
           traderId: traderProfile.id,
+          requisiteGroupId: seedGroup.id,
           type: 'CARD',
           number: '4149629876543210',
           owner: 'Test Trader',

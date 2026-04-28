@@ -11,7 +11,8 @@ import {
   CheckCircle2,
   XCircle,
   Layers,
-  List,
+  ListTodo,
+  History,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -24,7 +25,7 @@ import { api } from '@/lib/api';
 import { usePayOutTraderRealtime } from '@/lib/payin-realtime';
 import { formatCurrency, formatDate, formatDateFull, shortId, cn } from '@/lib/utils';
 import { payoutStatusVariant } from '@/lib/status-helpers';
-import { PayOutOrderStatus } from '@p2p/shared';
+import { PayOutOrderStatus, PAYOUT_TRADER_HISTORY_STATUSES } from '@p2p/shared';
 import type { PayOutOrderApiDto } from '@p2p/shared';
 
 interface PayOutListResponse {
@@ -32,22 +33,29 @@ interface PayOutListResponse {
   total: number;
 }
 
-type TabType = 'orders' | 'pool';
+type TabType = 'new' | 'in_progress' | 'history';
 
 export default function PayOutOrdersPage() {
   const queryClient = useQueryClient();
   usePayOutTraderRealtime(queryClient);
-  const [activeTab, setActiveTab] = useState<TabType>('pool');
+  const [activeTab, setActiveTab] = useState<TabType>('new');
   const [statusFilter, setStatusFilter] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<PayOutOrderApiDto | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
-  const queryParams: Record<string, string> = {};
-  if (statusFilter) queryParams.status = statusFilter;
+  const { data: inProgressData, isLoading: inProgressLoading, refetch: refetchInProgress } =
+    useQuery({
+      queryKey: ['trader', 'payout-orders', { queue: 'in_progress' }],
+      queryFn: () =>
+        api.get<PayOutListResponse>('/api/trader/payout/orders', { queue: 'in_progress' }),
+    });
 
-  const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
-    queryKey: ['trader', 'payout-orders', queryParams],
-    queryFn: () => api.get<PayOutListResponse>('/api/trader/payout/orders', queryParams),
+  const historyListParams: Record<string, string> = { queue: 'history' };
+  if (statusFilter) historyListParams.status = statusFilter;
+
+  const { data: historyData, isLoading: historyLoading, refetch: refetchHistory } = useQuery({
+    queryKey: ['trader', 'payout-orders', historyListParams],
+    queryFn: () => api.get<PayOutListResponse>('/api/trader/payout/orders', historyListParams),
   });
 
   const { data: poolData, isLoading: poolLoading, refetch: refetchPool } = useQuery({
@@ -57,11 +65,12 @@ export default function PayOutOrdersPage() {
 
   useEffect(() => {
     if (!selectedOrder) return;
-    const fromOrders = ordersData?.orders?.find((o) => o.id === selectedOrder.id);
+    const fromInProgress = inProgressData?.orders?.find((o) => o.id === selectedOrder.id);
+    const fromHistory = historyData?.orders?.find((o) => o.id === selectedOrder.id);
     const fromPool = poolData?.orders?.find((o) => o.id === selectedOrder.id);
-    const fresh = fromOrders ?? fromPool;
+    const fresh = fromInProgress ?? fromHistory ?? fromPool;
     if (fresh) setSelectedOrder(fresh);
-  }, [ordersData?.orders, poolData?.orders, selectedOrder?.id]);
+  }, [inProgressData?.orders, historyData?.orders, poolData?.orders, selectedOrder?.id]);
 
   const takeFromPoolMutation = useMutation({
     mutationFn: (orderId: string) =>
@@ -101,7 +110,7 @@ export default function PayOutOrdersPage() {
     },
   });
 
-  const statusOptions = Object.values(PayOutOrderStatus).map((s) => ({
+  const historyStatusOptions = PAYOUT_TRADER_HISTORY_STATUSES.map((s) => ({
     value: s,
     label: s,
   }));
@@ -275,9 +284,17 @@ export default function PayOutOrdersPage() {
   ];
 
   const handleRefetch = () => {
-    if (activeTab === 'pool') refetchPool();
-    else refetchOrders();
+    if (activeTab === 'new') void refetchPool();
+    else if (activeTab === 'in_progress') void refetchInProgress();
+    else void refetchHistory();
   };
+
+  const headerSubtitle =
+    activeTab === 'new'
+      ? `${poolData?.total ?? 0} orders in the shared pool`
+      : activeTab === 'in_progress'
+        ? `${inProgressData?.total ?? 0} orders in your queue`
+        : `${historyData?.total ?? 0} completed or closed orders`;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -286,15 +303,11 @@ export default function PayOutOrdersPage() {
           <ArrowUpFromLine className="h-6 w-6 text-accent-blue" />
           <div>
             <h1 className="text-2xl font-bold text-text-primary">Pay-Out Orders</h1>
-            <p className="text-sm text-text-muted">
-              {activeTab === 'pool'
-                ? `${poolData?.total ?? 0} orders available in pool`
-                : `${ordersData?.total ?? 0} orders in your queue`}
-            </p>
+            <p className="text-sm text-text-muted">{headerSubtitle}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {activeTab === 'orders' && (
+          {activeTab === 'history' && (
             <Button variant="secondary" size="sm" onClick={() => setShowFilters(!showFilters)}>
               <Filter className="h-4 w-4" />
               Filters
@@ -306,19 +319,19 @@ export default function PayOutOrdersPage() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 rounded-lg bg-bg-secondary p-1 w-fit">
+      <div className="flex flex-wrap gap-1 rounded-lg bg-bg-secondary p-1 w-fit">
         <button
-          onClick={() => setActiveTab('pool')}
+          type="button"
+          onClick={() => setActiveTab('new')}
           className={cn(
             'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
-            activeTab === 'pool'
+            activeTab === 'new'
               ? 'bg-bg-primary text-text-primary shadow-sm'
               : 'text-text-muted hover:text-text-primary',
           )}
         >
           <Layers className="h-4 w-4" />
-          Pool
+          New
           {(poolData?.total ?? 0) > 0 && (
             <span className="ml-1 rounded-full bg-accent-blue px-2 py-0.5 text-xs text-white">
               {poolData?.total}
@@ -326,31 +339,50 @@ export default function PayOutOrdersPage() {
           )}
         </button>
         <button
-          onClick={() => setActiveTab('orders')}
+          type="button"
+          onClick={() => setActiveTab('in_progress')}
           className={cn(
             'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
-            activeTab === 'orders'
+            activeTab === 'in_progress'
               ? 'bg-bg-primary text-text-primary shadow-sm'
               : 'text-text-muted hover:text-text-primary',
           )}
         >
-          <List className="h-4 w-4" />
-          My Orders
-          {(ordersData?.total ?? 0) > 0 && (
+          <ListTodo className="h-4 w-4" />
+          In progress
+          {(inProgressData?.total ?? 0) > 0 && (
             <span className="ml-1 rounded-full bg-bg-tertiary px-2 py-0.5 text-xs text-text-secondary">
-              {ordersData?.total}
+              {inProgressData?.total}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('history')}
+          className={cn(
+            'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+            activeTab === 'history'
+              ? 'bg-bg-primary text-text-primary shadow-sm'
+              : 'text-text-muted hover:text-text-primary',
+          )}
+        >
+          <History className="h-4 w-4" />
+          History
+          {(historyData?.total ?? 0) > 0 && (
+            <span className="ml-1 rounded-full bg-bg-tertiary px-2 py-0.5 text-xs text-text-secondary">
+              {historyData?.total}
             </span>
           )}
         </button>
       </div>
 
-      {activeTab === 'pool' && (
+      {activeTab === 'new' && (
         <Card>
           <div className="mb-4 flex items-start gap-3 rounded-lg border border-accent-blue/20 bg-accent-blue/5 p-3">
             <Layers className="mt-0.5 h-4 w-4 shrink-0 text-accent-blue" />
             <p className="text-sm text-text-secondary">
-              These are unassigned pay-out orders available for you to take. Only orders within
-              your configured amount limits are shown. Taking an order moves it to your queue.
+              Shared pool of unassigned pay-out orders. Only amounts within your configured limits
+              are listed. Taking an order assigns it to you and moves it to In progress.
             </p>
           </div>
           <Table
@@ -364,14 +396,34 @@ export default function PayOutOrdersPage() {
         </Card>
       )}
 
-      {activeTab === 'orders' && (
+      {activeTab === 'in_progress' && (
+        <Card>
+          <div className="mb-4 flex items-start gap-3 rounded-lg border border-border-primary bg-bg-secondary/40 p-3">
+            <ListTodo className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" />
+            <p className="text-sm text-text-secondary">
+              Orders you took from New. Start processing, then mark done or failed when the
+              transfer is finished.
+            </p>
+          </div>
+          <Table
+            columns={ordersColumns}
+            data={inProgressData?.orders ?? []}
+            keyExtractor={(row) => row.id}
+            loading={inProgressLoading}
+            onRowClick={(row) => setSelectedOrder(row)}
+            emptyMessage="No orders in your queue — take one from New"
+          />
+        </Card>
+      )}
+
+      {activeTab === 'history' && (
         <>
           {showFilters && (
             <Card className="animate-slide-up">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <Select
                   label="Status"
-                  options={statusOptions}
+                  options={historyStatusOptions}
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
                   placeholder="All statuses"
@@ -385,14 +437,22 @@ export default function PayOutOrdersPage() {
             </Card>
           )}
 
-          <Table
-            columns={ordersColumns}
-            data={ordersData?.orders ?? []}
-            keyExtractor={(row) => row.id}
-            loading={ordersLoading}
-            onRowClick={(row) => setSelectedOrder(row)}
-            emptyMessage="No pay-out orders in your queue"
-          />
+          <Card>
+            <div className="mb-4 flex items-start gap-3 rounded-lg border border-border-primary bg-bg-secondary/40 p-3">
+              <History className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" />
+              <p className="text-sm text-text-secondary">
+                Completed payouts and closed orders (failed or upload error).
+              </p>
+            </div>
+            <Table
+              columns={ordersColumns}
+              data={historyData?.orders ?? []}
+              keyExtractor={(row) => row.id}
+              loading={historyLoading}
+              onRowClick={(row) => setSelectedOrder(row)}
+              emptyMessage="No completed pay-out orders yet"
+            />
+          </Card>
         </>
       )}
 

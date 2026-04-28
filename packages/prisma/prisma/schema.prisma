@@ -210,7 +210,7 @@ model PaymentMethod {
   merchantDirections MerchantDirection[]
   payinOrders        PayinOrder[]
   payoutOrders       PayoutOrder[]
-  requisites         Requisite[]
+  requisiteGroups    RequisiteGroup[]
 
   @@index([countryId, isActive])
   @@map("payment_methods")
@@ -289,6 +289,7 @@ model TraderProfile {
   id             String   @id @default(uuid()) @db.Uuid
   userId         String   @unique @map("user_id") @db.Uuid
   isActive       Boolean  @default(true) @map("is_active")
+  acceptingOrders Boolean @default(true) @map("accepting_orders")
   payoutMinLimit Decimal  @default(0) @map("payout_min_limit") @db.Decimal(18, 4)
   payoutMaxLimit Decimal  @default(0) @map("payout_max_limit") @db.Decimal(18, 4)
   createdAt      DateTime @default(now()) @map("created_at")
@@ -296,6 +297,7 @@ model TraderProfile {
   user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   balances            TraderBalance[]
   requisites          Requisite[]
+  requisiteGroups     RequisiteGroup[]
   payinOrders         PayinOrder[]
   payoutOrders        PayoutOrder[]
   telegramSettings    TelegramSettings?
@@ -328,10 +330,30 @@ enum RequisiteDisabledReason {
   MANUAL
 }
 
+model RequisiteGroup {
+  id              String    @id @default(uuid()) @db.Uuid
+  traderId        String    @map("trader_id") @db.Uuid
+  name            String
+  currency        String    @default("UAH")
+  paymentMethodId String?   @map("payment_method_id") @db.Uuid
+  isActive        Boolean   @default(true) @map("is_active")
+  archivedAt      DateTime? @map("archived_at")
+  deactivatedAt   DateTime? @map("deactivated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  trader         TraderProfile  @relation(fields: [traderId], references: [id], onDelete: Cascade)
+  paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  requisites     Requisite[]
+
+  @@index([traderId, archivedAt])
+  @@map("requisite_groups")
+}
+
 model Requisite {
   id                String                   @id @default(uuid()) @db.Uuid
   traderId          String                   @map("trader_id") @db.Uuid
-  paymentMethodId   String?                  @map("payment_method_id") @db.Uuid
+  requisiteGroupId  String                   @map("requisite_group_id") @db.Uuid
   type              RequisiteType
   number            String
   owner             String
@@ -350,12 +372,13 @@ model Requisite {
   createdAt         DateTime                 @default(now()) @map("created_at")
 
   trader        TraderProfile  @relation(fields: [traderId], references: [id], onDelete: Cascade)
-  paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  group         RequisiteGroup @relation(fields: [requisiteGroupId], references: [id], onDelete: Restrict)
   bank          Bank?          @relation(fields: [bankId], references: [id])
   payinOrders   PayinOrder[]
 
   @@index([traderId, isActive])
   @@index([currency, isActive])
+  @@index([requisiteGroupId])
   @@map("requisites")
 }
 

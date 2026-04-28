@@ -106,7 +106,11 @@ export class PayoutInternalController {
 
   @Get('orders')
   @Roles(UserRole.TRADER)
-  @ApiOperation({ summary: 'List Pay-Out orders assigned to the trader' })
+  @ApiOperation({
+    summary: 'List Pay-Out orders assigned to the trader',
+    description:
+      'Use query `queue=in_progress` for active work (NEW, PROCESSING) or `queue=history` for completed/failed. Optional `status` narrows within that queue.',
+  })
   async getTraderOrders(
     @CurrentUser('traderId') traderId: string,
     @Query() filters: PayoutListFiltersDto,

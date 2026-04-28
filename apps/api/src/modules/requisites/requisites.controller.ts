@@ -10,6 +10,8 @@ import {
   Query,
   UseGuards,
   ParseUUIDPipe,
+  ParseIntPipe,
+  DefaultValuePipe,
   ForbiddenException,
 } from '@nestjs/common';
 import {
@@ -20,6 +22,7 @@ import {
 } from '@nestjs/swagger';
 import { RequisitesService } from './requisites.service';
 import { CreateRequisiteDto, UpdateRequisiteDto } from './dto';
+import { AuditService } from '../audit/audit.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -32,7 +35,10 @@ import { AuditAction, AuditEntityType, UserRole } from '@p2p/shared';
 @Controller('requisites')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class RequisitesController {
-  constructor(private readonly requisitesService: RequisitesService) {}
+  constructor(
+    private readonly requisitesService: RequisitesService,
+    private readonly auditService: AuditService,
+  ) {}
 
   // ─── Trader self-management ───
 
@@ -90,6 +96,28 @@ export class RequisitesController {
       traderId,
       includeInactive === 'true',
     );
+  }
+
+  @Get(':id/history')
+  @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER)
+  @ApiOperation({ summary: 'Audit history for a requisite' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getRequisiteHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { role: string; traderId?: string },
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    const requisite = await this.requisitesService.findById(id);
+    this.assertOwnership(user, requisite.traderId);
+    const capped = Math.min(Math.max(limit, 1), 100);
+    return this.auditService.findAll({
+      page,
+      limit: capped,
+      entityType: AuditEntityType.Requisite,
+      entityId: id,
+    });
   }
 
   @Get(':id')

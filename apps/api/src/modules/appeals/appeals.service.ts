@@ -12,7 +12,7 @@ import { AppealFiltersDto } from './dto';
 
 const APPEAL_INCLUDE = {
   proofs: true,
-  payinOrder: true,
+  payinOrder: { include: { requisite: { include: { bank: true } } } },
 } as const;
 
 type AppealWithRelations = Prisma.AppealGetPayload<{ include: typeof APPEAL_INCLUDE }>;
@@ -110,11 +110,19 @@ export class AppealsService {
   }
 
   private toAppealDto(appeal: AppealWithRelations): AppealDto {
+    const order = appeal.payinOrder;
+    const req = order?.requisite;
     return {
       id: appeal.id,
       status: appeal.status as AppealStatus,
       created_at: Math.floor(appeal.createdAt.getTime() / 1000),
+      payin_order_id: appeal.payinOrderId,
+      order_amount: order ? Number(order.amount) : 0,
+      currency: order?.currency ?? '',
       paid_amount: Number(appeal.paidAmount),
+      requisite_number: req?.number ?? '',
+      requisite_owner: req?.owner ?? '',
+      bank: req?.bank?.name ?? '',
       proofs_of_payment: (appeal.proofs ?? []).map((p) => p.fileId),
     };
   }

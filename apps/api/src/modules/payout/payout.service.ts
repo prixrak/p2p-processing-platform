@@ -15,6 +15,8 @@ import {
   MAX_PAGE_SIZE,
   DirectionType,
   PAYOUT_ORDER_REALTIME_EVENT_TYPE,
+  PAYOUT_TRADER_IN_PROGRESS_STATUSES,
+  PAYOUT_TRADER_HISTORY_STATUSES,
 } from '@p2p/shared';
 import type { PayOutOrderApiDto, ProfileDto, DetailsDto } from '@p2p/shared';
 import { BalanceTransactionType } from '@prisma/client';
@@ -174,6 +176,15 @@ export class PayoutService {
     });
     if (!trader) throw new NotFoundException('Trader profile not found');
 
+    if (!trader.isActive || !trader.acceptingOrders) {
+      return {
+        orders: [],
+        total: 0,
+        page,
+        limit,
+      };
+    }
+
     const minLimit = Number(trader.payoutMinLimit);
     const maxLimit = Number(trader.payoutMaxLimit);
 
@@ -212,6 +223,12 @@ export class PayoutService {
       where: { id: traderId },
     });
     if (!trader) throw new NotFoundException('Trader profile not found');
+
+    if (!trader.isActive || !trader.acceptingOrders) {
+      throw new ForbiddenException(
+        'You are paused: turn on "Receiving new orders" in the sidebar to take payout tasks.',
+      );
+    }
 
     const updated = await this.prisma.$transaction(async (tx) => {
       // Lock the row to prevent concurrent claims
@@ -269,6 +286,18 @@ export class PayoutService {
   // ─── Internal: assignToTrader ─── (admin/support assigns from pool to a specific trader)
 
   async assignToTrader(orderId: string, traderId: string): Promise<PayOutOrderApiDto> {
+    const targetTrader = await this.prisma.traderProfile.findUnique({
+      where: { id: traderId },
+    });
+    if (!targetTrader) {
+      throw new NotFoundException('Trader profile not found');
+    }
+    if (!targetTrader.isActive || !targetTrader.acceptingOrders) {
+      throw new BadRequestException(
+        'This trader is not accepting new assignments (inactive or paused)',
+      );
+    }
+
     const updated = await this.prisma.$transaction(async (tx) => {
       // Lock the row to prevent concurrent assignment
       const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
@@ -313,15 +342,34 @@ export class PayoutService {
     const page = filters.page ?? 1;
     const limit = Math.min(filters.limit ?? 20, MAX_PAGE_SIZE);
 
-    const status =
+    const parsedStatus =
       filters.status &&
       (Object.values(PayoutStatus) as string[]).includes(filters.status)
         ? (filters.status as PayoutStatus)
         : undefined;
 
+    let statusFilter: Prisma.PayoutOrderWhereInput['status'];
+    if (filters.queue === 'in_progress') {
+      const allowed = PAYOUT_TRADER_IN_PROGRESS_STATUSES as unknown as PayoutStatus[];
+      if (parsedStatus) {
+        statusFilter = allowed.includes(parsedStatus) ? parsedStatus : { in: [] };
+      } else {
+        statusFilter = { in: allowed };
+      }
+    } else if (filters.queue === 'history') {
+      const allowed = PAYOUT_TRADER_HISTORY_STATUSES as unknown as PayoutStatus[];
+      if (parsedStatus) {
+        statusFilter = allowed.includes(parsedStatus) ? parsedStatus : { in: [] };
+      } else {
+        statusFilter = { in: allowed };
+      }
+    } else if (parsedStatus) {
+      statusFilter = parsedStatus;
+    }
+
     const where: Prisma.PayoutOrderWhereInput = {
       traderId,
-      ...(status ? { status } : {}),
+      ...(statusFilter !== undefined ? { status: statusFilter } : {}),
     };
 
     const [items, total] = await Promise.all([

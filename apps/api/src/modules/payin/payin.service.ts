@@ -18,6 +18,8 @@ import {
   DirectionType,
   MAX_PAGE_SIZE,
   PAYIN_ORDER_REALTIME_EVENT_TYPE,
+  PAYIN_TRADER_CURRENT_STATUSES,
+  PAYIN_TRADER_HISTORY_STATUSES,
 } from '@p2p/shared';
 import type {
   OrderDto,
@@ -48,6 +50,7 @@ import {
   TraderConfirmPaidDto,
 } from './dto';
 import { PayinRealtimeService } from './payin-realtime.service';
+import { validate as uuidValidate } from 'uuid';
 
 const ORDER_INCLUDE = {
   requisite: { include: { bank: true } },
@@ -88,7 +91,7 @@ export class PayinService {
 
   private async getAutocloseMs(): Promise<number> {
     const setting = await this.platformSettings.findOne(PLATFORM_SETTING_PAYIN_AUTOCLOSE_MINUTES);
-    const minutes = Math.max(1, parseInt(setting.value, 10) || 30);
+    const minutes = Math.max(1, parseInt(setting.value, 10) || 10);
     return minutes * 60 * 1000;
   }
 
@@ -116,16 +119,20 @@ export class PayinService {
     try {
       const order = await this.prisma.$transaction(async (tx) => {
         const lockedRows = await tx.$queryRaw<Array<{ id: string }>>`
-          SELECT id FROM requisites
-          WHERE currency = ${dto.currency}
-            AND is_active = true
-            AND min_amount <= ${amountDec}
-            AND max_amount >= ${amountDec}
-            AND used_amount < limit_total_amount
-            AND used_ops < limit_total_ops
-          ORDER BY used_ops ASC
+          SELECT r.id FROM requisites r
+          INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
+          INNER JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true AND tp.accepting_orders = true
+          WHERE r.currency = ${dto.currency}
+            AND r.is_active = true
+            AND g.archived_at IS NULL
+            AND g.is_active = true
+            AND r.min_amount <= ${amountDec}
+            AND r.max_amount >= ${amountDec}
+            AND r.used_amount < r.limit_total_amount
+            AND r.used_ops < r.limit_total_ops
+          ORDER BY r.used_ops ASC
           LIMIT 1
-          FOR UPDATE SKIP LOCKED
+          FOR UPDATE OF r SKIP LOCKED
         `;
 
         if (lockedRows.length === 0) {
@@ -378,16 +385,20 @@ export class PayinService {
     try {
       const order = await this.prisma.$transaction(async (tx) => {
         const lockedRows = await tx.$queryRaw<Array<{ id: string }>>`
-          SELECT id FROM requisites
-          WHERE currency = ${dto.currency}
-            AND is_active = true
-            AND min_amount <= ${amountDec}
-            AND max_amount >= ${amountDec}
-            AND used_amount < limit_total_amount
-            AND used_ops < limit_total_ops
-          ORDER BY used_ops ASC
+          SELECT r.id FROM requisites r
+          INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
+          INNER JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true AND tp.accepting_orders = true
+          WHERE r.currency = ${dto.currency}
+            AND r.is_active = true
+            AND g.archived_at IS NULL
+            AND g.is_active = true
+            AND r.min_amount <= ${amountDec}
+            AND r.max_amount >= ${amountDec}
+            AND r.used_amount < r.limit_total_amount
+            AND r.used_ops < r.limit_total_ops
+          ORDER BY r.used_ops ASC
           LIMIT 1
-          FOR UPDATE SKIP LOCKED
+          FOR UPDATE OF r SKIP LOCKED
         `;
 
         if (lockedRows.length === 0) {
@@ -535,11 +546,38 @@ export class PayinService {
     const page = filters.page ?? 1;
     const limit = Math.min(filters.limit ?? 20, MAX_PAGE_SIZE);
 
-    const where: Prisma.PayinOrderWhereInput = {
+    const statusResolution = this.resolveTraderListStatusFilter(filters);
+    if (statusResolution === 'empty') {
+      return { items: [], total: 0, page, limit };
+    }
+
+    const q = filters.search?.trim() ?? '';
+    let idMatchIds: string[] | undefined;
+    if (q && !uuidValidate(q)) {
+      const compact = q.replace(/-/g, '');
+      if (/^[0-9a-f]{8,}$/i.test(compact)) {
+        const pattern = `%${compact}%`;
+        const rows = await this.prisma.$queryRaw<Array<{ id: string }>>(
+          Prisma.sql`
+            SELECT id FROM payin_orders
+            WHERE trader_id = CAST(${traderId} AS uuid)
+              AND replace(id::text, '-', '') ILIKE ${pattern}
+            LIMIT 500
+          `,
+        );
+        idMatchIds = rows.map((r) => r.id);
+      }
+    }
+
+    const baseWhere: Prisma.PayinOrderWhereInput = {
       traderId,
-      ...(filters.status ? { status: filters.status } : {}),
+      ...(statusResolution ? { status: statusResolution } : {}),
       ...(filters.currency ? { currency: filters.currency } : {}),
     };
+
+    const searchOr = this.buildTraderOrderSearchOr(q, idMatchIds);
+    const where: Prisma.PayinOrderWhereInput =
+      searchOr.length > 0 ? { ...baseWhere, AND: [{ OR: searchOr }] } : baseWhere;
 
     const [items, total] = await Promise.all([
       this.prisma.payinOrder.findMany({
@@ -558,6 +596,52 @@ export class PayinService {
       page,
       limit,
     };
+  }
+
+  private resolveTraderListStatusFilter(
+    filters: TraderOrderFiltersDto,
+  ): Prisma.PayinOrderWhereInput['status'] | 'empty' | undefined {
+    const scopeStatuses: PayInOrderStatus[] | undefined =
+      filters.list === 'current'
+        ? [...PAYIN_TRADER_CURRENT_STATUSES]
+        : filters.list === 'history'
+          ? [...PAYIN_TRADER_HISTORY_STATUSES]
+          : undefined;
+
+    if (filters.status && scopeStatuses) {
+      if (!scopeStatuses.includes(filters.status)) return 'empty';
+      return filters.status;
+    }
+    if (filters.status) return filters.status;
+    if (scopeStatuses) return { in: scopeStatuses };
+    return undefined;
+  }
+
+  private buildTraderOrderSearchOr(
+    q: string,
+    idMatchIds: string[] | undefined,
+  ): Prisma.PayinOrderWhereInput[] {
+    if (!q) return [];
+
+    const or: Prisma.PayinOrderWhereInput[] = [
+      { requestId: { contains: q, mode: 'insensitive' } },
+      {
+        requisite: {
+          OR: [
+            { number: { contains: q, mode: 'insensitive' } },
+            { owner: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+      },
+    ];
+
+    if (uuidValidate(q)) {
+      or.push({ id: q });
+    } else if (idMatchIds && idMatchIds.length > 0) {
+      or.push({ id: { in: idMatchIds } });
+    }
+
+    return or;
   }
 
   // ─── Internal (Trader): confirm paid ───
@@ -586,12 +670,31 @@ export class PayinService {
       );
     }
 
+    const fromStatus = order.status as PayInOrderStatus;
+    const paidOutcomes: PayInOrderStatus[] = [
+      PayInOrderStatus.PAID,
+      PayInOrderStatus.UNDERPAID,
+      PayInOrderStatus.OVERPAID,
+    ];
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.payinOrder.update({
         where: { id: order.id },
         data: { status: targetStatus },
         include: ORDER_INCLUDE,
       });
+
+      if (
+        fromStatus === PayInOrderStatus.CANCELED &&
+        order.requisiteId &&
+        paidOutcomes.includes(targetStatus)
+      ) {
+        await this.requisitesService.incrementUsageInTransaction(
+          tx,
+          order.requisiteId,
+          Number(order.amount),
+        );
+      }
 
       if (targetStatus === PayInOrderStatus.PAID) {
         await this.creditBalancesOnPaid(tx, order);
@@ -610,6 +713,85 @@ export class PayinService {
     });
 
     return this.toOrderDto(updated);
+  }
+
+  /**
+   * Admin/owner pay-in status override: webhooks, balance credit on PAID, requisite usage when
+   * re-resolving a canceled order to a paid outcome (usage was released on cancel).
+   */
+  async adminUpdatePayinOrderStatus(orderId: string, targetStatusRaw: string) {
+    const targetStatus = targetStatusRaw.toUpperCase() as PayInOrderStatus;
+    if (!(Object.values(PayInOrderStatus) as string[]).includes(targetStatus)) {
+      throw new BadRequestException('Invalid pay-in status');
+    }
+
+    const order = await this.prisma.payinOrder.findUnique({
+      where: { id: orderId },
+      include: ORDER_INCLUDE,
+    });
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+
+    const from = order.status as PayInOrderStatus;
+    if (!isValidPayInTransition(from, targetStatus)) {
+      throw new BadRequestException(`Invalid status transition: ${from} -> ${targetStatus}`);
+    }
+
+    const paidOutcomes: PayInOrderStatus[] = [
+      PayInOrderStatus.PAID,
+      PayInOrderStatus.UNDERPAID,
+      PayInOrderStatus.OVERPAID,
+    ];
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.payinOrder.update({
+        where: { id: order.id },
+        data: { status: targetStatus as never },
+      });
+
+      if (
+        from === PayInOrderStatus.CANCELED &&
+        order.requisiteId &&
+        paidOutcomes.includes(targetStatus)
+      ) {
+        await this.requisitesService.incrementUsageInTransaction(
+          tx,
+          order.requisiteId,
+          Number(order.amount),
+        );
+      }
+
+      if (targetStatus === PayInOrderStatus.PAID) {
+        await this.creditBalancesOnPaid(tx, order);
+      }
+
+      if (result.callbackUrl) {
+        await tx.webhookOutbox.create({
+          data: {
+            payinOrderId: result.id,
+            method: WebhookMethod.PAYIN_UPDATE_STATUS_ORDER as any,
+            payloadJson: {
+              id: result.id,
+              order_id: result.requestId,
+              order_status: result.status,
+              amount: Number(result.amount),
+            },
+            callbackUrl: result.callbackUrl,
+          },
+        });
+      }
+
+      return result;
+    });
+
+    this.logger.log(`Admin updated pay-in order ${order.id}: ${from} -> ${targetStatus}`);
+    this.emitPayinOrderRealtime({
+      id: updated.id,
+      traderId: updated.traderId,
+      merchantId: updated.merchantId,
+      status: updated.status as PayInOrderStatus,
+    });
+
+    return updated;
   }
 
   // ─── Internal (Trader): cancel ───
@@ -728,7 +910,13 @@ export class PayinService {
         id: a.id,
         status: a.status as any,
         created_at: Math.floor(a.createdAt.getTime() / 1000),
+        payin_order_id: order.id,
+        order_amount: Number(order.amount),
+        currency: order.currency,
         paid_amount: Number(a.paidAmount),
+        requisite_number: order.requisite?.number ?? '',
+        requisite_owner: order.requisite?.owner ?? '',
+        bank: order.requisite?.bank?.name ?? '',
         proofs_of_payment: (a.proofs ?? []).map((p) => p.fileId),
       })),
       payment_detail: order.requisite

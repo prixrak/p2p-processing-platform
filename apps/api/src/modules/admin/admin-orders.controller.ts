@@ -24,15 +24,14 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import {
   UserRole,
-  PayInOrderStatus,
   PayOutOrderStatus,
-  isValidPayInTransition,
   isValidPayOutTransition,
   WebhookMethod,
   DirectionType,
   ORDER_LIST_DIRECTION,
 } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
+import { PayinService } from '../payin/payin.service';
 import { IsString } from 'class-validator';
 
 class UpdateOrderStatusDto {
@@ -48,7 +47,10 @@ class UpdateOrderStatusDto {
 export class AdminOrdersController {
   private readonly logger = new Logger(AdminOrdersController.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly payinService: PayinService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List all orders (payin or payout) with filters' })
@@ -308,46 +310,12 @@ export class AdminOrdersController {
         return this.updatePayoutStatus(payoutOrder, targetStatus);
       }
 
-      return this.updatePayinStatus(order, targetStatus);
+      return this.payinService.adminUpdatePayinOrderStatus(id, targetStatus);
     } else {
       const order = await this.prisma.payoutOrder.findUnique({ where: { id } });
       if (!order) throw new NotFoundException(`Order ${id} not found`);
       return this.updatePayoutStatus(order, targetStatus);
     }
-  }
-
-  private async updatePayinStatus(order: { id: string; status: string; callbackUrl: string | null; requestId: string; amount: any }, targetStatus: string) {
-    if (!isValidPayInTransition(order.status as PayInOrderStatus, targetStatus as PayInOrderStatus)) {
-      throw new BadRequestException(
-        `Invalid status transition: ${order.status} -> ${targetStatus}`,
-      );
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.payinOrder.update({
-        where: { id: order.id },
-        data: { status: targetStatus as never },
-      });
-
-      if (updated.callbackUrl) {
-        await tx.webhookOutbox.create({
-          data: {
-            payinOrderId: updated.id,
-            method: WebhookMethod.PAYIN_UPDATE_STATUS_ORDER as any,
-            payloadJson: {
-              id: updated.id,
-              order_id: updated.requestId,
-              order_status: updated.status,
-              amount: Number(updated.amount),
-            },
-            callbackUrl: updated.callbackUrl,
-          },
-        });
-      }
-
-      this.logger.log(`Admin updated pay-in order ${order.id}: ${order.status} -> ${targetStatus}`);
-      return updated;
-    });
   }
 
   private async updatePayoutStatus(order: { id: string; status: string; callbackUrl: string | null; requestId: string; amount: any }, targetStatus: string) {

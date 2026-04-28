@@ -1,13 +1,36 @@
-import { IsString, IsOptional, IsNumber, IsEnum, IsPositive, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsEnum, IsPositive, Min, Max, IsIn, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PayInOrderStatus, MAX_PAGE_SIZE } from '@p2p/shared';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 export class TraderOrderFiltersDto {
   @ApiPropertyOptional({ enum: PayInOrderStatus })
   @IsOptional()
   @IsEnum(PayInOrderStatus)
   status?: PayInOrderStatus;
+
+  @ApiPropertyOptional({
+    enum: ['current', 'history'],
+    description:
+      'current: PENDING, NEW, VERIFIED; history: PAID, UNDERPAID, OVERPAID, CANCELED, APPEAL, UPLOAD_FAILED',
+  })
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
+  @IsIn(['current', 'history'])
+  list?: 'current' | 'history';
+
+  @ApiPropertyOptional({
+    description: 'Search by order id (full or partial UUID), merchant request_id, requisite number, or account owner',
+  })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    const t = value.trim();
+    return t === '' ? undefined : t;
+  })
+  @IsString()
+  @MaxLength(200)
+  search?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

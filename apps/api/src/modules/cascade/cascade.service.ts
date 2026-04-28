@@ -51,7 +51,10 @@ export class CascadeService {
         COALESCE(stats.avg_response_time, 0) AS "avgResponseTime",
         COALESCE(stats.total_orders, 0) AS "totalOrders"
       FROM requisites r
-      JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true
+      INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
+        AND g.archived_at IS NULL
+        AND g.is_active = true
+      JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true AND tp.accepting_orders = true
       LEFT JOIN LATERAL (
         SELECT
           COUNT(CASE WHEN po.status = 'PAID' THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0) AS success_rate,
