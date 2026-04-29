@@ -36,10 +36,10 @@ import {
 } from '@prisma/client';
 import { config } from '@p2p/config';
 import {
-  creditUahMerchantPayin,
+  creditFiatMerchantPayin,
   debitUsdtPayin,
   percentToFraction,
-  platformMarginUah,
+  platformMarginLocal,
   platformMarginUsdtPayin,
   rateAdminIn,
   rateTraderIn,
@@ -132,11 +132,11 @@ export class PayinService {
     const commission = dto.amount * commissionPercent / 100;
     const partnerAmount = dto.amount - commission;
     const autocloseAt = new Date(Date.now() + await this.getAutocloseMs());
-    const isUahV2 = dto.currency === 'UAH';
+    const payinUsesBinanceParserRate = dto.currency === 'UAH';
     let parserRate: number | undefined;
-    if (isUahV2) {
+    if (payinUsesBinanceParserRate) {
       try {
-        parserRate = await this.exchangeRate.requireParserRateUaPerUsdt();
+        parserRate = await this.exchangeRate.requireParserRateFiatPerUsdt('UAH');
       } catch {
         throw new BadRequestException(
           'Exchange rate temporarily unavailable. Please try again shortly.',
@@ -152,13 +152,13 @@ export class PayinService {
           amount: dto.amount,
           currency: dto.currency,
           parserRate,
-          enforceUsdtCapacity: isUahV2,
+          enforceUsdtCapacity: payinUsesBinanceParserRate,
         });
 
         if (!picked) {
           const merchantFracNr = percentToFraction(commissionPercent);
           const raInNr =
-            isUahV2 && parserRate !== undefined
+            payinUsesBinanceParserRate && parserRate !== undefined
               ? rateAdminIn(parserRate, merchantFracNr)
               : null;
 
@@ -174,7 +174,7 @@ export class PayinService {
               commission,
               partnerAmount,
               rate: Number(direction.rate),
-              parserRate: isUahV2 && parserRate !== undefined ? parserRate : undefined,
+              parserRate: payinUsesBinanceParserRate && parserRate !== undefined ? parserRate : undefined,
               rateTraderIn: undefined,
               rateAdminIn: raInNr ?? undefined,
               status: 'NO_REQUISITE',
@@ -206,11 +206,11 @@ export class PayinService {
 
         const merchantFrac = percentToFraction(commissionPercent);
         const rtIn =
-          isUahV2 && parserRate !== undefined
+          payinUsesBinanceParserRate && parserRate !== undefined
             ? rateTraderIn(parserRate, Number(requisite.trader.payinRate))
             : null;
         const raIn =
-          isUahV2 && parserRate !== undefined
+          payinUsesBinanceParserRate && parserRate !== undefined
             ? rateAdminIn(parserRate, merchantFrac)
             : null;
 
@@ -489,11 +489,11 @@ export class PayinService {
     const commission = dto.amount * commissionPercent / 100;
     const partnerAmount = dto.amount - commission;
     const autocloseAt = new Date(Date.now() + await this.getAutocloseMs());
-    const isUahV2 = dto.currency === 'UAH';
+    const payinUsesBinanceParserRate = dto.currency === 'UAH';
     let parserRate: number | undefined;
-    if (isUahV2) {
+    if (payinUsesBinanceParserRate) {
       try {
-        parserRate = await this.exchangeRate.requireParserRateUaPerUsdt();
+        parserRate = await this.exchangeRate.requireParserRateFiatPerUsdt('UAH');
       } catch {
         throw new BadRequestException(
           'Exchange rate temporarily unavailable. Please try again shortly.',
@@ -509,13 +509,13 @@ export class PayinService {
           amount: dto.amount,
           currency: dto.currency,
           parserRate,
-          enforceUsdtCapacity: isUahV2,
+          enforceUsdtCapacity: payinUsesBinanceParserRate,
         });
 
         if (!picked) {
           const merchantFracNr = percentToFraction(commissionPercent);
           const raInNr =
-            isUahV2 && parserRate !== undefined
+            payinUsesBinanceParserRate && parserRate !== undefined
               ? rateAdminIn(parserRate, merchantFracNr)
               : null;
 
@@ -531,7 +531,7 @@ export class PayinService {
               commission,
               partnerAmount,
               rate: Number(direction.rate),
-              parserRate: isUahV2 && parserRate !== undefined ? parserRate : undefined,
+              parserRate: payinUsesBinanceParserRate && parserRate !== undefined ? parserRate : undefined,
               rateTraderIn: undefined,
               rateAdminIn: raInNr ?? undefined,
               status: 'NO_REQUISITE',
@@ -564,11 +564,11 @@ export class PayinService {
 
         const merchantFrac = percentToFraction(commissionPercent);
         const rtIn =
-          isUahV2 && parserRate !== undefined
+          payinUsesBinanceParserRate && parserRate !== undefined
             ? rateTraderIn(parserRate, Number(requisite.trader.payinRate))
             : null;
         const raIn =
-          isUahV2 && parserRate !== undefined
+          payinUsesBinanceParserRate && parserRate !== undefined
             ? rateAdminIn(parserRate, merchantFrac)
             : null;
 
@@ -887,8 +887,8 @@ export class PayinService {
       }
 
       if (paidOutcomes.includes(targetStatus)) {
-        const paidUah = actualAmount !== undefined ? actualAmount : orderAmount;
-        await this.creditBalancesOnPaid(tx, order, paidUah);
+        const paidLocal = actualAmount !== undefined ? actualAmount : orderAmount;
+        await this.creditBalancesOnPaid(tx, order, paidLocal);
       }
 
       await this.createPayinWebhookEntry(tx, result);
@@ -952,8 +952,8 @@ export class PayinService {
       }
 
       if (paidOutcomes.includes(targetStatus)) {
-        const paidUah = Number(order.amount);
-        await this.creditBalancesOnPaid(tx, order, paidUah);
+        const paidLocal = Number(order.amount);
+        await this.creditBalancesOnPaid(tx, order, paidLocal);
       }
 
       if (result.callbackUrl) {
@@ -1110,16 +1110,16 @@ export class PayinService {
   }
 
   /**
-   * RISK NOTE: modifies merchant UAH balance, trader USDT balance (v2), and platform_income.
-   * Legacy (non-UAH or missing parser snapshot): merchant +partnerAmount (scaled), trader +commission fiat.
+   * RISK NOTE: modifies merchant fiat balance, trader USDT balance (v2), and platform_income.
+   * Legacy path when Binance parser-backed ledger snapshots are not used for this order (e.g. currency without parser wiring): merchant +partnerAmount (scaled), trader +commission fiat.
    */
   private async creditBalancesOnPaid(
     tx: Prisma.TransactionClient,
     order: OrderWithRelations,
-    paidAmountUah: number,
+    paidAmountLocal: number,
   ): Promise<void> {
     const fullAmount = Number(order.amount);
-    const scale = fullAmount > 0 ? paidAmountUah / fullAmount : 1;
+    const scale = fullAmount > 0 ? paidAmountLocal / fullAmount : 1;
 
     if (
       order.currency !== 'UAH' ||
@@ -1199,10 +1199,10 @@ export class PayinService {
       (await tx.traderProfile.findUniqueOrThrow({ where: { id: order.traderId } })).payinRate,
     );
 
-    const merchantCredit = creditUahMerchantPayin(paidAmountUah, merchantFrac);
-    const debitUsdt = debitUsdtPayin(paidAmountUah, rt);
-    const marginUsdt = platformMarginUsdtPayin(paidAmountUah, rt, ra);
-    const marginUah = platformMarginUah(marginUsdt, P);
+    const merchantCredit = creditFiatMerchantPayin(paidAmountLocal, merchantFrac);
+    const debitUsdt = debitUsdtPayin(paidAmountLocal, rt);
+    const marginUsdt = platformMarginUsdtPayin(paidAmountLocal, rt, ra);
+    const marginLocal = platformMarginLocal(marginUsdt, P);
 
     await tx.merchantBalance.upsert({
       where: {
@@ -1261,19 +1261,19 @@ export class PayinService {
         orderType: PlatformIncomeOrderType.PAYIN,
         merchantId: order.merchantId,
         traderId: order.traderId,
-        orderAmountUah: paidAmountUah,
+        orderAmountLocal: paidAmountLocal,
         parserRate: P,
         rateTrader: rt,
         rateAdmin: ra,
         traderRatePct: traderPayinFrac,
         merchantCommissionPct: merchantFrac,
         incomeUsdt: marginUsdt,
-        incomeUah: marginUah,
+        incomeLocal: marginLocal,
       },
     });
 
     this.logger.log(
-      `Balances updated (v2) for order ${order.id}: merchant +${merchantCredit} UAH, trader -${debitUsdt} USDT, platform +${marginUsdt} USDT`,
+      `Balances updated (v2) for order ${order.id}: merchant +${merchantCredit} ${order.currency}, trader -${debitUsdt} USDT, platform +${marginUsdt} USDT`,
     );
   }
 

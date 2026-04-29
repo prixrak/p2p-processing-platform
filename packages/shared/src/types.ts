@@ -14,6 +14,7 @@ export interface PayOutOrderRealtimeEvent {
   orderId: string;
   status: PayOutOrderStatus;
   traderId?: string | null;
+  payoutTraderId?: string | null;
   merchantId: string;
   /** When true, public pool list may have changed (subscribe on payout:pool). */
   poolChanged?: boolean;
@@ -124,6 +125,18 @@ export interface PayOutOrderApiDto {
   rate: number;
   partner_amount: number;
   percent_fee: number;
+  /** Pool routing: standard traders vs Pay-Out specialists (pool B). */
+  pool_type?: 'STANDARD' | 'PAYOUT_SPECIALIST';
+  /** Optional proof file uploaded when completing (cabinet). */
+  completion_proof_file_id?: string;
+  /** Unix seconds — when the order was routed to its current pool (A or B). */
+  pool_assigned_at?: number | null;
+  /** Parser fiat per 1 USDT at order creation (Pay-Out v2). */
+  parser_rate?: number | null;
+  /** Rough USDT face value: amount / parser_rate when parser_rate is set. */
+  amount_usdt_estimate?: number | null;
+  /** Payment method label for payout (cabinet lists). */
+  payment_method_name?: string | null;
 }
 
 // --- Common Models ---

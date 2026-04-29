@@ -13,6 +13,10 @@ export function payoutTraderChannel(traderId: string): string {
   return `payout:trader:${traderId}`;
 }
 
+export function payoutSpecialistChannel(payoutTraderId: string): string {
+  return `payout:specialist:${payoutTraderId}`;
+}
+
 /** Broadcast channel when the public pool gains or loses a PENDING unassigned order. */
 export function payoutPoolChannel(): string {
   return 'payout:pool';
@@ -45,6 +49,9 @@ export class PayoutRealtimeService implements OnModuleInit, OnModuleDestroy {
       if (event.traderId) {
         ops.push(this.publisher.publish(payoutTraderChannel(event.traderId), payload));
       }
+      if (event.payoutTraderId) {
+        ops.push(this.publisher.publish(payoutSpecialistChannel(event.payoutTraderId), payload));
+      }
       if (event.poolChanged) {
         ops.push(this.publisher.publish(payoutPoolChannel(), payload));
       }
@@ -59,6 +66,13 @@ export class PayoutRealtimeService implements OnModuleInit, OnModuleDestroy {
     return this.pipeSseResilience(
       this.createSseObservable([payoutTraderChannel(traderId), payoutPoolChannel()]),
       traderId,
+    );
+  }
+
+  streamForPayoutSpecialist(payoutTraderId: string): Observable<MessageEvent> {
+    return this.pipeSseResilience(
+      this.createSseObservable([payoutSpecialistChannel(payoutTraderId), payoutPoolChannel()]),
+      payoutTraderId,
     );
   }
 

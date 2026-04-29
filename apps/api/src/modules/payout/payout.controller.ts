@@ -10,10 +10,14 @@ import {
   Sse,
   Header,
   MessageEvent,
+  Res,
+  DefaultValuePipe,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
+import { Response } from 'express';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
-import { ApiTags, ApiOperation, ApiSecurity, ApiBearerAuth, ApiProduces } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiSecurity, ApiBearerAuth, ApiProduces, ApiQuery } from '@nestjs/swagger';
 import { UserRole } from '@p2p/shared';
 import { HmacAuthGuard } from '../../common/guards/hmac-auth.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -21,6 +25,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { MerchantId } from '../../common/decorators/merchant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { PayoutService } from './payout.service';
 import { PayoutRealtimeService } from './payout-realtime.service';
 import {
@@ -29,6 +34,7 @@ import {
   AssignToTraderDto,
   TraderFailDto,
   PayoutListFiltersDto,
+  SpecialistCompleteDto,
 } from './dto';
 
 @ApiTags('Pay-Out (External)')
@@ -124,9 +130,13 @@ export class PayoutInternalController {
    */
   @Post('assign')
   @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Admin/Support assigns a pool payout order to a trader' })
+  @ApiOperation({ summary: 'Admin/Support assigns a pool payout order to a trader or Pay-Out specialist' })
   async assignToTrader(@Body() dto: AssignToTraderDto) {
-    return this.payoutService.assignToTrader(dto.orderId, dto.traderId);
+    return this.payoutService.assignToTrader({
+      orderId: dto.orderId,
+      traderId: dto.traderId,
+      payoutTraderId: dto.payoutTraderId,
+    });
   }
 
   /**
@@ -176,5 +186,170 @@ export class PayoutInternalController {
     @Body() dto: TraderFailDto,
   ) {
     return this.payoutService.traderFail(traderId, orderId, dto.reason);
+  }
+}
+
+@ApiTags('Pay-Out (Payout specialist)')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller('payout-trader/payout')
+export class PayoutSpecialistInternalController {
+  constructor(
+    private readonly payoutService: PayoutService,
+    private readonly payoutRealtime: PayoutRealtimeService,
+  ) {}
+
+  @SkipThrottle()
+  @Sse('stream')
+  @Header('X-Accel-Buffering', 'no')
+  @Header('Cache-Control', 'no-cache')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'SSE stream for specialist pool and assigned Pay-Out orders' })
+  @ApiProduces('text/event-stream')
+  streamPayoutSpecialist(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+  ): Observable<MessageEvent> {
+    return this.payoutRealtime.streamForPayoutSpecialist(payoutTraderId);
+  }
+
+  @Get('pool')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'Pool B — unassigned orders for your geo' })
+  async getPool(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @Query() filters: PayoutListFiltersDto,
+  ) {
+    return this.payoutService.getSpecialistPool(payoutTraderId, filters);
+  }
+
+  @Get('me/summary')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'Cabinet summary: USDT balance, geo, payout rate' })
+  async getMySummary(@CurrentUser('payoutTraderId') payoutTraderId: string) {
+    return this.payoutService.getSpecialistSummary(payoutTraderId);
+  }
+
+  @Get('me/statistics')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'Pay-Out statistics for this specialist (completed volume by window)' })
+  @ApiQuery({ name: 'period', required: false, enum: ['24h', '7d', '30d', '90d'] })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo', required: false })
+  async getStatistics(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @Query() dto: StatisticsQueryDto,
+  ) {
+    return this.payoutService.getSpecialistStatistics(payoutTraderId, dto);
+  }
+
+  @Get('me/notifications')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'Recent ledger, settlement, and order notifications' })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getNotifications(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+  ) {
+    return this.payoutService.getSpecialistNotifications(payoutTraderId, limit);
+  }
+
+  @Get('me/balance-ledger')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'USDT balance transaction history' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getBalanceLedger(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.payoutService.getSpecialistLedger(payoutTraderId, page, limit);
+  }
+
+  @Get('me/settlements')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'Settlement records for this specialist' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getMySettlements(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.payoutService.getSpecialistSettlementHistory(payoutTraderId, page, limit);
+  }
+
+  @Get('orders/csv')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({
+    summary: 'Export orders matching list filters as CSV',
+  })
+  async exportOrdersCsv(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @Query() filters: PayoutListFiltersDto,
+    @Res({ passthrough: false }) res: Response,
+  ) {
+    const csv = await this.payoutService.exportSpecialistOrdersCsv(payoutTraderId, filters);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="payout-specialist-orders.csv"',
+    );
+    res.send(csv);
+  }
+
+  @Get('orders')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'Your assigned Pay-Out orders (same queue params as standard trader)' })
+  async getOrders(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @Query() filters: PayoutListFiltersDto,
+  ) {
+    return this.payoutService.getSpecialistOrders(payoutTraderId, filters);
+  }
+
+  @Post('orders/:orderId/take')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'Take order from pool B into work queue' })
+  async takeFromPool(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ) {
+    return this.payoutService.specialistTakeFromPool(payoutTraderId, orderId);
+  }
+
+  @Post('orders/:orderId/process')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({
+    summary: 'Start processing (NEW → PROCESSING, or no-op when already PROCESSING)',
+  })
+  async startProcessing(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ) {
+    return this.payoutService.specialistStartProcessing(payoutTraderId, orderId);
+  }
+
+  @Post('orders/:orderId/complete')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'Confirm payout completed (optional completion proof file id)' })
+  async complete(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @CurrentUser('id') userId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body() body: SpecialistCompleteDto,
+  ) {
+    return this.payoutService.specialistComplete(payoutTraderId, orderId, userId, body);
+  }
+
+  @Post('orders/:orderId/fail')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'Mark payout as failed' })
+  async fail(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body() dto: TraderFailDto,
+  ) {
+    return this.payoutService.specialistFail(payoutTraderId, orderId, dto.reason);
   }
 }

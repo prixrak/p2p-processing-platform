@@ -30,6 +30,7 @@ import { MerchantBalanceTransactionType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { MerchantsService } from './merchants.service';
 import { MerchantDirectionsService } from '../merchant-directions/merchant-directions.service';
+import { SettlementsService } from '../settlements/settlements.service';
 import { GenerateApiKeysDto } from './dto';
 import { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
@@ -46,6 +47,7 @@ export class MerchantCabinetController {
     private readonly prisma: PrismaService,
     private readonly merchantsService: MerchantsService,
     private readonly merchantDirectionsService: MerchantDirectionsService,
+    private readonly settlementsService: SettlementsService,
     private readonly payinRealtime: PayinRealtimeService,
     private readonly payoutRealtime: PayoutRealtimeService,
   ) {}
@@ -77,7 +79,7 @@ export class MerchantCabinetController {
   }
 
   @Get('balance-transactions')
-  @ApiOperation({ summary: 'Merchant balance ledger (append-only, Block 5 §5.5)' })
+  @ApiOperation({ summary: 'Merchant balance ledger (append-only, Block 5 section 5.5)' })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'type', required: false, description: 'MerchantBalanceTransactionType' })
@@ -118,9 +120,23 @@ export class MerchantCabinetController {
     return { data, total, page, limit: take };
   }
 
+  @Get('settlements')
+  @ApiOperation({
+    summary: 'Booked merchant withdrawals — local amount debited plus manual rate / USDT for audit',
+  })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  async listOwnSettlements(
+    @CurrentUser('merchantId') merchantId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.settlementsService.findForMerchantSelf(merchantId, page, limit);
+  }
+
   @Get('balance-summary')
   @ApiOperation({
-    summary: 'Period volumes and commission totals (Block 5 §5.5)',
+    summary: 'Period volumes and commission totals (Block 5 section 5.5)',
   })
   @ApiQuery({ name: 'dateFrom', required: false })
   @ApiQuery({ name: 'dateTo', required: false })
@@ -179,11 +195,11 @@ export class MerchantCabinetController {
     return {
       dateFrom: dateFrom ?? null,
       dateTo: dateTo ?? null,
-      payin_volume_uah_paid: Number(payinVol._sum.amount ?? 0),
-      payout_volume_uah_completed: Number(payoutVol._sum.amount ?? 0),
-      payin_commission_uah: Number(payinComm._sum.commission ?? 0),
-      payout_commission_uah_on_completed: Number(payoutCommCompleted._sum.commissionAmount ?? 0),
-      payout_commission_uah_on_all_created_in_period: Number(
+      payin_volume_fiat_paid: Number(payinVol._sum.amount ?? 0),
+      payout_volume_fiat_completed: Number(payoutVol._sum.amount ?? 0),
+      payin_commission_fiat: Number(payinComm._sum.commission ?? 0),
+      payout_commission_fiat_on_completed: Number(payoutCommCompleted._sum.commissionAmount ?? 0),
+      payout_commission_fiat_on_all_created_in_period: Number(
         payoutCommAllCreated._sum.commissionAmount ?? 0,
       ),
     };

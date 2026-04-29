@@ -1,11 +1,11 @@
 import {
   averageParserRateFromOffers,
-  creditUahMerchantPayin,
-  debitUahMerchantPayout,
+  creditFiatMerchantPayin,
+  debitFiatMerchantPayout,
   debitUsdtPayin,
   creditUsdtPayout,
   percentToFraction,
-  platformMarginUah,
+  platformMarginLocal,
   platformMarginUsdtPayin,
   platformMarginUsdtPayout,
   rateAdminIn,
@@ -29,7 +29,7 @@ describe('balance-v2 (spec Block 5)', () => {
     expect(debit).toBeCloseTo(223.4, 1);
     const margin = platformMarginUsdtPayin(10_000, rt, ra);
     expect(margin).toBeCloseTo(8.51, 2);
-    expect(platformMarginUah(margin, P)).toBeCloseTo(margin * P, 5);
+    expect(platformMarginLocal(margin, P)).toBeCloseTo(margin * P, 5);
   });
 
   it('Pay-Out example: trader credit & platform margin', () => {
@@ -41,16 +41,16 @@ describe('balance-v2 (spec Block 5)', () => {
     expect(credit).toBeCloseTo(203.48, 2);
     const margin = platformMarginUsdtPayout(9_000, ra, rt);
     expect(margin).toBeCloseTo(3.74, 2);
-    // Doc rounds intermediate USDT margin; UAH leg is margin_usdt × P.
-    expect(platformMarginUah(margin, P)).toBeCloseTo(margin * P, 5);
+    // Doc rounds intermediate USDT margin; local fiat leg is margin_usdt × P.
+    expect(platformMarginLocal(margin, P)).toBeCloseTo(margin * P, 5);
   });
 
   it('merchant Pay-In credit uses fraction', () => {
-    expect(creditUahMerchantPayin(10_000, 0.05)).toBe(9_500);
+    expect(creditFiatMerchantPayin(10_000, 0.05)).toBe(9_500);
   });
 
   it('merchant Pay-Out debit uses fraction', () => {
-    expect(debitUahMerchantPayout(9_000, 0.02)).toBeCloseTo(9_180, 6);
+    expect(debitFiatMerchantPayout(9_000, 0.02)).toBeCloseTo(9_180, 6);
   });
 
   it('percentToFraction matches commission tiers stored as percent', () => {

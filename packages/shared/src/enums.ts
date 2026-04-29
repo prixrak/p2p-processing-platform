@@ -23,6 +23,7 @@ export enum PayOutOrderStatus {
 
 export enum UserRole {
   TRADER = 'TRADER',
+  PAYOUT_TRADER = 'PAYOUT_TRADER',
   ADMIN = 'ADMIN',
   SUPPORT = 'SUPPORT',
   MERCHANT = 'MERCHANT',

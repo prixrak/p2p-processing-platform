@@ -51,7 +51,10 @@ export class UsersController {
   @ApiOperation({ summary: 'Create user (admin/owner)' })
   @Audited(AuditAction.CREATE_USER, AuditEntityType.User)
   async create(@Body() dto: CreateUserDto) {
-    return this.usersService.create(dto.email, dto.password, dto.role);
+    return this.usersService.create(dto.email, dto.password, dto.role, {
+      countryId: dto.countryId,
+      payoutRate: dto.payoutRate,
+    });
   }
 
   @Get(':id')

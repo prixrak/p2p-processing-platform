@@ -12,6 +12,7 @@ import {
   CreditCard,
   CircleDollarSign,
   GitFork,
+  Percent,
 } from 'lucide-react';
 import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
@@ -25,6 +26,7 @@ const navItems: NavItem[] = [
   { label: 'Orders', href: '/admin/orders', icon: ArrowLeftRight },
   { label: 'Treasury', href: '/admin/treasury', icon: CircleDollarSign },
   { label: 'Cascade', href: '/admin/cascade', icon: GitFork },
+  { label: 'Pay-Out pool', href: '/admin/payout-pool', icon: Percent },
   { label: 'Settlements', href: '/admin/settlements', icon: Landmark },
   { label: 'Referrals', href: '/admin/referrals', icon: UserPlus },
   { label: 'Countries', href: '/admin/countries', icon: Globe },

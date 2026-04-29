@@ -214,7 +214,7 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
         <header
           className={clsx(
             'flex h-16 shrink-0 items-center gap-3 border-b border-border-primary bg-surface-secondary/50 px-4 backdrop-blur-sm sm:px-6',
-            role === 'trader' ? '' : 'lg:hidden',
+            role === 'trader' || role === 'payout-trader' ? '' : 'lg:hidden',
           )}
         >
           <button

@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { BalanceTransactionType, Prisma } from '@prisma/client';
+import { TelegramService } from '../telegram/telegram.service';
 
 export interface CreateBalanceTxParams {
   traderId: string;
@@ -25,7 +26,10 @@ export interface ListBalanceTxFilters {
 export class BalanceTransactionsService {
   private readonly logger = new Logger(BalanceTransactionsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly telegram: TelegramService,
+  ) {}
 
   /**
    * Record a balance transaction.
@@ -50,6 +54,15 @@ export class BalanceTransactionsService {
       `BalanceTx: ${params.type} ${params.amount} ${params.currency} trader=${params.traderId} ref=${params.referenceId ?? '-'}`,
     );
 
+    if (params.currency === 'USDT') {
+      this.telegram.scheduleTraderSettlementHandbookAlerts({
+        traderId: params.traderId,
+        balanceTxType: params.type,
+        topUpAmountUsdt:
+          params.type === BalanceTransactionType.TOP_UP ? params.amount : undefined,
+      });
+    }
+
     return record;
   }
 
@@ -66,7 +79,7 @@ export class BalanceTransactionsService {
       if (filters.dateTo) where.createdAt.lte = new Date(filters.dateTo);
     }
 
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.balanceTransaction.findMany({
         where,
         skip,
@@ -76,6 +89,30 @@ export class BalanceTransactionsService {
       }),
       this.prisma.balanceTransaction.count({ where }),
     ]);
+
+    const refIds = rows
+      .filter((r) => r.type === BalanceTransactionType.TOP_UP && r.referenceId)
+      .map((r) => r.referenceId!);
+    let depById = new Map<string, { status: string }>();
+    if (refIds.length > 0) {
+      const deps = await this.prisma.walletDeposit.findMany({
+        where: { traderId, id: { in: refIds } },
+        select: { id: true, status: true },
+      });
+      depById = new Map(deps.map((d) => [d.id, d]));
+    }
+
+    const data = rows.map((row) => {
+      const dep =
+        row.type === BalanceTransactionType.TOP_UP && row.referenceId
+          ? depById.get(row.referenceId)
+          : undefined;
+      return {
+        ...row,
+        /** When this TOP_UP row links to an on-chain monitored deposit, echo chain status (legacy rows show null). */
+        on_chain_deposit_status: dep?.status ?? null,
+      };
+    });
 
     return { data, total, page, limit };
   }
@@ -156,7 +193,19 @@ export class BalanceTransactionsService {
       );
 
       return txRecord;
-    });
+    })
+      .then((txRecord) => {
+        if (params.currency === 'USDT') {
+          this.telegram.scheduleTraderSettlementHandbookAlerts({
+            traderId: params.traderId,
+            balanceTxType:
+              params.type === 'MANUAL_CREDIT'
+                ? BalanceTransactionType.MANUAL_CREDIT
+                : BalanceTransactionType.MANUAL_DEBIT,
+          });
+        }
+        return txRecord;
+      });
   }
 
   async findAll(filters: ListBalanceTxFilters, page = 1, limit = 50) {

@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 type ExchangeStatus = {
-  parserRateUaPerUsdt: number | null;
+  primaryPairParserFiatPerUsdt: number | null;
   cacheUpdatedAt: string | null;
   lastSuccessAt: string | null;
   stale: boolean;
@@ -20,19 +20,19 @@ type ExchangeStatus = {
 
 type IncomeSummary = {
   totalIncomeUsdt: number;
-  totalIncomeUah: number;
+  totalIncomeLocal: number;
   rowCount: number;
   byOrderType: Array<{
     order_type: string;
     income_usdt: number;
-    income_uah: number;
+    income_local: number;
     count: number;
   }>;
   topMerchants?: Array<{
     merchant_id: string;
     merchant_name: string;
     income_usdt: number;
-    income_uah: number;
+    income_local: number;
     count: number;
   }>;
 };
@@ -45,11 +45,11 @@ type OperationsSummary = {
   conversion_payin_pct: number;
   conversion_payout_pct: number;
   conversion_overall_pct: number;
-  turnover_uah_from_income_ledger: number;
+  turnover_local_from_income_ledger: number;
   sum_income_usdt_in_range: number;
-  sum_income_uah_booked_in_range: number;
-  reference_income_uah_at_current_parser: number | null;
-  current_parser_ua_per_usdt: number | null;
+  sum_income_local_booked_in_range: number;
+  reference_income_local_at_current_parser: number | null;
+  current_parser_fiat_per_usdt: number | null;
   trader_rate_bonus_usdt: Array<{
     trader_id: string;
     trader_email: string;
@@ -165,14 +165,14 @@ export default function AdminTreasuryPage() {
       </div>
 
       <section className="rounded-xl border border-border-subtle bg-bg-secondary p-4 space-y-2">
-        <h2 className="text-sm font-semibold text-text-primary">Binance P2P parser (UAH / USDT)</h2>
+        <h2 className="text-sm font-semibold text-text-primary">Binance P2P parser (primary fiat pair)</h2>
         {xrLoading ? (
           <p className="text-sm text-text-muted">Loading…</p>
         ) : xr ? (
           <div className="text-sm space-y-1 font-mono">
             <p>
               <span className="text-text-muted">Rate:</span>{' '}
-              {xr.parserRateUaPerUsdt ?? '—'}
+              {xr.primaryPairParserFiatPerUsdt ?? '—'}
             </p>
             <p>
               <span className="text-text-muted">Cache updated:</span>{' '}
@@ -215,9 +215,9 @@ export default function AdminTreasuryPage() {
               </p>
             </div>
             <div>
-              <p className="text-text-muted">Total UAH (snapshot)</p>
+              <p className="text-text-muted">Total local fiat (booked)</p>
               <p className="font-mono text-text-primary">
-                {summary.totalIncomeUah.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                {summary.totalIncomeLocal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
               </p>
             </div>
             <div>
@@ -226,7 +226,7 @@ export default function AdminTreasuryPage() {
             </div>
             {summary.byOrderType.map((r) => (
               <div key={r.order_type} className="sm:col-span-3 text-xs text-text-secondary">
-                {r.order_type}: {r.income_usdt.toFixed(4)} USDT / {r.income_uah.toFixed(2)} UAH ({r.count}{' '}
+                {r.order_type}: {r.income_usdt.toFixed(4)} USDT / {r.income_local.toFixed(2)} local fiat ({r.count}{' '}
                 orders)
               </div>
             ))}
@@ -253,7 +253,7 @@ export default function AdminTreasuryPage() {
       ) : null}
 
       <section className="rounded-xl border border-border-subtle bg-bg-secondary p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-text-primary">Operations & conversion (Block 5 §6.4)</h2>
+        <h2 className="text-sm font-semibold text-text-primary">Operations & conversion (Block 5 section 6.4)</h2>
         <div className="flex flex-wrap gap-2 items-end">
           <div>
             <label className="text-xs text-text-muted block mb-1">From</label>
@@ -287,13 +287,16 @@ export default function AdminTreasuryPage() {
               {ops.conversion_payout_pct.toFixed(1)}%)
             </p>
             <p>Overall funnel: {ops.conversion_overall_pct.toFixed(1)}%</p>
-            <p>Turnover UAH (from platform_income rows): {ops.turnover_uah_from_income_ledger.toFixed(2)}</p>
+            <p>
+              Turnover local fiat (from platform_income rows):{' '}
+              {ops.turnover_local_from_income_ledger.toFixed(2)}
+            </p>
             <p>Income USDT (range): {ops.sum_income_usdt_in_range.toFixed(6)}</p>
-            <p>Income UAH booked (range): {ops.sum_income_uah_booked_in_range.toFixed(2)}</p>
+            <p>Income local fiat booked (range): {ops.sum_income_local_booked_in_range.toFixed(2)}</p>
             <p>
               Reference: income USDT × current P ≈{' '}
-              {ops.reference_income_uah_at_current_parser != null
-                ? `${ops.reference_income_uah_at_current_parser.toFixed(2)} UAH (P=${ops.current_parser_ua_per_usdt ?? '—'})`
+              {ops.reference_income_local_at_current_parser != null
+                ? `${ops.reference_income_local_at_current_parser.toFixed(2)} local fiat (P=${ops.current_parser_fiat_per_usdt ?? '—'})`
                 : '—'}
             </p>
             <div className="pt-2">

@@ -1,14 +1,20 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsUUID, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AssignToTraderDto {
   @ApiProperty({ description: 'Order UUID' })
-  @IsString()
+  @IsUUID()
   orderId!: string;
 
-  @ApiProperty({ description: 'Trader profile UUID' })
-  @IsString()
-  traderId!: string;
+  @ApiPropertyOptional({ description: 'Standard trader profile UUID (pool A)' })
+  @ValidateIf((o) => !o.payoutTraderId)
+  @IsUUID()
+  traderId?: string;
+
+  @ApiPropertyOptional({ description: 'Pay-Out specialist profile UUID (pool B)' })
+  @ValidateIf((o) => !o.traderId)
+  @IsUUID()
+  payoutTraderId?: string;
 }
 
 export class TraderTakeOrderDto {

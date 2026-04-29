@@ -36,3 +36,17 @@ export function formatDateFull(ts: number): string {
 export function shortId(id: string): string {
   return id.slice(0, 8) + '...';
 }
+
+/** Compact duration from elapsed whole seconds (for pool age / timers). */
+export function formatDurationShort(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  if (h < 48) return `${h}h ${rm}m`;
+  const d = Math.floor(h / 24);
+  const rh = h % 24;
+  return `${d}d ${rh}h`;
+}

@@ -1,5 +1,5 @@
 /**
- * Balance model v2 (Block 5): parser rate P (UAH per 1 USDT), trader rate adjustments,
+ * Balance model v2 (Block 5): parser rate P (fiat per 1 USDT), trader rate adjustments,
  * merchant commission as fraction of amount, platform margin in USDT.
  * Percent inputs from DB (e.g. 5 meaning 5%) are converted via percentToFraction.
  */
@@ -26,39 +26,40 @@ export function rateAdminOut(parserRate: number, merchantPayoutCommissionFractio
   return parserRate * (1 - merchantPayoutCommissionFraction);
 }
 
-export function debitUsdtPayin(amountUah: number, rateTraderInVal: number): number {
-  return amountUah / rateTraderInVal;
+export function debitUsdtPayin(amountFiat: number, rateTraderInVal: number): number {
+  return amountFiat / rateTraderInVal;
 }
 
-export function creditUsdtPayout(amountUah: number, rateTraderOutVal: number): number {
-  return amountUah / rateTraderOutVal;
+export function creditUsdtPayout(amountFiat: number, rateTraderOutVal: number): number {
+  return amountFiat / rateTraderOutVal;
 }
 
-export function creditUahMerchantPayin(amountUah: number, merchantCommissionFraction: number): number {
-  return amountUah * (1 - merchantCommissionFraction);
+export function creditFiatMerchantPayin(amountFiat: number, merchantCommissionFraction: number): number {
+  return amountFiat * (1 - merchantCommissionFraction);
 }
 
-export function debitUahMerchantPayout(amountUah: number, merchantCommissionFraction: number): number {
-  return amountUah * (1 + merchantCommissionFraction);
+export function debitFiatMerchantPayout(amountFiat: number, merchantCommissionFraction: number): number {
+  return amountFiat * (1 + merchantCommissionFraction);
 }
 
 export function platformMarginUsdtPayin(
-  amountUah: number,
+  amountFiat: number,
   rateTraderInVal: number,
   rateAdminInVal: number,
 ): number {
-  return amountUah / rateTraderInVal - amountUah / rateAdminInVal;
+  return amountFiat / rateTraderInVal - amountFiat / rateAdminInVal;
 }
 
 export function platformMarginUsdtPayout(
-  amountUah: number,
+  amountFiat: number,
   rateAdminOutVal: number,
   rateTraderOutVal: number,
 ): number {
-  return amountUah / rateAdminOutVal - amountUah / rateTraderOutVal;
+  return amountFiat / rateAdminOutVal - amountFiat / rateTraderOutVal;
 }
 
-export function platformMarginUah(marginUsdt: number, parserRate: number): number {
+/** Platform margin booked in order fiat (margin_usdt × parser_rate). */
+export function platformMarginLocal(marginUsdt: number, parserRate: number): number {
   return marginUsdt * parserRate;
 }
 

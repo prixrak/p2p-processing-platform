@@ -150,7 +150,7 @@ export default function ReferralStatisticsPage() {
 }
 
 function TraderCard({ trader }: { trader: TraderStat }) {
-  const uahBalance = trader.balances.find((b) => b.currency === 'UAH');
+  const primaryFiatBalanceRow = trader.balances.find((b) => b.currency === 'UAH');
   const usdtBalance = trader.balances.find((b) => b.currency === 'USDT');
 
   return (
@@ -173,8 +173,12 @@ function TraderCard({ trader }: { trader: TraderStat }) {
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Metric
           icon={<Wallet className="h-3.5 w-3.5 text-text-muted" />}
-          label="Balance UAH"
-          value={formatCurrency(uahBalance?.amount ?? 0, 'UAH')}
+          label={
+            primaryFiatBalanceRow?.currency
+              ? `Balance (${primaryFiatBalanceRow.currency})`
+              : 'Fiat balance'
+          }
+          value={formatCurrency(primaryFiatBalanceRow?.amount ?? 0, primaryFiatBalanceRow?.currency ?? 'UAH')}
         />
         <Metric
           icon={<Wallet className="h-3.5 w-3.5 text-text-muted" />}

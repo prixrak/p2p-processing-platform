@@ -16,6 +16,7 @@ import {
   Globe,
   CreditCard,
   GitFork,
+  Percent,
 } from 'lucide-react';
 import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
@@ -31,6 +32,7 @@ const navItems: NavItem[] = [
   { label: 'Orders', href: '/owner/orders', icon: FileText },
   { label: 'Directions', href: '/owner/directions', icon: ArrowLeftRight },
   { label: 'Cascade', href: '/owner/cascade', icon: GitFork },
+  { label: 'Pay-Out pool', href: '/owner/payout-pool', icon: Percent },
   { label: 'Currencies', href: '/owner/currencies', icon: Coins },
   { label: 'Banks', href: '/owner/banks', icon: Building2 },
   { label: 'Countries', href: '/owner/countries', icon: Globe },

@@ -18,11 +18,11 @@ interface BalanceRow {
 interface BalanceSummary {
   dateFrom: string | null;
   dateTo: string | null;
-  payin_volume_uah_paid: number;
-  payout_volume_uah_completed: number;
-  payin_commission_uah: number;
-  payout_commission_uah_on_completed: number;
-  payout_commission_uah_on_all_created_in_period: number;
+  payin_volume_fiat_paid: number;
+  payout_volume_fiat_completed: number;
+  payin_commission_fiat: number;
+  payout_commission_fiat_on_completed: number;
+  payout_commission_fiat_on_all_created_in_period: number;
 }
 
 interface MerchantBalanceTx {
@@ -35,6 +35,17 @@ interface MerchantBalanceTx {
   createdAt: string;
 }
 
+interface MerchantSettlementRow {
+  id: string;
+  amount: string | number;
+  currency: string;
+  manualRate: string | number | null;
+  usdtEquivalent: string | number | null;
+  usdtAddress: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
 const TX_LABEL: Record<string, string> = {
   PAYIN_CREDIT: 'Pay-In credit',
   PAYOUT_DEBIT: 'Pay-Out debit',
@@ -42,6 +53,7 @@ const TX_LABEL: Record<string, string> = {
   MANUAL_CREDIT: 'Manual credit',
   MANUAL_DEBIT: 'Manual debit',
   TOP_UP: 'Top-up',
+  SETTLEMENT: 'Withdrawal settlement',
 };
 
 export default function MerchantBalancesPage() {
@@ -86,10 +98,70 @@ export default function MerchantBalancesPage() {
       ),
   });
 
+  const { data: settlementResp, isLoading: settlementLoading } = useQuery({
+    queryKey: ['merchant', 'settlements-history'],
+    queryFn: () =>
+      api.get<{ data: MerchantSettlementRow[]; total: number }>(
+        internalPaths.merchantSettlements('page=1&limit=50'),
+      ),
+  });
+
   const txList = txData?.data ?? [];
   const txTotal = txData?.total ?? 0;
   const txLimit = txData?.limit ?? 25;
   const txTotalPages = Math.ceil(txTotal / txLimit);
+
+  const settlementsList = settlementResp?.data ?? [];
+
+  const settlementColumns = [
+    {
+      key: 'amount',
+      header: 'Fiat debited',
+      className: 'text-end font-mono text-sm',
+      render: (r: MerchantSettlementRow) => (
+        <span>
+          {Number(r.amount).toLocaleString()} {r.currency}
+        </span>
+      ),
+    },
+    {
+      key: 'rate',
+      header: 'Manual rate',
+      render: (r: MerchantSettlementRow) => (
+        <span className="font-mono text-xs text-text-secondary">
+          {r.manualRate != null ? Number(r.manualRate).toLocaleString() : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'usdt',
+      header: 'USDT sent',
+      className: 'text-end font-mono text-xs',
+      render: (r: MerchantSettlementRow) => (
+        <span>
+          {r.usdtEquivalent != null ? Number(r.usdtEquivalent).toLocaleString() : '—'} USDT
+        </span>
+      ),
+    },
+    {
+      key: 'address',
+      header: 'Recorded address',
+      render: (r: MerchantSettlementRow) => (
+        <span className="font-mono text-[10px] break-all text-text-muted max-w-[200px] inline-block">
+          {r.usdtAddress ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'createdAt',
+      header: 'Recorded at',
+      render: (r: MerchantSettlementRow) => (
+        <span className="text-xs text-text-muted">
+          {new Date(r.createdAt).toLocaleString('en-US')}
+        </span>
+      ),
+    },
+  ];
 
   const txColumns = [
     {
@@ -137,7 +209,8 @@ export default function MerchantBalancesPage() {
           Balances
         </h1>
         <p className="text-sm text-text-muted mt-1">
-          UAH balances, period volumes and commissions, and balance transaction history.
+          Fiat balances by currency code; period totals sum amounts in each order currency without FX conversion.
+          Settlements, commissions shown below use the same nominal fiat units. Full ledger history follows.
         </p>
       </div>
 
@@ -199,24 +272,38 @@ export default function MerchantBalancesPage() {
           <div className="grid gap-2 sm:grid-cols-2 text-sm">
             <div>
               <p className="text-text-muted text-xs">Pay-In volume (PAID)</p>
-              <p className="font-mono">{summary.payin_volume_uah_paid.toLocaleString()} UAH</p>
+              <p className="font-mono">{summary.payin_volume_fiat_paid.toLocaleString()} (fiat units)</p>
             </div>
             <div>
               <p className="text-text-muted text-xs">Pay-Out volume (COMPLETED)</p>
-              <p className="font-mono">{summary.payout_volume_uah_completed.toLocaleString()} UAH</p>
+              <p className="font-mono">{summary.payout_volume_fiat_completed.toLocaleString()} (fiat units)</p>
             </div>
             <div>
               <p className="text-text-muted text-xs">Pay-In commission (platform)</p>
-              <p className="font-mono">{summary.payin_commission_uah.toLocaleString()} UAH</p>
+              <p className="font-mono">{summary.payin_commission_fiat.toLocaleString()} (fiat units)</p>
             </div>
             <div>
               <p className="text-text-muted text-xs">Pay-Out commission (completed)</p>
               <p className="font-mono">
-                {summary.payout_commission_uah_on_completed.toLocaleString()} UAH
+                {summary.payout_commission_fiat_on_completed.toLocaleString()} (fiat units)
               </p>
             </div>
           </div>
         )}
+      </section>
+
+      <section className="rounded-xl border border-border-subtle bg-bg-secondary p-4 space-y-3">
+        <h2 className="text-sm font-semibold text-text-primary">Withdrawal settlements</h2>
+        <p className="text-xs text-text-muted leading-relaxed">
+          Fiat rows booked when operators confirm payouts (manual FX + USDT). Requests use your support
+          channel outside this cabinet.
+        </p>
+        <DataTable
+          columns={settlementColumns}
+          data={settlementsList}
+          isLoading={settlementLoading}
+          emptyMessage="No settlements booked yet"
+        />
       </section>
 
       <section className="rounded-xl border border-border-subtle bg-bg-secondary p-4 space-y-3">

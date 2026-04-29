@@ -152,6 +152,9 @@ describe('isValidPayOutTransition', () => {
 
   it('matches PAYOUT_TRANSITIONS for sample valid paths', () => {
     expect(isValidPayOutTransition(PayOutOrderStatus.PENDING, PayOutOrderStatus.NEW)).toBe(true);
+    expect(isValidPayOutTransition(PayOutOrderStatus.PENDING, PayOutOrderStatus.PROCESSING)).toBe(
+      true,
+    );
     expect(isValidPayOutTransition(PayOutOrderStatus.NEW, PayOutOrderStatus.PROCESSING)).toBe(
       true,
     );
@@ -159,6 +162,9 @@ describe('isValidPayOutTransition', () => {
       isValidPayOutTransition(PayOutOrderStatus.PROCESSING, PayOutOrderStatus.COMPLETED),
     ).toBe(true);
     expect(isValidPayOutTransition(PayOutOrderStatus.PROCESSING, PayOutOrderStatus.FAILED)).toBe(
+      true,
+    );
+    expect(isValidPayOutTransition(PayOutOrderStatus.PROCESSING, PayOutOrderStatus.PENDING)).toBe(
       true,
     );
   });

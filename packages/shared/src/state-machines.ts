@@ -24,9 +24,19 @@ export const PAYIN_TRANSITIONS: Record<PayInOrderStatus, PayInOrderStatus[]> = {
 };
 
 export const PAYOUT_TRANSITIONS: Record<PayOutOrderStatus, PayOutOrderStatus[]> = {
-  [PayOutOrderStatus.PENDING]: [PayOutOrderStatus.NEW, PayOutOrderStatus.UPLOAD_FAILED],
+  // PROCESSING: Pay-Out specialist may take pool orders directly into active processing (PDF cabinet).
+  [PayOutOrderStatus.PENDING]: [
+    PayOutOrderStatus.NEW,
+    PayOutOrderStatus.UPLOAD_FAILED,
+    PayOutOrderStatus.PROCESSING,
+  ],
   [PayOutOrderStatus.NEW]: [PayOutOrderStatus.PROCESSING],
-  [PayOutOrderStatus.PROCESSING]: [PayOutOrderStatus.COMPLETED, PayOutOrderStatus.FAILED],
+  // PENDING: specialist “fail” can return a pool B order to the shared queue (config-driven).
+  [PayOutOrderStatus.PROCESSING]: [
+    PayOutOrderStatus.COMPLETED,
+    PayOutOrderStatus.FAILED,
+    PayOutOrderStatus.PENDING,
+  ],
   [PayOutOrderStatus.COMPLETED]: [],
   [PayOutOrderStatus.FAILED]: [],
   [PayOutOrderStatus.UPLOAD_FAILED]: [],

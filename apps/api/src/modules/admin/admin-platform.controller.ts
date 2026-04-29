@@ -37,14 +37,14 @@ export class AdminPlatformController {
 
   @Get('exchange-rate')
   @ApiOperation({
-    summary: 'Parser USDT/UAH status (Redis + last log sample, Block 5 §6.4)',
+    summary: 'Primary Binance P2P pair parser status (Redis + last log sample, Block 5 section 6.4)',
   })
   getExchangeRateStatus() {
     return this.exchangeRate.getStatusForAdmin();
   }
 
   @Get('income/summary')
-  @ApiOperation({ summary: 'Aggregate platform_income (USDT + UAH)' })
+  @ApiOperation({ summary: 'Aggregate platform_income (USDT + booked local fiat)' })
   @ApiQuery({ name: 'dateFrom', required: false })
   @ApiQuery({ name: 'dateTo', required: false })
   incomeSummary(
@@ -59,7 +59,7 @@ export class AdminPlatformController {
   @Get('operations/summary')
   @ApiOperation({
     summary:
-      'Volumes, conversion, trader rate-bonus USDT estimate, reference UAH at current parser (Block 5 §6.4)',
+      'Volumes, conversion, trader rate-bonus USDT estimate, reference local fiat at current parser P (Block 5 section 6.4)',
   })
   @ApiQuery({ name: 'dateFrom', required: false })
   @ApiQuery({ name: 'dateTo', required: false })
@@ -69,7 +69,7 @@ export class AdminPlatformController {
   ) {
     const from = dateFrom ? new Date(dateFrom) : undefined;
     const to = dateTo ? new Date(dateTo) : undefined;
-    const p = await this.exchangeRate.getParserRateUaPerUsdt();
+    const p = await this.exchangeRate.getCachedParserFiatPerUsdt('UAH');
     return this.treasury.operationsSummary(from, to, p);
   }
 

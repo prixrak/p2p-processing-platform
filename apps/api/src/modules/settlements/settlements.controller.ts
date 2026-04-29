@@ -43,6 +43,12 @@ export class SettlementsController {
     return this.settlementsService.create(adminId, dto);
   }
 
+  @Get('payout-specialist-options')
+  @ApiOperation({ summary: 'Pay-Out specialists dropdown (balance + email)' })
+  payoutSpecialistOptions() {
+    return this.settlementsService.listPayoutSpecialistOptions();
+  }
+
   @Get()
   @ApiOperation({ summary: 'List settlements with filters' })
   @ApiQuery({ name: 'page', required: false, type: Number })

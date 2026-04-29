@@ -16,6 +16,7 @@ import type { TraderSelfTrc20Dto } from './dto/trader-self-trc20.dto';
 import type { TraderSelfErc20Dto } from './dto/trader-self-erc20.dto';
 import type { UpdateTraderCascadeDto } from './dto/update-trader-cascade.dto';
 import { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
+import { PlatformSettingsService, PLATFORM_SETTING_TRADER_PAYIN_LOW_CAPACITY_ALERT_THRESHOLD_USDT } from '../platform-settings/platform-settings.service';
 import {
   CASCADE_TRAFFIC_PERCENT_ASSIGNMENT_NOTE,
   CASCADE_TRAFFIC_PERCENT_POLICY_TEXT,
@@ -78,6 +79,7 @@ export class TradersService {
     private readonly prisma: PrismaService,
     private readonly balanceTxService: BalanceTransactionsService,
     private readonly cascadeCoverageCache: CascadeRedisStateService,
+    private readonly platformSettings: PlatformSettingsService,
   ) {}
 
   /**
@@ -624,12 +626,23 @@ export class TradersService {
     const displayOwnUsdt = Math.max(0, balanceUsdt);
     const availableForPayinUsdt = balanceUsdt + overdraftLimit;
 
+    const thresholdRow = await this.platformSettings.findOne(
+      PLATFORM_SETTING_TRADER_PAYIN_LOW_CAPACITY_ALERT_THRESHOLD_USDT,
+    );
+    let payin_low_capacity_alert_threshold_usdt = 200;
+    const parsedThr = Number(thresholdRow.value);
+    if (Number.isFinite(parsedThr) && parsedThr >= 0) {
+      payin_low_capacity_alert_threshold_usdt = parsedThr;
+    }
+
     return {
       trader_id: profile.id,
       balance_usdt: balanceUsdt,
       overdraft_limit_usdt: overdraftLimit,
       display_own_usdt: displayOwnUsdt,
       available_for_payin_usdt: availableForPayinUsdt,
+      payin_low_capacity_alert_threshold_usdt,
+      low_payin_capacity_alert: availableForPayinUsdt <= payin_low_capacity_alert_threshold_usdt,
       work_mode: overdraftLimit > 0 ? 'OVERDRAFT' : 'BALANCE',
       usdt_trc20_deposit_address: profile.usdtTrc20DepositAddress,
       usdt_erc20_deposit_address: profile.usdtErc20DepositAddress,

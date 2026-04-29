@@ -50,6 +50,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       result.traderId = trader?.id ?? null;
     }
 
+    if (user.role === UserRole.PAYOUT_TRADER) {
+      const pt = await this.prisma.payoutTraderProfile.findUnique({
+        where: { userId: user.id },
+        select: { id: true },
+      });
+      result.payoutTraderId = pt?.id ?? null;
+    }
+
     if (user.role === UserRole.MERCHANT) {
       const merchant = await this.prisma.merchant.findUnique({
         where: { userId: user.id },

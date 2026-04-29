@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { UserRole } from '@p2p/shared';
@@ -59,10 +60,25 @@ export class UsersService {
     });
   }
 
-  async create(email: string, password: string, role: UserRole) {
+  async create(
+    email: string,
+    password: string,
+    role: UserRole,
+    opts?: { countryId?: string; payoutRate?: number },
+  ) {
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
       throw new ConflictException('Email already registered');
+    }
+
+    if (role === UserRole.PAYOUT_TRADER) {
+      if (!opts?.countryId) {
+        throw new BadRequestException('countryId is required for Pay-Out specialist users');
+      }
+      const country = await this.prisma.country.findUnique({ where: { id: opts.countryId } });
+      if (!country) {
+        throw new NotFoundException('Country not found');
+      }
     }
 
     const passwordHash = await hashPassword(password);
@@ -73,6 +89,16 @@ export class UsersService {
         passwordHash,
         role,
         ...(role === UserRole.TRADER ? { traderProfile: { create: {} } } : {}),
+        ...(role === UserRole.PAYOUT_TRADER
+          ? {
+              payoutTraderProfile: {
+                create: {
+                  countryId: opts!.countryId!,
+                  payoutRate: opts?.payoutRate ?? 0,
+                },
+              },
+            }
+          : {}),
       },
       select: USER_SELECT,
     });

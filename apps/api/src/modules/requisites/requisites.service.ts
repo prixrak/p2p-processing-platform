@@ -31,11 +31,11 @@ export class RequisitesService {
    * when multiple pay-in orders compete for the same requisite.
    */
   async findAvailable(currency: string, amount: number) {
-    const isUah = currency === 'UAH';
+    const currencyUsesBinanceParserRate = currency === 'UAH';
     let parserRate: number | undefined;
-    if (isUah) {
+    if (currencyUsesBinanceParserRate) {
       try {
-        parserRate = await this.exchangeRate.requireParserRateUaPerUsdt();
+        parserRate = await this.exchangeRate.requireParserRateFiatPerUsdt('UAH');
       } catch {
         return null;
       }
@@ -46,7 +46,7 @@ export class RequisitesService {
         amount,
         currency,
         parserRate,
-        enforceUsdtCapacity: isUah,
+        enforceUsdtCapacity: currencyUsesBinanceParserRate,
       });
 
       if (!picked) return null;

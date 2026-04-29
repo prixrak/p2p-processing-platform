@@ -42,6 +42,7 @@ const roleColors: Record<UserRole, 'blue' | 'green' | 'yellow' | 'red' | 'defaul
   [UserRole.OWNER]: 'red',
   [UserRole.ADMIN]: 'yellow',
   [UserRole.TRADER]: 'green',
+  [UserRole.PAYOUT_TRADER]: 'green',
   [UserRole.MERCHANT]: 'blue',
   [UserRole.SUPPORT]: 'default',
   [UserRole.REFERRAL]: 'default',
@@ -51,6 +52,7 @@ const roleColors: Record<UserRole, 'blue' | 'green' | 'yellow' | 'red' | 'defaul
 const roleOptions = [
   { value: UserRole.ADMIN, label: 'Admin' },
   { value: UserRole.TRADER, label: 'Trader' },
+  { value: UserRole.PAYOUT_TRADER, label: 'Pay-Out specialist' },
   { value: UserRole.MERCHANT, label: 'Merchant' },
   { value: UserRole.SUPPORT, label: 'Support' },
 ];
@@ -59,6 +61,7 @@ const roleLabel: Record<UserRole, string> = {
   [UserRole.OWNER]: 'Owner',
   [UserRole.ADMIN]: 'Admin',
   [UserRole.TRADER]: 'Trader',
+  [UserRole.PAYOUT_TRADER]: 'Payout trader',
   [UserRole.MERCHANT]: 'Merchant',
   [UserRole.SUPPORT]: 'Support',
   [UserRole.REFERRAL]: 'Referral',
@@ -76,6 +79,16 @@ export default function UsersPage() {
     email: '',
     password: '',
     role: UserRole.TRADER,
+    countryId: '',
+    payoutRate: 0.01,
+  });
+
+  const { data: countries } = useQuery({
+    queryKey: ['countries', 'active'],
+    queryFn: () =>
+      api.get<Array<{ id: string; name: string; code: string; currency: string }>>(
+        '/api/countries?activeOnly=true',
+      ),
   });
 
   const { data, isLoading } = useQuery({
@@ -106,16 +119,22 @@ export default function UsersPage() {
   });
 
   const createUser = useMutation({
-    mutationFn: (payload: typeof form) =>
-      api.post(internalPaths.users, {
+    mutationFn: (payload: typeof form) => {
+      const body: Record<string, unknown> = {
         email: payload.email,
         password: payload.password,
         role: payload.role,
-      }),
+      };
+      if (payload.role === UserRole.PAYOUT_TRADER) {
+        body.countryId = payload.countryId;
+        body.payoutRate = payload.payoutRate;
+      }
+      return api.post(internalPaths.users, body);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'users'] });
       setShowCreate(false);
-      setForm({ email: '', password: '', role: UserRole.TRADER });
+      setForm({ email: '', password: '', role: UserRole.TRADER, countryId: '', payoutRate: 0.01 });
     },
   });
 
@@ -268,6 +287,33 @@ export default function UsersPage() {
               setForm({ ...form, role: e.target.value as UserRole })
             }
           />
+          {form.role === UserRole.PAYOUT_TRADER && (
+            <>
+              <Select
+                label="Geo / country"
+                options={
+                  countries?.map((c) => ({
+                    value: c.id,
+                    label: `${c.name} (${c.currency})`,
+                  })) ?? []
+                }
+                value={form.countryId}
+                onChange={(e) => setForm({ ...form, countryId: e.target.value })}
+                placeholder="Select country"
+                required
+              />
+              <Input
+                label="Payout rate (fraction, e.g. 0.01 = 1%)"
+                type="number"
+                step="0.0001"
+                min={0}
+                value={String(form.payoutRate)}
+                onChange={(e) =>
+                  setForm({ ...form, payoutRate: parseFloat(e.target.value) || 0 })
+                }
+              />
+            </>
+          )}
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" type="button" onClick={() => setShowCreate(false)}>
               Cancel

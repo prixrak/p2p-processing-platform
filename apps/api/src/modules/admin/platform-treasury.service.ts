@@ -25,19 +25,19 @@ export class PlatformTreasuryService {
     const [totals, byType, byMerchant] = await Promise.all([
       this.prisma.platformIncome.aggregate({
         where,
-        _sum: { incomeUsdt: true, incomeUah: true },
+        _sum: { incomeUsdt: true, incomeLocal: true },
         _count: { _all: true },
       }),
       this.prisma.platformIncome.groupBy({
         by: ['orderType'],
         where,
-        _sum: { incomeUsdt: true, incomeUah: true },
+        _sum: { incomeUsdt: true, incomeLocal: true },
         _count: { _all: true },
       }),
       this.prisma.platformIncome.groupBy({
         by: ['merchantId'],
         where,
-        _sum: { incomeUsdt: true, incomeUah: true },
+        _sum: { incomeUsdt: true, incomeLocal: true },
         _count: { _all: true },
         orderBy: { _sum: { incomeUsdt: 'desc' } },
         take: 25,
@@ -55,19 +55,19 @@ export class PlatformTreasuryService {
 
     return {
       totalIncomeUsdt: Number(totals._sum.incomeUsdt ?? 0),
-      totalIncomeUah: Number(totals._sum.incomeUah ?? 0),
+      totalIncomeLocal: Number(totals._sum.incomeLocal ?? 0),
       rowCount: totals._count._all,
       byOrderType: byType.map((r) => ({
         order_type: r.orderType,
         income_usdt: Number(r._sum.incomeUsdt ?? 0),
-        income_uah: Number(r._sum.incomeUah ?? 0),
+        income_local: Number(r._sum.incomeLocal ?? 0),
         count: r._count._all,
       })),
       topMerchants: byMerchant.map((r) => ({
         merchant_id: r.merchantId,
         merchant_name: nameById[r.merchantId] ?? r.merchantId,
         income_usdt: Number(r._sum.incomeUsdt ?? 0),
-        income_uah: Number(r._sum.incomeUah ?? 0),
+        income_local: Number(r._sum.incomeLocal ?? 0),
         count: r._count._all,
       })),
     };
@@ -141,12 +141,13 @@ export class PlatformTreasuryService {
   }
 
   /**
-   * Block 5 §6.4 — volumes, conversion funnel, trader rate "bonus" USDT (approx), reference UAH at current P.
+   * Block 5 section 6.4 — volumes, conversion funnel, trader rate "bonus" USDT (approx),
+   * reference local fiat at current parser rate P (implementation may still use a single default pair).
    */
   async operationsSummary(
     dateFrom?: Date,
     dateTo?: Date,
-    currentParserUaPerUsdt?: number | null,
+    currentParserFiatPerUsdt?: number | null,
   ) {
     const range =
       dateFrom || dateTo
@@ -204,7 +205,7 @@ export class PlatformTreasuryService {
       }),
       this.prisma.platformIncome.aggregate({
         where: range ? { createdAt: range } : {},
-        _sum: { incomeUsdt: true, incomeUah: true, orderAmountUah: true },
+        _sum: { incomeUsdt: true, incomeLocal: true, orderAmountLocal: true },
         _count: { _all: true },
       }),
     ]);
@@ -264,8 +265,8 @@ export class PlatformTreasuryService {
     const totalSuccessFunnel = payinPaid + payoutCompleted;
 
     const sumIncomeUsdt = Number(incomeAgg._sum.incomeUsdt ?? 0);
-    const P = currentParserUaPerUsdt ?? null;
-    const referenceIncomeUahAtCurrentParser =
+    const P = currentParserFiatPerUsdt ?? null;
+    const referenceIncomeLocalAtCurrentParser =
       P !== null && Number.isFinite(P) ? sumIncomeUsdt * P : null;
 
     return {
@@ -280,11 +281,11 @@ export class PlatformTreasuryService {
       conversion_overall_pct:
         totalOrdersFunnel > 0 ? (totalSuccessFunnel / totalOrdersFunnel) * 100 : 0,
       platform_income_rows_in_range: incomeAgg._count._all,
-      turnover_uah_from_income_ledger: Number(incomeAgg._sum.orderAmountUah ?? 0),
+      turnover_local_from_income_ledger: Number(incomeAgg._sum.orderAmountLocal ?? 0),
       sum_income_usdt_in_range: sumIncomeUsdt,
-      sum_income_uah_booked_in_range: Number(incomeAgg._sum.incomeUah ?? 0),
-      reference_income_uah_at_current_parser: referenceIncomeUahAtCurrentParser,
-      current_parser_ua_per_usdt: P,
+      sum_income_local_booked_in_range: Number(incomeAgg._sum.incomeLocal ?? 0),
+      reference_income_local_at_current_parser: referenceIncomeLocalAtCurrentParser,
+      current_parser_fiat_per_usdt: P,
       trader_rate_bonus_usdt: traderRateBonusUsdt,
     };
   }

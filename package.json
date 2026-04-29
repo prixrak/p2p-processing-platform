@@ -15,6 +15,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "db:migrate": "npm run migrate --workspace=packages/prisma",
+    "db:migrate:reset": "npm run migrate:reset --workspace=packages/prisma",
     "db:migrate:deploy": "npm run migrate:deploy --workspace=packages/prisma",
     "db:generate": "npm run generate --workspace=packages/prisma",
     "db:seed": "npm run seed --workspace=packages/prisma",

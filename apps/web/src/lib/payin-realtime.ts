@@ -135,12 +135,18 @@ export function usePayinTraderRealtime(queryClient: QueryClient): void {
 }
 
 /**
- * Subscribes to Pay-Out pool + trader order updates (Bearer token).
+ * Subscribes to Pay-Out pool + order updates for standard traders or pool B specialists.
  */
-export function usePayOutTraderRealtime(queryClient: QueryClient): void {
+export function usePayoutCabinetRealtime(
+  queryClient: QueryClient,
+  variant: 'standard' | 'specialist',
+): void {
   useEffect(() => {
     const ac = new AbortController();
     let cancelled = false;
+    const streamPath =
+      variant === 'specialist' ? '/api/payout-trader/payout/stream' : '/api/trader/payout/stream';
+    const qk = variant === 'specialist' ? 'payout-trader' : 'trader';
 
     const run = async () => {
       while (!cancelled) {
@@ -148,19 +154,23 @@ export function usePayOutTraderRealtime(queryClient: QueryClient): void {
         if (!token) break;
 
         try {
-          await consumeSseStream('/api/trader/payout/stream', {
+          await consumeSseStream(streamPath, {
             signal: ac.signal,
             headers: { Authorization: `Bearer ${token}` },
             onMessage: (raw) => {
               try {
                 const evt = JSON.parse(raw) as PayOutOrderRealtimeEvent;
                 if (evt.type === PAYOUT_ORDER_REALTIME_EVENT_TYPE) {
-                  void queryClient.invalidateQueries({ queryKey: ['trader', 'payout-orders'] });
-                  void queryClient.invalidateQueries({ queryKey: ['trader', 'payout-pool'] });
-                  void queryClient.invalidateQueries({ queryKey: ['trader', 'recent-orders'] });
-                  void queryClient.invalidateQueries({ queryKey: ['trader', 'dashboard-stats'] });
-                  void queryClient.refetchQueries({ queryKey: ['trader', 'payout-orders'] });
-                  void queryClient.refetchQueries({ queryKey: ['trader', 'payout-pool'] });
+                  void queryClient.invalidateQueries({ queryKey: [qk, 'payout-orders'] });
+                  void queryClient.invalidateQueries({ queryKey: [qk, 'payout-pool'] });
+                  if (variant === 'specialist') {
+                    void queryClient.invalidateQueries({ queryKey: [qk, 'summary'] });
+                  } else {
+                    void queryClient.invalidateQueries({ queryKey: ['trader', 'recent-orders'] });
+                    void queryClient.invalidateQueries({ queryKey: ['trader', 'dashboard-stats'] });
+                  }
+                  void queryClient.refetchQueries({ queryKey: [qk, 'payout-orders'] });
+                  void queryClient.refetchQueries({ queryKey: [qk, 'payout-pool'] });
                 }
               } catch {
                 /* malformed line */
@@ -185,7 +195,15 @@ export function usePayOutTraderRealtime(queryClient: QueryClient): void {
       cancelled = true;
       ac.abort();
     };
-  }, [queryClient]);
+  }, [queryClient, variant]);
+}
+
+export function usePayOutTraderRealtime(queryClient: QueryClient): void {
+  usePayoutCabinetRealtime(queryClient, 'standard');
+}
+
+export function usePayOutSpecialistRealtime(queryClient: QueryClient): void {
+  usePayoutCabinetRealtime(queryClient, 'specialist');
 }
 
 /**

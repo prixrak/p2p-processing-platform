@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DataTable } from '@/components/ui/data-table';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
+import { Select } from '@/components/ui/select';
 
 interface BalanceTx {
   id: string;
@@ -20,6 +21,8 @@ interface BalanceTx {
   comment: string | null;
   createdAt: string;
   createdBy: { email: string } | null;
+  /** TOP_UP only — set when this row links to a monitored on-chain deposit. */
+  on_chain_deposit_status?: string | null;
 }
 
 interface UsdtWallet {
@@ -30,6 +33,18 @@ interface UsdtWallet {
   work_mode: string;
   usdt_trc20_deposit_address: string | null;
   usdt_erc20_deposit_address: string | null;
+  /** Operator-configured threshold; alert when `available_for_payin_usdt` is at or below this. */
+  payin_low_capacity_alert_threshold_usdt?: number;
+  low_payin_capacity_alert?: boolean;
+}
+
+function topUpFulfillmentLabel(tx: BalanceTx): string {
+  if (tx.type !== 'TOP_UP') return '—';
+  if (tx.on_chain_deposit_status) {
+    const s = tx.on_chain_deposit_status;
+    return s.replace(/_/g, ' ');
+  }
+  return 'Administrative';
 }
 
 const TX_TYPE_LABELS: Record<string, string> = {
@@ -77,6 +92,7 @@ export default function BalanceHistoryPage() {
   const [clearAddr, setClearAddr] = useState(false);
   const [ercAddrInput, setErcAddrInput] = useState('');
   const [ercClear, setErcClear] = useState(false);
+  const [txType, setTxType] = useState<string>('');
 
   const { data: wallet, isLoading: walletLoading } = useQuery({
     queryKey: ['trader', 'usdt-wallet'],
@@ -114,12 +130,13 @@ export default function BalanceHistoryPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['trader', 'balance-transactions', page, currency, dateFrom, dateTo],
+    queryKey: ['trader', 'balance-transactions', page, currency, dateFrom, dateTo, txType],
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: '30' });
       if (currency) params.set('currency', currency);
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
+      if (txType) params.set('type', txType);
       return api.get<{ data: BalanceTx[]; total: number; page: number; limit: number }>(
         `${internalPaths.balanceTransactions}?${params}`,
       );
@@ -129,6 +146,10 @@ export default function BalanceHistoryPage() {
   const txList = data?.data ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / 30);
+
+  const threshold =
+    wallet?.payin_low_capacity_alert_threshold_usdt ?? 200;
+  const showLowCapacityBanner = !!wallet?.low_payin_capacity_alert;
 
   const columns = [
     {
@@ -147,6 +168,13 @@ export default function BalanceHistoryPage() {
             {TX_TYPE_LABELS[tx.type] ?? tx.type}
           </Badge>
         </div>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status / fulfillment',
+      render: (tx: BalanceTx) => (
+        <span className="text-xs text-text-secondary">{topUpFulfillmentLabel(tx)}</span>
       ),
     },
     {
@@ -205,7 +233,7 @@ export default function BalanceHistoryPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
             <DollarSign className="h-6 w-6" /> Balance
@@ -214,9 +242,49 @@ export default function BalanceHistoryPage() {
             USDT capacity for Pay-In assignment and full ledger history
           </p>
         </div>
+        <Button
+          type="button"
+          variant="secondary"
+          className="shrink-0 self-start"
+          onClick={() =>
+            document
+              .getElementById('wallet-deposit-instructions')
+              ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+        >
+          Top up
+        </Button>
       </div>
 
-      <section className="rounded-xl border border-border-subtle bg-bg-secondary p-4 space-y-4">
+      {showLowCapacityBanner ? (
+        <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100 dark:border-amber-400/35">
+          <p className="font-medium">Low remaining capacity</p>
+          <p className="mt-1 text-xs opacity-95 leading-relaxed">
+            Available for Pay-In assignment is{' '}
+            <span className="font-mono">
+              {wallet!.available_for_payin_usdt.toLocaleString()} USDT
+            </span>
+            {Number.isFinite(threshold) ? (
+              <>
+                {' '}
+                (alert at or below{' '}
+                <span className="font-mono">{threshold.toLocaleString()} USDT</span>)
+              </>
+            ) : null}
+            . Consider topping up via{' '}
+            <a href="#wallet-deposit-instructions" className="underline font-medium">
+              deposit instructions
+            </a>{' '}
+            before capacity is exhausted or your overdraft limit is reached (operator notifications
+            may use Telegram when configured).
+          </p>
+        </div>
+      ) : null}
+
+      <section
+        id="wallet-deposit-instructions"
+        className="rounded-xl border border-border-subtle bg-bg-secondary p-4 space-y-4 scroll-mt-24"
+      >
         <h2 className="text-sm font-semibold text-text-primary">USDT wallet (cabinet)</h2>
         {walletLoading || !wallet ? (
           <p className="text-sm text-text-muted">Loading…</p>
@@ -360,6 +428,27 @@ export default function BalanceHistoryPage() {
       </div>
 
       <FilterBar>
+        <div className="w-48">
+          <Select
+            label="Type"
+            options={[
+              { value: '', label: 'All types' },
+              { value: 'TOP_UP', label: 'TOP_UP' },
+              { value: 'PAYIN_DEBIT', label: 'PAYIN_DEBIT' },
+              { value: 'PAYIN_COMMISSION', label: 'PAYIN_COMMISSION' },
+              { value: 'PAYOUT_CREDIT', label: 'PAYOUT_CREDIT' },
+              { value: 'SETTLEMENT', label: 'SETTLEMENT' },
+              { value: 'MANUAL_CREDIT', label: 'MANUAL_CREDIT' },
+              { value: 'MANUAL_DEBIT', label: 'MANUAL_DEBIT' },
+              { value: 'OVERDRAFT_SET', label: 'OVERDRAFT_SET' },
+            ]}
+            value={txType}
+            onChange={(e) => {
+              setTxType(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
         <FilterInput
           label="Currency"
           value={currency}

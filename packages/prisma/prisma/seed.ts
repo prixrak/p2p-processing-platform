@@ -164,6 +164,38 @@ async function main() {
     create: { name: 'Ukraine', code: 'UA', currency: 'UAH' },
   });
 
+  // ─── Pay-Out specialist user (pool B cabinet) ───
+  const payoutCabinetUser = await prisma.user.upsert({
+    where: { email: 'payout@p2p.local' },
+    update: {},
+    create: {
+      email: 'payout@p2p.local',
+      passwordHash,
+      role: 'PAYOUT_TRADER',
+    },
+  });
+
+  const payoutTraderProfileSeed = await prisma.payoutTraderProfile.upsert({
+    where: { userId: payoutCabinetUser.id },
+    update: { countryId: ukraine.id },
+    create: {
+      userId: payoutCabinetUser.id,
+      countryId: ukraine.id,
+      payoutRate: 0,
+      balanceUsdt: 500,
+    },
+  });
+
+  await prisma.payoutTraderTelegramSettings.upsert({
+    where: { payoutTraderId: payoutTraderProfileSeed.id },
+    update: {},
+    create: {
+      payoutTraderId: payoutTraderProfileSeed.id,
+      notifyNewPoolOrder: true,
+      notifySettlement: true,
+    },
+  });
+
   // ─── Payment Methods ───
   const cardP2P = await prisma.paymentMethod.upsert({
     where: { name: 'CARD_P2P' },
@@ -391,9 +423,10 @@ async function main() {
   console.log('  Owner:    owner@p2p.local');
   console.log('  Admin:    admin@p2p.local');
   console.log('  Support:  support@p2p.local');
-  console.log('  Trader:   trader@p2p.local    (payout limits: 100–20000 UAH)');
-  console.log('  Merchant: merchant@p2p.local');
-  console.log('  Referral: referral@p2p.local  (5% commission, trader linked)');
+  console.log('  Trader:         trader@p2p.local    (payout limits: 100–20000 UAH)');
+  console.log('  Pay-Out spec.:  payout@p2p.local   (pool B specialist, UA, 500 USDT)');
+  console.log('  Merchant:       merchant@p2p.local');
+  console.log('  Referral:       referral@p2p.local  (5% commission, trader linked)');
   console.log('');
   console.log('Geo/Payment: Ukraine (UA/UAH) → CARD_P2P (Both), IBAN_P2P (PayIn)');
   console.log('Merchant dir: PAYIN/UAH, tiers: 0–10k=5%, 10k+=4%');

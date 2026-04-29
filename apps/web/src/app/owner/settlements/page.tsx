@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Eye } from 'lucide-react';
+import { Download, Eye, Info } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { SettlementCreateModal } from '@/features/settlements/settlement-create-modal';
@@ -12,16 +13,24 @@ import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Tabs } from '@/components/ui/tabs';
 import { DataTable } from '@/components/ui/data-table';
+import { FilterBar, FilterInput } from '@/components/ui/filters';
+import { Select } from '@/components/ui/select';
+import { format } from 'date-fns';
+import { staffTraderKeys } from '@/features/traders/query-keys';
 
 interface Settlement {
   id: string;
   type: 'CREDIT' | 'DEBIT';
-  amount: number;
+  amount: number | string;
   currency: string;
   note: string | null;
   createdAt: string;
+  manualRate?: number | string | null;
+  usdtEquivalent?: number | string | null;
   admin: { email: string } | null;
   trader: { user: { email: string } } | null;
+  payoutTrader: { user: { email: string } } | null;
+  merchant: { name: string } | null;
 }
 
 interface SettlementsResponse {
@@ -33,6 +42,13 @@ interface SettlementsResponse {
 
 interface SettlementDetail extends Settlement {}
 
+function participantLabel(s: Settlement): string {
+  if (s.merchant?.name) return `Merchant: ${s.merchant.name}`;
+  if (s.payoutTrader?.user?.email) return `Pay-Out specialist: ${s.payoutTrader.user.email}`;
+  if (s.trader?.user?.email) return `Trader: ${s.trader.user.email}`;
+  return '—';
+}
+
 const typeColor: Record<string, 'green' | 'red'> = {
   CREDIT: 'green',
   DEBIT: 'red',
@@ -43,12 +59,76 @@ export default function SettlementsPage() {
   const [page, setPage] = useState(1);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [participantRole, setParticipantRole] = useState<
+    'any' | 'trader' | 'payout' | 'merchant'
+  >('any');
+  const [participantId, setParticipantId] = useState('');
+  const [currency, setCurrency] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
+  const pageSize = 20;
+
+  const { data: traders = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: staffTraderKeys.traderOptions('owner'),
+    queryFn: async () => {
+      const res = await api.get<{
+        data: Array<{ id: string; user: { email: string } }>;
+      }>(`${internalPaths.traders}?page=1&limit=500`);
+      return res.data.map((t) => ({ id: t.id, name: t.user.email }));
+    },
+  });
+
+  const { data: merchants = [] } = useQuery<Array<{ id: string; name: string }>>({
+    queryKey: ['owner', 'merchants-options'],
+    queryFn: async () => {
+      const res = await api.get<{ data: Array<{ id: string; name: string }> }>(
+        `${internalPaths.merchants}?page=1&limit=300`,
+      );
+      return res.data;
+    },
+  });
+
+  const { data: payoutOpts } = useQuery<{ data: Array<{ id: string; email: string }> }>({
+    queryKey: ['settlements', 'payout-specialist-options'],
+    queryFn: () => api.get(internalPaths.settlementsPayoutSpecialistOptions),
+  });
+  const payoutSpecialists = payoutOpts?.data ?? [];
 
   const { data, isLoading } = useQuery({
-    queryKey: ['owner', 'settlements', tab, page],
+    queryKey: [
+      'owner',
+      'settlements',
+      tab,
+      page,
+      participantRole,
+      participantId,
+      currency,
+      dateFrom,
+      dateTo,
+      minAmount,
+      maxAmount,
+    ],
     queryFn: () => {
-      const params = new URLSearchParams({ page: String(page), limit: '20' });
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(pageSize),
+      });
       if (tab !== 'ALL') params.set('type', tab);
+      if (participantRole === 'trader' && participantId.trim()) params.set('traderId', participantId.trim());
+      if (participantRole === 'payout' && participantId.trim()) {
+        params.set('payoutTraderId', participantId.trim());
+      }
+      if (participantRole === 'merchant' && participantId.trim()) {
+        params.set('merchantId', participantId.trim());
+      }
+      if (currency.trim()) params.set('currency', currency.trim().toUpperCase());
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+      if (minAmount.trim()) params.set('minAmount', minAmount.trim());
+      if (maxAmount.trim()) params.set('maxAmount', maxAmount.trim());
+
       return api.get<SettlementsResponse>(`${internalPaths.settlements}?${params}`);
     },
   });
@@ -60,8 +140,106 @@ export default function SettlementsPage() {
   });
 
   const totalPages = data
-    ? Math.max(1, Math.ceil(data.total / (data.limit || 20)))
+    ? Math.max(1, Math.ceil(data.total / (data.limit || pageSize)))
     : 1;
+
+  const rows = data?.data ?? [];
+
+  const csvBlob = useMemo(() => {
+    const header = [
+      'id',
+      'participant',
+      'type',
+      'amount',
+      'currency',
+      'manual_rate',
+      'usdt_equivalent',
+      'created_at',
+    ];
+    const lines = [
+      header.join(','),
+      ...rows.map((row) =>
+        [
+          row.id,
+          `"${participantLabel(row).replace(/"/g, '""')}"`,
+          row.type,
+          typeof row.amount === 'string' ? row.amount : String(row.amount),
+          row.currency,
+          row.manualRate != null ? String(row.manualRate) : '',
+          row.usdtEquivalent != null ? String(row.usdtEquivalent) : '',
+          row.createdAt,
+        ].join(','),
+      ),
+    ];
+    return new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  }, [rows]);
+
+  function downloadCsv() {
+    const url = URL.createObjectURL(csvBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `settlements-${format(new Date(), 'yyyy-MM-dd-HHmm')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function resetParticipant() {
+    setParticipantId('');
+    setPage(1);
+  }
+
+  const participantRoleSelect = (
+    <Select
+      label="Participant"
+      options={[
+        { value: 'any', label: 'Any' },
+        { value: 'trader', label: 'Standard trader' },
+        { value: 'payout', label: 'Pay-Out specialist' },
+        { value: 'merchant', label: 'Merchant' },
+      ]}
+      value={participantRole}
+      onChange={(e) => {
+        setParticipantRole(e.target.value as typeof participantRole);
+        resetParticipant();
+      }}
+    />
+  );
+
+  const participantPick =
+    participantRole === 'any' ? null : participantRole === 'trader' ? (
+      <Select
+        label="Trader"
+        options={[{ value: '', label: '—' }, ...traders.map((t) => ({ value: t.id, label: t.name }))]}
+        value={participantId}
+        onChange={(e) => {
+          setParticipantId(e.target.value);
+          setPage(1);
+        }}
+      />
+    ) : participantRole === 'payout' ? (
+      <Select
+        label="Specialist"
+        options={[
+          { value: '', label: '—' },
+          ...payoutSpecialists.map((p) => ({ value: p.id, label: p.email })),
+        ]}
+        value={participantId}
+        onChange={(e) => {
+          setParticipantId(e.target.value);
+          setPage(1);
+        }}
+      />
+    ) : (
+      <Select
+        label="Merchant"
+        options={[{ value: '', label: '—' }, ...merchants.map((m) => ({ value: m.id, label: m.name }))]}
+        value={participantId}
+        onChange={(e) => {
+          setParticipantId(e.target.value);
+          setPage(1);
+        }}
+      />
+    );
 
   const columns = [
     {
@@ -81,12 +259,10 @@ export default function SettlementsPage() {
       ),
     },
     {
-      key: 'trader',
-      header: 'Trader',
+      key: 'participant',
+      header: 'Participant',
       render: (s: Settlement) => (
-        <span className="text-sm text-text-secondary">
-          {s.trader?.user?.email ?? '—'}
-        </span>
+        <span className="text-sm text-text-secondary">{participantLabel(s)}</span>
       ),
     },
     {
@@ -95,7 +271,7 @@ export default function SettlementsPage() {
       className: 'text-end tabular-nums',
       render: (s: Settlement) => (
         <span className="font-mono text-sm font-medium text-text-primary">
-          {s.amount.toLocaleString()} {s.currency}
+          {Number(s.amount).toLocaleString()} {s.currency}
         </span>
       ),
     },
@@ -110,9 +286,7 @@ export default function SettlementsPage() {
       key: 'date',
       header: 'Created',
       render: (s: Settlement) => (
-        <span className="text-sm text-text-muted">
-          {new Date(s.createdAt).toLocaleString()}
-        </span>
+        <span className="text-sm text-text-muted">{new Date(s.createdAt).toLocaleString()}</span>
       ),
     },
     {
@@ -133,11 +307,41 @@ export default function SettlementsPage() {
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Settlements</h1>
           <p className="mt-1 text-sm text-text-muted">
-            Balance adjustments (credits and debits) for traders
+            Credit/debit bookings for traders, pay-out specialists, and merchants — filter and export below.
           </p>
         </div>
-        <Button onClick={() => setShowForm(true)}>New Settlement</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            className="inline-flex items-center gap-2"
+            disabled={rows.length === 0}
+            onClick={downloadCsv}
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
+          <Button onClick={() => setShowForm(true)}>New Settlement</Button>
+        </div>
       </div>
+
+      <div className="rounded-lg border border-border-subtle bg-bg-secondary/60 px-4 py-3 flex gap-3 text-sm text-text-secondary">
+        <Info className="h-5 w-5 shrink-0 text-accent-blue mt-0.5" />
+        <div>
+          <p className="font-medium text-text-primary">Corrections</p>
+          <p className="mt-1 text-xs leading-relaxed">
+            Incorrect rows stay in the ledger — post offsetting MANUAL CREDIT/DEBIT via{' '}
+            <code className="text-xs bg-bg-primary px-1 rounded">{internalPaths.adminBalanceAdjust}</code>
+            {' '}after picking a trader in{' '}
+            <Link href="/owner/traders" className="underline text-accent-blue">
+              Traders
+            </Link>
+            .
+          </p>
+        </div>
+      </div>
+
+      <div className="md:max-w-sm">{participantRoleSelect}</div>
+      {participantPick ? <div className="max-w-md">{participantPick}</div> : null}
 
       <Tabs
         tabs={[
@@ -146,17 +350,71 @@ export default function SettlementsPage() {
           { key: 'DEBIT', label: 'Debits' },
         ]}
         active={tab}
-        onChange={(k) => { setTab(k); setPage(1); }}
+        onChange={(k) => {
+          setTab(k);
+          setPage(1);
+        }}
       />
+
+      <FilterBar>
+        <FilterInput
+          label="Currency"
+          value={currency}
+          onChange={(v) => {
+            setCurrency(v.toUpperCase());
+            setPage(1);
+          }}
+          placeholder="UAH"
+          className="w-28"
+        />
+        <FilterInput
+          type="date"
+          label="From"
+          value={dateFrom}
+          onChange={(v) => {
+            setDateFrom(v);
+            setPage(1);
+          }}
+          className="w-40"
+        />
+        <FilterInput
+          type="date"
+          label="To"
+          value={dateTo}
+          onChange={(v) => {
+            setDateTo(v);
+            setPage(1);
+          }}
+          className="w-40"
+        />
+        <FilterInput
+          label="Min amount"
+          value={minAmount}
+          onChange={(v) => {
+            setMinAmount(v);
+            setPage(1);
+          }}
+          className="w-28"
+        />
+        <FilterInput
+          label="Max amount"
+          value={maxAmount}
+          onChange={(v) => {
+            setMaxAmount(v);
+            setPage(1);
+          }}
+          className="w-28"
+        />
+      </FilterBar>
 
       <DataTable
         columns={columns}
-        data={data?.data ?? []}
+        data={rows}
         isLoading={isLoading}
         page={page}
         totalPages={totalPages}
         onPageChange={setPage}
-        emptyMessage="No settlements found"
+        emptyMessage="No settlements match filters"
       />
 
       <SettlementCreateModal
@@ -180,12 +438,12 @@ export default function SettlementsPage() {
               <div>
                 <p className="text-xs text-text-muted">Amount</p>
                 <p className="font-mono font-medium text-text-primary">
-                  {details.amount.toLocaleString()} {details.currency}
+                  {Number(details.amount).toLocaleString()} {details.currency}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-text-muted">Trader</p>
-                <p className="text-sm text-text-primary">{details.trader?.user?.email ?? '—'}</p>
+                <p className="text-xs text-text-muted">Participant</p>
+                <p className="text-sm text-text-primary">{participantLabel(details)}</p>
               </div>
               <div>
                 <p className="text-xs text-text-muted">Created By</p>
@@ -197,6 +455,22 @@ export default function SettlementsPage() {
                   {new Date(details.createdAt).toLocaleString()}
                 </p>
               </div>
+              {(details.manualRate != null || details.usdtEquivalent != null) && (
+                <>
+                  <div>
+                    <p className="text-xs text-text-muted">Manual FX</p>
+                    <p className="text-sm font-mono">{Number(details.manualRate ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted">USDT out</p>
+                    <p className="text-sm font-mono">
+                      {details.usdtEquivalent != null
+                        ? `${Number(details.usdtEquivalent).toLocaleString()} USDT`
+                        : '—'}
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
 
             {details.note && (

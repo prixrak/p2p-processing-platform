@@ -11,6 +11,9 @@ import {
   AlertTriangle,
   CheckCircle2,
   Loader2,
+  Wallet,
+  ArrowDownCircle,
+  CircleDollarSign,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +31,9 @@ interface TelegramSettingsApi {
   notifyPayin: boolean;
   notifyPayout: boolean;
   notifyAppeals: boolean;
+  notifyLowPayinCapacity: boolean;
+  notifyTopUpConfirm: boolean;
+  notifyPayinCapacityExhausted: boolean;
   isActive: boolean;
 }
 
@@ -66,8 +72,19 @@ export default function TelegramPage() {
   });
 
   const toggleNotification = useMutation({
-    mutationFn: (update: Partial<Pick<TelegramSettingsApi, 'notifyPayin' | 'notifyPayout' | 'notifyAppeals'>>) =>
-      api.patch(internalPaths.telegramSettings, update),
+    mutationFn: (
+      update: Partial<
+        Pick<
+          TelegramSettingsApi,
+          | 'notifyPayin'
+          | 'notifyPayout'
+          | 'notifyAppeals'
+          | 'notifyLowPayinCapacity'
+          | 'notifyTopUpConfirm'
+          | 'notifyPayinCapacityExhausted'
+        >
+      >,
+    ) => api.patch(internalPaths.telegramSettings, update),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trader', 'telegram'] });
     },
@@ -204,6 +221,70 @@ export default function TelegramPage() {
             <Toggle
               checked={settings?.notifyAppeals ?? false}
               onChange={(checked) => toggleNotification.mutate({ notifyAppeals: checked })}
+              disabled={!isConnected}
+            />
+          </div>
+
+          <div className="pt-4 border-t border-border-subtle">
+            <div className="flex items-center gap-2 mb-3 px-4">
+              <Wallet className="h-4 w-4 text-text-muted" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                Balance & settlements (USDT)
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg px-4 py-4 hover:bg-bg-hover transition-colors">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/10">
+                <ArrowDownCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-text-primary">Low Pay-In capacity</p>
+                <p className="text-xs text-text-muted">
+                  When remaining USDT headroom (balance + overdraft) is at or below the operator threshold
+                </p>
+              </div>
+            </div>
+            <Toggle
+              checked={settings?.notifyLowPayinCapacity ?? true}
+              onChange={(checked) => toggleNotification.mutate({ notifyLowPayinCapacity: checked })}
+              disabled={!isConnected}
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg px-4 py-4 hover:bg-bg-hover transition-colors">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-green/10">
+                <CircleDollarSign className="h-4 w-4 text-accent-green" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-text-primary">Top-up recorded</p>
+                <p className="text-xs text-text-muted">When a USDT top-up is posted to your ledger</p>
+              </div>
+            </div>
+            <Toggle
+              checked={settings?.notifyTopUpConfirm ?? true}
+              onChange={(checked) => toggleNotification.mutate({ notifyTopUpConfirm: checked })}
+              disabled={!isConnected}
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg px-4 py-4 hover:bg-bg-hover transition-colors">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-500/10">
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-text-primary">Pay-In capacity exhausted</p>
+                <p className="text-xs text-text-muted">
+                  When there is no USDT headroom left for Pay-In assignment (you and ops may be notified)
+                </p>
+              </div>
+            </div>
+            <Toggle
+              checked={settings?.notifyPayinCapacityExhausted ?? true}
+              onChange={(checked) => toggleNotification.mutate({ notifyPayinCapacityExhausted: checked })}
               disabled={!isConnected}
             />
           </div>

@@ -74,6 +74,12 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:3001' > apps/web/.env.local
 
 `packages/prisma/.env` is required for the Prisma CLI (`migrate`, `studio`). The root `.env` is used by NestJS when you run `dev:api`.
 
+#### File storage: MinIO vs real AWS S3
+
+The API stores uploads in S3-compatible storage (`FilesService` → `@aws-sdk/client-s3`). By default, `.env.example` points at **MinIO** from `docker compose` (`S3_ENDPOINT=http://localhost:9000`). Create bucket `p2p-files` in the MinIO console if uploads fail with “NoSuchBucket”.
+
+To use **real AWS S3** on your laptop (same behavior as dev/prod): edit `.env` using the commented template in `.env.example` — disable the MinIO `S3_*` lines, set `S3_BUCKET`, `S3_REGION`, and IAM access keys for a **dev-only** bucket, `S3_FORCE_PATH_STYLE=false`, and **do not** set `S3_ENDPOINT`. The MinIO container can stay idle; Postgres and Redis still need `docker compose`.
+
 ### 4. Setup database
 
 ```bash

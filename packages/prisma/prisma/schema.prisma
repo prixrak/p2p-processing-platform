@@ -11,6 +11,7 @@ datasource db {
 
 enum UserRole {
   TRADER
+  PAYOUT_TRADER
   ADMIN
   SUPPORT
   MERCHANT
@@ -33,15 +34,20 @@ model User {
   sessions                    Session[]
   merchant                    Merchant?
   traderProfile               TraderProfile?
+  payoutTraderProfile         PayoutTraderProfile?
   referralProfile             ReferralProfile?
   referrer                    ReferralProfile?     @relation("ReferredUsers", fields: [referredById], references: [id])
   auditLogs                   AuditLog[]
-  settlements                 Settlement[]         @relation("SettlementAdmin")
-  uploadedFiles               File[]
-  balanceTransactionsCreated  BalanceTransaction[] @relation("BalanceTxCreator")
-  platformWithdrawals         PlatformWithdrawal[]
-  coverageNominalsCreated     CoverageNominalSetting[]
-  cascadeSettingsUpdates      CascadeSetting[]
+  settlements                      Settlement[]                    @relation("SettlementAdmin")
+  uploadedFiles                    File[]
+  balanceTransactionsCreated       BalanceTransaction[]            @relation("BalanceTxCreator")
+  platformWithdrawals              PlatformWithdrawal[]
+  coverageNominalsCreated          CoverageNominalSetting[]
+  cascadeSettingsUpdates           CascadeSetting[]
+  payoutPoolSettingsUpdates        PayoutPoolSetting[]             @relation("PayoutPoolSettingUpdater")
+  merchantPayoutPoolAssignments    MerchantPayoutPoolAssignment[] @relation("MerchantPayoutPoolAssignmentCreator")
+  payoutTraderBalanceTxCreated     PayoutTraderBalanceTransaction[] @relation("PayoutTraderBalanceTxCreator")
+  payoutTraderSettlementRequestsResolved PayoutTraderSettlementRequest[] @relation("PayoutTraderSettlementRequestResolver")
 
   @@index([referredById])
   @@map("users")
@@ -96,6 +102,8 @@ model Merchant {
   merchantDirections          MerchantDirection[]
   merchantBalanceTransactions MerchantBalanceTransaction[]
   platformIncomeRows          PlatformIncome[]
+  payoutPoolAssignment        MerchantPayoutPoolAssignment?
+  settlements                  Settlement[]
 
   @@map("merchants")
 }
@@ -175,9 +183,124 @@ model Country {
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
 
-  paymentMethods PaymentMethod[]
+  paymentMethods        PaymentMethod[]
+  payoutTraderProfiles PayoutTraderProfile[]
 
   @@map("countries")
+}
+
+/// Pay-Out specialist (pool B) profile — separate from standard TraderProfile.
+model PayoutTraderProfile {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @unique @map("user_id") @db.Uuid
+  countryId      String   @map("country_id") @db.Uuid
+  balanceUsdt    Decimal  @default(0) @map("balance_usdt") @db.Decimal(18, 6)
+  payoutRate     Decimal  @default(0) @map("payout_rate") @db.Decimal(8, 6)
+  exchangeParser String?  @map("exchange_parser") @db.VarChar(64)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user                User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  country             Country                         @relation(fields: [countryId], references: [id], onDelete: Restrict)
+  payoutOrders        PayoutOrder[]
+  settlements         Settlement[]
+  balanceTransactions PayoutTraderBalanceTransaction[]
+  telegramSettings    PayoutTraderTelegramSettings?
+  settlementRequests  PayoutTraderSettlementRequest[]
+
+  @@map("payout_traders")
+}
+
+enum PayoutTraderSettlementRequestStatus {
+  PENDING
+  FULFILLED
+  REJECTED
+}
+
+model PayoutTraderSettlementRequest {
+  id             String                           @id @default(uuid()) @db.Uuid
+  payoutTraderId String                           @map("payout_trader_id") @db.Uuid
+  amountUsdt     Decimal                          @map("amount_usdt") @db.Decimal(18, 6)
+  note           String?
+  status         PayoutTraderSettlementRequestStatus @default(PENDING)
+  createdAt      DateTime                         @default(now()) @map("created_at")
+  resolvedAt     DateTime?                        @map("resolved_at")
+  resolvedById   String?                          @map("resolved_by_id") @db.Uuid
+
+  payoutTrader PayoutTraderProfile @relation(fields: [payoutTraderId], references: [id], onDelete: Cascade)
+  resolvedBy   User?               @relation("PayoutTraderSettlementRequestResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([payoutTraderId])
+  @@index([status])
+  @@map("payout_trader_settlement_requests")
+}
+
+model PayoutPoolSetting {
+  id                 String   @id @default(uuid()) @db.Uuid
+  poolBGlobalPercent Decimal  @default(0) @map("pool_b_global_percent") @db.Decimal(5, 2)
+  poolTimeoutHours   Int?     @map("pool_timeout_hours")
+  poolTimeoutEnabled Boolean  @default(false) @map("pool_timeout_enabled")
+  /// When true, specialist "fail" from PROCESSING returns the order to pool B (PENDING) without merchant refund.
+  specialistFailReturnsToPool Boolean @default(false) @map("specialist_fail_returns_to_pool")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  updatedById        String?  @map("updated_by_id") @db.Uuid
+
+  updatedBy User? @relation("PayoutPoolSettingUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("payout_pool_settings")
+}
+
+model MerchantPayoutPoolAssignment {
+  id            String   @id @default(uuid()) @db.Uuid
+  merchantId    String   @unique @map("merchant_id") @db.Uuid
+  poolBPercent  Decimal  @default(0) @map("pool_b_percent") @db.Decimal(5, 2)
+  isActive      Boolean  @default(true) @map("is_active")
+  createdById   String?  @map("created_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  merchant  Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  createdBy User?    @relation("MerchantPayoutPoolAssignmentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@map("merchant_payout_pool_assignments")
+}
+
+model PayoutTraderTelegramSettings {
+  id                 String   @id @default(uuid()) @db.Uuid
+  payoutTraderId     String   @unique @map("payout_trader_id") @db.Uuid
+  chatId             String?  @map("chat_id")
+  notifyNewPoolOrder Boolean  @default(true) @map("notify_new_pool_order")
+  notifySettlement   Boolean  @default(true) @map("notify_settlement")
+  isActive           Boolean  @default(false) @map("is_active")
+
+  payoutTrader PayoutTraderProfile @relation(fields: [payoutTraderId], references: [id], onDelete: Cascade)
+
+  @@map("payout_trader_telegram_settings")
+}
+
+enum PayoutTraderBalanceTxType {
+  PAYOUT_CREDIT
+  SETTLEMENT_DEBIT
+  MANUAL_CREDIT
+  MANUAL_DEBIT
+}
+
+model PayoutTraderBalanceTransaction {
+  id             String                   @id @default(uuid()) @db.Uuid
+  payoutTraderId String                   @map("payout_trader_id") @db.Uuid
+  type           PayoutTraderBalanceTxType
+  amount         Decimal                  @db.Decimal(18, 6)
+  currency       String                   @default("USDT")
+  referenceId    String?                  @map("reference_id") @db.Uuid
+  createdById    String?                  @map("created_by_id") @db.Uuid
+  comment        String?
+  createdAt      DateTime                 @default(now()) @map("created_at")
+
+  payoutTrader PayoutTraderProfile @relation(fields: [payoutTraderId], references: [id], onDelete: Cascade)
+  createdBy    User?               @relation("PayoutTraderBalanceTxCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([payoutTraderId])
+  @@index([createdAt])
+  @@map("payout_trader_balance_transactions")
 }
 
 // ─── Payment Methods ───
@@ -503,7 +626,7 @@ model PayinOrder {
   commission        Decimal     @default(0) @db.Decimal(18, 4)
   partnerAmount     Decimal     @default(0) @map("partner_amount") @db.Decimal(18, 4)
   rate              Decimal     @default(1) @db.Decimal(18, 8)
-  /// Binance P2P parser rate P (UAH per 1 USDT) fixed at order creation.
+  /// Parser reference rate P (local fiat per 1 USDT), captured when the order uses a Binance-backed snapshot.
   parserRate        Decimal?    @map("parser_rate") @db.Decimal(12, 6)
   rateTraderIn      Decimal?    @map("rate_trader_in") @db.Decimal(12, 6)
   rateAdminIn       Decimal?    @map("rate_admin_in") @db.Decimal(12, 6)
@@ -551,15 +674,23 @@ enum PayoutDetailsType {
   IBAN
 }
 
+enum PayoutPoolType {
+  STANDARD
+  PAYOUT_SPECIALIST
+}
+
 model PayoutOrder {
   id              String            @id @default(uuid()) @db.Uuid
   requestId       String            @map("request_id")
   merchantId      String            @map("merchant_id") @db.Uuid
   traderId        String?           @map("trader_id") @db.Uuid
+  payoutTraderId  String?           @map("payout_trader_id") @db.Uuid
   paymentMethodId String?           @map("payment_method_id") @db.Uuid
   amount          Decimal           @db.Decimal(18, 4)
   currency        String
   status          PayoutStatus      @default(PENDING)
+  poolType        PayoutPoolType    @default(STANDARD) @map("pool_type")
+  poolAssignedAt  DateTime?         @map("pool_assigned_at")
   detailsType     PayoutDetailsType @map("details_type")
   detailsNumber   String            @map("details_number")
   detailsOwner    String?           @map("details_owner")
@@ -568,26 +699,31 @@ model PayoutOrder {
   commissionAmount Decimal          @default(0) @map("commission_amount") @db.Decimal(18, 4)
   partnerAmount   Decimal           @default(0) @map("partner_amount") @db.Decimal(18, 4)
   percentFee      Decimal           @default(0) @map("percent_fee") @db.Decimal(8, 4)
+  /// Parser reference rate P (local fiat per 1 USDT), captured when the order uses a Binance-backed snapshot.
   parserRate      Decimal?          @map("parser_rate") @db.Decimal(12, 6)
   rateTraderOut   Decimal?          @map("rate_trader_out") @db.Decimal(12, 6)
   rateAdminOut    Decimal?          @map("rate_admin_out") @db.Decimal(12, 6)
-  /// Total UAH reserved from merchant at creation: face amount × (1 + commission).
-  merchantDebitUah Decimal?         @map("merchant_debit_uah") @db.Decimal(18, 2)
+  /// Total fiat (order currency) reserved from merchant at creation: face amount × (1 + commission).
+  merchantDebitLocal Decimal?        @map("merchant_debit_local") @db.Decimal(18, 2)
   callbackUrl     String?           @map("callback_url")
   startAt         DateTime?         @map("start_at")
   endAt           DateTime?         @map("end_at")
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
-  merchant      Merchant       @relation(fields: [merchantId], references: [id])
-  trader        TraderProfile? @relation(fields: [traderId], references: [id])
-  paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
-  webhookOutbox WebhookOutbox[]
+  merchant        Merchant            @relation(fields: [merchantId], references: [id])
+  trader          TraderProfile?      @relation(fields: [traderId], references: [id])
+  payoutTrader    PayoutTraderProfile? @relation(fields: [payoutTraderId], references: [id])
+  paymentMethod   PaymentMethod?      @relation(fields: [paymentMethodId], references: [id])
+  completionProofFileId String?      @map("completion_proof_file_id") @db.Uuid
+  completionProofFile File?        @relation("PayoutOrderCompletionProof", fields: [completionProofFileId], references: [id], onDelete: SetNull)
+  webhookOutbox   WebhookOutbox[]
 
   @@unique([merchantId, requestId])
   @@index([status])
   @@index([merchantId])
   @@index([traderId])
+  @@index([payoutTraderId])
   @@index([createdAt])
   @@map("payout_orders")
 }
@@ -640,6 +776,7 @@ model File {
   uploader     User?         @relation(fields: [uploadedBy], references: [id])
   appealProofs AppealProof[]
   bankLogos    Bank[]
+  payoutOrderCompletionProofs PayoutOrder[] @relation("PayoutOrderCompletionProof")
 
   @@map("files")
 }
@@ -701,19 +838,30 @@ enum SettlementTypeEnum {
 }
 
 model Settlement {
-  id        String             @id @default(uuid()) @db.Uuid
-  adminId   String             @map("admin_id") @db.Uuid
-  traderId  String             @map("trader_id") @db.Uuid
-  type      SettlementTypeEnum
-  amount    Decimal            @db.Decimal(18, 4)
-  currency  String
-  note      String?
-  createdAt DateTime           @default(now()) @map("created_at")
+  id             String             @id @default(uuid()) @db.Uuid
+  adminId        String             @map("admin_id") @db.Uuid
+  traderId       String?            @map("trader_id") @db.Uuid
+  payoutTraderId String?            @map("payout_trader_id") @db.Uuid
+  merchantId     String?            @map("merchant_id") @db.Uuid
+  type           SettlementTypeEnum
+  amount         Decimal            @db.Decimal(18, 4)
+  currency       String
+  /// Merchant-only: manual local fiat per USDT reference stored when an operator confirms a fiat withdrawal settlement (audit).
+  manualRate     Decimal?           @map("manual_rate") @db.Decimal(18, 8)
+  /// Merchant or Pay-Out specialist: finalized USDT amount sent off-platform (merchant audit).
+  usdtEquivalent Decimal?           @map("usdt_equivalent") @db.Decimal(18, 6)
+  note           String?
+  usdtAddress    String?            @map("usdt_address") @db.VarChar(128)
+  createdAt      DateTime           @default(now()) @map("created_at")
 
-  admin  User          @relation("SettlementAdmin", fields: [adminId], references: [id])
-  trader TraderProfile @relation(fields: [traderId], references: [id])
+  admin        User                 @relation("SettlementAdmin", fields: [adminId], references: [id])
+  trader       TraderProfile?       @relation(fields: [traderId], references: [id])
+  payoutTrader PayoutTraderProfile? @relation(fields: [payoutTraderId], references: [id])
+  merchant     Merchant?            @relation(fields: [merchantId], references: [id])
 
   @@index([traderId])
+  @@index([payoutTraderId])
+  @@index([merchantId])
   @@map("settlements")
 }
 
@@ -763,14 +911,16 @@ model PlatformIncome {
   orderType             PlatformIncomeOrderType @map("order_type")
   merchantId            String                  @map("merchant_id") @db.Uuid
   traderId              String?                 @map("trader_id") @db.Uuid
-  orderAmountUah        Decimal                 @map("order_amount_uah") @db.Decimal(18, 2)
+  orderAmountLocal      Decimal                 @map("order_amount_local") @db.Decimal(18, 2)
+  /// Snapshot parser reference P (same fiat currency as order_amount_local, per 1 USDT).
   parserRate            Decimal                 @map("parser_rate") @db.Decimal(12, 6)
   rateTrader            Decimal                 @map("rate_trader") @db.Decimal(12, 6)
   rateAdmin             Decimal                 @map("rate_admin") @db.Decimal(12, 6)
   traderRatePct         Decimal                 @map("trader_rate_pct") @db.Decimal(8, 6)
   merchantCommissionPct Decimal               @map("merchant_commission_pct") @db.Decimal(8, 6)
   incomeUsdt            Decimal                 @map("income_usdt") @db.Decimal(18, 6)
-  incomeUah             Decimal                 @map("income_uah") @db.Decimal(18, 2)
+  /// Platform margin leg booked in the same fiat unit as order_amount_local (margin_usdt × parser_rate snapshot).
+  incomeLocal           Decimal                 @map("income_local") @db.Decimal(18, 2)
   createdAt             DateTime                @default(now()) @map("created_at")
 
   merchant Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
@@ -789,6 +939,8 @@ enum MerchantBalanceTransactionType {
   MANUAL_CREDIT
   MANUAL_DEBIT
   TOP_UP
+  /// Fiat withdrawal booked against the merchant ledger when an admin confirms a settlement payout.
+  SETTLEMENT
 }
 
 model MerchantBalanceTransaction {
@@ -871,6 +1023,12 @@ model TelegramSettings {
   notifyPayin   Boolean @default(false) @map("notify_payin")
   notifyPayout  Boolean @default(false) @map("notify_payout")
   notifyAppeals Boolean @default(false) @map("notify_appeals")
+  /// Settlements handbook 1.3 — alert when remaining Pay-In capacity (USDT) is at/below the operator threshold.
+  notifyLowPayinCapacity    Boolean @default(true) @map("notify_low_payin_capacity")
+  /// Settlements handbook 1.3 — notify when a TOP_UP ledger credit is recorded (on-chain or manual confirmation).
+  notifyTopUpConfirm      Boolean @default(true) @map("notify_top_up_confirm")
+  /// Settlements handbook 1.3 — trader + ops when USDT capacity is fully exhausted (no headroom for Pay-In).
+  notifyPayinCapacityExhausted Boolean @default(true) @map("notify_payin_capacity_exhausted")
   isActive      Boolean @default(false) @map("is_active")
 
   trader TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)

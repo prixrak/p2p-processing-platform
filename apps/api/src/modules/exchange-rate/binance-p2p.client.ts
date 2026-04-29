@@ -33,16 +33,19 @@ export class BinanceP2pClient {
     payTypes: string[],
     rows = 50,
   ): Promise<BinanceP2pOfferPick[]> {
-    const body = {
+    // Binance rejects `payTypes: []` with code 000002 (illegal parameter). Omit the field to mean "all payment methods".
+    const body: Record<string, unknown> = {
       asset: 'USDT',
       fiat,
       merchantCheck: false,
       page: 1,
-      payTypes: payTypes.length > 0 ? payTypes : [],
       publisherType: null as string | null,
       rows,
       tradeType: 'BUY',
     };
+    if (payTypes.length > 0) {
+      body.payTypes = payTypes;
+    }
 
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), config.http.webhookFetchTimeoutMs);

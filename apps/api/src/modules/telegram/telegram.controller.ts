@@ -38,6 +38,9 @@ export class TelegramController {
       notifyPayin?: boolean;
       notifyPayout?: boolean;
       notifyAppeals?: boolean;
+      notifyLowPayinCapacity?: boolean;
+      notifyTopUpConfirm?: boolean;
+      notifyPayinCapacityExhausted?: boolean;
       isActive?: boolean;
     },
   ) {
@@ -49,6 +52,36 @@ export class TelegramController {
   @ApiOperation({ summary: 'Generate a connect token for linking Telegram' })
   async connect(@CurrentUser('traderId') traderId: string) {
     const token = this.telegramService.generateConnectToken(traderId);
+    return { token };
+  }
+
+  @Get('payout-trader/settings')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'Telegram settings for Pay-Out specialist' })
+  async getPayoutTraderSettings(@CurrentUser('payoutTraderId') payoutTraderId: string) {
+    return this.telegramService.getPayoutTraderSettings(payoutTraderId);
+  }
+
+  @Patch('payout-trader/settings')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'Update Pay-Out specialist Telegram notification preferences' })
+  async patchPayoutTraderSettings(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @Body()
+    dto: {
+      notifyNewPoolOrder?: boolean;
+      notifySettlement?: boolean;
+      isActive?: boolean;
+    },
+  ) {
+    return this.telegramService.updatePayoutTraderSettings(payoutTraderId, dto);
+  }
+
+  @Post('payout-trader/connect')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'Generate a connect token (Pay-Out specialist Telegram)' })
+  async connectPayoutTrader(@CurrentUser('payoutTraderId') payoutTraderId: string) {
+    const token = this.telegramService.generatePayoutTraderConnectToken(payoutTraderId);
     return { token };
   }
 

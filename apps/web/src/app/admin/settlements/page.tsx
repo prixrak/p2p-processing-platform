@@ -1,118 +1,448 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Landmark } from 'lucide-react';
+import { Download, Info, Landmark } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { SettlementCreateModal } from '@/features/settlements/settlement-create-modal';
 import { DataTable } from '@/components/ui/data-table';
 import { Button } from '@/components/ui/button';
+import { FilterBar, FilterInput } from '@/components/ui/filters';
+import { Select } from '@/components/ui/select';
 import { format } from 'date-fns';
+import { staffTraderKeys } from '@/features/traders/query-keys';
 
-interface Settlement {
+interface SettlementRow {
   id: string;
-  type: 'CREDIT' | 'DEBIT';
-  amount: number;
+  type: string;
+  amount: number | string;
   currency: string;
   note: string | null;
   createdAt: string;
+  manualRate?: number | string | null;
+  usdtEquivalent?: number | string | null;
   admin: { email: string } | null;
   trader: { user: { email: string } } | null;
+  payoutTrader: { user: { email: string } } | null;
+  merchant: { id: string; name: string } | null;
+}
+
+function num(v: number | string | null | undefined) {
+  if (v === null || v === undefined) return '';
+  return typeof v === 'string' ? v : String(v);
+}
+
+function participantLabel(row: SettlementRow): string {
+  if (row.merchant?.name) return `Merchant: ${row.merchant.name}`;
+  if (row.payoutTrader?.user?.email) return `Pay-Out specialist: ${row.payoutTrader.user.email}`;
+  if (row.trader?.user?.email) return `Trader: ${row.trader.user.email}`;
+  return '—';
 }
 
 export default function SettlementsPage() {
   const [showForm, setShowForm] = useState(false);
+  const [page, setPage] = useState(1);
+  const [participantRole, setParticipantRole] = useState<
+    'any' | 'trader' | 'payout' | 'merchant'
+  >('any');
+  const [participantId, setParticipantId] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'CREDIT' | 'DEBIT'>('ALL');
+  const [currency, setCurrency] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
+  const pageSize = 50;
 
-  const { data: settlements = [], isLoading } = useQuery<Settlement[]>({
-    queryKey: ['admin', 'settlements'],
+  const { data: traders = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: staffTraderKeys.traderOptions('admin'),
     queryFn: async () => {
-      const res = await api.get<{ data: Settlement[] }>(
-        `${internalPaths.settlements}?page=1&limit=100`,
+      const res = await api.get<{
+        data: Array<{ id: string; user: { email: string } }>;
+      }>(`${internalPaths.traders}?page=1&limit=500`);
+      return res.data.map((t) => ({ id: t.id, name: t.user.email }));
+    },
+  });
+
+  const { data: merchants = [] } = useQuery<Array<{ id: string; name: string }>>({
+    queryKey: ['admin', 'merchants-options'],
+    queryFn: async () => {
+      const res = await api.get<{ data: Array<{ id: string; name: string }> }>(
+        `${internalPaths.merchants}?page=1&limit=300`,
       );
       return res.data;
     },
   });
 
+  const { data: payoutOpts } = useQuery<{ data: Array<{ id: string; email: string }> }>({
+    queryKey: ['settlements', 'payout-specialist-options'],
+    queryFn: () => api.get(internalPaths.settlementsPayoutSpecialistOptions),
+  });
+  const payoutSpecialists = payoutOpts?.data ?? [];
+
+  const queryKey = [
+    'admin',
+    'settlements',
+    page,
+    participantRole,
+    participantId,
+    typeFilter,
+    currency,
+    dateFrom,
+    dateTo,
+    minAmount,
+    maxAmount,
+  ] as const;
+
+  const query = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(pageSize),
+      });
+      if (participantRole === 'trader' && participantId.trim()) params.set('traderId', participantId.trim());
+      if (participantRole === 'payout' && participantId.trim()) {
+        params.set('payoutTraderId', participantId.trim());
+      }
+      if (participantRole === 'merchant' && participantId.trim()) {
+        params.set('merchantId', participantId.trim());
+      }
+      if (typeFilter !== 'ALL') params.set('type', typeFilter);
+      if (currency.trim()) params.set('currency', currency.trim().toUpperCase());
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+      if (minAmount.trim()) params.set('minAmount', minAmount.trim());
+      if (maxAmount.trim()) params.set('maxAmount', maxAmount.trim());
+
+      const res = await api.get<{ data: SettlementRow[]; total: number; page: number; limit: number }>(
+        `${internalPaths.settlements}?${params}`,
+      );
+      return res;
+    },
+  });
+
+  const settlements = query.data?.data ?? [];
+  const total = query.data?.total ?? 0;
+  const isLoading = query.isLoading;
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  const csvBlob = useMemo(() => {
+    const header = [
+      'id',
+      'participant',
+      'type',
+      'amount',
+      'currency',
+      'manual_rate',
+      'usdt_equivalent',
+      'note',
+      'created_at',
+    ];
+    const lines = [
+      header.join(','),
+      ...settlements.map((row) =>
+        [
+          row.id,
+          `"${participantLabel(row).replace(/"/g, '""')}"`,
+          row.type,
+          num(row.amount),
+          row.currency,
+          num(row.manualRate ?? undefined),
+          num(row.usdtEquivalent ?? undefined),
+          `"${(row.note ?? '').replace(/"/g, '""')}"`,
+          row.createdAt,
+        ].join(','),
+      ),
+    ];
+    return new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  }, [settlements]);
+
+  function downloadCsv() {
+    const url = URL.createObjectURL(csvBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `settlements-${format(new Date(), 'yyyy-MM-dd-HHmm')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function resetParticipantId() {
+    setParticipantId('');
+    setPage(1);
+  }
+
+  const participantSelect = (
+    <Select
+      label="Participant"
+      placeholder="Choose role first"
+      options={[
+        { value: 'any', label: 'Any' },
+        { value: 'trader', label: 'Standard trader' },
+        { value: 'payout', label: 'Pay-Out specialist' },
+        { value: 'merchant', label: 'Merchant' },
+      ]}
+      value={participantRole}
+      onChange={(e) => {
+        setParticipantRole(e.target.value as typeof participantRole);
+        resetParticipantId();
+      }}
+    />
+  );
+
+  const participantPick =
+    participantRole === 'any' ? null : participantRole === 'trader' ? (
+      <Select
+        label="Trader email"
+        options={[{ value: '', label: '—' }, ...traders.map((t) => ({ value: t.id, label: t.name }))]}
+        value={participantId}
+        onChange={(e) => {
+          setParticipantId(e.target.value);
+          setPage(1);
+        }}
+      />
+    ) : participantRole === 'payout' ? (
+      <Select
+        label="Specialist email"
+        options={[
+          { value: '', label: '—' },
+          ...payoutSpecialists.map((p) => ({ value: p.id, label: p.email })),
+        ]}
+        value={participantId}
+        onChange={(e) => {
+          setParticipantId(e.target.value);
+          setPage(1);
+        }}
+      />
+    ) : (
+      <Select
+        label="Merchant"
+        options={[{ value: '', label: '—' }, ...merchants.map((m) => ({ value: m.id, label: m.name }))]}
+        value={participantId}
+        onChange={(e) => {
+          setParticipantId(e.target.value);
+          setPage(1);
+        }}
+      />
+    );
+
   const columns = [
     {
-      key: 'id',
-      header: 'ID',
-      className: 'font-mono tabular-nums text-end',
-      render: (row: Settlement) => (
-        <span className="font-mono text-xs text-text-muted">{row.id.slice(0, 8)}</span>
-      ),
-    },
-    {
-      key: 'trader',
-      header: 'Trader',
-      render: (row: Settlement) => (
-        <span className="text-text-primary">{row.trader?.user?.email ?? '—'}</span>
+      key: 'participant',
+      header: 'Participant',
+      render: (row: SettlementRow) => (
+        <span className="text-sm text-text-primary">{participantLabel(row)}</span>
       ),
     },
     {
       key: 'type',
       header: 'Type',
       className: 'text-center',
-      render: (row: Settlement) => (
-        <span className={row.type === 'CREDIT' ? 'text-accent-green' : 'text-accent-red'}>
-          {row.type}
-        </span>
+      render: (row: SettlementRow) => (
+        <span className={row.type === 'CREDIT' ? 'text-accent-green' : 'text-accent-red'}>{row.type}</span>
       ),
     },
     {
       key: 'amount',
       header: 'Amount',
-      className: 'text-end tabular-nums font-mono',
-      render: (row: Settlement) => (
+      className: 'text-end tabular-nums font-mono text-sm',
+      render: (row: SettlementRow) => (
         <span className="font-mono text-text-primary">
-          {row.type === 'CREDIT' ? '+' : '-'}
-          {row.amount.toLocaleString()} {row.currency}
+          {row.type === 'CREDIT' ? '+' : '−'}
+          {Number(row.amount).toLocaleString()} {row.currency}
+        </span>
+      ),
+    },
+    {
+      key: 'fx',
+      header: 'FX / USDT',
+      className: 'text-xs font-mono',
+      render: (row: SettlementRow) => (
+        <span className="text-text-muted">
+          {row.manualRate != null ? (
+            <>
+              rate {Number(row.manualRate).toLocaleString()}
+              <br />
+            </>
+          ) : null}
+          {row.usdtEquivalent != null ? `${Number(row.usdtEquivalent).toLocaleString()} USDT` : '—'}
         </span>
       ),
     },
     {
       key: 'note',
       header: 'Note',
-      render: (row: Settlement) => (
-        <span className="text-text-muted text-xs max-w-[200px] truncate block">
-          {row.note || '—'}
-        </span>
+      render: (row: SettlementRow) => (
+        <span className="text-text-muted text-xs max-w-[200px] truncate block">{row.note || '—'}</span>
+      ),
+    },
+    {
+      key: 'admin',
+      header: 'Recorded by',
+      render: (row: SettlementRow) => (
+        <span className="text-xs text-text-muted">{row.admin?.email ?? '—'}</span>
       ),
     },
     {
       key: 'createdAt',
       header: 'Date',
-      render: (row: Settlement) => (
-        <span className="text-xs text-text-muted">
-          {format(new Date(row.createdAt), 'dd.MM.yy HH:mm')}
-        </span>
+      render: (row: SettlementRow) => (
+        <span className="text-xs text-text-muted">{format(new Date(row.createdAt), 'dd.MM.yy HH:mm')}</span>
       ),
     },
   ];
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
             <Landmark size={24} />
             Settlements
           </h1>
           <p className="text-sm text-text-muted mt-1">
-            Manage trader settlements and balance adjustments
+            Standard trader top-ups (USDT ledger TOP_UP), Pay-Out specialist payouts, and merchant withdrawals
           </p>
         </div>
-        <Button onClick={() => setShowForm(true)}>New Settlement</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            onClick={downloadCsv}
+            disabled={settlements.length === 0}
+            className="inline-flex items-center gap-2"
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
+          <Button onClick={() => setShowForm(true)}>New settlement</Button>
+        </div>
       </div>
+
+      <div className="rounded-lg border border-border-subtle bg-bg-secondary/60 px-4 py-3 flex gap-3 text-sm text-text-secondary">
+        <Info className="h-5 w-5 shrink-0 text-accent-blue mt-0.5" />
+        <div>
+          <p className="font-medium text-text-primary">Corrections and reversals</p>
+          <p className="mt-1 text-xs leading-relaxed">
+            Ledger rows are append-only. Incorrect settlements are reversed via separate manual CREDIT /
+            DEBIT balance lines (audit comment required). Trader list:&nbsp;
+            <Link className="underline text-accent-blue hover:text-accent-blue/90" href="/admin/traders">
+              Open trader directory
+            </Link>{' '}
+            then use&nbsp;
+            <code className="text-xs bg-bg-primary px-1 rounded">{internalPaths.adminBalanceAdjust}</code>{' '}
+            from API clients or internal tooling.
+          </p>
+        </div>
+      </div>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-text-primary">Filters</h2>
+        <FilterBar>
+          <div className="w-full md:max-w-xs">{participantSelect}</div>
+        </FilterBar>
+        {participantPick ? <div className="max-w-md">{participantPick}</div> : null}
+        <FilterBar>
+          <Select
+            label="Direction"
+            options={[
+              { value: 'ALL', label: 'All' },
+              { value: 'CREDIT', label: 'CREDIT' },
+              { value: 'DEBIT', label: 'DEBIT' },
+            ]}
+            value={typeFilter}
+            onChange={(e) => {
+              setTypeFilter(e.target.value as typeof typeFilter);
+              setPage(1);
+            }}
+          />
+          <FilterInput
+            label="Currency"
+            value={currency}
+            onChange={(v) => {
+              setCurrency(v.toUpperCase());
+              setPage(1);
+            }}
+            placeholder="USDT"
+            className="w-28"
+          />
+          <FilterInput
+            type="date"
+            label="From"
+            value={dateFrom}
+            onChange={(v) => {
+              setDateFrom(v);
+              setPage(1);
+            }}
+            className="w-40"
+          />
+          <FilterInput
+            type="date"
+            label="To"
+            value={dateTo}
+            onChange={(v) => {
+              setDateTo(v);
+              setPage(1);
+            }}
+            className="w-40"
+          />
+          <FilterInput
+            label="Min amount"
+            value={minAmount}
+            onChange={(v) => {
+              setMinAmount(v);
+              setPage(1);
+            }}
+            placeholder="0"
+            className="w-28"
+          />
+          <FilterInput
+            label="Max amount"
+            value={maxAmount}
+            onChange={(v) => {
+              setMaxAmount(v);
+              setPage(1);
+            }}
+            placeholder="∞"
+            className="w-28"
+          />
+        </FilterBar>
+      </section>
 
       <DataTable
         columns={columns}
         data={settlements}
         keyExtractor={(s) => s.id}
         isLoading={isLoading}
-        emptyMessage="No settlements found"
+        emptyMessage="No settlements match filters"
       />
+
+      <div className="flex items-center justify-between text-sm text-text-muted">
+        <span>Total: {total}</span>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Previous
+          </Button>
+          <span className="px-3 py-1 tabular-nums">
+            Page {page} / {totalPages}
+          </span>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
 
       <SettlementCreateModal
         open={showForm}

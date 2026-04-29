@@ -26,6 +26,7 @@ export const internalPaths = {
   audit: '/api/audit',
 
   settlements: '/api/settlements',
+  settlementsPayoutSpecialistOptions: '/api/settlements/payout-specialist-options',
 
   traders: '/api/traders',
   trader: (id: string) => `/api/traders/${id}`,
@@ -67,12 +68,19 @@ export const internalPaths = {
   payoutOrderComplete: (orderId: string) => `/api/trader/payout/orders/${orderId}/complete`,
   payoutOrderFail: (orderId: string) => `/api/trader/payout/orders/${orderId}/fail`,
 
+  /** Pay-Out specialist — recorded settlements (operator books off-chain USDT payouts) */
+  payoutSpecialistSettlements: (qs = '') =>
+    `/api/payout-trader/payout/me/settlements${qs ? `?${qs}` : ''}`,
+
   merchants: '/api/merchants',
   merchant: (id: string) => `/api/merchants/${id}`,
   /** Merchant cabinet (JWT) — query: period | dateFrom & dateTo */
   merchantAnalytics: '/api/merchant/analytics',
   /** Merchant ledger — query: page, limit, type?, dateFrom?, dateTo? */
   merchantBalanceTransactions: (qs: string) => `/api/merchant/balance-transactions?${qs}`,
+  /** Merchant withdrawals — handbook settlement ledger */
+  merchantSettlements: (qs = '') =>
+    `/api/merchant/settlements${qs ? `?${qs}` : ''}`,
   /** Merchant period stats — query: dateFrom?, dateTo? */
   merchantBalanceSummary: (qs = '') =>
     `/api/merchant/balance-summary${qs ? `?${qs}` : ''}`,

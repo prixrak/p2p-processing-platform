@@ -33,6 +33,7 @@ export class FilesService {
     this.s3 = new S3Client({
       region: config.s3.region,
       ...(config.s3.endpoint && { endpoint: config.s3.endpoint }),
+      forcePathStyle: config.s3.forcePathStyle,
       credentials: {
         accessKeyId: config.s3.accessKeyId,
         secretAccessKey: config.s3.secretAccessKey,

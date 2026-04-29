@@ -48,10 +48,11 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Current cache + DB metadata for admin dashboards (Block 5 §2.2, §6.4).
+   * Current cache + DB metadata for admin dashboards (Block 5 sections 2.2 and 6.4).
    */
   async getStatusForAdmin(): Promise<{
-    parserRateUaPerUsdt: number | null;
+    /** Fiat per 1 USDT from the primary Redis slot (same pair as persisted exchange_rate_logs when enabled). */
+    primaryPairParserFiatPerUsdt: number | null;
     cacheUpdatedAt: string | null;
     lastSuccessAt: string | null;
     lastLogId: string | null;
@@ -61,12 +62,12 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
     /** Current Redis cache `raw` field (live 3-offer sample), if available */
     cacheRawSample: unknown;
   }> {
-    const rate = await this.getParserRateUaPerUsdt();
+    const rate = await this.getCachedParserFiatPerUsdt('UAH');
     let cacheUpdatedAt: string | null = null;
     let cacheRawSample: unknown = null;
     if (this.redis) {
       try {
-        const raw = await this.redis.get(config.binanceP2p.redisKey);
+        const raw = await this.redis.get(config.binanceP2p.primaryPairRedisKey);
         if (raw) {
           const parsed = JSON.parse(raw) as CachedParserPayload;
           cacheUpdatedAt = parsed.updatedAt ?? null;
@@ -93,7 +94,7 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
     const lastMs = lastSuccessAt ? new Date(lastSuccessAt).getTime() : 0;
     const stale = lastMs === 0 ? false : Date.now() - lastMs > thresholdMs;
     return {
-      parserRateUaPerUsdt: rate,
+      primaryPairParserFiatPerUsdt: rate,
       cacheUpdatedAt,
       lastSuccessAt,
       lastLogId: lastLog?.id ?? null,
@@ -110,35 +111,56 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Returns parser rate P (UAH per 1 USDT), or null if unavailable.
+   * Cached parser rate P (fiat per 1 USDT) for ISO currencies backed by a Binance P2P Redis slot.
+   * UAH falls back to the latest persisted exchange_rate_logs row when Redis is empty.
    */
-  async getParserRateUaPerUsdt(): Promise<number | null> {
-    const fromRedis = await this.readRedisRate();
-    if (fromRedis !== null) return fromRedis;
+  async getCachedParserFiatPerUsdt(currency: string): Promise<number | null> {
+    const c = currency.trim().toUpperCase();
+    if (c === 'UAH') {
+      const fromRedis = await this.readRedisRate(config.binanceP2p.primaryPairRedisKey);
+      if (fromRedis !== null) return fromRedis;
 
-    const last = await this.prisma.exchangeRateLog.findFirst({
-      orderBy: { createdAt: 'desc' },
-      select: { rate: true },
-    });
-    if (last) return Number(last.rate);
+      const last = await this.prisma.exchangeRateLog.findFirst({
+        orderBy: { createdAt: 'desc' },
+        select: { rate: true },
+      });
+      return last ? Number(last.rate) : null;
+    }
+    if (c === 'KZT') {
+      return this.readRedisRate(config.binanceP2p.secondaryPairRedisKey);
+    }
     return null;
   }
 
   /**
-   * Same as getParserRateUaPerUsdt but throws if no rate exists (order creation).
+   * Parser rate P (fiat per 1 USDT) for supported fiat currencies.
+   * @param exchangeParserHint Optional specialist profile value; unmapped values fall back to Binance P2P.
    */
-  async requireParserRateUaPerUsdt(): Promise<number> {
-    const r = await this.getParserRateUaPerUsdt();
+  async requireParserRateFiatPerUsdt(
+    currency: string,
+    exchangeParserHint?: string | null,
+  ): Promise<number> {
+    const hint = (exchangeParserHint ?? '').trim().toLowerCase();
+    if (hint && hint !== 'binance' && hint !== 'binance_p2p') {
+      this.logger.debug(
+        `requireParserRateFiatPerUsdt: exchange_parser "${exchangeParserHint}" not mapped; using default Binance P2P source`,
+      );
+    }
+    const c = currency.trim().toUpperCase();
+    if (c !== 'UAH' && c !== 'KZT') {
+      throw new Error('PARSER_RATE_UNSUPPORTED_FIAT');
+    }
+    const r = await this.getCachedParserFiatPerUsdt(c);
     if (r === null || !Number.isFinite(r) || r <= 0) {
       throw new Error('PARSER_RATE_UNAVAILABLE');
     }
     return r;
   }
 
-  private async readRedisRate(): Promise<number | null> {
+  private async readRedisRate(redisKey: string): Promise<number | null> {
     if (!this.redis) return null;
     try {
-      const raw = await this.redis.get(config.binanceP2p.redisKey);
+      const raw = await this.redis.get(redisKey);
       if (!raw) return null;
       const parsed = JSON.parse(raw) as CachedParserPayload;
       const n = parseFloat(parsed.rate);
@@ -152,15 +174,59 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
     await this.maybeAlertStaleParserRate();
 
     const payTypes = this.binance.getConfiguredPayTypes();
-    const offers = await this.binance.fetchBuyUsdtOffers('UAH', payTypes, 50);
-    const volume = config.binanceP2p.volumeUah;
-    const filtered = filterOffersForVolumeAndPayTypes(offers, payTypes, volume);
+    let anyOk = false;
+
+    if (
+      await this.refreshFiatParser(
+        'UAH',
+        config.binanceP2p.primaryPairProbeVolume,
+        config.binanceP2p.primaryPairRedisKey,
+        payTypes,
+        {
+          persistLog: true,
+        },
+      )
+    ) {
+      anyOk = true;
+    }
+
+    if (
+      await this.refreshFiatParser(
+        'KZT',
+        config.binanceP2p.secondaryPairProbeVolume,
+        config.binanceP2p.secondaryPairRedisKey,
+        payTypes,
+        {
+          persistLog: false,
+        },
+      )
+    ) {
+      anyOk = true;
+    }
+
+    if (anyOk && this.redis) {
+      try {
+        await this.redis.set(REDIS_LAST_SUCCESS_KEY, String(Date.now()));
+      } catch (e) {
+        this.logger.warn(`Redis set last success failed: ${e}`);
+      }
+    }
+  }
+
+  private async refreshFiatParser(
+    fiat: string,
+    volumeFiat: number,
+    redisKey: string,
+    payTypes: string[],
+    opts: { persistLog: boolean },
+  ): Promise<boolean> {
+    const offers = await this.binance.fetchBuyUsdtOffers(fiat, payTypes, 50);
+    const filtered = filterOffersForVolumeAndPayTypes(offers, payTypes, volumeFiat);
     filtered.sort((a, b) => a.price - b.price);
     const picked = averageParserRateFromOffers(filtered, config.binanceP2p.skipTopAds);
     if (!picked) {
-      this.logger.debug('Binance P2P: not enough rows after filter for parser average');
-      await this.maybeAlertStaleParserRate();
-      return;
+      this.logger.debug(`Binance P2P: not enough rows after filter for ${fiat}`);
+      return false;
     }
 
     const { rate, picked: used } = picked;
@@ -170,15 +236,18 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
       minFiat: o.minFiat,
       maxFiat: o.maxFiat,
       payTypes: o.payTypeLabels,
+      fiat,
     }));
 
-    await this.prisma.exchangeRateLog.create({
-      data: {
-        rate,
-        rawPrices,
-        source: 'binance_p2p',
-      },
-    });
+    if (opts.persistLog) {
+      await this.prisma.exchangeRateLog.create({
+        data: {
+          rate,
+          rawPrices,
+          source: 'binance_p2p',
+        },
+      });
+    }
 
     const payload: CachedParserPayload = {
       rate: rate.toFixed(6),
@@ -188,18 +257,18 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
 
     if (this.redis) {
       try {
-        await this.redis.set(config.binanceP2p.redisKey, JSON.stringify(payload));
-        await this.redis.set(REDIS_LAST_SUCCESS_KEY, String(Date.now()));
+        await this.redis.set(redisKey, JSON.stringify(payload));
       } catch (e) {
-        this.logger.warn(`Redis set parser rate failed: ${e}`);
+        this.logger.warn(`Redis set parser rate failed (${fiat}): ${e}`);
       }
     }
 
-    this.logger.debug(`Parser rate UAH/USDT updated: ${payload.rate}`);
+    this.logger.debug(`Parser rate ${fiat}/USDT updated: ${payload.rate}`);
+    return true;
   }
 
   /**
-   * Warn when Binance P2P parser has not produced a rate recently (spec §2.2).
+   * Warn when Binance P2P parser has not produced a rate recently (spec Block 5 section 2.2).
    * Telegram notify is throttled via Redis lock (10 min) when OWNER_OPS_TELEGRAM_CHAT_ID is set.
    */
   private async maybeAlertStaleParserRate(): Promise<void> {
@@ -232,7 +301,7 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
 
       const msg =
         `<b>Parser rate alert</b>\n` +
-        `Binance P2P USDT/UAH has no fresh success within ${config.binanceP2p.staleAlertMinutes} minutes.\n` +
+        `Binance P2P primary pair has no fresh success within ${config.binanceP2p.staleAlertMinutes} minutes.\n` +
         `Last OK: ${lastMs ? new Date(lastMs).toISOString() : 'never'}`;
 
       await this.telegram.sendNotification(chatId, msg);
@@ -245,10 +314,10 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
 function filterOffersForVolumeAndPayTypes(
   offers: BinanceP2pOfferPick[],
   payTypes: string[],
-  volumeUah: number,
+  probeVolumeFiat: number,
 ): BinanceP2pOfferPick[] {
   return offers.filter((o) => {
-    if (volumeUah < o.minFiat || volumeUah > o.maxFiat) return false;
+    if (probeVolumeFiat < o.minFiat || probeVolumeFiat > o.maxFiat) return false;
     if (payTypes.length === 0) return true;
     const labels = o.payTypeLabels.join(' ').toLowerCase();
     return payTypes.some((pt) => labels.includes(pt.toLowerCase()));

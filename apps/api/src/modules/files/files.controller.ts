@@ -39,7 +39,7 @@ export class FilesController {
   constructor(private readonly filesService: FilesService) {}
 
   @Post('upload')
-  @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT, UserRole.MERCHANT)
+  @Roles(UserRole.TRADER, UserRole.PAYOUT_TRADER, UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT, UserRole.MERCHANT)
   @ApiOperation({ summary: 'Upload a single file' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -53,12 +53,15 @@ export class FilesController {
       limits: { fileSize: MAX_FILE_SIZE_BYTES },
     }),
   )
-  async upload(@UploadedFile() file: Express.Multer.File) {
-    return this.filesService.upload(file);
+  async upload(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.filesService.upload(file, userId);
   }
 
   @Post('upload/batch')
-  @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT, UserRole.MERCHANT)
+  @Roles(UserRole.TRADER, UserRole.PAYOUT_TRADER, UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT, UserRole.MERCHANT)
   @ApiOperation({ summary: 'Upload multiple files' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
@@ -66,8 +69,11 @@ export class FilesController {
       limits: { fileSize: MAX_FILE_SIZE_BYTES },
     }),
   )
-  async uploadMultiple(@UploadedFiles() files: Express.Multer.File[]) {
-    return this.filesService.uploadMultiple(files);
+  async uploadMultiple(
+    @UploadedFiles() files: Express.Multer.File[],
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.filesService.uploadMultiple(files, userId);
   }
 
   @Get(':id')

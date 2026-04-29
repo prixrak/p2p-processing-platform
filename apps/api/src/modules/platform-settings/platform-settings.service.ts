@@ -9,6 +9,8 @@ export const PLATFORM_SETTING_KEYS = [
   'payin_max_amount',
   'payout_min_amount',
   'payout_max_amount',
+  /** When remaining Pay-In capacity (USDT balance + overdraft) is at or below this, trader cabinet shows low-capacity alert. */
+  'trader_payin_low_capacity_alert_threshold_usdt',
 ] as const;
 
 export type PlatformSettingKey = (typeof PLATFORM_SETTING_KEYS)[number];
@@ -25,7 +27,12 @@ const DEFAULTS: Record<PlatformSettingKey, string> = {
   payin_max_amount: '999999999',
   payout_min_amount: '0',
   payout_max_amount: '999999999',
+  trader_payin_low_capacity_alert_threshold_usdt: '200',
 };
+
+/** Single-document reference for dashboards reading this threshold. */
+export const PLATFORM_SETTING_TRADER_PAYIN_LOW_CAPACITY_ALERT_THRESHOLD_USDT =
+  'trader_payin_low_capacity_alert_threshold_usdt' as const satisfies PlatformSettingKey;
 
 @Injectable()
 export class PlatformSettingsService {

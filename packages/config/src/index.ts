@@ -20,16 +20,19 @@ export const config = {
   },
   binanceP2p: {
     pollMs: parseInt(optional('BINANCE_P2P_POLL_MS', '5000'), 10),
-    /** Fiat filter: offers must admit this UAH volume (spec default 20_000). */
-    volumeUah: parseInt(optional('BINANCE_P2P_VOLUME_UAH', '20000'), 10),
+    /** Probe-notional fiat volume for Binance P2P row filter on the primary cached pair (env BINANCE_P2P_VOLUME_UAH). */
+    primaryPairProbeVolume: parseInt(optional('BINANCE_P2P_VOLUME_UAH', '20000'), 10),
     /** Rows treated as promoted / pinned at the top of the price-sorted list (skipped before picking 3–5). */
     skipTopAds: parseInt(optional('BINANCE_P2P_SKIP_TOP', '1'), 10),
-    redisKey: optional('BINANCE_P2P_REDIS_KEY', 'binance:p2p:usdt_uah'),
+    primaryPairRedisKey: optional('BINANCE_P2P_REDIS_KEY', 'binance:p2p:usdt_uah'),
     payTypes: optional('BINANCE_P2P_PAY_TYPES', 'Monobank'),
     /** Set false on secondary processes to avoid duplicate Binance polling. */
     pollEnabled: optional('BINANCE_P2P_POLL_ENABLED', 'true') === 'true',
     /** If no successful Binance refresh for this many minutes, log warn and optionally notify owner. */
     staleAlertMinutes: parseInt(optional('BINANCE_P2P_STALE_ALERT_MINUTES', '15'), 10),
+    /** Probe-notional fiat volume for the secondary cached pair (env BINANCE_P2P_VOLUME_KZT). */
+    secondaryPairProbeVolume: parseInt(optional('BINANCE_P2P_VOLUME_KZT', '100000'), 10),
+    secondaryPairRedisKey: optional('BINANCE_P2P_REDIS_KEY_KZT', 'binance:p2p:usdt_kzt'),
   },
   ownerOps: {
     /** Telegram chat_id for operational alerts (stale parser rate, etc.). Same bot as trader notifications. */

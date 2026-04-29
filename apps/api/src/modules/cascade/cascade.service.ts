@@ -282,7 +282,7 @@ export class CascadeService {
     params: {
       amount: number;
       currency: string;
-      /** Binance parser rate UAH/USDT — required for UAH capacity checks */
+      /** Parser reference rate (local fiat per 1 USDT) when enforcing trader USDT capacity */
       parserRate?: number;
       enforceUsdtCapacity: boolean;
     },
