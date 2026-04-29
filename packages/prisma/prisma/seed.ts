@@ -1,16 +1,18 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
+import {
+  encryptMerchantApiSigningSecretForStorage,
+  isLegacySeedSha256OnlyHash,
+} from './merchant-api-secret-storage';
 
 const prisma = new PrismaClient();
 
+/** Secret column must be AES-256-GCM ciphertext; HmacAuthGuard decrypts and verifies HMAC-SHA512. */
 function generateApiKey(direction: 'payin' | 'payout') {
   const publicKey = `pk_${direction}_${crypto.randomBytes(24).toString('hex')}`;
   const secretKey = `sk_${direction}_${crypto.randomBytes(32).toString('hex')}`;
-  const secretKeyHash = crypto
-    .createHash('sha256')
-    .update(secretKey)
-    .digest('hex');
+  const secretKeyHash = encryptMerchantApiSigningSecretForStorage(secretKey);
   return { publicKey, secretKey, secretKeyHash };
 }
 
@@ -107,12 +109,30 @@ async function main() {
     create: { merchantId: merchant.id, currency: 'UAH', amount: 500000 },
   });
 
-  // ─── API Keys (matches HMAC guard - SHA-256 hash of secret) ───
-  const existingPayinKey = await prisma.merchantApiKey.findFirst({
+  // ─── API Keys (encrypted at rest — same codec as MerchantService / HmacAuthGuard) ───
+  let existingPayinKey = await prisma.merchantApiKey.findFirst({
     where: { merchantId: merchant.id, direction: 'PAYIN', isActive: true },
   });
+  let existingPayoutKey = await prisma.merchantApiKey.findFirst({
+    where: { merchantId: merchant.id, direction: 'PAYOUT', isActive: true },
+  });
+
+  const mustMigrateLegacy =
+    (existingPayinKey != null && isLegacySeedSha256OnlyHash(existingPayinKey.secretKeyHash)) ||
+    (existingPayoutKey != null && isLegacySeedSha256OnlyHash(existingPayoutKey.secretKeyHash));
+
+  if (mustMigrateLegacy) {
+    console.warn(
+      '[seed] Removing legacy merchant API keys (SHA256-only blobs could not be decrypted). Recreating encrypted keys.',
+    );
+    await prisma.merchantApiKey.deleteMany({ where: { merchantId: merchant.id } });
+    existingPayinKey = null;
+    existingPayoutKey = null;
+  }
 
   let payinKeys: { publicKey: string; secretKey: string };
+  let payoutKeys: { publicKey: string; secretKey: string };
+
   if (!existingPayinKey) {
     const keys = generateApiKey('payin');
     await prisma.merchantApiKey.create({
@@ -125,14 +145,12 @@ async function main() {
     });
     payinKeys = { publicKey: keys.publicKey, secretKey: keys.secretKey };
   } else {
-    payinKeys = { publicKey: existingPayinKey.publicKey, secretKey: '(already exists — not regenerated)' };
+    payinKeys = {
+      publicKey: existingPayinKey.publicKey,
+      secretKey: '(unchanged — regenerate from admin cabinet if lost)',
+    };
   }
 
-  const existingPayoutKey = await prisma.merchantApiKey.findFirst({
-    where: { merchantId: merchant.id, direction: 'PAYOUT', isActive: true },
-  });
-
-  let payoutKeys: { publicKey: string; secretKey: string };
   if (!existingPayoutKey) {
     const keys = generateApiKey('payout');
     await prisma.merchantApiKey.create({
@@ -145,10 +163,12 @@ async function main() {
     });
     payoutKeys = { publicKey: keys.publicKey, secretKey: keys.secretKey };
   } else {
-    payoutKeys = { publicKey: existingPayoutKey.publicKey, secretKey: '(already exists — not regenerated)' };
+    payoutKeys = {
+      publicKey: existingPayoutKey.publicKey,
+      secretKey: '(unchanged — regenerate from admin cabinet if lost)',
+    };
   }
 
-  // ─── Currencies ───
   for (const code of ['UAH', 'USD', 'USDT', 'EUR', 'RUB']) {
     await prisma.currency.upsert({
       where: { code },

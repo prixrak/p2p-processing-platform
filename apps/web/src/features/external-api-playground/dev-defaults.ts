@@ -15,12 +15,12 @@ export const DEV_KEY_PRESETS: readonly { id: string; label: string; keys: DevKey
     id: 'seed-terminal',
     label: 'Seed / local DB (terminal)',
     keys: {
-      payinPublicKey: 'pk_payin_c155f611a295b631b99016fae8cd43d3109ded9809317058',
+      payinPublicKey: 'pk_payin_9e5d497b96a6b0469e656f3ddb4586b35d1263916ba067a1',
       payinSecret:
-        'sk_payin_ab298c91635ced1e4c6d9b38374b34fa19e7410eb384d537102789c785d611c3',
-      payoutPublicKey: 'pk_payout_8a8f385209a376ac10c00d1f651a57c318585ac7fbfb232d',
+        'sk_payin_b9341906c036dbf968a10ffd227072f49f97327a86f61f7f4c9ea7f35d1a26f3',
+      payoutPublicKey: 'pk_payout_4155020dbd2b506ed95c7898a434f6ef53aab1aea9a2d909',
       payoutSecret:
-        'sk_payout_a980a11a47aab58392a5b8081ff22e013f76e1d15ac6f35798d3deec23ba8aa9',
+        'sk_payout_41ac0a5eb01d277627a4c604a24bd149f1a06a026eaac60c3e268cb21e0e093e',
     },
   },
   {
