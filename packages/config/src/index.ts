@@ -10,6 +10,9 @@ function optional(key: string, fallback: string): string {
   return process.env[key] || fallback;
 }
 
+/** Trimmed custom base URL; when unset, the SDK uses standard AWS partition endpoints. */
+const customS3Endpoint = process.env.S3_ENDPOINT?.trim() || undefined;
+
 export const config = {
   database: {
     url: optional('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/p2p'),
@@ -100,10 +103,15 @@ export const config = {
   s3: {
     bucket: optional('S3_BUCKET', 'p2p-files'),
     region: optional('S3_REGION', 'us-east-1'),
-    endpoint: process.env.S3_ENDPOINT,
+    endpoint: customS3Endpoint,
     accessKeyId: optional('S3_ACCESS_KEY_ID', 'minioadmin'),
     secretAccessKey: optional('S3_SECRET_ACCESS_KEY', 'minioadmin'),
-    forcePathStyle: optional('S3_FORCE_PATH_STYLE', 'true') === 'true',
+    /**
+     * Path-style (`true`) suits MinIO / custom `endpoint`. AWS buckets normally need virtual-hosted
+     * addressing (`false`); wrong style contributes to `PermanentRedirect` against real S3.
+     */
+    forcePathStyle:
+      optional('S3_FORCE_PATH_STYLE', customS3Endpoint ? 'true' : 'false') === 'true',
   },
   telegram: {
     botToken: optional('TELEGRAM_BOT_TOKEN', ''),

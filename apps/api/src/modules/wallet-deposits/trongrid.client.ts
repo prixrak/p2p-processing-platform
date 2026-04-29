@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { config } from '@p2p/config';
+import {
+  logExternalFailure,
+  logHttpResponseFailure,
+} from '../../common/utils/external-error-log';
 
 type Trc20Row = {
   transaction_id?: string;
@@ -33,14 +37,30 @@ export class TrongridClient {
         body: '{}',
         signal: AbortSignal.timeout(config.http.webhookFetchTimeoutMs),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        logHttpResponseFailure(this.logger, {
+          integration: 'TronGrid',
+          operation: 'wallet/getnowblock',
+          context: { baseUrl: config.tron.baseUrl },
+          status: res.status,
+          statusText: res.statusText,
+          level: 'warn',
+        });
+        return null;
+      }
       const j = (await res.json()) as {
         block_header?: { raw_data?: { number?: number } };
       };
       const n = j.block_header?.raw_data?.number;
       return typeof n === 'number' ? n : null;
     } catch (e) {
-      this.logger.warn(`Tron getnowblock failed: ${e instanceof Error ? e.message : e}`);
+      logExternalFailure(this.logger, {
+        integration: 'TronGrid',
+        operation: 'wallet/getnowblock',
+        context: { baseUrl: config.tron.baseUrl },
+        error: e,
+        level: 'warn',
+      });
       return null;
     }
   }
@@ -54,11 +74,27 @@ export class TrongridClient {
         body: JSON.stringify({ value: txId }),
         signal: AbortSignal.timeout(config.http.webhookFetchTimeoutMs),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        logHttpResponseFailure(this.logger, {
+          integration: 'TronGrid',
+          operation: 'wallet/gettransactioninfobyid',
+          context: { baseUrl: config.tron.baseUrl, txIdPrefix: txId.slice(0, 12) },
+          status: res.status,
+          statusText: res.statusText,
+          level: 'warn',
+        });
+        return null;
+      }
       const j = (await res.json()) as { blockNumber?: number };
       return typeof j.blockNumber === 'number' ? j.blockNumber : null;
     } catch (e) {
-      this.logger.debug(`Tron gettransactioninfobyid ${txId}: ${e}`);
+      logExternalFailure(this.logger, {
+        integration: 'TronGrid',
+        operation: 'wallet/gettransactioninfobyid',
+        context: { baseUrl: config.tron.baseUrl, txIdPrefix: txId.slice(0, 12) },
+        error: e,
+        level: 'warn',
+      });
       return null;
     }
   }
@@ -81,13 +117,32 @@ export class TrongridClient {
         signal: AbortSignal.timeout(config.http.webhookFetchTimeoutMs),
       });
       if (!res.ok) {
-        this.logger.warn(`TronGrid trc20 list ${res.status} for ${address}`);
+        logHttpResponseFailure(this.logger, {
+          integration: 'TronGrid',
+          operation: 'v1/accounts/.../transactions/trc20',
+          context: {
+            baseUrl: config.tron.baseUrl,
+            addressPrefix: `${address.slice(0, 6)}…${address.slice(-4)}`,
+          },
+          status: res.status,
+          statusText: res.statusText,
+          level: 'warn',
+        });
         return [];
       }
       const j = (await res.json()) as { data?: Trc20Row[] };
       return Array.isArray(j.data) ? j.data : [];
     } catch (e) {
-      this.logger.warn(`TronGrid trc20 fetch failed: ${e instanceof Error ? e.message : e}`);
+      logExternalFailure(this.logger, {
+        integration: 'TronGrid',
+        operation: 'v1/accounts/.../transactions/trc20',
+        context: {
+          baseUrl: config.tron.baseUrl,
+          addressPrefix: `${address.slice(0, 6)}…${address.slice(-4)}`,
+        },
+        error: e,
+        level: 'warn',
+      });
       return [];
     }
   }

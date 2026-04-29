@@ -2,6 +2,10 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { config } from '@p2p/config';
+import {
+  logExternalFailure,
+  logHttpResponseFailure,
+} from '../common/utils/external-error-log';
 
 interface TelegramJobData {
   chatId: string;
@@ -41,13 +45,30 @@ export class TelegramProcessor extends WorkerHost {
 
       if (!res.ok) {
         const body = await res.text().catch(() => '');
-        this.logger.warn(`Telegram API error: ${res.status} ${body}`);
+        logHttpResponseFailure(this.logger, {
+          integration: 'Telegram Bot API',
+          operation: 'sendMessage',
+          context: { chatId },
+          status: res.status,
+          statusText: res.statusText,
+          bodyPreview: body,
+          level: 'warn',
+        });
         throw new Error(`Telegram API returned ${res.status}`);
       }
 
       this.logger.log(`Telegram message sent to chat ${chatId}`);
     } catch (err) {
-      this.logger.error(`Failed to send Telegram message: ${err}`);
+      const skipDuplicate =
+        err instanceof Error && err.message.startsWith('Telegram API returned');
+      if (!skipDuplicate) {
+        logExternalFailure(this.logger, {
+          integration: 'Telegram Bot API',
+          operation: 'sendMessage',
+          context: { chatId },
+          error: err,
+        });
+      }
       throw err;
     } finally {
       clearTimeout(timeout);

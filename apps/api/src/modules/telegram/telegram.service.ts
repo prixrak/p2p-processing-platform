@@ -8,6 +8,10 @@ import {
   PlatformSettingsService,
   PLATFORM_SETTING_TRADER_PAYIN_LOW_CAPACITY_ALERT_THRESHOLD_USDT,
 } from '../platform-settings/platform-settings.service';
+import {
+  logExternalFailure,
+  logHttpResponseFailure,
+} from '../../common/utils/external-error-log';
 
 type ConnectTokenEntry = {
   traderId?: string;
@@ -55,9 +59,15 @@ export class TelegramService {
 
       if (!res.ok) {
         const body = await res.text().catch(() => '');
-        this.logger.warn(
-          `Telegram API error for chat ${chatId}: ${res.status} ${body}`,
-        );
+        logHttpResponseFailure(this.logger, {
+          integration: 'Telegram Bot API',
+          operation: 'sendMessage',
+          context: { chatId },
+          status: res.status,
+          statusText: res.statusText,
+          bodyPreview: body,
+          level: 'warn',
+        });
 
         if (res.status === 403 || res.status === 400) {
           await this.deactivateSettings(chatId);
@@ -68,9 +78,12 @@ export class TelegramService {
 
       return true;
     } catch (err) {
-      this.logger.error(
-        `Telegram send failed for chat ${chatId}: ${err instanceof Error ? err.message : err}`,
-      );
+      logExternalFailure(this.logger, {
+        integration: 'Telegram Bot API',
+        operation: 'sendMessage',
+        context: { chatId },
+        error: err,
+      });
       return false;
     }
   }

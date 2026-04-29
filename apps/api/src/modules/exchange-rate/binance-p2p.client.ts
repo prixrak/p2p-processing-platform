@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { config } from '@p2p/config';
 import type { BinanceP2pOfferPick } from '@p2p/shared';
+import { logExternalFailure } from '../../common/utils/external-error-log';
 
 type BinanceAdvSearchRow = {
   /** Present when Binance places the row in a privileged / promoted slot (Block 5 §2.1). */
@@ -90,12 +91,24 @@ export class BinanceP2pClient {
         message?: string;
       };
       if (json.code !== '000000' || !Array.isArray(json.data)) {
-        this.logger.warn(`Binance P2P search failed: code=${json.code} msg=${json.message}`);
+        logExternalFailure(this.logger, {
+          integration: 'Binance P2P',
+          operation: 'adv/search',
+          context: { fiat, page, binanceCode: json.code },
+          error: new Error(json.message ?? `unexpected response code ${json.code}`),
+          level: 'warn',
+        });
         return [];
       }
       return json.data.filter(isNonPrivilegedBinanceRow).map(adRowToPick);
     } catch (e) {
-      this.logger.warn(`Binance P2P fetch error: ${e instanceof Error ? e.message : String(e)}`);
+      logExternalFailure(this.logger, {
+        integration: 'Binance P2P',
+        operation: 'adv/search',
+        context: { fiat, page },
+        error: e,
+        level: 'warn',
+      });
       return [];
     } finally {
       clearTimeout(t);

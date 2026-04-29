@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { config } from '@p2p/config';
+import { logExternalFailure } from '../../common/utils/external-error-log';
 
 /** ERC-20 Transfer(address indexed from, address indexed to, uint256 value). */
 export const ERC20_TRANSFER_TOPIC =
@@ -72,7 +73,13 @@ export class EthereumJsonRpcClient {
       }
       return json.result as T;
     } catch (e) {
-      this.logger.warn(`Ethereum RPC ${method} failed: ${e instanceof Error ? e.message : e}`);
+      logExternalFailure(this.logger, {
+        integration: 'Ethereum JSON-RPC',
+        operation: method,
+        context: { rpcHost: safeUrlOrigin(url) },
+        error: e,
+        level: 'warn',
+      });
       throw e;
     } finally {
       clearTimeout(t);
@@ -87,6 +94,14 @@ export function padTopicAddress(addr: string): string {
     throw new Error('Invalid Ethereum address');
   }
   return '0x' + hex.padStart(64, '0');
+}
+
+function safeUrlOrigin(urlStr: string): string {
+  try {
+    return new URL(urlStr).origin;
+  } catch {
+    return 'invalid-url';
+  }
 }
 
 export function decodeUint256Data(hexData: string): bigint {

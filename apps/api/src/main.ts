@@ -1,3 +1,4 @@
+import './load-env';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { Logger as PinoNestLogger } from 'nestjs-pino';
 import { NestFactory } from '@nestjs/core';

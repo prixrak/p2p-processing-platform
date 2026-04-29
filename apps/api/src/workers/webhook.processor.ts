@@ -7,6 +7,10 @@ import { PrismaService } from '../config/prisma.service';
 import { decryptSecret } from '../common/utils/crypto';
 import { validateCallbackUrl } from '../common/utils/url-validator';
 import { readResponseBodyLimited } from '../common/utils/read-response-body-limited';
+import {
+  logExternalFailure,
+  logHttpResponseFailure,
+} from '../common/utils/external-error-log';
 import { WEBHOOK_MAX_RETRIES, WEBHOOK_RETRY_DELAYS_MS } from '@p2p/shared';
 import { ApiKeyDirection } from '@prisma/client';
 
@@ -144,9 +148,31 @@ export class WebhookProcessor extends WorkerHost {
         this.logger.log(`Webhook delivered: ${outboxId} → ${outbox.callbackUrl}`);
         return;
       }
+
+      logHttpResponseFailure(this.logger, {
+        integration: 'Merchant webhook',
+        operation: 'POST callback',
+        context: {
+          outboxId,
+          callbackOrigin: safeCallbackOrigin(outbox.callbackUrl),
+        },
+        status: res.status,
+        statusText: res.statusText,
+        bodyPreview: responseBody ?? '',
+        level: 'warn',
+      });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-      this.logger.warn(`Webhook delivery failed for ${outboxId}: ${errorMsg}`);
+      logExternalFailure(this.logger, {
+        integration: 'Merchant webhook',
+        operation: 'POST callback',
+        context: {
+          outboxId,
+          callbackOrigin: safeCallbackOrigin(outbox.callbackUrl),
+        },
+        error: err,
+        level: 'warn',
+      });
 
       await this.prisma.webhookLog.create({
         data: {
@@ -183,5 +209,13 @@ export class WebhookProcessor extends WorkerHost {
     });
 
     throw new Error(`Webhook delivery failed, will retry (attempt ${newAttempts}/${WEBHOOK_MAX_RETRIES})`);
+  }
+}
+
+function safeCallbackOrigin(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return 'invalid-url';
   }
 }
