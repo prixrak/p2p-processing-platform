@@ -32,6 +32,7 @@ export const PAYIN_TRADER_HISTORY_STATUSES: readonly PayInOrderStatus[] = [
   PayInOrderStatus.CANCELED,
   PayInOrderStatus.APPEAL,
   PayInOrderStatus.UPLOAD_FAILED,
+  PayInOrderStatus.NO_REQUISITE,
 ];
 
 /** Pay-Out orders the trader took from the pool and is still working on. */

@@ -8,6 +8,8 @@ export enum PayInOrderStatus {
   APPEAL = 'APPEAL',
   CANCELED = 'CANCELED',
   UPLOAD_FAILED = 'UPLOAD_FAILED',
+  /** Cascade could not assign any active requisite for this amount/currency. */
+  NO_REQUISITE = 'NO_REQUISITE',
 }
 
 export enum PayOutOrderStatus {

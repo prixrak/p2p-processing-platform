@@ -140,6 +140,21 @@ export function PaymentClient({ order }: PaymentClientProps) {
     /* Timer is visual-only per spec — don't auto-cancel */
   }, []);
 
+  if (currentOrder.status === PayInOrderStatus.NO_REQUISITE) {
+    return (
+      <div className="rounded-2xl border border-warning/25 bg-surface-secondary p-6 text-center">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-warning/10">
+          <AlertCircle className="h-7 w-7 text-warning" />
+        </div>
+        <h2 className="text-lg font-semibold text-text-primary">No payment route available</h2>
+        <p className="mt-2 text-sm text-text-secondary">
+          We could not assign payment details for this amount right now. Please contact the merchant or try again
+          later.
+        </p>
+      </div>
+    );
+  }
+
   if (step === 'success') {
     return (
       <div className="rounded-2xl border border-success/20 bg-surface-secondary p-6 text-center">

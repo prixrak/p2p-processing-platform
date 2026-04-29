@@ -12,6 +12,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
+import { CascadeService } from '../cascade/cascade.service';
 import { TradersService } from './traders.service';
 import { TraderSelfTrc20Dto } from './dto/trader-self-trc20.dto';
 import { TraderSelfErc20Dto } from './dto/trader-self-erc20.dto';
@@ -25,7 +26,17 @@ export class TraderDashboardController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tradersService: TradersService,
+    private readonly cascadeService: CascadeService,
   ) {}
+
+  @Get('payin-assign-ranges')
+  @ApiOperation({
+    summary:
+      'Effective Pay-In assignment amount bounds per requisite (manual vs cascade Fork autolimits)',
+  })
+  async getPayinAssignRanges(@CurrentUser('traderId') traderId: string) {
+    return this.cascadeService.getEffectiveAssignRangesForTrader(traderId);
+  }
 
   @Get('usdt-wallet')
   @ApiOperation({

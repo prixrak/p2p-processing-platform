@@ -12,6 +12,13 @@ export const internalPaths = {
   adminStats: '/api/admin/stats',
   adminStatistics: '/api/admin/statistics',
 
+  adminCascadeSettings: '/api/admin/cascade/settings',
+  adminCascadeTrafficPolicy: '/api/admin/cascade/traffic-policy',
+  adminCascadeCoverage: (currency = 'UAH') =>
+    `/api/admin/cascade/coverage?currency=${encodeURIComponent(currency)}`,
+  adminCascadeNominals: '/api/admin/cascade/nominals',
+  adminCascadeNominal: (id: string) => `/api/admin/cascade/nominals/${id}`,
+
   adminOrders: (qs: string) => `/api/admin/orders?${qs}`,
   adminOrder: (id: string) => `/api/admin/orders/${id}`,
   adminOrderStatus: (id: string) => `/api/admin/orders/${id}/status`,

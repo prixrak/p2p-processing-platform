@@ -26,4 +26,5 @@ export const payoutStatusVariant: Record<string, BadgeVariant> = {
   FAILED: 'danger',
   CANCELED: 'danger',
   UPLOAD_FAILED: 'danger',
+  NO_REQUISITE: 'danger',
 };

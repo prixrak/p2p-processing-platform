@@ -6,6 +6,9 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
+import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
+import { CascadeService } from '../cascade/cascade.service';
+import { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
 import { CreateRequisiteDto } from './dto/create-requisite.dto';
 import { UpdateRequisiteDto } from './dto/update-requisite.dto';
 
@@ -13,7 +16,12 @@ import { UpdateRequisiteDto } from './dto/update-requisite.dto';
 export class RequisitesService {
   private readonly logger = new Logger(RequisitesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cascadeService: CascadeService,
+    private readonly exchangeRate: ExchangeRateService,
+    private readonly cascadeCoverageCache: CascadeRedisStateService,
+  ) {}
 
   // ─── Used by PayinService ───
 
@@ -23,30 +31,28 @@ export class RequisitesService {
    * when multiple pay-in orders compete for the same requisite.
    */
   async findAvailable(currency: string, amount: number) {
-    const amountDec = new Prisma.Decimal(amount);
+    const isUah = currency === 'UAH';
+    let parserRate: number | undefined;
+    if (isUah) {
+      try {
+        parserRate = await this.exchangeRate.requireParserRateUaPerUsdt();
+      } catch {
+        return null;
+      }
+    }
 
     return this.prisma.$transaction(async (tx) => {
-      const results = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT r.id FROM requisites r
-        INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
-        INNER JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true AND tp.accepting_orders = true
-        WHERE r.currency = ${currency}
-          AND r.is_active = true
-          AND g.archived_at IS NULL
-          AND g.is_active = true
-          AND r.min_amount <= ${amountDec}
-          AND r.max_amount >= ${amountDec}
-          AND r.used_amount < r.limit_total_amount
-          AND r.used_ops < r.limit_total_ops
-        ORDER BY r.used_ops ASC
-        LIMIT 1
-        FOR UPDATE OF r SKIP LOCKED
-      `;
+      const picked = await this.cascadeService.lockBestRequisiteForPayIn(tx, {
+        amount,
+        currency,
+        parserRate,
+        enforceUsdtCapacity: isUah,
+      });
 
-      if (results.length === 0) return null;
+      if (!picked) return null;
 
       return tx.requisite.findUnique({
-        where: { id: results[0].id },
+        where: { id: picked.requisiteId },
         include: { bank: true, trader: true },
       });
     });
@@ -93,6 +99,7 @@ export class RequisitesService {
         `Requisite ${requisiteId} auto-disabled [${reason}]: usedAmount=${requisite.usedAmount}, usedOps=${requisite.usedOps}`,
       );
     }
+    void this.cascadeCoverageCache.invalidateCurrency(requisite.currency);
   }
 
   /**
@@ -100,13 +107,14 @@ export class RequisitesService {
    * Ensures the requisite capacity is freed for future orders.
    */
   async releaseUsage(requisiteId: string, amount: number): Promise<void> {
-    await this.prisma.requisite.update({
+    const updated = await this.prisma.requisite.update({
       where: { id: requisiteId },
       data: {
         usedAmount: { decrement: amount },
         usedOps: { decrement: 1 },
       },
     });
+    void this.cascadeCoverageCache.invalidateCurrency(updated.currency);
     this.logger.log(
       `Requisite ${requisiteId} usage released: amount=${amount}, ops=1`,
     );
@@ -139,13 +147,12 @@ export class RequisitesService {
       this.logger.warn(
         `Requisite ${requisiteId} auto-disabled [${reason}] after limit check`,
       );
+      void this.cascadeCoverageCache.invalidateCurrency(requisite.currency);
       return true;
     }
 
     return false;
   }
-
-  // ─── CRUD ───
 
   async create(traderId: string, dto: CreateRequisiteDto) {
     const group = await this.prisma.requisiteGroup.findFirst({
@@ -158,7 +165,7 @@ export class RequisitesService {
       throw new BadRequestException('GROUP_ARCHIVED: cannot add requisite to an archived group');
     }
 
-    return this.prisma.requisite.create({
+    const created = await this.prisma.requisite.create({
       data: {
         traderId,
         requisiteGroupId: group.id,
@@ -176,6 +183,8 @@ export class RequisitesService {
       },
       include: { bank: true, group: true },
     });
+    void this.cascadeCoverageCache.invalidateCurrency(created.currency);
+    return created;
   }
 
   async findByTraderId(traderId: string, includeInactive = false) {
@@ -200,7 +209,7 @@ export class RequisitesService {
 
   async update(id: string, dto: UpdateRequisiteDto) {
     await this.findById(id);
-    return this.prisma.requisite.update({
+    const updated = await this.prisma.requisite.update({
       where: { id },
       data: {
         ...(dto.owner !== undefined ? { owner: dto.owner } : {}),
@@ -219,28 +228,36 @@ export class RequisitesService {
       },
       include: { bank: true, group: true },
     });
+    void this.cascadeCoverageCache.invalidateCurrency(updated.currency);
+    return updated;
   }
 
   async delete(id: string) {
-    await this.findById(id);
-    return this.prisma.requisite.delete({ where: { id } });
+    const prev = await this.findById(id);
+    const removed = await this.prisma.requisite.delete({ where: { id } });
+    void this.cascadeCoverageCache.invalidateCurrency(prev.currency);
+    return removed;
   }
 
   async activate(id: string) {
-    await this.findById(id);
-    return this.prisma.requisite.update({
+    const prev = await this.findById(id);
+    const updated = await this.prisma.requisite.update({
       where: { id },
       data: { isActive: true, disabledReason: null },
       include: { bank: true, group: true },
     });
+    void this.cascadeCoverageCache.invalidateCurrency(prev.currency);
+    return updated;
   }
 
   async deactivate(id: string) {
-    await this.findById(id);
-    return this.prisma.requisite.update({
+    const prev = await this.findById(id);
+    const updated = await this.prisma.requisite.update({
       where: { id },
       data: { isActive: false, disabledReason: 'MANUAL' },
       include: { bank: true, group: true },
     });
+    void this.cascadeCoverageCache.invalidateCurrency(prev.currency);
+    return updated;
   }
 }

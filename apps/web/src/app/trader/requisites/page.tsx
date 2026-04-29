@@ -182,6 +182,30 @@ export default function RequisitesPage() {
       ),
   });
 
+  type PayinAssignRangeRow = {
+    requisite_id: string;
+    eff_min: number | null;
+    eff_max: number | null;
+    fork_autolimit_active: boolean;
+    participates_in_cascade: boolean;
+  };
+
+  const { data: assignRangesData } = useQuery({
+    queryKey: ['trader', 'payin-assign-ranges'],
+    queryFn: () =>
+      api.get<{ requisites: PayinAssignRangeRow[] }>(
+        '/api/trader/dashboard/payin-assign-ranges',
+      ),
+  });
+
+  const assignRangeByReqId = useMemo(() => {
+    const m = new Map<string, PayinAssignRangeRow>();
+    for (const row of assignRangesData?.requisites ?? []) {
+      m.set(row.requisite_id, row);
+    }
+    return m;
+  }, [assignRangesData]);
+
   const { data: historyData, isLoading: historyLoading } = useQuery({
     queryKey: ['requisite', 'history', historyRequisiteId],
     queryFn: () =>
@@ -210,6 +234,7 @@ export default function RequisitesPage() {
 
   const invalidateGroups = () => {
     queryClient.invalidateQueries({ queryKey: ['trader', 'requisite-groups'] });
+    queryClient.invalidateQueries({ queryKey: ['trader', 'payin-assign-ranges'] });
   };
 
   const createGroupMutation = useMutation({
@@ -636,11 +661,45 @@ export default function RequisitesPage() {
                           {
                             key: 'range',
                             header: 'Amount range',
-                            render: (r) => (
-                              <span className="tabular-nums whitespace-nowrap text-xs">
-                                {compactAmount(num(r.minAmount))} ↔ {compactAmount(num(r.maxAmount))}
-                              </span>
-                            ),
+                            render: (r) => {
+                              const ar = assignRangeByReqId.get(r.id);
+                              const manualLo = num(r.minAmount);
+                              const manualHi = num(r.maxAmount);
+                              const hasEff =
+                                ar &&
+                                ar.eff_min != null &&
+                                ar.eff_max != null;
+                              const showAssign =
+                                hasEff &&
+                                (ar!.fork_autolimit_active ||
+                                  !ar!.participates_in_cascade ||
+                                  Math.abs(ar!.eff_min! - manualLo) > 0.01 ||
+                                  Math.abs(ar!.eff_max! - manualHi) > 0.01);
+                              return (
+                                <div className="space-y-0.5">
+                                  <span className="tabular-nums whitespace-nowrap text-xs">
+                                    {compactAmount(manualLo)} ↔ {compactAmount(manualHi)}
+                                  </span>
+                                  {showAssign ? (
+                                    <div className="text-[10px] leading-tight text-text-muted">
+                                      Pay-In assignment:{' '}
+                                      <span className="tabular-nums text-text-secondary">
+                                        {compactAmount(ar!.eff_min!)} ↔ {compactAmount(ar!.eff_max!)}
+                                      </span>
+                                      {!ar!.participates_in_cascade ? (
+                                        <span className="ml-1 text-amber-600">
+                                          (not in cascade pool)
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  ) : ar && !ar.participates_in_cascade ? (
+                                    <div className="text-[10px] text-amber-600">
+                                      Not in cascade assignment pool
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            },
                           },
                           {
                             key: 'ops',

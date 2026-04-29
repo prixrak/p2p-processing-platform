@@ -1,4 +1,8 @@
-import { isValidEthereumUsdtDepositAddress, isValidTronTrc20Address } from './traders.service';
+import {
+  isValidCascadeTrafficPercentTotal,
+  isValidEthereumUsdtDepositAddress,
+  isValidTronTrc20Address,
+} from './traders.service';
 
 describe('isValidTronTrc20Address', () => {
   it('accepts standard Tron base58 address', () => {
@@ -9,6 +13,20 @@ describe('isValidTronTrc20Address', () => {
     expect(isValidTronTrc20Address('0x1234')).toBe(false);
     expect(isValidTronTrc20Address('T')).toBe(false);
     expect(isValidTronTrc20Address('')).toBe(false);
+  });
+});
+
+describe('isValidCascadeTrafficPercentTotal', () => {
+  it('accepts totals near 100% or all-zero', () => {
+    expect(isValidCascadeTrafficPercentTotal(100)).toBe(true);
+    expect(isValidCascadeTrafficPercentTotal(99.99)).toBe(true);
+    expect(isValidCascadeTrafficPercentTotal(0)).toBe(true);
+  });
+
+  it('rejects partial totals that cascade cannot treat as intentional', () => {
+    expect(isValidCascadeTrafficPercentTotal(50)).toBe(false);
+    expect(isValidCascadeTrafficPercentTotal(99)).toBe(false);
+    expect(isValidCascadeTrafficPercentTotal(0.5)).toBe(false);
   });
 });
 

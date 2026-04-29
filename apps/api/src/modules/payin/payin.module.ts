@@ -9,6 +9,8 @@ import { FilesModule } from '../files/files.module';
 import { MerchantDirectionsModule } from '../merchant-directions/merchant-directions.module';
 import { BalanceTransactionsModule } from '../balance-transactions/balance-transactions.module';
 import { PlatformSettingsModule } from '../platform-settings/platform-settings.module';
+import { CascadeModule } from '../cascade/cascade.module';
+import { TelegramModule } from '../telegram/telegram.module';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { PlatformSettingsModule } from '../platform-settings/platform-settings.m
     MerchantDirectionsModule,
     BalanceTransactionsModule,
     PlatformSettingsModule,
+    CascadeModule,
+    TelegramModule,
   ],
   controllers: [PayinController, PayinInternalController, PaymentPageController],
   providers: [PayinService, PayinRealtimeService],

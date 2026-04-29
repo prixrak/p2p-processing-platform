@@ -22,6 +22,7 @@ import { TradersService } from './traders.service';
 import { GetStatisticsDto, SetPayoutLimitsDto, TraderStatisticsResponseDto } from './dto';
 import { UpdateTraderAcceptingOrdersDto } from './dto/update-trader-accepting-orders.dto';
 import { UpdateTraderBalanceModelDto } from './dto/update-trader-balance-model.dto';
+import { UpdateTraderCascadeDto } from './dto/update-trader-cascade.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -165,5 +166,21 @@ export class TradersController {
     @Body() dto: SetPayoutLimitsDto,
   ) {
     return this.tradersService.setPayoutLimits(id, dto.minLimit, dto.maxLimit);
+  }
+
+  @Patch(':id/cascade-routing')
+  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @ApiOperation({
+    summary: 'Cascade routing: trader processing method (CARD/FORK) and traffic_percent',
+  })
+  updateCascadeRouting(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTraderCascadeDto,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.tradersService.updateCascadeRouting(id, dto, {
+      id: user.id,
+      role: user.role,
+    });
   }
 }

@@ -65,6 +65,9 @@ import {
 } from './dto';
 import { PayinRealtimeService } from './payin-realtime.service';
 import { validate as uuidValidate } from 'uuid';
+import { CascadeService } from '../cascade/cascade.service';
+import { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
+import { TelegramService } from '../telegram/telegram.service';
 
 const ORDER_INCLUDE = {
   requisite: { include: { bank: true } },
@@ -87,6 +90,9 @@ export class PayinService {
     private readonly platformSettings: PlatformSettingsService,
     private readonly payinRealtime: PayinRealtimeService,
     private readonly exchangeRate: ExchangeRateService,
+    private readonly cascadeService: CascadeService,
+    private readonly cascadeCoverageCache: CascadeRedisStateService,
+    private readonly telegram: TelegramService,
   ) {}
 
   private emitPayinOrderRealtime(order: {
@@ -129,7 +135,6 @@ export class PayinService {
     const commission = dto.amount * commissionPercent / 100;
     const partnerAmount = dto.amount - commission;
     const autocloseAt = new Date(Date.now() + await this.getAutocloseMs());
-    const amountDec = new Prisma.Decimal(dto.amount);
     const isUahV2 = dto.currency === 'UAH';
     let parserRate: number | undefined;
     if (isUahV2) {
@@ -142,57 +147,59 @@ export class PayinService {
       }
     }
 
+    let redisCascadeLockId: string | undefined;
     try {
+      const txStarted = Date.now();
       const order = await this.prisma.$transaction(async (tx) => {
-        const lockedRows = isUahV2
-          ? await tx.$queryRaw<Array<{ id: string }>>`
-            SELECT r.id FROM requisites r
-            INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
-            INNER JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true AND tp.accepting_orders = true
-            LEFT JOIN trader_balances tb ON tb.trader_id = tp.id AND tb.currency = 'USDT'
-            WHERE r.currency = ${dto.currency}
-              AND r.is_active = true
-              AND g.archived_at IS NULL
-              AND g.is_active = true
-              AND r.min_amount <= ${amountDec}
-              AND r.max_amount >= ${amountDec}
-              AND r.used_amount < r.limit_total_amount
-              AND r.used_ops < r.limit_total_ops
-              AND (
-                (${amountDec}::numeric / (${parserRate!}::numeric * (1 + tp.payin_rate::numeric)))
-                <= COALESCE(tb.amount::numeric, 0) + COALESCE(tp.overdraft_limit::numeric, 0)
-              )
-            ORDER BY r.used_ops ASC
-            LIMIT 1
-            FOR UPDATE OF r SKIP LOCKED
-          `
-          : await tx.$queryRaw<Array<{ id: string }>>`
-            SELECT r.id FROM requisites r
-            INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
-            INNER JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true AND tp.accepting_orders = true
-            WHERE r.currency = ${dto.currency}
-              AND r.is_active = true
-              AND g.archived_at IS NULL
-              AND g.is_active = true
-              AND r.min_amount <= ${amountDec}
-              AND r.max_amount >= ${amountDec}
-              AND r.used_amount < r.limit_total_amount
-              AND r.used_ops < r.limit_total_ops
-            ORDER BY r.used_ops ASC
-            LIMIT 1
-            FOR UPDATE OF r SKIP LOCKED
-          `;
+        const picked = await this.cascadeService.lockBestRequisiteForPayIn(tx, {
+          amount: dto.amount,
+          currency: dto.currency,
+          parserRate,
+          enforceUsdtCapacity: isUahV2,
+        });
 
-        if (lockedRows.length === 0) {
-          throw new BadRequestException(
-            isUahV2
-              ? 'PARAMETER_NOT_FOUND: No available requisite or trader USDT capacity (including overdraft) insufficient'
-              : 'PARAMETER_NOT_FOUND: No available requisite',
-          );
+        if (!picked) {
+          const merchantFracNr = percentToFraction(commissionPercent);
+          const raInNr =
+            isUahV2 && parserRate !== undefined
+              ? rateAdminIn(parserRate, merchantFracNr)
+              : null;
+
+          const createdNr = await tx.payinOrder.create({
+            data: {
+              requestId: dto.request_id,
+              merchantId,
+              traderId: null,
+              requisiteId: null,
+              amount: dto.amount,
+              currency: dto.currency,
+              commissionPercent,
+              commission,
+              partnerAmount,
+              rate: Number(direction.rate),
+              parserRate: isUahV2 && parserRate !== undefined ? parserRate : undefined,
+              rateTraderIn: undefined,
+              rateAdminIn: raInNr ?? undefined,
+              status: 'NO_REQUISITE',
+              userFullName: dto.user_full_name,
+              userIdExternal: dto.user_id,
+              callbackUrl: dto.callback_url,
+              autocloseAt,
+              isH2h: false,
+            },
+            include: ORDER_INCLUDE,
+          });
+
+          await this.createPayinWebhookEntry(tx, createdNr);
+          return createdNr;
+        }
+
+        if (picked.redisLockHeld) {
+          redisCascadeLockId = picked.requisiteId;
         }
 
         const requisite = await tx.requisite.findUnique({
-          where: { id: lockedRows[0].id },
+          where: { id: picked.requisiteId },
           include: { bank: true, trader: true },
         });
 
@@ -243,10 +250,30 @@ export class PayinService {
           },
         });
 
+        await tx.trafficDistributionLog.create({
+          data: {
+            traderId: requisite.traderId,
+            payinOrderId: created.id,
+            amount: created.amount,
+            processingMethod: requisite.trader.processingMethod,
+          },
+        });
+
         await this.createPayinWebhookEntry(tx, created);
 
         return created;
       });
+
+      const payinTxMs = Date.now() - txStarted;
+      this.logPayinCreateTransactionMetrics(
+        order,
+        payinTxMs,
+        'external_create_payin_order',
+      );
+
+      if (order.requisiteId) {
+        void this.cascadeCoverageCache.invalidateCurrency(order.currency);
+      }
 
       this.emitPayinOrderRealtime({
         id: order.id,
@@ -255,6 +282,14 @@ export class PayinService {
         status: order.status as PayInOrderStatus,
       });
 
+      if (order.traderId) {
+        void this.telegram.notifyNewPayin(order.traderId, {
+          id: order.id,
+          amount: Number(order.amount),
+          currency: order.currency,
+        });
+      }
+
       return {
         order: this.toOrderDto(order),
         form_uri: `${config.app.frontendUrl}/pay/${order.id}`,
@@ -262,6 +297,10 @@ export class PayinService {
     } catch (error) {
       this.handleUniqueConstraint(error);
       throw error;
+    } finally {
+      if (redisCascadeLockId) {
+        void this.cascadeCoverageCache.releaseRequisiteLock(redisCascadeLockId);
+      }
     }
   }
 
@@ -453,7 +492,6 @@ export class PayinService {
     const commission = dto.amount * commissionPercent / 100;
     const partnerAmount = dto.amount - commission;
     const autocloseAt = new Date(Date.now() + await this.getAutocloseMs());
-    const amountDec = new Prisma.Decimal(dto.amount);
     const isUahV2 = dto.currency === 'UAH';
     let parserRate: number | undefined;
     if (isUahV2) {
@@ -466,57 +504,60 @@ export class PayinService {
       }
     }
 
+    let redisCascadeLockIdH2h: string | undefined;
     try {
+      const txStarted = Date.now();
       const order = await this.prisma.$transaction(async (tx) => {
-        const lockedRows = isUahV2
-          ? await tx.$queryRaw<Array<{ id: string }>>`
-            SELECT r.id FROM requisites r
-            INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
-            INNER JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true AND tp.accepting_orders = true
-            LEFT JOIN trader_balances tb ON tb.trader_id = tp.id AND tb.currency = 'USDT'
-            WHERE r.currency = ${dto.currency}
-              AND r.is_active = true
-              AND g.archived_at IS NULL
-              AND g.is_active = true
-              AND r.min_amount <= ${amountDec}
-              AND r.max_amount >= ${amountDec}
-              AND r.used_amount < r.limit_total_amount
-              AND r.used_ops < r.limit_total_ops
-              AND (
-                (${amountDec}::numeric / (${parserRate!}::numeric * (1 + tp.payin_rate::numeric)))
-                <= COALESCE(tb.amount::numeric, 0) + COALESCE(tp.overdraft_limit::numeric, 0)
-              )
-            ORDER BY r.used_ops ASC
-            LIMIT 1
-            FOR UPDATE OF r SKIP LOCKED
-          `
-          : await tx.$queryRaw<Array<{ id: string }>>`
-            SELECT r.id FROM requisites r
-            INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
-            INNER JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true AND tp.accepting_orders = true
-            WHERE r.currency = ${dto.currency}
-              AND r.is_active = true
-              AND g.archived_at IS NULL
-              AND g.is_active = true
-              AND r.min_amount <= ${amountDec}
-              AND r.max_amount >= ${amountDec}
-              AND r.used_amount < r.limit_total_amount
-              AND r.used_ops < r.limit_total_ops
-            ORDER BY r.used_ops ASC
-            LIMIT 1
-            FOR UPDATE OF r SKIP LOCKED
-          `;
+        const picked = await this.cascadeService.lockBestRequisiteForPayIn(tx, {
+          amount: dto.amount,
+          currency: dto.currency,
+          parserRate,
+          enforceUsdtCapacity: isUahV2,
+        });
 
-        if (lockedRows.length === 0) {
-          throw new BadRequestException(
-            isUahV2
-              ? 'PARAMETER_NOT_FOUND: No available requisite or trader USDT capacity (including overdraft) insufficient'
-              : 'PARAMETER_NOT_FOUND: No available requisite',
-          );
+        if (!picked) {
+          const merchantFracNr = percentToFraction(commissionPercent);
+          const raInNr =
+            isUahV2 && parserRate !== undefined
+              ? rateAdminIn(parserRate, merchantFracNr)
+              : null;
+
+          const createdNr = await tx.payinOrder.create({
+            data: {
+              requestId: dto.request_id,
+              merchantId,
+              traderId: null,
+              requisiteId: null,
+              amount: dto.amount,
+              currency: dto.currency,
+              commissionPercent,
+              commission,
+              partnerAmount,
+              rate: Number(direction.rate),
+              parserRate: isUahV2 && parserRate !== undefined ? parserRate : undefined,
+              rateTraderIn: undefined,
+              rateAdminIn: raInNr ?? undefined,
+              status: 'NO_REQUISITE',
+              userFullName: dto.user_full_name,
+              userIdExternal: dto.user_id,
+              callbackUrl: dto.callback_url,
+              redirectUrl: dto.redirect_url,
+              autocloseAt,
+              isH2h: true,
+            },
+            include: ORDER_INCLUDE,
+          });
+
+          await this.createPayinWebhookEntry(tx, createdNr);
+          return createdNr;
+        }
+
+        if (picked.redisLockHeld) {
+          redisCascadeLockIdH2h = picked.requisiteId;
         }
 
         const requisite = await tx.requisite.findUnique({
-          where: { id: lockedRows[0].id },
+          where: { id: picked.requisiteId },
           include: { bank: true, trader: true },
         });
 
@@ -568,10 +609,26 @@ export class PayinService {
           },
         });
 
+        await tx.trafficDistributionLog.create({
+          data: {
+            traderId: requisite.traderId,
+            payinOrderId: created.id,
+            amount: created.amount,
+            processingMethod: requisite.trader.processingMethod,
+          },
+        });
+
         await this.createPayinWebhookEntry(tx, created);
 
         return created;
       });
+
+      const payinTxMs = Date.now() - txStarted;
+      this.logPayinCreateTransactionMetrics(order, payinTxMs, 'h2h_init_payin_order');
+
+      if (order.requisiteId) {
+        void this.cascadeCoverageCache.invalidateCurrency(order.currency);
+      }
 
       this.emitPayinOrderRealtime({
         id: order.id,
@@ -580,10 +637,22 @@ export class PayinService {
         status: order.status as PayInOrderStatus,
       });
 
+      if (order.traderId) {
+        void this.telegram.notifyNewPayin(order.traderId, {
+          id: order.id,
+          amount: Number(order.amount),
+          currency: order.currency,
+        });
+      }
+
       return { order: this.toOrderDto(order) };
     } catch (error) {
       this.handleUniqueConstraint(error);
       throw error;
+    } finally {
+      if (redisCascadeLockIdH2h) {
+        void this.cascadeCoverageCache.releaseRequisiteLock(redisCascadeLockIdH2h);
+      }
     }
   }
 
@@ -959,6 +1028,38 @@ export class PayinService {
     });
 
     return this.toOrderDto(updated);
+  }
+
+  /**
+   * Pay-In creation transaction timing (includes cascade assignment + inserts). Use `event`:
+   * `payin_create_order_tx_ms`, `payin_order_no_requisite`.
+   */
+  private logPayinCreateTransactionMetrics(
+    order: OrderWithRelations,
+    duration_ms: number,
+    context: 'external_create_payin_order' | 'h2h_init_payin_order',
+  ): void {
+    this.logger.log({
+      msg: 'payin.create_order_tx_complete',
+      event: 'payin_create_order_tx_ms',
+      duration_ms,
+      status: order.status,
+      currency: order.currency,
+      amount: Number(order.amount),
+      merchant_id: order.merchantId,
+      context,
+      has_requisite: order.requisiteId != null,
+    });
+    if (order.status === 'NO_REQUISITE') {
+      this.logger.log({
+        msg: 'payin.no_requisite_order',
+        event: 'payin_order_no_requisite',
+        currency: order.currency,
+        amount: Number(order.amount),
+        merchant_id: order.merchantId,
+        context,
+      });
+    }
   }
 
   // ─── Private helpers ───

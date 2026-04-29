@@ -20,6 +20,7 @@ export const PAYIN_TRANSITIONS: Record<PayInOrderStatus, PayInOrderStatus[]> = {
   ],
   [PayInOrderStatus.APPEAL]: [],
   [PayInOrderStatus.UPLOAD_FAILED]: [],
+  [PayInOrderStatus.NO_REQUISITE]: [PayInOrderStatus.CANCELED],
 };
 
 export const PAYOUT_TRANSITIONS: Record<PayOutOrderStatus, PayOutOrderStatus[]> = {

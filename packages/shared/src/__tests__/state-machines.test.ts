@@ -137,6 +137,9 @@ describe('isValidPayInTransition', () => {
     );
     expect(isValidPayInTransition(PayInOrderStatus.NEW, PayInOrderStatus.PAID)).toBe(false);
     expect(isValidPayInTransition(PayInOrderStatus.APPEAL, PayInOrderStatus.PAID)).toBe(false);
+    expect(isValidPayInTransition(PayInOrderStatus.NO_REQUISITE, PayInOrderStatus.CANCELED)).toBe(
+      true,
+    );
   });
 });
 

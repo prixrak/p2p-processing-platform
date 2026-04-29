@@ -14,6 +14,13 @@ import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
 import type { UpdateTraderBalanceModelDto } from './dto/update-trader-balance-model.dto';
 import type { TraderSelfTrc20Dto } from './dto/trader-self-trc20.dto';
 import type { TraderSelfErc20Dto } from './dto/trader-self-erc20.dto';
+import type { UpdateTraderCascadeDto } from './dto/update-trader-cascade.dto';
+import { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
+import {
+  CASCADE_TRAFFIC_PERCENT_ASSIGNMENT_NOTE,
+  CASCADE_TRAFFIC_PERCENT_POLICY_TEXT,
+  type TrafficPercentPolicySummary,
+} from './cascade-traffic-percent-policy';
 
 function enumerateDaysUTC(from: Date, to: Date): string[] {
   const out: string[] = [];
@@ -50,6 +57,19 @@ export function isValidEthereumUsdtDepositAddress(addr: string): boolean {
   return /^0x[a-fA-F0-9]{40}$/.test(s);
 }
 
+/**
+ * Traffic targets for active traders: either sum to 100% (weighted cascade) or all zero
+ * (equal split in cascade when total configured share is empty).
+ */
+export function isValidCascadeTrafficPercentTotal(sum: number): boolean {
+  const eps = 0.02;
+  return Math.abs(sum - 100) <= eps || Math.abs(sum) <= eps;
+}
+
+function round4(n: number): number {
+  return Math.round(n * 1e4) / 1e4;
+}
+
 @Injectable()
 export class TradersService {
   private readonly logger = new Logger(TradersService.name);
@@ -57,7 +77,26 @@ export class TradersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly balanceTxService: BalanceTransactionsService,
+    private readonly cascadeCoverageCache: CascadeRedisStateService,
   ) {}
+
+  /**
+   * Snapshot for dashboards and PATCH metadata: same cohort as PATCH validation
+   * (`isActive` && `acceptingOrders`).
+   */
+  async getTrafficPercentPolicySummary(): Promise<TrafficPercentPolicySummary> {
+    const rows = await this.prisma.traderProfile.findMany({
+      where: { isActive: true, acceptingOrders: true },
+      select: { trafficPercent: true },
+    });
+    const sum = rows.reduce((s, t) => s + Number(t.trafficPercent), 0);
+    return {
+      active_traders_sum_percent: round4(sum),
+      matches_rule: isValidCascadeTrafficPercentTotal(sum),
+      policy: CASCADE_TRAFFIC_PERCENT_POLICY_TEXT,
+      assignment_note: CASCADE_TRAFFIC_PERCENT_ASSIGNMENT_NOTE,
+    };
+  }
 
   private async pickDisplayCurrency(traderId: string): Promise<string> {
     const balances = await this.prisma.traderBalance.findMany({
@@ -340,9 +379,46 @@ export class TradersService {
     }
 
     this.logger.warn(`Trader deactivated: ${traderId}`);
-    return this.prisma.traderProfile.update({
+    await this.prisma.$transaction(async (tx) => {
+      await tx.traderProfile.update({
+        where: { id: traderId },
+        data: { isActive: false },
+      });
+
+      const remaining = await tx.traderProfile.findMany({
+        where: { isActive: true },
+        select: { id: true, trafficPercent: true },
+      });
+
+      if (remaining.length === 0) {
+        return;
+      }
+
+      const sum = remaining.reduce((s, t) => s + Number(t.trafficPercent), 0);
+      if (sum <= 0) {
+        const eq = new Prisma.Decimal((100 / remaining.length).toFixed(4));
+        for (const t of remaining) {
+          await tx.traderProfile.update({
+            where: { id: t.id },
+            data: { trafficPercent: eq },
+          });
+        }
+        return;
+      }
+
+      for (const t of remaining) {
+        const pct = (Number(t.trafficPercent) / sum) * 100;
+        await tx.traderProfile.update({
+          where: { id: t.id },
+          data: { trafficPercent: new Prisma.Decimal(pct.toFixed(4)) },
+        });
+      }
+    });
+
+    await this.cascadeCoverageCache.invalidateAll();
+
+    return this.prisma.traderProfile.findUniqueOrThrow({
       where: { id: traderId },
-      data: { isActive: false },
     });
   }
 
@@ -644,5 +720,77 @@ export class TradersService {
       data: { usdtErc20DepositAddress: addr.toLowerCase() },
       select: { id: true, usdtErc20DepositAddress: true },
     });
+  }
+
+  /**
+   * Pay-In cascade: CARD vs FORK (Fork autolimits) and target traffic_percent (see cascade routing spec).
+   */
+  async updateCascadeRouting(
+    traderId: string,
+    dto: UpdateTraderCascadeDto,
+    actor: { id: string; role: string },
+  ) {
+    await this.getProfile(traderId);
+    const has =
+      dto.processing_method !== undefined || dto.traffic_percent !== undefined;
+    if (!has) {
+      throw new BadRequestException('No fields to update');
+    }
+
+    const prev = await this.prisma.traderProfile.findUnique({
+      where: { id: traderId },
+      select: { processingMethod: true, trafficPercent: true },
+    });
+
+    const data: Prisma.TraderProfileUpdateInput = {};
+    if (dto.processing_method !== undefined) {
+      data.processingMethod = dto.processing_method;
+    }
+    if (dto.traffic_percent !== undefined) {
+      data.trafficPercent = dto.traffic_percent;
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.traderProfile.update({
+        where: { id: traderId },
+        data,
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: actor.id,
+          actorRole: actor.role,
+          action: 'trader_cascade_routing_update',
+          entityType: 'TraderProfile',
+          entityId: traderId,
+          oldValue: (prev ?? {}) as unknown as Prisma.InputJsonValue,
+          newValue: {
+            processingMethod: u.processingMethod,
+            trafficPercent: u.trafficPercent.toString(),
+          },
+        },
+      });
+
+      if (dto.traffic_percent !== undefined) {
+        const active = await tx.traderProfile.findMany({
+          where: { isActive: true, acceptingOrders: true },
+          select: { trafficPercent: true },
+        });
+        const total = active.reduce((s, r) => s + Number(r.trafficPercent), 0);
+        if (!isValidCascadeTrafficPercentTotal(total)) {
+          throw new BadRequestException(
+            `traffic_percent for active traders (accepting orders) must sum to 100% or all be 0. Current sum: ${total.toFixed(2)}%. See GET /api/admin/cascade/traffic-policy.`,
+          );
+        }
+      }
+
+      return u;
+    });
+
+    this.logger.log(`Trader ${traderId} cascade routing updated by ${actor.id}`);
+    void this.cascadeCoverageCache.invalidateAll();
+
+    const traffic_percent = await this.getTrafficPercentPolicySummary();
+    return { ...updated, _meta: { traffic_percent } };
   }
 }

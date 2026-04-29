@@ -40,6 +40,8 @@ model User {
   uploadedFiles               File[]
   balanceTransactionsCreated  BalanceTransaction[] @relation("BalanceTxCreator")
   platformWithdrawals         PlatformWithdrawal[]
+  coverageNominalsCreated     CoverageNominalSetting[]
+  cascadeSettingsUpdates      CascadeSetting[]
 
   @@index([referredById])
   @@map("users")
@@ -292,6 +294,13 @@ model BalanceTransaction {
 
 // ─── Traders & Requisites ───
 
+enum TraderProcessingMethod {
+  CARD
+  FORK
+
+  @@map("trader_processing_method")
+}
+
 model TraderProfile {
   id              String   @id @default(uuid()) @db.Uuid
   userId          String   @unique @map("user_id") @db.Uuid
@@ -309,6 +318,10 @@ model TraderProfile {
   usdtTrc20DepositAddress String? @map("usdt_trc20_deposit_address") @db.VarChar(64)
   /// ERC-20 receiving address for USDT top-ups (Ethereum mainnet). Monitored by ERC-20 deposit worker when set.
   usdtErc20DepositAddress String? @map("usdt_erc20_deposit_address") @db.VarChar(42)
+  /// Pay-In cascade: CARD vs FORK (affects Fork autolimits only).
+  processingMethod TraderProcessingMethod @default(CARD) @map("processing_method")
+  /// Target traffic share among eligible traders (0–100). Sum across participating traders should be 100.
+  trafficPercent   Decimal              @default(0) @map("traffic_percent") @db.Decimal(8, 4)
   createdAt       DateTime @default(now()) @map("created_at")
 
   user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -322,8 +335,54 @@ model TraderProfile {
   balanceTransactions BalanceTransaction[]
   walletDeposits      WalletDeposit[]
   platformIncomeRows  PlatformIncome[]
+  trafficDistributionLogs TrafficDistributionLog[]
 
   @@map("trader_profiles")
+}
+
+model CascadeSetting {
+  id                 String   @id @default(uuid()) @db.Uuid
+  slidingWindowHours Int      @default(24) @map("sliding_window_hours")
+  /// Fraction of remaining capacity at which Fork autolimits activate (e.g. 0.20).
+  autolimitThreshold Decimal  @default(0.20) @map("autolimit_threshold") @db.Decimal(8, 6)
+  autolimitEnabled   Boolean  @default(true) @map("autolimit_enabled")
+  cardRatingWeight   Int      @default(100) @map("card_rating_weight")
+  forkRatingWeight   Int      @default(150) @map("fork_rating_weight")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  updatedById        String?  @map("updated_by_id") @db.Uuid
+
+  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("cascade_settings")
+}
+
+model TrafficDistributionLog {
+  id               String                 @id @default(uuid()) @db.Uuid
+  traderId         String                 @map("trader_id") @db.Uuid
+  payinOrderId     String                 @unique @map("payin_order_id") @db.Uuid
+  amount           Decimal                @db.Decimal(18, 4)
+  processingMethod TraderProcessingMethod @map("processing_method")
+  createdAt        DateTime               @default(now()) @map("created_at")
+
+  trader     TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
+  payinOrder PayinOrder    @relation(fields: [payinOrderId], references: [id], onDelete: Cascade)
+
+  @@index([traderId, createdAt])
+  @@map("traffic_distribution_logs")
+}
+
+model CoverageNominalSetting {
+  id          String   @id @default(uuid()) @db.Uuid
+  amount      Decimal  @db.Decimal(18, 4)
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([isActive, sortOrder])
+  @@map("coverage_nominal_settings")
 }
 
 model TraderBalance {
@@ -427,6 +486,8 @@ enum PayinStatus {
   APPEAL
   CANCELED
   UPLOAD_FAILED
+  /// No trader requisite could accept this Pay-In (see cascade routing).
+  NO_REQUISITE
 }
 
 model PayinOrder {
@@ -464,6 +525,7 @@ model PayinOrder {
   paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
   appeals       Appeal[]
   webhookOutbox WebhookOutbox[]
+  trafficDistributionLog TrafficDistributionLog?
 
   @@unique([merchantId, requestId])
   @@index([status])
