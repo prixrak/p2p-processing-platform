@@ -61,13 +61,24 @@ export class SettlementsService {
         });
       }
 
-      if (
-        dto.type === SettlementType.DEBIT &&
-        Number(balance.amount) < dto.amount
-      ) {
-        throw new BadRequestException(
-          `Insufficient balance: current=${balance.amount}, requested debit=${dto.amount}`,
-        );
+      if (dto.type === SettlementType.DEBIT) {
+        const current = Number(balance.amount);
+        if (dto.currency === 'USDT') {
+          const profile = await tx.traderProfile.findUnique({
+            where: { id: dto.traderId },
+            select: { overdraftLimit: true },
+          });
+          const limit = Number(profile?.overdraftLimit ?? 0);
+          if (current - dto.amount < -limit) {
+            throw new BadRequestException(
+              `Insufficient balance (incl. overdraft ${limit} USDT): current=${balance.amount}, requested debit=${dto.amount}`,
+            );
+          }
+        } else if (current < dto.amount) {
+          throw new BadRequestException(
+            `Insufficient balance: current=${balance.amount}, requested debit=${dto.amount}`,
+          );
+        }
       }
 
       const amountDelta =

@@ -1,6 +1,8 @@
 import {
+  Body,
   Controller,
   Get,
+  Patch,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -10,6 +12,9 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
+import { TradersService } from './traders.service';
+import { TraderSelfTrc20Dto } from './dto/trader-self-trc20.dto';
+import { TraderSelfErc20Dto } from './dto/trader-self-erc20.dto';
 
 @ApiTags('Trader Dashboard')
 @ApiBearerAuth()
@@ -17,7 +22,38 @@ import { PrismaService } from '../../config/prisma.service';
 @Roles(UserRole.TRADER)
 @Controller('trader/dashboard')
 export class TraderDashboardController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tradersService: TradersService,
+  ) {}
+
+  @Get('usdt-wallet')
+  @ApiOperation({
+    summary: 'USDT balance, overdraft capacity, and TRC-20 deposit address (Block 5 §4.4, §10.2)',
+  })
+  async getUsdtWallet(@CurrentUser('id') userId: string) {
+    return this.tradersService.getUsdtWalletSummaryForUser(userId);
+  }
+
+  @Patch('trc20-deposit')
+  @ApiOperation({ summary: 'Set or clear own USDT TRC-20 deposit address for top-ups' })
+  async patchTrc20Deposit(
+    @CurrentUser('id') userId: string,
+    @Body() dto: TraderSelfTrc20Dto,
+  ) {
+    return this.tradersService.updateSelfTrc20Deposit(userId, dto);
+  }
+
+  @Patch('erc20-deposit')
+  @ApiOperation({
+    summary: 'Set or clear own USDT ERC-20 deposit address on Ethereum mainnet for top-ups',
+  })
+  async patchErc20Deposit(
+    @CurrentUser('id') userId: string,
+    @Body() dto: TraderSelfErc20Dto,
+  ) {
+    return this.tradersService.updateSelfErc20Deposit(userId, dto);
+  }
 
   @Get('stats')
   @ApiOperation({ summary: 'Get trader dashboard stats' })

@@ -6,10 +6,14 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BalanceTransactionType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
+import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
 import type { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
+import type { UpdateTraderBalanceModelDto } from './dto/update-trader-balance-model.dto';
+import type { TraderSelfTrc20Dto } from './dto/trader-self-trc20.dto';
+import type { TraderSelfErc20Dto } from './dto/trader-self-erc20.dto';
 
 function enumerateDaysUTC(from: Date, to: Date): string[] {
   const out: string[] = [];
@@ -34,11 +38,26 @@ function statusRecordToLowercase(
   return r;
 }
 
+/** Tron base58check addresses are 34 chars and start with T. */
+export function isValidTronTrc20Address(addr: string): boolean {
+  const s = addr.trim();
+  return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(s);
+}
+
+/** Ethereum checksummed or lowercase hex address (USDT ERC-20 deposit path). */
+export function isValidEthereumUsdtDepositAddress(addr: string): boolean {
+  const s = addr.trim();
+  return /^0x[a-fA-F0-9]{40}$/.test(s);
+}
+
 @Injectable()
 export class TradersService {
   private readonly logger = new Logger(TradersService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly balanceTxService: BalanceTransactionsService,
+  ) {}
 
   private async pickDisplayCurrency(traderId: string): Promise<string> {
     const balances = await this.prisma.traderBalance.findMany({
@@ -375,5 +394,255 @@ export class TradersService {
       `Payout limits updated for trader ${traderId}: min=${minLimit}, max=${maxLimit}`,
     );
     return updated;
+  }
+
+  /**
+   * RISK NOTE: overdraft and rate parameters directly affect Pay-In assignment and settlement math (Block 5).
+   */
+  async updateBalanceModel(
+    traderId: string,
+    dto: UpdateTraderBalanceModelDto,
+    actor: { id: string; role: string },
+  ) {
+    await this.getProfile(traderId);
+
+    const hasField =
+      dto.overdraft_limit_usdt !== undefined ||
+      dto.payin_rate !== undefined ||
+      dto.payout_rate !== undefined ||
+      dto.usdt_trc20_deposit_address !== undefined ||
+      dto.clear_trc20_deposit_address === true ||
+      dto.usdt_erc20_deposit_address !== undefined ||
+      dto.clear_erc20_deposit_address === true;
+    if (!hasField) {
+      throw new BadRequestException('No fields to update');
+    }
+
+    const prev = await this.prisma.traderProfile.findUnique({
+      where: { id: traderId },
+      select: {
+        overdraftLimit: true,
+        payinRate: true,
+        payoutRate: true,
+        usdtTrc20DepositAddress: true,
+        usdtErc20DepositAddress: true,
+      },
+    });
+
+    const data: Prisma.TraderProfileUpdateInput = {};
+    if (dto.overdraft_limit_usdt !== undefined) {
+      data.overdraftLimit = dto.overdraft_limit_usdt;
+    }
+    if (dto.payin_rate !== undefined) {
+      data.payinRate = dto.payin_rate;
+    }
+    if (dto.payout_rate !== undefined) {
+      data.payoutRate = dto.payout_rate;
+    }
+    if (dto.clear_trc20_deposit_address) {
+      data.usdtTrc20DepositAddress = null;
+    } else if (dto.usdt_trc20_deposit_address !== undefined) {
+      const addr = dto.usdt_trc20_deposit_address.trim();
+      if (!isValidTronTrc20Address(addr)) {
+        throw new BadRequestException('Invalid USDT TRC-20 (Tron) address');
+      }
+      const taken = await this.prisma.traderProfile.findFirst({
+        where: { usdtTrc20DepositAddress: addr, NOT: { id: traderId } },
+        select: { id: true },
+      });
+      if (taken) {
+        throw new ConflictException('This deposit address is already assigned to another trader');
+      }
+      data.usdtTrc20DepositAddress = addr;
+    }
+
+    if (dto.clear_erc20_deposit_address) {
+      data.usdtErc20DepositAddress = null;
+    } else if (dto.usdt_erc20_deposit_address !== undefined) {
+      const addr = dto.usdt_erc20_deposit_address.trim();
+      if (!isValidEthereumUsdtDepositAddress(addr)) {
+        throw new BadRequestException('Invalid USDT ERC-20 (Ethereum) address');
+      }
+      const taken = await this.prisma.traderProfile.findFirst({
+        where: { usdtErc20DepositAddress: addr, NOT: { id: traderId } },
+        select: { id: true },
+      });
+      if (taken) {
+        throw new ConflictException('This ERC-20 deposit address is already assigned to another trader');
+      }
+      data.usdtErc20DepositAddress = addr.toLowerCase();
+    }
+
+    const prevLimit = Number(prev?.overdraftLimit ?? 0);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.traderProfile.update({
+        where: { id: traderId },
+        data,
+      });
+
+      const newLimit = Number(u.overdraftLimit);
+      if (dto.overdraft_limit_usdt !== undefined && prevLimit !== newLimit) {
+        await this.balanceTxService.record({
+          traderId,
+          type: BalanceTransactionType.OVERDRAFT_SET,
+          amount: newLimit,
+          currency: 'USDT',
+          createdById: actor.id,
+          comment: `Overdraft limit changed from ${prevLimit} to ${newLimit} USDT`,
+          tx,
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          actorId: actor.id,
+          actorRole: actor.role,
+          action: 'trader_balance_model_update',
+          entityType: 'TraderProfile',
+          entityId: traderId,
+          oldValue: (prev ?? {}) as unknown as Prisma.InputJsonValue,
+          newValue: {
+            overdraftLimit: u.overdraftLimit.toString(),
+            payinRate: u.payinRate.toString(),
+            payoutRate: u.payoutRate.toString(),
+            usdtTrc20DepositAddress: u.usdtTrc20DepositAddress,
+            usdtErc20DepositAddress: u.usdtErc20DepositAddress,
+          },
+        },
+      });
+
+      return u;
+    });
+
+    this.logger.log(`Trader ${traderId} balance model updated by ${actor.id}`);
+    return updated;
+  }
+
+  /**
+   * Block 5 §4.4 — USDT capacity for Pay-In assignment and cabinet display.
+   */
+  async getUsdtWalletSummaryForUser(userId: string) {
+    const profile = await this.prisma.traderProfile.findUnique({
+      where: { userId },
+      select: {
+        id: true,
+        overdraftLimit: true,
+        usdtTrc20DepositAddress: true,
+        usdtErc20DepositAddress: true,
+      },
+    });
+    if (!profile) {
+      throw new NotFoundException('Trader profile not found');
+    }
+
+    const row = await this.prisma.traderBalance.findUnique({
+      where: {
+        traderId_currency: { traderId: profile.id, currency: 'USDT' },
+      },
+      select: { amount: true },
+    });
+
+    const balanceUsdt = Number(row?.amount ?? 0);
+    const overdraftLimit = Number(profile.overdraftLimit ?? 0);
+    const displayOwnUsdt = Math.max(0, balanceUsdt);
+    const availableForPayinUsdt = balanceUsdt + overdraftLimit;
+
+    return {
+      trader_id: profile.id,
+      balance_usdt: balanceUsdt,
+      overdraft_limit_usdt: overdraftLimit,
+      display_own_usdt: displayOwnUsdt,
+      available_for_payin_usdt: availableForPayinUsdt,
+      work_mode: overdraftLimit > 0 ? 'OVERDRAFT' : 'BALANCE',
+      usdt_trc20_deposit_address: profile.usdtTrc20DepositAddress,
+      usdt_erc20_deposit_address: profile.usdtErc20DepositAddress,
+    };
+  }
+
+  async updateSelfTrc20Deposit(userId: string, dto: TraderSelfTrc20Dto) {
+    const has =
+      dto.usdt_trc20_deposit_address !== undefined || dto.clear_trc20_deposit_address === true;
+    if (!has) {
+      throw new BadRequestException('No fields to update');
+    }
+
+    const profile = await this.prisma.traderProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!profile) {
+      throw new NotFoundException('Trader profile not found');
+    }
+
+    if (dto.clear_trc20_deposit_address) {
+      return this.prisma.traderProfile.update({
+        where: { id: profile.id },
+        data: { usdtTrc20DepositAddress: null },
+        select: { id: true, usdtTrc20DepositAddress: true },
+      });
+    }
+
+    const addr = dto.usdt_trc20_deposit_address!.trim();
+    if (!isValidTronTrc20Address(addr)) {
+      throw new BadRequestException('Invalid USDT TRC-20 (Tron) address');
+    }
+
+    const taken = await this.prisma.traderProfile.findFirst({
+      where: { usdtTrc20DepositAddress: addr, NOT: { id: profile.id } },
+      select: { id: true },
+    });
+    if (taken) {
+      throw new ConflictException('This deposit address is already assigned to another trader');
+    }
+
+    return this.prisma.traderProfile.update({
+      where: { id: profile.id },
+      data: { usdtTrc20DepositAddress: addr },
+      select: { id: true, usdtTrc20DepositAddress: true },
+    });
+  }
+
+  async updateSelfErc20Deposit(userId: string, dto: TraderSelfErc20Dto) {
+    const has =
+      dto.usdt_erc20_deposit_address !== undefined || dto.clear_erc20_deposit_address === true;
+    if (!has) {
+      throw new BadRequestException('No fields to update');
+    }
+
+    const profile = await this.prisma.traderProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!profile) {
+      throw new NotFoundException('Trader profile not found');
+    }
+
+    if (dto.clear_erc20_deposit_address) {
+      return this.prisma.traderProfile.update({
+        where: { id: profile.id },
+        data: { usdtErc20DepositAddress: null },
+        select: { id: true, usdtErc20DepositAddress: true },
+      });
+    }
+
+    const addr = dto.usdt_erc20_deposit_address!.trim();
+    if (!isValidEthereumUsdtDepositAddress(addr)) {
+      throw new BadRequestException('Invalid USDT ERC-20 (Ethereum) address');
+    }
+
+    const taken = await this.prisma.traderProfile.findFirst({
+      where: { usdtErc20DepositAddress: addr.toLowerCase(), NOT: { id: profile.id } },
+      select: { id: true },
+    });
+    if (taken) {
+      throw new ConflictException('This ERC-20 deposit address is already assigned to another trader');
+    }
+
+    return this.prisma.traderProfile.update({
+      where: { id: profile.id },
+      data: { usdtErc20DepositAddress: addr.toLowerCase() },
+      select: { id: true, usdtErc20DepositAddress: true },
+    });
   }
 }

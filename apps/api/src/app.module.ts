@@ -39,11 +39,13 @@ import { CountriesModule } from './modules/countries/countries.module';
 import { PaymentMethodsModule } from './modules/payment-methods/payment-methods.module';
 import { MerchantDirectionsModule } from './modules/merchant-directions/merchant-directions.module';
 import { PlatformSettingsModule } from './modules/platform-settings/platform-settings.module';
+import { ExchangeRateModule } from './modules/exchange-rate/exchange-rate.module';
 
 @Module({
   imports: [
     ApiLoggingModule,
     PrismaModule,
+    ExchangeRateModule,
     SecurityModule,
     ThrottlerModule.forRoot([{
       ttl: 60000,

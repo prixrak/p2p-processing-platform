@@ -30,8 +30,22 @@ import type {
   PaymentBankApiDto,
   AppealDto as AppealDtoType,
 } from '@p2p/shared';
-import { BalanceTransactionType } from '@prisma/client';
+import {
+  BalanceTransactionType,
+  MerchantBalanceTransactionType,
+  PlatformIncomeOrderType,
+} from '@prisma/client';
 import { config } from '@p2p/config';
+import {
+  creditUahMerchantPayin,
+  debitUsdtPayin,
+  percentToFraction,
+  platformMarginUah,
+  platformMarginUsdtPayin,
+  rateAdminIn,
+  rateTraderIn,
+} from '@p2p/shared';
+import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
 import { validateCallbackUrl } from '../../common/utils/url-validator';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
 import {
@@ -72,6 +86,7 @@ export class PayinService {
     private readonly balanceTxService: BalanceTransactionsService,
     private readonly platformSettings: PlatformSettingsService,
     private readonly payinRealtime: PayinRealtimeService,
+    private readonly exchangeRate: ExchangeRateService,
   ) {}
 
   private emitPayinOrderRealtime(order: {
@@ -115,28 +130,65 @@ export class PayinService {
     const partnerAmount = dto.amount - commission;
     const autocloseAt = new Date(Date.now() + await this.getAutocloseMs());
     const amountDec = new Prisma.Decimal(dto.amount);
+    const isUahV2 = dto.currency === 'UAH';
+    let parserRate: number | undefined;
+    if (isUahV2) {
+      try {
+        parserRate = await this.exchangeRate.requireParserRateUaPerUsdt();
+      } catch {
+        throw new BadRequestException(
+          'Exchange rate temporarily unavailable. Please try again shortly.',
+        );
+      }
+    }
 
     try {
       const order = await this.prisma.$transaction(async (tx) => {
-        const lockedRows = await tx.$queryRaw<Array<{ id: string }>>`
-          SELECT r.id FROM requisites r
-          INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
-          INNER JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true AND tp.accepting_orders = true
-          WHERE r.currency = ${dto.currency}
-            AND r.is_active = true
-            AND g.archived_at IS NULL
-            AND g.is_active = true
-            AND r.min_amount <= ${amountDec}
-            AND r.max_amount >= ${amountDec}
-            AND r.used_amount < r.limit_total_amount
-            AND r.used_ops < r.limit_total_ops
-          ORDER BY r.used_ops ASC
-          LIMIT 1
-          FOR UPDATE OF r SKIP LOCKED
-        `;
+        const lockedRows = isUahV2
+          ? await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT r.id FROM requisites r
+            INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
+            INNER JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true AND tp.accepting_orders = true
+            LEFT JOIN trader_balances tb ON tb.trader_id = tp.id AND tb.currency = 'USDT'
+            WHERE r.currency = ${dto.currency}
+              AND r.is_active = true
+              AND g.archived_at IS NULL
+              AND g.is_active = true
+              AND r.min_amount <= ${amountDec}
+              AND r.max_amount >= ${amountDec}
+              AND r.used_amount < r.limit_total_amount
+              AND r.used_ops < r.limit_total_ops
+              AND (
+                (${amountDec}::numeric / (${parserRate!}::numeric * (1 + tp.payin_rate::numeric)))
+                <= COALESCE(tb.amount::numeric, 0) + COALESCE(tp.overdraft_limit::numeric, 0)
+              )
+            ORDER BY r.used_ops ASC
+            LIMIT 1
+            FOR UPDATE OF r SKIP LOCKED
+          `
+          : await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT r.id FROM requisites r
+            INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
+            INNER JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true AND tp.accepting_orders = true
+            WHERE r.currency = ${dto.currency}
+              AND r.is_active = true
+              AND g.archived_at IS NULL
+              AND g.is_active = true
+              AND r.min_amount <= ${amountDec}
+              AND r.max_amount >= ${amountDec}
+              AND r.used_amount < r.limit_total_amount
+              AND r.used_ops < r.limit_total_ops
+            ORDER BY r.used_ops ASC
+            LIMIT 1
+            FOR UPDATE OF r SKIP LOCKED
+          `;
 
         if (lockedRows.length === 0) {
-          throw new BadRequestException('PARAMETER_NOT_FOUND: No available requisite');
+          throw new BadRequestException(
+            isUahV2
+              ? 'PARAMETER_NOT_FOUND: No available requisite or trader USDT capacity (including overdraft) insufficient'
+              : 'PARAMETER_NOT_FOUND: No available requisite',
+          );
         }
 
         const requisite = await tx.requisite.findUnique({
@@ -147,6 +199,16 @@ export class PayinService {
         if (!requisite) {
           throw new BadRequestException('PARAMETER_NOT_FOUND: No available requisite');
         }
+
+        const merchantFrac = percentToFraction(commissionPercent);
+        const rtIn =
+          isUahV2 && parserRate !== undefined
+            ? rateTraderIn(parserRate, Number(requisite.trader.payinRate))
+            : null;
+        const raIn =
+          isUahV2 && parserRate !== undefined
+            ? rateAdminIn(parserRate, merchantFrac)
+            : null;
 
         const created = await tx.payinOrder.create({
           data: {
@@ -160,6 +222,9 @@ export class PayinService {
             commission,
             partnerAmount,
             rate: Number(direction.rate),
+            parserRate: rtIn !== null ? parserRate : undefined,
+            rateTraderIn: rtIn ?? undefined,
+            rateAdminIn: raIn ?? undefined,
             status: 'NEW',
             userFullName: dto.user_full_name,
             userIdExternal: dto.user_id,
@@ -377,32 +442,77 @@ export class PayinService {
     }
     const direction = await this.findActiveDirection(dto.currency, DirectionType.PAYIN);
 
-    const commission = dto.amount * Number(direction.percentFee) / 100;
+    const merchantCommissionPct =
+      await this.merchantDirectionsService.getEffectiveCommissionPercent(
+        merchantId,
+        DirectionType.PAYIN,
+        dto.currency,
+        dto.amount,
+      );
+    const commissionPercent = merchantCommissionPct ?? Number(direction.percentFee);
+    const commission = dto.amount * commissionPercent / 100;
     const partnerAmount = dto.amount - commission;
     const autocloseAt = new Date(Date.now() + await this.getAutocloseMs());
     const amountDec = new Prisma.Decimal(dto.amount);
+    const isUahV2 = dto.currency === 'UAH';
+    let parserRate: number | undefined;
+    if (isUahV2) {
+      try {
+        parserRate = await this.exchangeRate.requireParserRateUaPerUsdt();
+      } catch {
+        throw new BadRequestException(
+          'Exchange rate temporarily unavailable. Please try again shortly.',
+        );
+      }
+    }
 
     try {
       const order = await this.prisma.$transaction(async (tx) => {
-        const lockedRows = await tx.$queryRaw<Array<{ id: string }>>`
-          SELECT r.id FROM requisites r
-          INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
-          INNER JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true AND tp.accepting_orders = true
-          WHERE r.currency = ${dto.currency}
-            AND r.is_active = true
-            AND g.archived_at IS NULL
-            AND g.is_active = true
-            AND r.min_amount <= ${amountDec}
-            AND r.max_amount >= ${amountDec}
-            AND r.used_amount < r.limit_total_amount
-            AND r.used_ops < r.limit_total_ops
-          ORDER BY r.used_ops ASC
-          LIMIT 1
-          FOR UPDATE OF r SKIP LOCKED
-        `;
+        const lockedRows = isUahV2
+          ? await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT r.id FROM requisites r
+            INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
+            INNER JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true AND tp.accepting_orders = true
+            LEFT JOIN trader_balances tb ON tb.trader_id = tp.id AND tb.currency = 'USDT'
+            WHERE r.currency = ${dto.currency}
+              AND r.is_active = true
+              AND g.archived_at IS NULL
+              AND g.is_active = true
+              AND r.min_amount <= ${amountDec}
+              AND r.max_amount >= ${amountDec}
+              AND r.used_amount < r.limit_total_amount
+              AND r.used_ops < r.limit_total_ops
+              AND (
+                (${amountDec}::numeric / (${parserRate!}::numeric * (1 + tp.payin_rate::numeric)))
+                <= COALESCE(tb.amount::numeric, 0) + COALESCE(tp.overdraft_limit::numeric, 0)
+              )
+            ORDER BY r.used_ops ASC
+            LIMIT 1
+            FOR UPDATE OF r SKIP LOCKED
+          `
+          : await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT r.id FROM requisites r
+            INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
+            INNER JOIN trader_profiles tp ON tp.id = r.trader_id AND tp.is_active = true AND tp.accepting_orders = true
+            WHERE r.currency = ${dto.currency}
+              AND r.is_active = true
+              AND g.archived_at IS NULL
+              AND g.is_active = true
+              AND r.min_amount <= ${amountDec}
+              AND r.max_amount >= ${amountDec}
+              AND r.used_amount < r.limit_total_amount
+              AND r.used_ops < r.limit_total_ops
+            ORDER BY r.used_ops ASC
+            LIMIT 1
+            FOR UPDATE OF r SKIP LOCKED
+          `;
 
         if (lockedRows.length === 0) {
-          throw new BadRequestException('PARAMETER_NOT_FOUND: No available requisite');
+          throw new BadRequestException(
+            isUahV2
+              ? 'PARAMETER_NOT_FOUND: No available requisite or trader USDT capacity (including overdraft) insufficient'
+              : 'PARAMETER_NOT_FOUND: No available requisite',
+          );
         }
 
         const requisite = await tx.requisite.findUnique({
@@ -414,6 +524,16 @@ export class PayinService {
           throw new BadRequestException('PARAMETER_NOT_FOUND: No available requisite');
         }
 
+        const merchantFrac = percentToFraction(commissionPercent);
+        const rtIn =
+          isUahV2 && parserRate !== undefined
+            ? rateTraderIn(parserRate, Number(requisite.trader.payinRate))
+            : null;
+        const raIn =
+          isUahV2 && parserRate !== undefined
+            ? rateAdminIn(parserRate, merchantFrac)
+            : null;
+
         const created = await tx.payinOrder.create({
           data: {
             requestId: dto.request_id,
@@ -422,9 +542,13 @@ export class PayinService {
             requisiteId: requisite.id,
             amount: dto.amount,
             currency: dto.currency,
+            commissionPercent,
             commission,
             partnerAmount,
             rate: Number(direction.rate),
+            parserRate: rtIn !== null ? parserRate : undefined,
+            rateTraderIn: rtIn ?? undefined,
+            rateAdminIn: raIn ?? undefined,
             status: 'NEW',
             userFullName: dto.user_full_name,
             userIdExternal: dto.user_id,
@@ -696,8 +820,9 @@ export class PayinService {
         );
       }
 
-      if (targetStatus === PayInOrderStatus.PAID) {
-        await this.creditBalancesOnPaid(tx, order);
+      if (paidOutcomes.includes(targetStatus)) {
+        const paidUah = actualAmount !== undefined ? actualAmount : orderAmount;
+        await this.creditBalancesOnPaid(tx, order, paidUah);
       }
 
       await this.createPayinWebhookEntry(tx, result);
@@ -760,8 +885,9 @@ export class PayinService {
         );
       }
 
-      if (targetStatus === PayInOrderStatus.PAID) {
-        await this.creditBalancesOnPaid(tx, order);
+      if (paidOutcomes.includes(targetStatus)) {
+        const paidUah = Number(order.amount);
+        await this.creditBalancesOnPaid(tx, order, paidUah);
       }
 
       if (result.callbackUrl) {
@@ -933,17 +1059,100 @@ export class PayinService {
   }
 
   /**
-   * RISK NOTE: modifies merchant and trader balances.
-   * Merchant gets credited with partnerAmount, trader gets the commission.
+   * RISK NOTE: modifies merchant UAH balance, trader USDT balance (v2), and platform_income.
+   * Legacy (non-UAH or missing parser snapshot): merchant +partnerAmount (scaled), trader +commission fiat.
    */
   private async creditBalancesOnPaid(
     tx: Prisma.TransactionClient,
     order: OrderWithRelations,
+    paidAmountUah: number,
   ): Promise<void> {
-    const partnerAmount = Number(order.partnerAmount);
-    const commission = Number(order.commission);
+    const fullAmount = Number(order.amount);
+    const scale = fullAmount > 0 ? paidAmountUah / fullAmount : 1;
 
-    // Credit merchant balance
+    if (
+      order.currency !== 'UAH' ||
+      order.parserRate == null ||
+      order.rateTraderIn == null ||
+      order.rateAdminIn == null ||
+      !order.traderId
+    ) {
+      const partnerAmount = Number(order.partnerAmount) * scale;
+      const commission = Number(order.commission) * scale;
+
+      await tx.merchantBalance.upsert({
+        where: {
+          merchantId_currency: {
+            merchantId: order.merchantId,
+            currency: order.currency,
+          },
+        },
+        create: {
+          merchantId: order.merchantId,
+          currency: order.currency,
+          amount: partnerAmount,
+        },
+        update: { amount: { increment: partnerAmount } },
+      });
+
+      if (commission > 0 && order.traderId) {
+        const tid = order.traderId;
+        await tx.traderBalance.upsert({
+          where: {
+            traderId_currency: {
+              traderId: tid,
+              currency: order.currency,
+            },
+          },
+          create: {
+            traderId: tid,
+            currency: order.currency,
+            amount: commission,
+          },
+          update: { amount: { increment: commission } },
+        });
+
+        await this.balanceTxService.record({
+          traderId: tid,
+          type: BalanceTransactionType.PAYIN_COMMISSION,
+          amount: commission,
+          currency: order.currency,
+          referenceId: order.id,
+          comment: `Pay-in commission for order ${order.id}`,
+          tx,
+        });
+      }
+
+      await tx.merchantBalanceTransaction.create({
+        data: {
+          merchantId: order.merchantId,
+          type: MerchantBalanceTransactionType.PAYIN_CREDIT,
+          amount: partnerAmount,
+          currency: order.currency,
+          referenceId: order.id,
+          comment: `Pay-in credit (legacy) order ${order.id}`,
+        },
+      });
+
+      this.logger.log(
+        `Balances updated (legacy) for order ${order.id}: merchant +${partnerAmount}, trader +${commission} ${order.currency}`,
+      );
+      return;
+    }
+
+    const P = Number(order.parserRate);
+    const rt = Number(order.rateTraderIn);
+    const ra = Number(order.rateAdminIn);
+    const merchantFrac = percentToFraction(Number(order.commissionPercent));
+    const traderPayinFrac = Number(
+      (await tx.traderProfile.findUniqueOrThrow({ where: { id: order.traderId } })).payinRate,
+    );
+
+    const merchantCredit = creditUahMerchantPayin(paidAmountUah, merchantFrac);
+    const debitUsdt = debitUsdtPayin(paidAmountUah, rt);
+    const marginUsdt = platformMarginUsdtPayin(paidAmountUah, rt, ra);
+    const marginUah = platformMarginUah(marginUsdt, P);
+
     await tx.merchantBalance.upsert({
       where: {
         merchantId_currency: {
@@ -954,41 +1163,66 @@ export class PayinService {
       create: {
         merchantId: order.merchantId,
         currency: order.currency,
-        amount: partnerAmount,
+        amount: merchantCredit,
       },
-      update: { amount: { increment: partnerAmount } },
+      update: { amount: { increment: merchantCredit } },
     });
 
-    // Credit trader balance with commission
-    if (order.traderId && commission > 0) {
-      await tx.traderBalance.upsert({
-        where: {
-          traderId_currency: {
-            traderId: order.traderId,
-            currency: order.currency,
-          },
-        },
-        create: {
-          traderId: order.traderId,
-          currency: order.currency,
-          amount: commission,
-        },
-        update: { amount: { increment: commission } },
-      });
-
-      await this.balanceTxService.record({
-        traderId: order.traderId,
-        type: BalanceTransactionType.PAYIN_COMMISSION,
-        amount: commission,
+    await tx.merchantBalanceTransaction.create({
+      data: {
+        merchantId: order.merchantId,
+        type: MerchantBalanceTransactionType.PAYIN_CREDIT,
+        amount: merchantCredit,
         currency: order.currency,
         referenceId: order.id,
-        comment: `Pay-in commission for order ${order.id}`,
-        tx,
-      });
-    }
+        comment: `Pay-in credit order ${order.id}`,
+      },
+    });
+
+    await tx.traderBalance.upsert({
+      where: {
+        traderId_currency: {
+          traderId: order.traderId,
+          currency: 'USDT',
+        },
+      },
+      create: {
+        traderId: order.traderId,
+        currency: 'USDT',
+        amount: -debitUsdt,
+      },
+      update: { amount: { increment: -debitUsdt } },
+    });
+
+    await this.balanceTxService.record({
+      traderId: order.traderId,
+      type: BalanceTransactionType.PAYIN_DEBIT,
+      amount: debitUsdt,
+      currency: 'USDT',
+      referenceId: order.id,
+      comment: `Pay-in USDT debit for order ${order.id}`,
+      tx,
+    });
+
+    await tx.platformIncome.create({
+      data: {
+        orderId: order.id,
+        orderType: PlatformIncomeOrderType.PAYIN,
+        merchantId: order.merchantId,
+        traderId: order.traderId,
+        orderAmountUah: paidAmountUah,
+        parserRate: P,
+        rateTrader: rt,
+        rateAdmin: ra,
+        traderRatePct: traderPayinFrac,
+        merchantCommissionPct: merchantFrac,
+        incomeUsdt: marginUsdt,
+        incomeUah: marginUah,
+      },
+    });
 
     this.logger.log(
-      `Balances updated for PAID order ${order.id}: merchant +${partnerAmount}, trader +${commission} ${order.currency}`,
+      `Balances updated (v2) for order ${order.id}: merchant +${merchantCredit} UAH, trader -${debitUsdt} USDT, platform +${marginUsdt} USDT`,
     );
   }
 

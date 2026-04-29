@@ -112,10 +112,24 @@ export class BalanceTransactionsService {
         });
       }
 
-      if (params.type === 'MANUAL_DEBIT' && Number(balance.amount) < params.amount) {
-        throw new BadRequestException(
-          `Insufficient balance: current=${balance.amount}, requested debit=${params.amount}`,
-        );
+      if (params.type === 'MANUAL_DEBIT') {
+        const current = Number(balance.amount);
+        if (params.currency === 'USDT') {
+          const profile = await tx.traderProfile.findUnique({
+            where: { id: params.traderId },
+            select: { overdraftLimit: true },
+          });
+          const limit = Number(profile?.overdraftLimit ?? 0);
+          if (current - params.amount < -limit) {
+            throw new BadRequestException(
+              `Insufficient balance (incl. overdraft ${limit} USDT): current=${balance.amount}, requested debit=${params.amount}`,
+            );
+          }
+        } else if (current < params.amount) {
+          throw new BadRequestException(
+            `Insufficient balance: current=${balance.amount}, requested debit=${params.amount}`,
+          );
+        }
       }
 
       const delta = params.type === 'MANUAL_CREDIT' ? params.amount : -params.amount;

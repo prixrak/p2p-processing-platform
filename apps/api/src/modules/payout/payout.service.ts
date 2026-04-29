@@ -19,9 +19,25 @@ import {
   PAYOUT_TRADER_HISTORY_STATUSES,
 } from '@p2p/shared';
 import type { PayOutOrderApiDto, ProfileDto, DetailsDto } from '@p2p/shared';
-import { BalanceTransactionType } from '@prisma/client';
+import {
+  creditUsdtPayout,
+  debitUahMerchantPayout,
+  percentToFraction,
+  platformMarginUah,
+  platformMarginUsdtPayout,
+  rateAdminOut,
+  rateTraderOut,
+} from '@p2p/shared';
+import {
+  BalanceTransactionType,
+  DirectionType as PrismaDirectionType,
+  MerchantBalanceTransactionType,
+  PlatformIncomeOrderType,
+} from '@prisma/client';
 import { validateCallbackUrl } from '../../common/utils/url-validator';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
+import { MerchantDirectionsService } from '../merchant-directions/merchant-directions.service';
+import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
 import { OrderUploadDto, PayoutOrderInfoDto, PayoutListFiltersDto } from './dto';
 import { PayoutRealtimeService } from './payout-realtime.service';
 
@@ -37,6 +53,8 @@ export class PayoutService {
     private readonly prisma: PrismaService,
     private readonly balanceTxService: BalanceTransactionsService,
     private readonly payoutRealtime: PayoutRealtimeService,
+    private readonly merchantDirections: MerchantDirectionsService,
+    private readonly exchangeRate: ExchangeRateService,
   ) {}
 
   private emitPayoutOrderRealtime(order: PayoutOrderRow, poolChanged: boolean): void {
@@ -68,11 +86,58 @@ export class PayoutService {
       throw new BadRequestException(`No active PAYOUT direction for ${dto.currency}`);
     }
 
-    const commission = dto.amount * Number(direction.percentFee) / 100;
-    const partnerAmount = dto.amount - commission;
+    const merchantPct =
+      (await this.merchantDirections.getEffectiveCommissionPercent(
+        merchantId,
+        PrismaDirectionType.PAYOUT,
+        dto.currency,
+        dto.amount,
+      )) ?? Number(direction.percentFee);
+
+    const isUahV2 = dto.currency === 'UAH';
+    let parserRate: number | undefined;
+    let rateAdminOutVal: number | undefined;
+    if (isUahV2) {
+      try {
+        parserRate = await this.exchangeRate.requireParserRateUaPerUsdt();
+      } catch {
+        throw new BadRequestException(
+          'Exchange rate temporarily unavailable. Please try again shortly.',
+        );
+      }
+      rateAdminOutVal = rateAdminOut(parserRate, percentToFraction(merchantPct));
+    }
+
+    const merchantFrac = percentToFraction(merchantPct);
+    const merchantDebitUah = isUahV2 ? debitUahMerchantPayout(dto.amount, merchantFrac) : null;
+    const feeUah = merchantDebitUah !== null ? merchantDebitUah - dto.amount : null;
+    const partnerAmount = isUahV2 ? dto.amount : dto.amount - dto.amount * merchantPct / 100;
 
     try {
       const order = await this.prisma.$transaction(async (tx) => {
+        if (isUahV2 && merchantDebitUah !== null) {
+          let bal = await tx.merchantBalance.findUnique({
+            where: {
+              merchantId_currency: { merchantId, currency: dto.currency },
+            },
+          });
+          if (!bal) {
+            bal = await tx.merchantBalance.create({
+              data: { merchantId, currency: dto.currency, amount: 0 },
+            });
+          }
+          if (Number(bal.amount) < merchantDebitUah) {
+            throw new BadRequestException('Insufficient balance on merchant account');
+          }
+
+          await tx.merchantBalance.update({
+            where: {
+              merchantId_currency: { merchantId, currency: dto.currency },
+            },
+            data: { amount: { increment: -merchantDebitUah } },
+          });
+        }
+
         const created = await tx.payoutOrder.create({
           data: {
             requestId: dto.request_id,
@@ -86,10 +151,27 @@ export class PayoutService {
             detailsCode: dto.details.code,
             rate: Number(direction.rate),
             partnerAmount,
-            percentFee: Number(direction.percentFee),
+            commissionAmount: feeUah ?? dto.amount * merchantPct / 100,
+            percentFee: merchantPct,
+            parserRate: parserRate ?? undefined,
+            rateAdminOut: rateAdminOutVal ?? undefined,
+            merchantDebitUah: merchantDebitUah ?? undefined,
             callbackUrl: dto.callback_url,
           },
         });
+
+        if (isUahV2 && merchantDebitUah !== null) {
+          await tx.merchantBalanceTransaction.create({
+            data: {
+              merchantId,
+              type: MerchantBalanceTransactionType.PAYOUT_DEBIT,
+              amount: merchantDebitUah,
+              currency: dto.currency,
+              referenceId: created.id,
+              comment: `Pay-out reserve for order ${created.id}`,
+            },
+          });
+        }
 
         await this.createPayoutWebhookEntry(tx, created);
 
@@ -442,7 +524,17 @@ export class PayoutService {
         data: { status: 'COMPLETED', endAt: new Date() },
       });
 
-      await this.debitMerchantOnCompleted(tx, order);
+      if (
+        order.merchantDebitUah != null &&
+        order.parserRate != null &&
+        order.rateAdminOut != null &&
+        order.traderId
+      ) {
+        await this.settlePayoutV2(tx, order);
+      } else {
+        await this.debitMerchantOnCompleted(tx, order);
+      }
+
       await this.createPayoutWebhookEntry(tx, result);
 
       return result;
@@ -477,6 +569,34 @@ export class PayoutService {
         data: { status: 'FAILED', endAt: new Date() },
       });
 
+      if (order.merchantDebitUah != null) {
+        const refund = Number(order.merchantDebitUah);
+        await tx.merchantBalance.upsert({
+          where: {
+            merchantId_currency: {
+              merchantId: order.merchantId,
+              currency: order.currency,
+            },
+          },
+          create: {
+            merchantId: order.merchantId,
+            currency: order.currency,
+            amount: refund,
+          },
+          update: { amount: { increment: refund } },
+        });
+        await tx.merchantBalanceTransaction.create({
+          data: {
+            merchantId: order.merchantId,
+            type: MerchantBalanceTransactionType.PAYOUT_REFUND,
+            amount: refund,
+            currency: order.currency,
+            referenceId: order.id,
+            comment: `Pay-out failed refund for order ${order.id}`,
+          },
+        });
+      }
+
       await this.createPayoutWebhookEntry(tx, result);
 
       return result;
@@ -490,7 +610,81 @@ export class PayoutService {
   // ─── Private helpers ───
 
   /**
-   * RISK NOTE: deducts merchant balance and credits trader for payout.
+   * RISK NOTE: UAH Pay-Out v2 — merchant was debited at order creation; credit trader USDT and book platform margin.
+   */
+  private async settlePayoutV2(tx: Prisma.TransactionClient, order: PayoutOrderRow): Promise<void> {
+    if (!order.traderId || order.parserRate == null || order.rateAdminOut == null) {
+      throw new BadRequestException('Payout v2 settlement: missing trader or rate snapshot');
+    }
+
+    const trader = await tx.traderProfile.findUnique({ where: { id: order.traderId } });
+    if (!trader) {
+      throw new BadRequestException('Trader not found for payout settlement');
+    }
+
+    const P = Number(order.parserRate);
+    const amountUah = Number(order.amount);
+    const rateTraderOutVal = rateTraderOut(P, Number(trader.payoutRate));
+    const rateAdminOutVal = Number(order.rateAdminOut);
+    const creditUsdtVal = creditUsdtPayout(amountUah, rateTraderOutVal);
+    const marginUsdt = platformMarginUsdtPayout(amountUah, rateAdminOutVal, rateTraderOutVal);
+    const marginUah = platformMarginUah(marginUsdt, P);
+    const merchantFrac = percentToFraction(Number(order.percentFee));
+
+    await tx.payoutOrder.update({
+      where: { id: order.id },
+      data: { rateTraderOut: rateTraderOutVal },
+    });
+
+    await tx.traderBalance.upsert({
+      where: {
+        traderId_currency: {
+          traderId: order.traderId,
+          currency: 'USDT',
+        },
+      },
+      create: {
+        traderId: order.traderId,
+        currency: 'USDT',
+        amount: creditUsdtVal,
+      },
+      update: { amount: { increment: creditUsdtVal } },
+    });
+
+    await this.balanceTxService.record({
+      traderId: order.traderId,
+      type: BalanceTransactionType.PAYOUT_CREDIT,
+      amount: creditUsdtVal,
+      currency: 'USDT',
+      referenceId: order.id,
+      comment: `Pay-out USDT credit for order ${order.id}`,
+      tx,
+    });
+
+    await tx.platformIncome.create({
+      data: {
+        orderId: order.id,
+        orderType: PlatformIncomeOrderType.PAYOUT,
+        merchantId: order.merchantId,
+        traderId: order.traderId,
+        orderAmountUah: amountUah,
+        parserRate: P,
+        rateTrader: rateTraderOutVal,
+        rateAdmin: rateAdminOutVal,
+        traderRatePct: Number(trader.payoutRate),
+        merchantCommissionPct: merchantFrac,
+        incomeUsdt: marginUsdt,
+        incomeUah: marginUah,
+      },
+    });
+
+    this.logger.log(
+      `Payout v2 settled ${order.id}: trader +${creditUsdtVal} USDT, platform +${marginUsdt} USDT`,
+    );
+  }
+
+  /**
+   * RISK NOTE: legacy payout — deducts merchant balance and credits trader commission in order currency.
    */
   private async debitMerchantOnCompleted(
     tx: Prisma.TransactionClient,

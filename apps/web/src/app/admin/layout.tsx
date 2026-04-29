@@ -10,6 +10,7 @@ import {
   UserPlus,
   Globe,
   CreditCard,
+  CircleDollarSign,
 } from 'lucide-react';
 import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
@@ -21,6 +22,7 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
   { label: 'Traders', href: '/admin/traders', icon: Users },
   { label: 'Orders', href: '/admin/orders', icon: ArrowLeftRight },
+  { label: 'Treasury', href: '/admin/treasury', icon: CircleDollarSign },
   { label: 'Settlements', href: '/admin/settlements', icon: Landmark },
   { label: 'Referrals', href: '/admin/referrals', icon: UserPlus },
   { label: 'Countries', href: '/admin/countries', icon: Globe },

@@ -11,7 +11,14 @@ import { BalanceTransactionsModule } from '../balance-transactions/balance-trans
 import { PlatformSettingsModule } from '../platform-settings/platform-settings.module';
 
 @Module({
-  imports: [RequisitesModule, BanksModule, FilesModule, MerchantDirectionsModule, BalanceTransactionsModule, PlatformSettingsModule],
+  imports: [
+    RequisitesModule,
+    BanksModule,
+    FilesModule,
+    MerchantDirectionsModule,
+    BalanceTransactionsModule,
+    PlatformSettingsModule,
+  ],
   controllers: [PayinController, PayinInternalController, PaymentPageController],
   providers: [PayinService, PayinRealtimeService],
   exports: [PayinService, PayinRealtimeService],

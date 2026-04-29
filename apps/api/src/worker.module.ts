@@ -4,6 +4,8 @@ import { config } from '@p2p/config';
 import { PrismaModule } from './config/prisma.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
+import { TronDepositWorkerModule } from './modules/wallet-deposits/tron-deposit-worker.module';
+import { Erc20DepositWorkerModule } from './modules/wallet-deposits/erc20-deposit-worker.module';
 
 /**
  * Minimal module for background queue workers without an HTTP server.
@@ -21,6 +23,8 @@ import { TelegramModule } from './modules/telegram/telegram.module';
     BullModule.registerQueue({ name: 'telegram' }),
     WebhooksModule,
     TelegramModule,
+    TronDepositWorkerModule,
+    Erc20DepositWorkerModule,
   ],
 })
 export class WorkerModule {}

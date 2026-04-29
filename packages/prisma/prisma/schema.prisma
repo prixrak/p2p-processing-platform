@@ -39,6 +39,7 @@ model User {
   settlements                 Settlement[]         @relation("SettlementAdmin")
   uploadedFiles               File[]
   balanceTransactionsCreated  BalanceTransaction[] @relation("BalanceTxCreator")
+  platformWithdrawals         PlatformWithdrawal[]
 
   @@index([referredById])
   @@map("users")
@@ -86,11 +87,13 @@ model Merchant {
   createdAt DateTime @default(now()) @map("created_at")
 
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  apiKeys            MerchantApiKey[]
-  balances           MerchantBalance[]
-  payinOrders        PayinOrder[]
-  payoutOrders       PayoutOrder[]
-  merchantDirections MerchantDirection[]
+  apiKeys                     MerchantApiKey[]
+  balances                    MerchantBalance[]
+  payinOrders                 PayinOrder[]
+  payoutOrders                PayoutOrder[]
+  merchantDirections          MerchantDirection[]
+  merchantBalanceTransactions MerchantBalanceTransaction[]
+  platformIncomeRows          PlatformIncome[]
 
   @@map("merchants")
 }
@@ -258,7 +261,11 @@ model MerchantCommissionTier {
 
 enum BalanceTransactionType {
   PAYIN_COMMISSION
+  PAYIN_DEBIT
   PAYOUT_DEBIT
+  PAYOUT_CREDIT
+  TOP_UP
+  OVERDRAFT_SET
   SETTLEMENT
   MANUAL_CREDIT
   MANUAL_DEBIT
@@ -286,13 +293,23 @@ model BalanceTransaction {
 // ─── Traders & Requisites ───
 
 model TraderProfile {
-  id             String   @id @default(uuid()) @db.Uuid
-  userId         String   @unique @map("user_id") @db.Uuid
-  isActive       Boolean  @default(true) @map("is_active")
-  acceptingOrders Boolean @default(true) @map("accepting_orders")
-  payoutMinLimit Decimal  @default(0) @map("payout_min_limit") @db.Decimal(18, 4)
-  payoutMaxLimit Decimal  @default(0) @map("payout_max_limit") @db.Decimal(18, 4)
-  createdAt      DateTime @default(now()) @map("created_at")
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @unique @map("user_id") @db.Uuid
+  isActive        Boolean  @default(true) @map("is_active")
+  acceptingOrders Boolean  @default(true) @map("accepting_orders")
+  payoutMinLimit  Decimal  @default(0) @map("payout_min_limit") @db.Decimal(18, 4)
+  payoutMaxLimit  Decimal  @default(0) @map("payout_max_limit") @db.Decimal(18, 4)
+  /// USDT overdraft limit (0 = no overdraft). Available for Pay-In assignment = balance_usdt + overdraft_limit.
+  overdraftLimit  Decimal  @default(0) @map("overdraft_limit") @db.Decimal(18, 6)
+  /// Trader Pay-In rate as fraction (0.01 = +1% on parser rate divisor).
+  payinRate       Decimal  @default(0) @map("payin_rate") @db.Decimal(8, 6)
+  /// Trader Pay-Out rate as fraction (0.002 = 0.2% better credit).
+  payoutRate      Decimal  @default(0) @map("payout_rate") @db.Decimal(8, 6)
+  /// TRC-20 receiving address for USDT top-ups (Tron). Monitored by deposit worker when set.
+  usdtTrc20DepositAddress String? @map("usdt_trc20_deposit_address") @db.VarChar(64)
+  /// ERC-20 receiving address for USDT top-ups (Ethereum mainnet). Monitored by ERC-20 deposit worker when set.
+  usdtErc20DepositAddress String? @map("usdt_erc20_deposit_address") @db.VarChar(42)
+  createdAt       DateTime @default(now()) @map("created_at")
 
   user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   balances            TraderBalance[]
@@ -303,6 +320,8 @@ model TraderProfile {
   telegramSettings    TelegramSettings?
   settlements         Settlement[]
   balanceTransactions BalanceTransaction[]
+  walletDeposits      WalletDeposit[]
+  platformIncomeRows  PlatformIncome[]
 
   @@map("trader_profiles")
 }
@@ -423,6 +442,10 @@ model PayinOrder {
   commission        Decimal     @default(0) @db.Decimal(18, 4)
   partnerAmount     Decimal     @default(0) @map("partner_amount") @db.Decimal(18, 4)
   rate              Decimal     @default(1) @db.Decimal(18, 8)
+  /// Binance P2P parser rate P (UAH per 1 USDT) fixed at order creation.
+  parserRate        Decimal?    @map("parser_rate") @db.Decimal(12, 6)
+  rateTraderIn      Decimal?    @map("rate_trader_in") @db.Decimal(12, 6)
+  rateAdminIn       Decimal?    @map("rate_admin_in") @db.Decimal(12, 6)
   status            PayinStatus @default(PENDING)
   userFullName      String?     @map("user_full_name")
   userIdExternal    String?     @map("user_id_external")
@@ -483,6 +506,11 @@ model PayoutOrder {
   commissionAmount Decimal          @default(0) @map("commission_amount") @db.Decimal(18, 4)
   partnerAmount   Decimal           @default(0) @map("partner_amount") @db.Decimal(18, 4)
   percentFee      Decimal           @default(0) @map("percent_fee") @db.Decimal(8, 4)
+  parserRate      Decimal?          @map("parser_rate") @db.Decimal(12, 6)
+  rateTraderOut   Decimal?          @map("rate_trader_out") @db.Decimal(12, 6)
+  rateAdminOut    Decimal?          @map("rate_admin_out") @db.Decimal(12, 6)
+  /// Total UAH reserved from merchant at creation: face amount × (1 + commission).
+  merchantDebitUah Decimal?         @map("merchant_debit_uah") @db.Decimal(18, 2)
   callbackUrl     String?           @map("callback_url")
   startAt         DateTime?         @map("start_at")
   endAt           DateTime?         @map("end_at")
@@ -647,6 +675,118 @@ model AuditLog {
   @@index([actorId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ─── Balance model v2: exchange log, platform income, merchant ledger, on-chain scaffolding ───
+
+model ExchangeRateLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  rate      Decimal  @db.Decimal(12, 6)
+  rawPrices Json     @map("raw_prices")
+  source    String   @default("binance_p2p")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("exchange_rate_logs")
+}
+
+enum PlatformIncomeOrderType {
+  PAYIN
+  PAYOUT
+}
+
+model PlatformIncome {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  orderId               String                  @map("order_id") @db.Uuid
+  orderType             PlatformIncomeOrderType @map("order_type")
+  merchantId            String                  @map("merchant_id") @db.Uuid
+  traderId              String?                 @map("trader_id") @db.Uuid
+  orderAmountUah        Decimal                 @map("order_amount_uah") @db.Decimal(18, 2)
+  parserRate            Decimal                 @map("parser_rate") @db.Decimal(12, 6)
+  rateTrader            Decimal                 @map("rate_trader") @db.Decimal(12, 6)
+  rateAdmin             Decimal                 @map("rate_admin") @db.Decimal(12, 6)
+  traderRatePct         Decimal                 @map("trader_rate_pct") @db.Decimal(8, 6)
+  merchantCommissionPct Decimal               @map("merchant_commission_pct") @db.Decimal(8, 6)
+  incomeUsdt            Decimal                 @map("income_usdt") @db.Decimal(18, 6)
+  incomeUah             Decimal                 @map("income_uah") @db.Decimal(18, 2)
+  createdAt             DateTime                @default(now()) @map("created_at")
+
+  merchant Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  trader   TraderProfile?    @relation(fields: [traderId], references: [id], onDelete: SetNull)
+
+  @@unique([orderId, orderType])
+  @@index([merchantId])
+  @@index([createdAt])
+  @@map("platform_income")
+}
+
+enum MerchantBalanceTransactionType {
+  PAYIN_CREDIT
+  PAYOUT_DEBIT
+  PAYOUT_REFUND
+  MANUAL_CREDIT
+  MANUAL_DEBIT
+  TOP_UP
+}
+
+model MerchantBalanceTransaction {
+  id          String                         @id @default(uuid()) @db.Uuid
+  merchantId  String                         @map("merchant_id") @db.Uuid
+  type        MerchantBalanceTransactionType
+  amount      Decimal                        @db.Decimal(18, 2)
+  currency    String
+  referenceId String?                        @map("reference_id") @db.Uuid
+  comment     String?
+  createdAt   DateTime                       @default(now()) @map("created_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+  @@index([createdAt])
+  @@map("merchant_balance_transactions")
+}
+
+enum BlockchainNetwork {
+  TRC20
+  ERC20
+}
+
+enum WalletDepositStatus {
+  PENDING
+  CONFIRMED
+  CREDITED
+}
+
+model WalletDeposit {
+  id            String              @id @default(uuid()) @db.Uuid
+  traderId      String              @map("trader_id") @db.Uuid
+  txHash        String              @unique @map("tx_hash") @db.VarChar(128)
+  network       BlockchainNetwork
+  amountUsdt    Decimal             @map("amount_usdt") @db.Decimal(18, 6)
+  confirmations Int                 @default(0)
+  status        WalletDepositStatus @default(PENDING)
+  creditedAt    DateTime?           @map("credited_at")
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  trader TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
+
+  @@index([traderId])
+  @@map("wallet_deposits")
+}
+
+model PlatformWithdrawal {
+  id                  String            @id @default(uuid()) @db.Uuid
+  amountUsdt          Decimal           @map("amount_usdt") @db.Decimal(18, 6)
+  coldWalletAddress   String            @map("cold_wallet_address") @db.VarChar(128)
+  network             BlockchainNetwork
+  txHash              String?           @map("tx_hash") @db.VarChar(128)
+  initiatedById       String?           @map("initiated_by") @db.Uuid
+  note                String?
+  createdAt           DateTime          @default(now()) @map("created_at")
+
+  initiatedBy User? @relation(fields: [initiatedById], references: [id], onDelete: SetNull)
+
+  @@map("platform_withdrawals")
 }
 
 // ─── Platform Settings ───

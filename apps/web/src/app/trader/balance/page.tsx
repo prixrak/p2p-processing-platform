@@ -1,11 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowDownCircle, ArrowUpCircle, DollarSign } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowDownCircle, ArrowUpCircle, DollarSign, MinusCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { DataTable } from '@/components/ui/data-table';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 
@@ -20,9 +22,23 @@ interface BalanceTx {
   createdBy: { email: string } | null;
 }
 
+interface UsdtWallet {
+  balance_usdt: number;
+  overdraft_limit_usdt: number;
+  display_own_usdt: number;
+  available_for_payin_usdt: number;
+  work_mode: string;
+  usdt_trc20_deposit_address: string | null;
+  usdt_erc20_deposit_address: string | null;
+}
+
 const TX_TYPE_LABELS: Record<string, string> = {
-  PAYIN_COMMISSION: 'Pay-In commission',
-  PAYOUT_DEBIT: 'Pay-Out debit',
+  PAYIN_COMMISSION: 'Pay-In commission (legacy)',
+  PAYIN_DEBIT: 'Pay-In USDT debit',
+  PAYOUT_DEBIT: 'Pay-Out debit (legacy)',
+  PAYOUT_CREDIT: 'Pay-Out USDT credit',
+  TOP_UP: 'Top-up',
+  OVERDRAFT_SET: 'Overdraft limit change',
   SETTLEMENT: 'Settlement',
   MANUAL_CREDIT: 'Manual credit',
   MANUAL_DEBIT: 'Manual debit',
@@ -30,20 +46,72 @@ const TX_TYPE_LABELS: Record<string, string> = {
 
 const TX_TYPE_COLOR: Record<string, 'green' | 'red' | 'blue' | 'yellow'> = {
   PAYIN_COMMISSION: 'green',
+  PAYIN_DEBIT: 'red',
+  PAYOUT_CREDIT: 'green',
+  PAYOUT_DEBIT: 'red',
   SETTLEMENT: 'blue',
   MANUAL_CREDIT: 'green',
-  PAYOUT_DEBIT: 'red',
+  TOP_UP: 'green',
+  OVERDRAFT_SET: 'yellow',
   MANUAL_DEBIT: 'red',
 };
 
 const isCredit = (type: string) =>
-  ['PAYIN_COMMISSION', 'MANUAL_CREDIT', 'SETTLEMENT'].includes(type);
+  [
+    'PAYIN_COMMISSION',
+    'PAYOUT_CREDIT',
+    'TOP_UP',
+    'MANUAL_CREDIT',
+    'SETTLEMENT',
+  ].includes(type);
+
+const isNeutralTx = (type: string) => type === 'OVERDRAFT_SET';
 
 export default function BalanceHistoryPage() {
+  const queryClient = useQueryClient();
   const [currency, setCurrency] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
+  const [addrInput, setAddrInput] = useState('');
+  const [clearAddr, setClearAddr] = useState(false);
+  const [ercAddrInput, setErcAddrInput] = useState('');
+  const [ercClear, setErcClear] = useState(false);
+
+  const { data: wallet, isLoading: walletLoading } = useQuery({
+    queryKey: ['trader', 'usdt-wallet'],
+    queryFn: () => api.get<UsdtWallet>(internalPaths.traderUsdtWallet),
+  });
+
+  const depositMut = useMutation({
+    mutationFn: () =>
+      api.patch(internalPaths.traderTrc20Deposit, {
+        ...(clearAddr ? { clear_trc20_deposit_address: true } : {}),
+        ...(!clearAddr && addrInput.trim()
+          ? { usdt_trc20_deposit_address: addrInput.trim() }
+          : {}),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['trader', 'usdt-wallet'] });
+      setAddrInput('');
+      setClearAddr(false);
+    },
+  });
+
+  const ercDepositMut = useMutation({
+    mutationFn: () =>
+      api.patch(internalPaths.traderErc20Deposit, {
+        ...(ercClear ? { clear_erc20_deposit_address: true } : {}),
+        ...(!ercClear && ercAddrInput.trim()
+          ? { usdt_erc20_deposit_address: ercAddrInput.trim() }
+          : {}),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['trader', 'usdt-wallet'] });
+      setErcAddrInput('');
+      setErcClear(false);
+    },
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['trader', 'balance-transactions', page, currency, dateFrom, dateTo],
@@ -68,7 +136,9 @@ export default function BalanceHistoryPage() {
       header: 'Type',
       render: (tx: BalanceTx) => (
         <div className="flex items-center gap-2">
-          {isCredit(tx.type) ? (
+          {isNeutralTx(tx.type) ? (
+            <MinusCircle className="h-4 w-4 text-accent-yellow shrink-0" />
+          ) : isCredit(tx.type) ? (
             <ArrowDownCircle className="h-4 w-4 text-green-500 shrink-0" />
           ) : (
             <ArrowUpCircle className="h-4 w-4 text-red-500 shrink-0" />
@@ -85,10 +155,19 @@ export default function BalanceHistoryPage() {
       className: 'text-end tabular-nums',
       render: (tx: BalanceTx) => (
         <span
-          className={`font-mono font-semibold ${isCredit(tx.type) ? 'text-green-400' : 'text-red-400'}`}
+          className={`font-mono font-semibold ${
+            isNeutralTx(tx.type)
+              ? 'text-text-secondary'
+              : isCredit(tx.type)
+                ? 'text-green-400'
+                : 'text-red-400'
+          }`}
         >
-          {isCredit(tx.type) ? '+' : '−'}
+          {isNeutralTx(tx.type) ? '' : isCredit(tx.type) ? '+' : '−'}
           {Number(tx.amount).toLocaleString()} {tx.currency}
+          {isNeutralTx(tx.type) ? (
+            <span className="block text-[10px] text-text-muted font-normal">new limit</span>
+          ) : null}
         </span>
       ),
     },
@@ -97,7 +176,12 @@ export default function BalanceHistoryPage() {
       header: 'Comment / ID',
       render: (tx: BalanceTx) => (
         <span className="text-sm text-text-secondary">
-          {tx.comment || (tx.referenceId ? <span className="font-mono text-xs">{tx.referenceId.slice(0, 8)}…</span> : '—')}
+          {tx.comment ||
+            (tx.referenceId ? (
+              <span className="font-mono text-xs">{tx.referenceId.slice(0, 8)}…</span>
+            ) : (
+              '—'
+            ))}
         </span>
       ),
     },
@@ -124,34 +208,186 @@ export default function BalanceHistoryPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-            <DollarSign className="h-6 w-6" /> Balance — Ledger
+            <DollarSign className="h-6 w-6" /> Balance
           </h1>
           <p className="mt-1 text-sm text-text-muted">
-            Full history of credits and debits on your account
+            USDT capacity for Pay-In assignment and full ledger history
           </p>
         </div>
+      </div>
+
+      <section className="rounded-xl border border-border-subtle bg-bg-secondary p-4 space-y-4">
+        <h2 className="text-sm font-semibold text-text-primary">USDT wallet (cabinet)</h2>
+        {walletLoading || !wallet ? (
+          <p className="text-sm text-text-muted">Loading…</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+            <div>
+              <p className="text-text-muted text-xs">Work mode</p>
+              <p className="font-mono text-text-primary">{wallet.work_mode}</p>
+            </div>
+            <div>
+              <p className="text-text-muted text-xs">Overdraft limit (USDT)</p>
+              <p className="font-mono text-text-primary">
+                {wallet.overdraft_limit_usdt.toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-text-muted text-xs">Own balance (display, ≥0)</p>
+              <p className="font-mono text-text-primary">
+                {wallet.display_own_usdt.toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-text-muted text-xs">Available for Pay-In (balance + limit)</p>
+              <p className="font-mono text-accent-green">
+                {wallet.available_for_payin_usdt.toLocaleString()}
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <p className="text-text-muted text-xs">Raw USDT balance (may be negative)</p>
+              <p className="font-mono text-text-primary">
+                {wallet.balance_usdt.toLocaleString()}
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="border-t border-border-subtle pt-4 space-y-2">
+          <h3 className="text-xs font-semibold text-text-primary uppercase tracking-wide">
+            USDT TRC-20 deposit address
+          </h3>
+          <p className="text-xs text-text-muted">
+            Send USDT (TRC-20) to this Tron address to top up. Credits after confirmations (worker).
+          </p>
+          {wallet?.usdt_trc20_deposit_address ? (
+            <p className="font-mono text-xs break-all text-text-secondary bg-bg-primary/50 rounded-lg p-2">
+              {wallet.usdt_trc20_deposit_address}
+            </p>
+          ) : (
+            <p className="text-xs text-text-muted">No address registered yet.</p>
+          )}
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+            <div className="flex-1">
+              <Input
+                label="Tron address (T…)"
+                value={addrInput}
+                onChange={(e) => {
+                  setAddrInput(e.target.value);
+                  setClearAddr(false);
+                }}
+                placeholder="T…"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-xs text-text-muted cursor-pointer pb-2">
+              <input
+                type="checkbox"
+                checked={clearAddr}
+                onChange={(e) => {
+                  setClearAddr(e.target.checked);
+                  if (e.target.checked) setAddrInput('');
+                }}
+              />
+              Clear address
+            </label>
+            <Button
+              onClick={() => depositMut.mutate()}
+              disabled={
+                depositMut.isPending || (!clearAddr && !addrInput.trim()) || (clearAddr && !wallet?.usdt_trc20_deposit_address)
+              }
+            >
+              Save
+            </Button>
+          </div>
+        </div>
+
+        <div className="border-t border-border-subtle pt-4 space-y-2">
+          <h3 className="text-xs font-semibold text-text-primary uppercase tracking-wide">
+            USDT ERC-20 deposit address (Ethereum)
+          </h3>
+          <p className="text-xs text-text-muted">
+            Send USDT (ERC-20 on Ethereum mainnet) to this address to top up when ETH_RPC_URL is enabled on the worker.
+          </p>
+          {wallet?.usdt_erc20_deposit_address ? (
+            <p className="font-mono text-xs break-all text-text-secondary bg-bg-primary/50 rounded-lg p-2">
+              {wallet.usdt_erc20_deposit_address}
+            </p>
+          ) : (
+            <p className="text-xs text-text-muted">No address registered yet.</p>
+          )}
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+            <div className="flex-1">
+              <Input
+                label="Ethereum address (0x…)"
+                value={ercAddrInput}
+                onChange={(e) => {
+                  setErcAddrInput(e.target.value);
+                  setErcClear(false);
+                }}
+                placeholder="0x…"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-xs text-text-muted cursor-pointer pb-2">
+              <input
+                type="checkbox"
+                checked={ercClear}
+                onChange={(e) => {
+                  setErcClear(e.target.checked);
+                  if (e.target.checked) setErcAddrInput('');
+                }}
+              />
+              Clear address
+            </label>
+            <Button
+              onClick={() => ercDepositMut.mutate()}
+              disabled={
+                ercDepositMut.isPending ||
+                (!ercClear && !ercAddrInput.trim()) ||
+                (ercClear && !wallet?.usdt_erc20_deposit_address)
+              }
+            >
+              Save
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      <div>
+        <h2 className="text-lg font-semibold text-text-primary mb-2">Ledger</h2>
+        <p className="text-sm text-text-muted mb-3">
+          Credits and debits; TOP_UP rows link on-chain deposits after they are credited.
+        </p>
       </div>
 
       <FilterBar>
         <FilterInput
           label="Currency"
           value={currency}
-          onChange={(v) => { setCurrency(v.toUpperCase()); setPage(1); }}
-          placeholder="UAH"
+          onChange={(v) => {
+            setCurrency(v.toUpperCase());
+            setPage(1);
+          }}
+          placeholder="USDT"
           className="w-32"
         />
         <FilterInput
           type="date"
           label="From"
           value={dateFrom}
-          onChange={(v) => { setDateFrom(v); setPage(1); }}
+          onChange={(v) => {
+            setDateFrom(v);
+            setPage(1);
+          }}
           className="w-40"
         />
         <FilterInput
           type="date"
           label="To"
           value={dateTo}
-          onChange={(v) => { setDateTo(v); setPage(1); }}
+          onChange={(v) => {
+            setDateTo(v);
+            setPage(1);
+          }}
           className="w-40"
         />
       </FilterBar>
@@ -174,7 +410,9 @@ export default function BalanceHistoryPage() {
             >
               ← Previous
             </button>
-            <span className="px-3 py-1">{page} / {totalPages}</span>
+            <span className="px-3 py-1">
+              {page} / {totalPages}
+            </span>
             <button
               className="px-3 py-1 rounded bg-bg-secondary disabled:opacity-40"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}

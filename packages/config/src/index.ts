@@ -18,6 +18,72 @@ export const config = {
     host: optional('REDIS_HOST', 'localhost'),
     port: parseInt(optional('REDIS_PORT', '6379'), 10),
   },
+  binanceP2p: {
+    pollMs: parseInt(optional('BINANCE_P2P_POLL_MS', '5000'), 10),
+    /** Fiat filter: offers must admit this UAH volume (spec default 20_000). */
+    volumeUah: parseInt(optional('BINANCE_P2P_VOLUME_UAH', '20000'), 10),
+    /** Rows treated as promoted / pinned at the top of the price-sorted list (skipped before picking 3–5). */
+    skipTopAds: parseInt(optional('BINANCE_P2P_SKIP_TOP', '1'), 10),
+    redisKey: optional('BINANCE_P2P_REDIS_KEY', 'binance:p2p:usdt_uah'),
+    payTypes: optional('BINANCE_P2P_PAY_TYPES', 'Monobank'),
+    /** Set false on secondary processes to avoid duplicate Binance polling. */
+    pollEnabled: optional('BINANCE_P2P_POLL_ENABLED', 'true') === 'true',
+    /** If no successful Binance refresh for this many minutes, log warn and optionally notify owner. */
+    staleAlertMinutes: parseInt(optional('BINANCE_P2P_STALE_ALERT_MINUTES', '15'), 10),
+  },
+  ownerOps: {
+    /** Telegram chat_id for operational alerts (stale parser rate, etc.). Same bot as trader notifications. */
+    telegramChatId: optional('OWNER_OPS_TELEGRAM_CHAT_ID', ''),
+  },
+  tron: {
+    /** Run TRC-20 USDT deposit poller (typically in worker process only). */
+    depositPollEnabled: optional('TRON_DEPOSIT_POLL_ENABLED', 'true') === 'true',
+    depositPollMs: parseInt(optional('TRON_DEPOSIT_POLL_MS', '25000'), 10),
+    apiKey: optional('TRONGRID_API_KEY', ''),
+    baseUrl: optional('TRONGRID_BASE_URL', 'https://api.trongrid.io'),
+    usdtTrc20Contract: optional(
+      'TRON_USDT_TRC20_CONTRACT',
+      'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+    ),
+    minConfirmations: parseInt(optional('TRON_USDT_MIN_CONFIRMATIONS', '20'), 10),
+    minAmountUsdt: parseFloat(optional('TRON_DEPOSIT_MIN_USDT', '1')),
+    /** Ignore transfers below this (spam / dust). */
+    trc20FetchLimit: parseInt(optional('TRON_TRC20_FETCH_LIMIT', '30'), 10),
+    /** Alert owner (Telegram) if TronGrid poll has not succeeded within this window. */
+    staleAlertMinutes: parseInt(optional('TRON_DEPOSIT_STALE_ALERT_MINUTES', '15'), 10),
+    lastSuccessRedisKey: optional('TRON_DEPOSIT_LAST_SUCCESS_REDIS_KEY', 'tron:deposit:last_success_ms'),
+    lastHeadBlockRedisKey: optional(
+      'TRON_DEPOSIT_LAST_HEAD_BLOCK_REDIS_KEY',
+      'tron:deposit:last_head_block',
+    ),
+    staleNotifyLockRedisKey: optional(
+      'TRON_DEPOSIT_STALE_NOTIFY_LOCK_REDIS_KEY',
+      'tron:deposit:stale_notify_lock',
+    ),
+  },
+  /** Ethereum mainnet JSON-RPC (Infura / Alchemy). Required only when ERC-20 deposit polling is enabled. */
+  ethereum: {
+    depositPollEnabled: optional('ETH_DEPOSIT_POLL_ENABLED', 'false') === 'true',
+    rpcUrl: optional('ETH_RPC_URL', ''),
+    /** Mainnet USDT ERC-20 contract. */
+    usdtContract: optional('ETH_USDT_CONTRACT', '0xdAC17F958D2ee523a2206206994597C13D831ec7'),
+    depositPollMs: parseInt(optional('ETH_DEPOSIT_POLL_MS', '25000'), 10),
+    minConfirmations: parseInt(optional('ETH_USDT_MIN_CONFIRMATIONS', '12'), 10),
+    minAmountUsdt: parseFloat(optional('ETH_DEPOSIT_MIN_USDT', '1')),
+    /** On first run (no Redis cursor), scan this many blocks behind head (cap avoids heavy backlog). */
+    bootstrapBlocksBehind: parseInt(optional('ETH_DEPOSIT_BOOTSTRAP_BLOCKS_BEHIND', '4000'), 10),
+    maxLogsBlockRange: parseInt(optional('ETH_GET_LOGS_MAX_BLOCK_RANGE', '2000'), 10),
+    staleAlertMinutes: parseInt(optional('ETH_DEPOSIT_STALE_ALERT_MINUTES', '15'), 10),
+    lastSuccessRedisKey: optional('ETH_DEPOSIT_LAST_SUCCESS_REDIS_KEY', 'eth:deposit:last_success_ms'),
+    lastProcessedBlockRedisKey: optional(
+      'ETH_DEPOSIT_LAST_PROCESSED_BLOCK_REDIS_KEY',
+      'eth:deposit:last_processed_block',
+    ),
+    staleNotifyLockRedisKey: optional(
+      'ETH_DEPOSIT_STALE_NOTIFY_LOCK_REDIS_KEY',
+      'eth:deposit:stale_notify_lock',
+    ),
+  },
   jwt: {
     secret: optional('JWT_SECRET', 'dev-jwt-secret-change-me'),
     accessExpiresIn: optional('JWT_ACCESS_EXPIRES', '15m'),

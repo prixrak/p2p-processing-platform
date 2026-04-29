@@ -21,6 +21,7 @@ import {
 import { TradersService } from './traders.service';
 import { GetStatisticsDto, SetPayoutLimitsDto, TraderStatisticsResponseDto } from './dto';
 import { UpdateTraderAcceptingOrdersDto } from './dto/update-trader-accepting-orders.dto';
+import { UpdateTraderBalanceModelDto } from './dto/update-trader-balance-model.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -92,6 +93,22 @@ export class TradersController {
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
     return this.tradersService.findAll(page, limit);
+  }
+
+  @Patch(':id/balance-model')
+  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @ApiOperation({
+    summary: 'Update trader USDT overdraft and Pay-In/Pay-Out rate fractions (Block 5)',
+  })
+  updateBalanceModel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTraderBalanceModelDto,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.tradersService.updateBalanceModel(id, dto, {
+      id: user.id,
+      role: user.role,
+    });
   }
 
   @Get(':id')

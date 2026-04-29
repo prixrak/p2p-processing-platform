@@ -24,10 +24,32 @@ export const internalPaths = {
   trader: (id: string) => `/api/traders/${id}`,
   /** Trader cabinet: own statistics (JWT). Query: period | dateFrom & dateTo */
   traderMeStatistics: '/api/traders/me/statistics',
+  /** Trader: USDT balance, overdraft, TRC-20 deposit address (GET) */
+  traderUsdtWallet: '/api/trader/dashboard/usdt-wallet',
+  /** Trader: PATCH body `{ usdt_trc20_deposit_address?, clear_trc20_deposit_address? }` */
+  traderTrc20Deposit: '/api/trader/dashboard/trc20-deposit',
+  /** Trader: PATCH body `{ usdt_erc20_deposit_address?, clear_erc20_deposit_address? }` */
+  traderErc20Deposit: '/api/trader/dashboard/erc20-deposit',
   traderBalances: (id: string) => `/api/traders/${id}/balances`,
   traderActivate: (id: string) => `/api/traders/${id}/activate`,
   traderDeactivate: (id: string) => `/api/traders/${id}/deactivate`,
   traderPayoutLimits: (id: string) => `/api/traders/${id}/payout-limits`,
+  traderBalanceModel: (id: string) => `/api/traders/${id}/balance-model`,
+
+  adminPlatformExchangeRate: '/api/admin/platform/exchange-rate',
+  adminPlatformIncomeSummary: (qs = '') =>
+    `/api/admin/platform/income/summary${qs ? `?${qs}` : ''}`,
+  adminPlatformIncomeRecent: (qs = '') =>
+    `/api/admin/platform/income/recent${qs ? `?${qs}` : ''}`,
+  adminPlatformWithdrawals: (qs = '') =>
+    `/api/admin/platform/withdrawals${qs ? `?${qs}` : ''}`,
+  /** POST body: platform withdrawal audit */
+  adminPlatformWithdrawalsPost: '/api/admin/platform/withdrawals',
+  adminPlatformWalletDeposits: (qs = '') =>
+    `/api/admin/platform/wallet-deposits${qs ? `?${qs}` : ''}`,
+  adminPlatformWalletDepositConfirm: '/api/admin/platform/wallet-deposits/confirm',
+  adminPlatformOperationsSummary: (qs = '') =>
+    `/api/admin/platform/operations/summary${qs ? `?${qs}` : ''}`,
 
   // Pay-Out pool (trader cabinet)
   payoutPool: '/api/trader/payout/pool',
@@ -42,6 +64,11 @@ export const internalPaths = {
   merchant: (id: string) => `/api/merchants/${id}`,
   /** Merchant cabinet (JWT) — query: period | dateFrom & dateTo */
   merchantAnalytics: '/api/merchant/analytics',
+  /** Merchant ledger — query: page, limit, type?, dateFrom?, dateTo? */
+  merchantBalanceTransactions: (qs: string) => `/api/merchant/balance-transactions?${qs}`,
+  /** Merchant period stats — query: dateFrom?, dateTo? */
+  merchantBalanceSummary: (qs = '') =>
+    `/api/merchant/balance-summary${qs ? `?${qs}` : ''}`,
   merchantLock: (id: string) => `/api/merchants/${id}/lock`,
   merchantUnlock: (id: string) => `/api/merchants/${id}/unlock`,
 

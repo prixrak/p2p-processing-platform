@@ -26,6 +26,7 @@ import {
   ORDER_LIST_DIRECTION,
   directionTypeToOrderListDirection,
 } from '@p2p/shared';
+import { MerchantBalanceTransactionType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { MerchantsService } from './merchants.service';
 import { MerchantDirectionsService } from '../merchant-directions/merchant-directions.service';
@@ -73,6 +74,119 @@ export class MerchantCabinetController {
       available: Number(b.amount),
       frozen: 0,
     }));
+  }
+
+  @Get('balance-transactions')
+  @ApiOperation({ summary: 'Merchant balance ledger (append-only, Block 5 §5.5)' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'type', required: false, description: 'MerchantBalanceTransactionType' })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo', required: false })
+  async listBalanceTransactions(
+    @CurrentUser('merchantId') merchantId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('type') type?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    const take = Math.min(limit, 100);
+    const skip = (page - 1) * take;
+    const where: Prisma.MerchantBalanceTransactionWhereInput = { merchantId };
+    if (type) {
+      const upper = type.toUpperCase();
+      const allowed = Object.values(MerchantBalanceTransactionType) as string[];
+      if (allowed.includes(upper)) {
+        where.type = upper as MerchantBalanceTransactionType;
+      }
+    }
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+      if (dateTo) where.createdAt.lte = new Date(dateTo);
+    }
+    const [data, total] = await Promise.all([
+      this.prisma.merchantBalanceTransaction.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.merchantBalanceTransaction.count({ where }),
+    ]);
+    return { data, total, page, limit: take };
+  }
+
+  @Get('balance-summary')
+  @ApiOperation({
+    summary: 'Period volumes and commission totals (Block 5 §5.5)',
+  })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo', required: false })
+  async balancePeriodSummary(
+    @CurrentUser('merchantId') merchantId: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    const range =
+      dateFrom || dateTo
+        ? {
+            ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+            ...(dateTo ? { lte: new Date(dateTo) } : {}),
+          }
+        : undefined;
+
+    const payinWhere = {
+      merchantId,
+      status: 'PAID' as const,
+      ...(range ? { updatedAt: range } : {}),
+    };
+    const payoutCompletedWhere = {
+      merchantId,
+      status: 'COMPLETED' as const,
+      ...(range ? { updatedAt: range } : {}),
+    };
+    const payoutCreatedWhere = {
+      merchantId,
+      ...(range ? { createdAt: range } : {}),
+    };
+
+    const [payinVol, payoutVol, payinComm, payoutCommCompleted, payoutCommAllCreated] =
+      await Promise.all([
+        this.prisma.payinOrder.aggregate({
+          where: payinWhere,
+          _sum: { amount: true },
+        }),
+        this.prisma.payoutOrder.aggregate({
+          where: payoutCompletedWhere,
+          _sum: { amount: true },
+        }),
+        this.prisma.payinOrder.aggregate({
+          where: payinWhere,
+          _sum: { commission: true },
+        }),
+        this.prisma.payoutOrder.aggregate({
+          where: payoutCompletedWhere,
+          _sum: { commissionAmount: true },
+        }),
+        this.prisma.payoutOrder.aggregate({
+          where: payoutCreatedWhere,
+          _sum: { commissionAmount: true },
+        }),
+      ]);
+
+    return {
+      dateFrom: dateFrom ?? null,
+      dateTo: dateTo ?? null,
+      payin_volume_uah_paid: Number(payinVol._sum.amount ?? 0),
+      payout_volume_uah_completed: Number(payoutVol._sum.amount ?? 0),
+      payin_commission_uah: Number(payinComm._sum.commission ?? 0),
+      payout_commission_uah_on_completed: Number(payoutCommCompleted._sum.commissionAmount ?? 0),
+      payout_commission_uah_on_all_created_in_period: Number(
+        payoutCommAllCreated._sum.commissionAmount ?? 0,
+      ),
+    };
   }
 
   @Get('orders')
