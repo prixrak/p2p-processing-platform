@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  DEFAULT_DEV_KEYS,
   DEV_KEY_PRESETS,
   findDevKeyPresetId,
 } from './dev-defaults';
@@ -37,7 +36,7 @@ import {
   sectionTitle,
   textarea,
 } from './playground-styles';
-import { LS, loadKeys } from './playground-storage';
+import { jsonBodyStorageKey, LS, loadKeys } from './playground-storage';
 
 export function App() {
   const [keys, setKeys] = useState(loadKeys);
@@ -118,21 +117,51 @@ export function App() {
 
   useEffect(() => {
     if (endpoint.kind !== 'json') return;
-    const nonce = Math.floor(Date.now() / 1000);
-    setPreviewNonce(nonce);
-    try {
-      const raw = getDefaultJsonForEndpoint(endpoint);
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      if (useV2Ref.current) {
-        setBodyJson(
-          JSON.stringify(mergeJsonForSigning(parsed, endpoint.path, true, nonce), null, 2),
-        );
-      } else {
-        setBodyJson(JSON.stringify(parsed, null, 2));
+    const storageKey = jsonBodyStorageKey(endpoint.id);
+    const stored =
+      typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null;
+
+    const applyDefaults = () => {
+      const nonce = Math.floor(Date.now() / 1000);
+      setPreviewNonce(nonce);
+      try {
+        const raw = getDefaultJsonForEndpoint(endpoint);
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        let next: string;
+        if (useV2Ref.current) {
+          next = JSON.stringify(
+            mergeJsonForSigning(parsed, endpoint.path, true, nonce),
+            null,
+            2,
+          );
+        } else {
+          next = JSON.stringify(parsed, null, 2);
+        }
+        setBodyJson(next);
+        localStorage.setItem(storageKey, next);
+      } catch {
+        const fallback = getDefaultJsonForEndpoint(endpoint);
+        setBodyJson(fallback);
+        localStorage.setItem(storageKey, fallback);
       }
-    } catch {
-      setBodyJson(getDefaultJsonForEndpoint(endpoint));
+    };
+
+    if (stored != null && stored.trim() !== '') {
+      setBodyJson(stored);
+      try {
+        const parsed = JSON.parse(stored) as Record<string, unknown>;
+        const n =
+          typeof parsed.nonce === 'number'
+            ? parsed.nonce
+            : Math.floor(Date.now() / 1000);
+        setPreviewNonce(n);
+      } catch {
+        setPreviewNonce(Math.floor(Date.now() / 1000));
+      }
+      return;
     }
+
+    applyDefaults();
   }, [endpoint.id, endpoint.kind, endpoint.path]);
 
   useEffect(() => {
@@ -162,24 +191,30 @@ export function App() {
     setBodyJson((prev) => {
       try {
         const parsed = JSON.parse(prev) as Record<string, unknown>;
+        let next: string;
         if (useV2) {
           const n = Math.floor(Date.now() / 1000);
           setPreviewNonce(n);
-          return JSON.stringify(
+          next = JSON.stringify(
             mergeJsonForSigning(parsed, endpoint.path, true, n),
             null,
             2,
           );
+        } else {
+          const { api_url: _a, ...rest } = parsed as Record<string, unknown> & {
+            api_url?: unknown;
+          };
+          next = JSON.stringify(rest, null, 2);
         }
-        const { api_url: _a, ...rest } = parsed as Record<string, unknown> & {
-          api_url?: unknown;
-        };
-        return JSON.stringify(rest, null, 2);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(jsonBodyStorageKey(endpoint.id), next);
+        }
+        return next;
       } catch {
         return prev;
       }
     });
-  }, [useV2, endpoint.path, endpoint.kind]);
+  }, [useV2, endpoint.path, endpoint.kind, endpoint.id]);
 
   const jsonPreviewMerged = useMemo(() => {
     if (endpoint.kind !== 'json') return null;
@@ -194,24 +229,31 @@ export function App() {
   const refreshPreviewNonce = useCallback(() => {
     const n = Math.floor(Date.now() / 1000);
     setPreviewNonce(n);
+    const id = endpoint.id;
     setBodyJson((prev) => {
       try {
         const parsed = JSON.parse(prev) as Record<string, unknown>;
         const withNonce = { ...parsed, nonce: n };
+        let next: string;
         if (useV2) {
-          return JSON.stringify(
+          next = JSON.stringify(
             mergeJsonForSigning(withNonce, endpoint.path, true, n),
             null,
             2,
           );
+        } else {
+          next = JSON.stringify(withNonce, null, 2);
         }
-        return JSON.stringify(withNonce, null, 2);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(jsonBodyStorageKey(id), next);
+        }
+        return next;
       } catch {
         return prev;
       }
     });
     setStatusLine('');
-  }, [endpoint.path, useV2]);
+  }, [endpoint.id, endpoint.path, useV2]);
 
   /** Appeal/send: set nonce to a fresh `Date.now()` string (matches default). */
   const refreshAppealNonce = useCallback(() => {
@@ -505,7 +547,8 @@ export function App() {
             External API playground
           </h1>
           <p style={{ margin: '0.2rem 0 0', color: '#8e95a3', fontSize: '0.78rem' }}>
-            <code>/api/external/v1</code> · keys in <code>localStorage</code> · API base{' '}
+            <code>/api/external/v1</code> · keys + JSON bodies saved in{' '}
+            <code>localStorage</code> · API base{' '}
             <code>NEXT_PUBLIC_API_URL</code>
           </p>
         </div>
@@ -668,7 +711,13 @@ export function App() {
               <textarea
                 style={{ ...textarea, flex: '1 1 0', minHeight: '100px', resize: 'none' as const }}
                 value={bodyJson}
-                onChange={(e) => setBodyJson(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setBodyJson(v);
+                  if (typeof window !== 'undefined') {
+                    localStorage.setItem(jsonBodyStorageKey(endpoint.id), v);
+                  }
+                }}
                 spellCheck={false}
               />
               <div style={btnRow}>

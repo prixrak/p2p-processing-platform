@@ -7,7 +7,13 @@ export const LS = {
   payoutSk: 'p2p-external-playground-payout-sk',
   lastEndpoint: 'p2p-external-playground-last-endpoint',
   useV2: 'p2p-external-playground-use-v2',
+  /** JSON body text per endpoint id */
+  jsonBodyPrefix: 'p2p-external-playground-json-body-',
 } as const;
+
+export function jsonBodyStorageKey(endpointId: string): string {
+  return `${LS.jsonBodyPrefix}${endpointId}`;
+}
 
 export function loadKeys() {
   if (typeof window === 'undefined') {

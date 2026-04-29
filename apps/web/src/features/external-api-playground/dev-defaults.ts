@@ -12,6 +12,18 @@ export type DevKeyPair = {
 
 export const DEV_KEY_PRESETS: readonly { id: string; label: string; keys: DevKeyPair }[] = [
   {
+    id: 'seed-terminal',
+    label: 'Seed / local DB (terminal)',
+    keys: {
+      payinPublicKey: 'pk_payin_c155f611a295b631b99016fae8cd43d3109ded9809317058',
+      payinSecret:
+        'sk_payin_ab298c91635ced1e4c6d9b38374b34fa19e7410eb384d537102789c785d611c3',
+      payoutPublicKey: 'pk_payout_8a8f385209a376ac10c00d1f651a57c318585ac7fbfb232d',
+      payoutSecret:
+        'sk_payout_a980a11a47aab58392a5b8081ff22e013f76e1d15ac6f35798d3deec23ba8aa9',
+    },
+  },
+  {
     id: 'pair-a',
     label: 'Pair A (original sample)',
     keys: {
