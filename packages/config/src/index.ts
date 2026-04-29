@@ -26,6 +26,11 @@ export const config = {
     skipTopAds: parseInt(optional('BINANCE_P2P_SKIP_TOP', '1'), 10),
     primaryPairRedisKey: optional('BINANCE_P2P_REDIS_KEY', 'binance:p2p:usdt_uah'),
     payTypes: optional('BINANCE_P2P_PAY_TYPES', 'Monobank'),
+    /**
+     * Comma-separated pay-type identifiers for USDT/KZT parser (same `/adv/search` `payTypes` field).
+     * Empty = omit field (Binance treats as all payment methods — required because UAH defaults like Monobank return no rows on KZT).
+     */
+    secondaryPairPayTypes: optional('BINANCE_P2P_PAY_TYPES_KZT', ''),
     /** Set false on secondary processes to avoid duplicate Binance polling. */
     pollEnabled: optional('BINANCE_P2P_POLL_ENABLED', 'true') === 'true',
     /** If no successful Binance refresh for this many minutes, log warn and optionally notify owner. */

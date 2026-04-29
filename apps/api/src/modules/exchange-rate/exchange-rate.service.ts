@@ -173,7 +173,8 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
   async refreshFromBinance(): Promise<void> {
     await this.maybeAlertStaleParserRate();
 
-    const payTypes = this.binance.getConfiguredPayTypes();
+    const primaryPayTypes = this.binance.getConfiguredPayTypes();
+    const secondaryPayTypes = this.binance.getSecondaryPairPayTypes();
     let anyOk = false;
 
     if (
@@ -181,7 +182,7 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
         'UAH',
         config.binanceP2p.primaryPairProbeVolume,
         config.binanceP2p.primaryPairRedisKey,
-        payTypes,
+        primaryPayTypes,
         {
           persistLog: true,
         },
@@ -195,7 +196,7 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
         'KZT',
         config.binanceP2p.secondaryPairProbeVolume,
         config.binanceP2p.secondaryPairRedisKey,
-        payTypes,
+        secondaryPayTypes,
         {
           persistLog: false,
         },
@@ -220,7 +221,7 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
     payTypes: string[],
     opts: { persistLog: boolean },
   ): Promise<boolean> {
-    const offers = await this.binance.fetchBuyUsdtOffers(fiat, payTypes, 50);
+    const offers = await this.binance.fetchBuyUsdtOffers(fiat, payTypes);
     const filtered = filterOffersForVolumeAndPayTypes(offers, payTypes, volumeFiat);
     filtered.sort((a, b) => a.price - b.price);
     const picked = averageParserRateFromOffers(filtered, config.binanceP2p.skipTopAds);
