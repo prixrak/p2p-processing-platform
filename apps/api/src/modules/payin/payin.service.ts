@@ -28,7 +28,6 @@ import type {
   ProfileDto,
   PayInCheckAvailabilityResponseDto,
   PaymentBankApiDto,
-  AppealDto as AppealDtoType,
 } from '@p2p/shared';
 import {
   BalanceTransactionType,
@@ -68,13 +67,11 @@ import { validate as uuidValidate } from 'uuid';
 import { CascadeService } from '../cascade/cascade.service';
 import { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
 import { TelegramService } from '../telegram/telegram.service';
-
-const ORDER_INCLUDE = {
-  requisite: { include: { bank: true } },
-  appeals: { include: { proofs: true } },
-} as const;
-
-type OrderWithRelations = Prisma.PayinOrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
+import {
+  ORDER_INCLUDE,
+  type OrderWithRelations,
+  payinOrderToOrderDto,
+} from './payin-order.mapper';
 
 @Injectable()
 export class PayinService {
@@ -291,7 +288,7 @@ export class PayinService {
       }
 
       return {
-        order: this.toOrderDto(order),
+        order: payinOrderToOrderDto(order),
         form_uri: `${config.app.frontendUrl}/pay/${order.id}`,
       };
     } catch (error) {
@@ -350,7 +347,7 @@ export class PayinService {
       status: updated.status as PayInOrderStatus,
     });
 
-    return this.toOrderDto(updated);
+    return payinOrderToOrderDto(updated);
   }
 
   // ─── External: update_order_with_proofs ───
@@ -422,14 +419,14 @@ export class PayinService {
       status: refreshed.status as PayInOrderStatus,
     });
 
-    return this.toOrderDto(refreshed);
+    return payinOrderToOrderDto(refreshed);
   }
 
   // ─── External: order_info ───
 
   async getOrderInfo(merchantId: string, id?: string, requestId?: string): Promise<OrderDto> {
     const order = await this.resolveOrder(merchantId, id, requestId);
-    return this.toOrderDto(order);
+    return payinOrderToOrderDto(order);
   }
 
   // ─── External: info ───
@@ -645,7 +642,7 @@ export class PayinService {
         });
       }
 
-      return { order: this.toOrderDto(order) };
+      return { order: payinOrderToOrderDto(order) };
     } catch (error) {
       this.handleUniqueConstraint(error);
       throw error;
@@ -730,7 +727,7 @@ export class PayinService {
       status: updated.status as PayInOrderStatus,
     });
 
-    return this.toOrderDto(updated);
+    return payinOrderToOrderDto(updated);
   }
 
   // ─── Internal (Trader): list orders ───
@@ -784,7 +781,7 @@ export class PayinService {
     ]);
 
     return {
-      items: items.map((o) => this.toOrderDto(o)),
+      items: items.map((o) => payinOrderToOrderDto(o)),
       total,
       page,
       limit,
@@ -906,7 +903,7 @@ export class PayinService {
       status: updated.status as PayInOrderStatus,
     });
 
-    return this.toOrderDto(updated);
+    return payinOrderToOrderDto(updated);
   }
 
   /**
@@ -1027,7 +1024,7 @@ export class PayinService {
       status: updated.status as PayInOrderStatus,
     });
 
-    return this.toOrderDto(updated);
+    return payinOrderToOrderDto(updated);
   }
 
   /**
@@ -1110,53 +1107,6 @@ export class PayinService {
         callbackUrl: order.callbackUrl,
       },
     });
-  }
-
-  private toOrderDto(order: OrderWithRelations): OrderDto {
-    return {
-      id: order.id,
-      request_id: order.requestId,
-      created_at: Math.floor(order.createdAt.getTime() / 1000),
-      confirmed_at: order.confirmedAt
-        ? Math.floor(order.confirmedAt.getTime() / 1000)
-        : null,
-      autoclose_at: order.autocloseAt
-        ? Math.floor(order.autocloseAt.getTime() / 1000)
-        : null,
-      currency: order.currency,
-      amount: Number(order.amount),
-      commission: Number(order.commission),
-      partner_amount: Number(order.partnerAmount),
-      rate: Number(order.rate),
-      status: order.status as PayInOrderStatus,
-      requisite_number: order.requisite?.number ?? '',
-      requisite_owner: order.requisite?.owner ?? '',
-      bank: order.requisite?.bank?.name ?? '',
-      redirect_url: order.redirectUrl,
-      appeals: (order.appeals ?? []).map((a): AppealDtoType => ({
-        id: a.id,
-        status: a.status as any,
-        created_at: Math.floor(a.createdAt.getTime() / 1000),
-        payin_order_id: order.id,
-        order_amount: Number(order.amount),
-        currency: order.currency,
-        paid_amount: Number(a.paidAmount),
-        requisite_number: order.requisite?.number ?? '',
-        requisite_owner: order.requisite?.owner ?? '',
-        bank: order.requisite?.bank?.name ?? '',
-        proofs_of_payment: (a.proofs ?? []).map((p) => p.fileId),
-      })),
-      payment_detail: order.requisite
-        ? {
-            id: order.requisite.id,
-            type: order.requisite.type,
-            number: order.requisite.number,
-            owner: order.requisite.owner,
-            code: order.requisite.code ?? '',
-            bank_name: order.requisite.bank?.name ?? '',
-          }
-        : null,
-    };
   }
 
   /**
@@ -1342,7 +1292,7 @@ export class PayinService {
       include: ORDER_INCLUDE,
     });
     if (!order) throw new NotFoundException(`Order ${orderId} not found`);
-    return this.toOrderDto(order);
+    return payinOrderToOrderDto(order);
   }
 
   async confirmFromPaymentPage(orderId: string, files: UploadedFile[]) {
@@ -1396,6 +1346,6 @@ export class PayinService {
       status: updated.status as PayInOrderStatus,
     });
 
-    return this.toOrderDto(updated);
+    return payinOrderToOrderDto(updated);
   }
 }
