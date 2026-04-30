@@ -36,13 +36,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User not found or deactivated');
     }
 
+    // Coerce enum / driver-specific role values so RolesGuard `.includes(role)` succeeds.
+    const role = String(user.role ?? '').trim();
+
     const result: Record<string, unknown> = {
       id: user.id,
       email: user.email,
-      role: user.role,
+      role,
     };
 
-    if (user.role === UserRole.TRADER) {
+    if (role === UserRole.TRADER) {
       const trader = await this.prisma.traderProfile.findUnique({
         where: { userId: user.id },
         select: { id: true },
@@ -50,7 +53,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       result.traderId = trader?.id ?? null;
     }
 
-    if (user.role === UserRole.PAYOUT_TRADER) {
+    if (role === UserRole.PAYOUT_TRADER) {
       const pt = await this.prisma.payoutTraderProfile.findUnique({
         where: { userId: user.id },
         select: { id: true },
@@ -58,7 +61,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       result.payoutTraderId = pt?.id ?? null;
     }
 
-    if (user.role === UserRole.MERCHANT) {
+    if (role === UserRole.MERCHANT) {
       const merchant = await this.prisma.merchant.findUnique({
         where: { userId: user.id },
         select: { id: true },

@@ -1,11 +1,11 @@
 'use client';
 
-import { FileText, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { shortId } from '@/lib/utils';
 import type { OrderDto } from '@p2p/shared';
-import { PAYIN_FILES_API_BASE } from './constants';
 import { orderPayinProofFileIds } from './payin-finalize-utils';
+import { AuthorizedFilePreview } from '@/components/files/authorized-file-preview';
 
 export function PayInReceiptGalleryModal({
   receiptOrder,
@@ -31,20 +31,14 @@ export function PayInReceiptGalleryModal({
                 key={fileId}
                 type="button"
                 onClick={() => onOpenProof(fileId)}
-                className="group relative aspect-video overflow-hidden rounded-lg border border-border-primary bg-bg-secondary transition-colors hover:border-accent-blue cursor-pointer"
+                className="group relative overflow-hidden rounded-lg border border-border-primary bg-bg-secondary transition-colors hover:border-accent-blue cursor-pointer"
               >
-                <img
-                  src={`${PAYIN_FILES_API_BASE}/api/files/${fileId}`}
-                  alt="Payment receipt"
-                  className="h-full w-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                    (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-                  }}
-                />
-                <div className="hidden flex-col items-center justify-center absolute inset-0 text-text-muted">
-                  <FileText className="mb-1 h-6 w-6" />
-                  <span className="text-xs">View file</span>
+                <div className="pointer-events-none aspect-video max-h-36">
+                  <AuthorizedFilePreview
+                    path={`/api/files/${fileId}`}
+                    alt="Payment receipt"
+                    className="h-full max-h-36"
+                  />
                 </div>
                 <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
                   <ExternalLink className="h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
@@ -68,11 +62,11 @@ export function PayInProofViewerModal({
   return (
     <Modal open={!!fileId} onClose={onClose} title="Payment receipt" size="xl">
       {fileId && (
-        <div className="flex items-center justify-center">
-          <img
-            src={`${PAYIN_FILES_API_BASE}/api/files/${fileId}`}
+        <div className="flex min-h-[40vh] items-center justify-center">
+          <AuthorizedFilePreview
+            path={`/api/files/${fileId}`}
             alt="Payment receipt"
-            className="max-h-[70vh] max-w-full rounded-lg object-contain"
+            className="max-h-[75vh]"
           />
         </div>
       )}

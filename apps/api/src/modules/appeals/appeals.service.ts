@@ -1,12 +1,13 @@
 import {
   Injectable,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
-import { AppealStatus } from '@p2p/shared';
+import { AppealStatus, UserRole } from '@p2p/shared';
 import type { AppealDto } from '@p2p/shared';
 import { AppealFiltersDto } from './dto';
 
@@ -14,6 +15,11 @@ const APPEAL_INCLUDE = {
   proofs: true,
   payinOrder: { include: { requisite: { include: { bank: true } } } },
 } as const;
+
+export type AppealResolveActor = {
+  role: string;
+  traderId?: string | null;
+};
 
 type AppealWithRelations = Prisma.AppealGetPayload<{ include: typeof APPEAL_INCLUDE }>;
 
@@ -67,13 +73,26 @@ export class AppealsService {
     };
   }
 
-  async resolve(appealId: string, decision: AppealStatus): Promise<AppealDto> {
+  async resolve(
+    appealId: string,
+    decision: AppealStatus,
+    actor: AppealResolveActor,
+  ): Promise<AppealDto> {
     const appeal = await this.prisma.appeal.findUnique({
       where: { id: appealId },
       include: APPEAL_INCLUDE,
     });
 
     if (!appeal) throw new NotFoundException('Appeal not found');
+
+    if (actor.role === UserRole.TRADER) {
+      const orderTraderId = appeal.payinOrder?.traderId;
+      if (!actor.traderId || orderTraderId !== actor.traderId) {
+        throw new ForbiddenException(
+          'You can only resolve appeals for pay-in orders assigned to you',
+        );
+      }
+    }
 
     if (appeal.status !== AppealStatus.OPEN) {
       throw new BadRequestException(`Appeal is already ${appeal.status}`);

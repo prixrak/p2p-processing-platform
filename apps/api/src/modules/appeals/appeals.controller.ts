@@ -57,12 +57,16 @@ export class AppealsController {
   }
 
   @Patch(':appealId/resolve')
-  @Roles(UserRole.ADMIN, UserRole.OWNER)
-  @ApiOperation({ summary: 'Resolve or reject an appeal' })
+  @Roles(UserRole.TRADER, UserRole.SUPPORT, UserRole.ADMIN, UserRole.OWNER)
+  @ApiOperation({ summary: 'Resolve or reject an appeal (trader on own orders; support/admin/owner)' })
   async resolve(
     @Param('appealId') appealId: string,
     @Body() dto: ResolveAppealDto,
+    @CurrentUser() user: { role: string; traderId?: string | null },
   ) {
-    return this.appealsService.resolve(appealId, dto.decision);
+    return this.appealsService.resolve(appealId, dto.decision, {
+      role: user.role,
+      traderId: user.traderId,
+    });
   }
 }

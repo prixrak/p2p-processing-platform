@@ -246,19 +246,24 @@ export default function DisputesPage() {
 
             {details.proofFiles?.length > 0 && (
               <div>
-                <h4 className="mb-2 text-sm font-medium text-text-secondary">Proof Files</h4>
+                <h4 className="mb-2 text-sm font-medium text-text-secondary">Proof files</h4>
                 <div className="flex flex-wrap gap-2">
                   {details.proofFiles.map((f) => (
-                    <a
+                    <Button
                       key={f.id}
-                      href={f.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 rounded-lg border border-border-primary bg-surface-primary px-3 py-2 text-sm text-accent transition-colors hover:bg-surface-tertiary"
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="gap-2 border-border-primary"
+                      onClick={() =>
+                        void api.getFileSignedUrl(f.id).then(({ url }) => {
+                          window.open(url, '_blank', 'noopener,noreferrer');
+                        })
+                      }
                     >
                       <FileImage className="h-4 w-4" />
                       {f.name}
-                    </a>
+                    </Button>
                   ))}
                 </div>
               </div>

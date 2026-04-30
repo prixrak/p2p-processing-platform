@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -13,8 +14,17 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { PrismaService } from '../../config/prisma.service';
 import { config } from '@p2p/config';
-import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE_BYTES } from '@p2p/shared';
+import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE_BYTES, UserRole } from '@p2p/shared';
 import { logExternalFailure } from '../../common/utils/external-error-log';
+
+/** JWT user payload passed from FilesController — used for file download authorization */
+export interface FileDownloadActor {
+  id: string;
+  role: string;
+  traderId?: string | null;
+  payoutTraderId?: string | null;
+  merchantId?: string | null;
+}
 
 export interface UploadedFile {
   originalname: string;
@@ -167,10 +177,81 @@ export class FilesService {
     return results;
   }
 
-  async getSignedUrl(id: string): Promise<string> {
-    const file = await this.prisma.file.findUnique({ where: { id } });
-    if (!file) throw new NotFoundException('File not found');
+  /**
+   * Enforces who may fetch a file by UUID (appeal proofs, payout completion proofs, uploader, staff).
+   */
+  async ensureUserCanAccessFile(
+    actor: FileDownloadActor,
+    file: { id: string; uploadedBy: string | null },
+  ): Promise<void> {
+    const staffRoles: string[] = [
+      UserRole.ADMIN,
+      UserRole.OWNER,
+      UserRole.SUPPORT,
+    ];
+    if (staffRoles.includes(actor.role)) {
+      return;
+    }
 
+    if (file.uploadedBy && file.uploadedBy === actor.id) {
+      return;
+    }
+
+    if (actor.role === UserRole.TRADER) {
+      if (!actor.traderId) {
+        throw new ForbiddenException('File access denied');
+      }
+      const appealLinked = await this.prisma.appealProof.findFirst({
+        where: {
+          fileId: file.id,
+          appeal: { payinOrder: { traderId: actor.traderId } },
+        },
+      });
+      if (appealLinked) return;
+
+      const payoutOwned = await this.prisma.payoutOrder.findFirst({
+        where: {
+          completionProofFileId: file.id,
+          traderId: actor.traderId,
+        },
+      });
+      if (payoutOwned) return;
+
+      throw new ForbiddenException('File access denied');
+    }
+
+    if (actor.role === UserRole.MERCHANT) {
+      if (!actor.merchantId) {
+        throw new ForbiddenException('File access denied');
+      }
+      const linked = await this.prisma.appealProof.findFirst({
+        where: {
+          fileId: file.id,
+          appeal: { payinOrder: { merchantId: actor.merchantId } },
+        },
+      });
+      if (linked) return;
+      throw new ForbiddenException('File access denied');
+    }
+
+    if (actor.role === UserRole.PAYOUT_TRADER) {
+      if (!actor.payoutTraderId) {
+        throw new ForbiddenException('File access denied');
+      }
+      const payout = await this.prisma.payoutOrder.findFirst({
+        where: {
+          completionProofFileId: file.id,
+          payoutTraderId: actor.payoutTraderId,
+        },
+      });
+      if (payout) return;
+      throw new ForbiddenException('File access denied');
+    }
+
+    throw new ForbiddenException('File access denied');
+  }
+
+  private async signFileObject(file: { id: string; s3Key: string }): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: file.s3Key,
@@ -184,7 +265,7 @@ export class FilesService {
         operation: 'getSignedUrl',
         context: {
           bucket: this.bucket,
-          fileId: id,
+          fileId: file.id,
           keyByteLength: Buffer.byteLength(file.s3Key, 'utf8'),
           ...this.s3ClientLogContext(),
         },
@@ -194,9 +275,33 @@ export class FilesService {
     }
   }
 
-  async getMetadata(id: string) {
+  /** One DB round-trip + one signature; used by JSON endpoint so the SPA avoids a separate metadata request. */
+  async getSignedUrlPayload(
+    id: string,
+    actor?: FileDownloadActor,
+  ): Promise<{ url: string; mimeType: string }> {
     const file = await this.prisma.file.findUnique({ where: { id } });
     if (!file) throw new NotFoundException('File not found');
+
+    if (actor) {
+      await this.ensureUserCanAccessFile(actor, file);
+    }
+
+    const url = await this.signFileObject(file);
+    return { url, mimeType: file.mimeType };
+  }
+
+  async getSignedUrl(id: string, actor?: FileDownloadActor): Promise<string> {
+    const { url } = await this.getSignedUrlPayload(id, actor);
+    return url;
+  }
+
+  async getMetadata(id: string, actor?: FileDownloadActor) {
+    const file = await this.prisma.file.findUnique({ where: { id } });
+    if (!file) throw new NotFoundException('File not found');
+    if (actor) {
+      await this.ensureUserCanAccessFile(actor, file);
+    }
     return file;
   }
 }

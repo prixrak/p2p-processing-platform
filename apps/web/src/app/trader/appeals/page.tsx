@@ -1,12 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   RefreshCw,
   Eye,
-  FileText,
   ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,11 +15,10 @@ import { Table } from '@/components/ui/table';
 import { Modal } from '@/components/ui/modal';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { AuthorizedFilePreview } from '@/components/files/authorized-file-preview';
 import { formatCurrency, formatDate, formatDateFull, shortId, cn } from '@/lib/utils';
 import { AppealStatus } from '@p2p/shared';
 import type { AppealDto } from '@p2p/shared';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 interface AppealsListResponse {
   items: AppealDto[];
@@ -36,12 +34,22 @@ const appealStatusVariant: Record<AppealStatus, 'warning' | 'success' | 'danger'
 };
 
 export default function AppealsPage() {
+  const queryClient = useQueryClient();
   const [selectedAppeal, setSelectedAppeal] = useState<AppealDto | null>(null);
   const [viewingProof, setViewingProof] = useState<string | null>(null);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['trader', 'appeals'],
     queryFn: () => api.get<AppealsListResponse>(internalPaths.appeals),
+  });
+
+  const resolveAppeal = useMutation({
+    mutationFn: ({ id, decision }: { id: string; decision: AppealStatus }) =>
+      api.patch<AppealDto>(`/api/appeals/${id}/resolve`, { decision }),
+    onSuccess: (updated) => {
+      void queryClient.invalidateQueries({ queryKey: ['trader', 'appeals'] });
+      setSelectedAppeal((prev) => (prev?.id === updated.id ? updated : prev));
+    },
   });
 
   const appeals = data?.items ?? [];
@@ -162,8 +170,8 @@ export default function AppealsPage() {
           <div>
             <h1 className="text-2xl font-bold text-text-primary">Appeals</h1>
             <p className="text-sm text-text-muted">
-              Appeals on your pay-in orders. Resolve/reject is done by platform owners in the admin
-              tools.
+              Appeals on orders assigned to you: review payer proof files and resolve or reject. Support and
+              administrators can intervene when needed.
             </p>
           </div>
         </div>
@@ -175,9 +183,7 @@ export default function AppealsPage() {
       <section className="space-y-3">
         <div>
           <h2 className="text-lg font-semibold text-text-primary">Current</h2>
-          <p className="text-sm text-text-muted">
-            Open appeals that still need a decision from the platform.
-          </p>
+          <p className="text-sm text-text-muted">Open appeals awaiting your decision (or support/admin).</p>
         </div>
         <Table
           columns={columns}
@@ -239,36 +245,57 @@ export default function AppealsPage() {
             {selectedAppeal.proofs_of_payment.length > 0 && (
               <div className="space-y-3">
                 <h3 className="text-sm font-medium text-text-secondary">Proof files</h3>
-                <p className="text-xs text-text-muted">
-                  File access may require admin/support role on the API.
-                </p>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   {selectedAppeal.proofs_of_payment.map((fileId) => (
                     <button
                       key={fileId}
                       type="button"
                       onClick={() => setViewingProof(fileId)}
-                      className="group relative aspect-video overflow-hidden rounded-lg border border-border-primary bg-bg-secondary hover:border-accent-blue transition-colors cursor-pointer"
+                      className="group relative cursor-pointer overflow-hidden rounded-lg border border-border-primary bg-bg-secondary text-left transition-colors hover:border-accent-blue"
                     >
-                      <img
-                        src={`${API_BASE}/api/files/${fileId}`}
-                        alt="Proof of payment"
-                        className="h-full w-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                          (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-                        }}
-                      />
-                      <div className="hidden flex-col items-center justify-center absolute inset-0 text-text-muted">
-                        <FileText className="h-6 w-6 mb-1" />
-                        <span className="text-xs">View file</span>
+                      <div className="pointer-events-none aspect-video max-h-36">
+                        <AuthorizedFilePreview
+                          path={`/api/files/${fileId}`}
+                          alt="Proof of payment"
+                          className="h-full max-h-36"
+                        />
                       </div>
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors">
-                        <ExternalLink className="h-5 w-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
+                        <ExternalLink className="h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
                       </div>
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {selectedAppeal.status === AppealStatus.OPEN && (
+              <div className="flex flex-wrap gap-2 border-t border-border-primary pt-4">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={resolveAppeal.isPending}
+                  onClick={() =>
+                    resolveAppeal.mutate({
+                      id: selectedAppeal.id,
+                      decision: AppealStatus.REJECTED,
+                    })
+                  }
+                >
+                  Reject appeal
+                </Button>
+                <Button
+                  size="sm"
+                  loading={resolveAppeal.isPending}
+                  onClick={() =>
+                    resolveAppeal.mutate({
+                      id: selectedAppeal.id,
+                      decision: AppealStatus.RESOLVED,
+                    })
+                  }
+                >
+                  Accept (resolved)
+                </Button>
               </div>
             )}
           </div>
@@ -282,11 +309,11 @@ export default function AppealsPage() {
         size="xl"
       >
         {viewingProof && (
-          <div className="flex items-center justify-center">
-            <img
-              src={`${API_BASE}/api/files/${viewingProof}`}
+          <div className="flex min-h-[40vh] items-center justify-center">
+            <AuthorizedFilePreview
+              path={`/api/files/${viewingProof}`}
               alt="Proof of payment"
-              className="max-h-[70vh] max-w-full rounded-lg object-contain"
+              className="max-h-[75vh]"
             />
           </div>
         )}

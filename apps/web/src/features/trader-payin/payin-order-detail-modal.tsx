@@ -1,7 +1,10 @@
 'use client';
 
+import { useState } from 'react';
+import { ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
+import { AuthorizedFilePreview } from '@/components/files/authorized-file-preview';
 import {
   PayInOrderStatus,
 } from '@p2p/shared';
@@ -28,7 +31,10 @@ export function PayInOrderDetailModal({
   setMenuOpenOrderId: (id: string | null) => void;
   onPickFinalizeKind: (kind: FinalizeKind, order: OrderDto) => void;
 }) {
+  const [proofFileId, setProofFileId] = useState<string | null>(null);
+
   return (
+    <>
     <Modal open={!!selectedOrder} onClose={onClose} title="Pay-In Order Details" size="lg">
       {selectedOrder && (
         <div className="space-y-4">
@@ -65,23 +71,57 @@ export function PayInOrderDetailModal({
           </div>
 
           {selectedOrder.appeals && selectedOrder.appeals.length > 0 && (
-            <div className="rounded-lg border border-border-primary p-4">
-              <h3 className="mb-2 text-sm font-medium text-text-secondary">Appeals</h3>
-              {selectedOrder.appeals.map((appeal) => (
-                <div key={appeal.id} className="flex items-center gap-4 text-sm">
-                  <Badge
-                    variant={
-                      appeal.status === 'OPEN'
-                        ? 'warning'
-                        : appeal.status === 'RESOLVED'
-                          ? 'success'
-                          : 'danger'
-                    }
-                  >
-                    {appeal.status}
-                  </Badge>
-                  <span>Paid: {formatCurrency(appeal.paid_amount, selectedOrder.currency)}</span>
-                  <span className="text-text-muted">{formatDateFull(appeal.created_at)}</span>
+            <div className="rounded-lg border border-border-primary p-4 space-y-3">
+              <h3 className="text-sm font-medium text-text-secondary">Appeals</h3>
+              {selectedOrder.appeals.map((appeal, idx) => (
+                <div
+                  key={appeal.id}
+                  className={`space-y-3 ${idx > 0 ? 'border-t border-border-primary pt-3' : ''}`}
+                >
+                  <div className="flex flex-wrap items-center gap-3 text-sm">
+                    <Badge
+                      variant={
+                        appeal.status === 'OPEN'
+                          ? 'warning'
+                          : appeal.status === 'RESOLVED'
+                            ? 'success'
+                            : 'danger'
+                      }
+                    >
+                      {appeal.status}
+                    </Badge>
+                    <span>Paid: {formatCurrency(appeal.paid_amount, selectedOrder.currency)}</span>
+                    <span className="text-text-muted">{formatDateFull(appeal.created_at)}</span>
+                  </div>
+
+                  {appeal.proofs_of_payment && appeal.proofs_of_payment.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-text-muted">
+                        Proof files ({appeal.proofs_of_payment.length})
+                      </p>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {(appeal.proofs_of_payment ?? []).map((fileId) => (
+                          <button
+                            key={fileId}
+                            type="button"
+                            onClick={() => setProofFileId(fileId)}
+                            className="group relative cursor-pointer overflow-hidden rounded-lg border border-border-primary bg-bg-secondary text-left transition-colors hover:border-accent-blue"
+                          >
+                            <div className="pointer-events-none aspect-video max-h-28">
+                              <AuthorizedFilePreview
+                                path={`/api/files/${fileId}`}
+                                alt="Appeal proof"
+                                className="h-full max-h-28"
+                              />
+                            </div>
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/35">
+                              <ExternalLink className="h-4 w-4 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -114,5 +154,23 @@ export function PayInOrderDetailModal({
         </div>
       )}
     </Modal>
+
+    <Modal
+      open={!!proofFileId}
+      onClose={() => setProofFileId(null)}
+      title="Proof of payment"
+      size="xl"
+    >
+      {proofFileId && (
+        <div className="flex min-h-[40vh] items-center justify-center">
+          <AuthorizedFilePreview
+            path={`/api/files/${proofFileId}`}
+            alt="Appeal proof"
+            className="max-h-[75vh]"
+          />
+        </div>
+      )}
+    </Modal>
+    </>
   );
 }

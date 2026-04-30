@@ -9,7 +9,6 @@ import {
   UseInterceptors,
   UseGuards,
   ParseUUIDPipe,
-  ForbiddenException,
 } from '@nestjs/common';
 import {
   FileInterceptor,
@@ -23,7 +22,7 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { Response } from 'express';
-import { FilesService } from './files.service';
+import { FilesService, FileDownloadActor } from './files.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -76,21 +75,62 @@ export class FilesController {
     return this.filesService.uploadMultiple(files, userId);
   }
 
-  @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Get file (redirects to presigned S3 URL) — admin/support only' })
-  async getFile(
+  /** Same auth as GET :id; avoids fetch()+302 to S3, which triggers browser CORS on the storage origin. */
+  @Get(':id/signed-url')
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.OWNER,
+    UserRole.SUPPORT,
+    UserRole.TRADER,
+    UserRole.PAYOUT_TRADER,
+    UserRole.MERCHANT,
+  )
+  @ApiOperation({
+    summary:
+      'Temporary HTTPS URL plus mime type (JSON). For SPA embedding without redirect+CORS; avoids a separate metadata round-trip.',
+  })
+  async getSignedUrlJson(
     @Param('id', ParseUUIDPipe) id: string,
-    @Res() res: Response,
-  ) {
-    const url = await this.filesService.getSignedUrl(id);
-    res.redirect(url);
+    @CurrentUser() user: FileDownloadActor,
+  ): Promise<{ url: string; mimeType: string }> {
+    return this.filesService.getSignedUrlPayload(id, user);
   }
 
   @Get(':id/metadata')
-  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Get file metadata — admin/support only' })
-  async getMetadata(@Param('id', ParseUUIDPipe) id: string) {
-    return this.filesService.getMetadata(id);
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.OWNER,
+    UserRole.SUPPORT,
+    UserRole.TRADER,
+    UserRole.PAYOUT_TRADER,
+    UserRole.MERCHANT,
+  )
+  @ApiOperation({ summary: 'Get file metadata (same access rules as download)' })
+  async getMetadata(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: FileDownloadActor,
+  ) {
+    return this.filesService.getMetadata(id, user);
+  }
+
+  @Get(':id')
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.OWNER,
+    UserRole.SUPPORT,
+    UserRole.TRADER,
+    UserRole.PAYOUT_TRADER,
+    UserRole.MERCHANT,
+  )
+  @ApiOperation({
+    summary: 'Download file via presigned S3 URL — access limited by role (appeal proofs, staff, uploader)',
+  })
+  async getFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+    @CurrentUser() user: FileDownloadActor,
+  ) {
+    const url = await this.filesService.getSignedUrl(id, user);
+    res.redirect(url);
   }
 }

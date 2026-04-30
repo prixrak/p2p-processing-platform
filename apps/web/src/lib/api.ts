@@ -39,12 +39,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new ApiError(
-      res.status,
-      body.code ?? 'UNKNOWN',
-      body.message ?? `Request failed with status ${res.status}`,
-    );
+    let message = `Request failed with status ${res.status}`;
+    const contentType = res.headers.get('content-type');
+    if (contentType?.includes('application/json')) {
+      const body = await res.json().catch(() => ({}));
+      message = body.message ?? message;
+      throw new ApiError(res.status, body.code ?? 'UNKNOWN', message);
+    }
+    const text = await res.text();
+    message = text || message;
+    throw new ApiError(res.status, 'FETCH_FAILED', message);
   }
 
   if (res.status === 204) return undefined as T;
@@ -56,6 +60,10 @@ export const api = {
     const url = params ? buildUrl(path, params) : path;
     return request<T>(url, { method: 'GET' });
   },
+
+  /** Signed GET URLs cannot follow API→S3 redirects in fetch() due to CORS; response includes mimeType for previews (no extra metadata request). */
+  getFileSignedUrl: (fileId: string) =>
+    request<{ url: string; mimeType: string }>(`/api/files/${fileId}/signed-url`),
 
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
