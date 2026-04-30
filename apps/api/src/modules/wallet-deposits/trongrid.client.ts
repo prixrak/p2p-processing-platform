@@ -425,4 +425,114 @@ export class TrongridClient {
       return null;
     }
   }
+
+  /** Builds an unsigned TRC-20 contract call (`wallet/triggersmartcontract`). Caller supplies ABI-encoded parameter hex. */
+  async triggerSmartContract(params: {
+    ownerAddressBase58: string;
+    contractAddressBase58: string;
+    functionSelector: string;
+    parameterHexNoPrefix: string;
+    feeLimit: number;
+    callValue?: number;
+  }): Promise<Record<string, unknown>> {
+    const url = `${config.tron.baseUrl}/wallet/triggersmartcontract`;
+    const body = {
+      owner_address: params.ownerAddressBase58,
+      contract_address: params.contractAddressBase58,
+      function_selector: params.functionSelector,
+      parameter: params.parameterHexNoPrefix,
+      fee_limit: params.feeLimit,
+      call_value: params.callValue ?? 0,
+      visible: true,
+    };
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(config.http.webhookFetchTimeoutMs),
+      });
+      if (!res.ok) {
+        logHttpResponseFailure(this.logger, {
+          integration: 'TronGrid',
+          operation: 'wallet/triggersmartcontract',
+          context: {
+            baseUrl: config.tron.baseUrl,
+            ownerPrefix: params.ownerAddressBase58.slice(0, 6),
+          },
+          status: res.status,
+          statusText: res.statusText,
+          level: 'warn',
+        });
+        throw new Error(`triggerSmartContract failed: HTTP ${res.status}`);
+      }
+      const j = (await res.json()) as Record<string, unknown>;
+      if (!j.transaction) {
+        const trimmed = JSON.stringify(j.result ?? j).slice(0, 800);
+        this.logger.warn(`triggerSmartContract: no transaction (${trimmed})`);
+        throw new Error('triggerSmartContract: missing transaction');
+      }
+      return j;
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith('trigger')) {
+        throw e;
+      }
+      logExternalFailure(this.logger, {
+        integration: 'TronGrid',
+        operation: 'wallet/triggersmartcontract',
+        context: { baseUrl: config.tron.baseUrl },
+        error: e,
+        level: 'warn',
+      });
+      throw e instanceof Error ? e : new Error(String(e));
+    }
+  }
+
+  async broadcastSignedTransaction(transaction: Record<string, unknown>): Promise<{ txId: string; raw: unknown }> {
+    const url = `${config.tron.baseUrl}/wallet/broadcasttransaction`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify(transaction),
+        signal: AbortSignal.timeout(config.http.webhookFetchTimeoutMs),
+      });
+      if (!res.ok) {
+        logHttpResponseFailure(this.logger, {
+          integration: 'TronGrid',
+          operation: 'wallet/broadcasttransaction',
+          context: { baseUrl: config.tron.baseUrl },
+          status: res.status,
+          statusText: res.statusText,
+          level: 'warn',
+        });
+        throw new Error(`broadcasttransaction failed: HTTP ${res.status}`);
+      }
+      const j = (await res.json()) as {
+        result?: boolean;
+        code?: string;
+        message?: string;
+        txid?: string;
+        txID?: string;
+      };
+      if (j.result === false || (j.code && j.code !== 'SUCCESS')) {
+        throw new Error(j.message || j.code || 'broadcasttransaction rejected');
+      }
+      const txId = j.txid || j.txID;
+      if (typeof txId !== 'string' || !txId.length) {
+        throw new Error('broadcasttransaction response missing txid');
+      }
+      return { txId, raw: j };
+    } catch (e) {
+      logExternalFailure(this.logger, {
+        integration: 'TronGrid',
+        operation: 'wallet/broadcasttransaction',
+        context: { baseUrl: config.tron.baseUrl },
+        error: e,
+        level: 'warn',
+      });
+      throw e instanceof Error ? e : new Error(String(e));
+    }
+  }
 }

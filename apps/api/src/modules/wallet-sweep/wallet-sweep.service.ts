@@ -8,6 +8,12 @@ import { createRedisConnectionOptions } from '../../common/redis-connection-opti
 import { HashicorpVaultService } from '../trader-wallets/hashicorp-vault.service';
 import { TrongridClient } from '../wallet-deposits/trongrid.client';
 import { TronEnergyDelegationService } from './tron-energy-delegation.service';
+import {
+  applySignatureHexToUnsigned,
+  digestOfTronRawDataHex,
+  encodeTronTrc20TransferParameter,
+  unsignedTxFromTriggerResponse,
+} from './tron-sweep-transaction.util';
 
 function extractTxId(sendResult: unknown): string {
   if (typeof sendResult === 'string' && sendResult.length > 0) return sendResult;
@@ -23,9 +29,10 @@ function extractTxId(sendResult: unknown): string {
 }
 
 /**
- * TZ Sweep Scheduler: on-chain USDT balance vs threshold, signing uses Vault KV private key
- * (Tron requires secp256k1 — see {@link HashicorpVaultTransitService}).
- * Virtual DB balance is unchanged (already credited by Monitor).
+ * TZ Sweep Scheduler: on-chain USDT balance vs threshold.
+ * Signing uses the optional Vault secrets engine mounted at {@link config.vault.tronSecpSignMount} (`vault-plugin-tron-sign`).
+ * Fallback (legacy): KV `readTraderWalletPrivateKeyHex` + TronWeb inside the worker when the mount env is unset.
+ * Virtual DB balance is unchanged on sweep (already credited by Monitor).
  */
 @Injectable()
 export class WalletSweepService implements OnModuleInit, OnModuleDestroy {
@@ -53,6 +60,17 @@ export class WalletSweepService implements OnModuleInit, OnModuleDestroy {
     }
     if (!this.vault.isSweepVaultConfigured()) {
       this.logger.warn('Vault sweep AppRole not configured; sweep idle (keys required)');
+      return;
+    }
+
+    if (
+      config.sweep.requireVaultSecpEngine &&
+      Boolean(config.vault.addr?.trim()) &&
+      !config.vault.tronSecpSignMount.trim()
+    ) {
+      this.logger.warn(
+        'TRON_SWEEP_REQUIRE_VAULT_SECP_ENGINE=true but VAULT_TRON_SECP_SIGN_MOUNT is unset; sweep idle until configured',
+      );
       return;
     }
 
@@ -162,16 +180,6 @@ export class WalletSweepService implements OnModuleInit, OnModuleDestroy {
         await new Promise<void>((resolve) => setTimeout(resolve, config.tron.delegateEnergyWaitMs));
       }
 
-      const pk = await this.vault.readTraderWalletPrivateKeyHex(traderId);
-
-      // TronWeb constructor options vary by minor version; single fullHost object is supported in v5.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tw: any = new (TronWeb as any)({
-        fullHost: config.tron.baseUrl,
-        headers: config.tron.apiKey ? { 'TRON-PRO-API-KEY': config.tron.apiKey } : {},
-      });
-      tw.setPrivateKey(pk);
-
       const sweepRow = await this.prisma.walletSweepLog.create({
         data: {
           traderId,
@@ -183,14 +191,58 @@ export class WalletSweepService implements OnModuleInit, OnModuleDestroy {
       });
       logId = sweepRow.id;
 
-      const contract = await tw.contract().at(config.tron.usdtTrc20Contract);
-      const sendRes = await contract.methods.transfer(cold, amountSun).send({
-        feeLimit: 150_000_000,
-        callValue: 0,
-        shouldPollResponse: false,
-      });
+      let txId: string;
+      const secpMount = config.vault.tronSecpSignMount.trim();
 
-      const txId = extractTxId(sendRes);
+      if (secpMount) {
+        const exists = await this.vault.peekTronSecpSignerAccount(traderId);
+        if (!exists) {
+          const migPk = await this.vault.readTraderWalletPrivateKeyHex(traderId);
+          await this.vault.upsertTronSecpSignerAccountSweep(traderId, migPk);
+          this.logger.log(
+            `Tron sweep: migrated trader key into Vault tron-sign engine trader=${traderId} (prefer proactive registration on wallet create)`,
+          );
+        }
+
+        const paramHex = encodeTronTrc20TransferParameter(cold, amountSun);
+        const trig = await this.trongrid.triggerSmartContract({
+          ownerAddressBase58: fromAddress,
+          contractAddressBase58: config.tron.usdtTrc20Contract,
+          functionSelector: 'transfer(address,uint256)',
+          parameterHexNoPrefix: paramHex,
+          feeLimit: 150_000_000,
+          callValue: 0,
+        });
+        const unsigned = unsignedTxFromTriggerResponse(trig);
+        const rawHex = unsigned.raw_data_hex;
+        if (typeof rawHex !== 'string' || rawHex.length < 32) {
+          throw new Error('Trigger response missing raw_data_hex');
+        }
+        const digestHex = digestOfTronRawDataHex(rawHex).toString('hex');
+        const sig = await this.vault.signTronSweepDigestViaSecpEngine(traderId, digestHex);
+        const signed = applySignatureHexToUnsigned(unsigned, sig);
+        const out = await this.trongrid.broadcastSignedTransaction(signed);
+        txId = out.txId;
+      } else {
+        const pk = await this.vault.readTraderWalletPrivateKeyHex(traderId);
+
+        // TronWeb constructor options vary by minor version; single fullHost object is supported in v5.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const tw: any = new (TronWeb as any)({
+          fullHost: config.tron.baseUrl,
+          headers: config.tron.apiKey ? { 'TRON-PRO-API-KEY': config.tron.apiKey } : {},
+        });
+        tw.setPrivateKey(pk);
+
+        const contract = await tw.contract().at(config.tron.usdtTrc20Contract);
+        const sendRes = await contract.methods.transfer(cold, amountSun).send({
+          feeLimit: 150_000_000,
+          callValue: 0,
+          shouldPollResponse: false,
+        });
+
+        txId = extractTxId(sendRes);
+      }
 
       await this.prisma.walletSweepLog.update({
         where: { id: logId },

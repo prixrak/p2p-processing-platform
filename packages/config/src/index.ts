@@ -111,6 +111,11 @@ export const config = {
     /** Poll interval while waiting for sweep tx inclusion (TZ `sweep_log` confirmation). */
     confirmPollMs: parseInt(optional('TRON_SWEEP_CONFIRM_POLL_MS', '4000'), 10),
     confirmMaxWaitMs: parseInt(optional('TRON_SWEEP_CONFIRM_MAX_MS', '180000'), 10),
+    /**
+     * When true (recommended for TZ production), refuse to start sweep if VAULT_TRON_SECP_SIGN_MOUNT is unset.
+     * Disable only for transitional environments still using KV+TronWeb signing.
+     */
+    requireVaultSecpEngine: optional('TRON_SWEEP_REQUIRE_VAULT_SECP_ENGINE', 'false') === 'true',
   },
   internal: {
     /** Protects /api/internal/*; empty in dev disables the guard (not allowed in production). */
@@ -147,6 +152,11 @@ export const config = {
     deriveLockTtlSec: parseInt(optional('WALLET_DERIVE_LOCK_TTL_SEC', '30'), 10),
     /** Transit key name for signing experiments — see {@link HashicorpVaultTransitService}. */
     transitSigningKeyName: optional('VAULT_TRANSIT_TRON_SIGNING_KEY', ''),
+    /**
+     * Optional Vault secrets engine mount for TZ-style TRON sweep signing (`vault-plugin-tron-sign`).
+     * OSS Vault Transit lacks secp256k1 — use this engine instead of KV + local signing.
+     */
+    tronSecpSignMount: optional('VAULT_TRON_SECP_SIGN_MOUNT', ''),
   },
   wallet: {
     autoProvisionTronOnTraderCreate:

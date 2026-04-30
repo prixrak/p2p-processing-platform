@@ -198,4 +198,78 @@ export class HashicorpVaultService {
       throw e;
     }
   }
+
+  private normalizeTronPrivateKeyHex(pk: string): string {
+    const s = pk.trim().toLowerCase().replace(/^0x/, '');
+    if (!/^[0-9a-f]{64}$/.test(s)) {
+      throw new Error('Invalid TRON ECDSA private key hex (expected 64 hex chars)');
+    }
+    return s;
+  }
+
+  async peekTronSecpSignerAccount(traderId: string): Promise<boolean> {
+    const mount = config.vault.tronSecpSignMount.trim();
+    if (!mount) {
+      throw new Error('VAULT_TRON_SECP_SIGN_MOUNT is not set');
+    }
+    await this.ensureSweepToken();
+    const v = this.baseVault();
+    try {
+      const res = await v.read(`${mount}/accounts/${traderId}`);
+      return Boolean(res?.data?.exists);
+    } catch (e: unknown) {
+      const status = (e as { response?: { statusCode?: number } })?.response?.statusCode;
+      if (status === 404) {
+        return false;
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Wallet AppRole — registers the trader key with the TZ-style Vault secrets engine (`vault-plugin-tron-sign`).
+   */
+  async upsertTronSecpSignerAccountWallet(traderId: string, privateKeyHex: string): Promise<void> {
+    const mount = config.vault.tronSecpSignMount.trim();
+    if (!mount) {
+      return;
+    }
+    await this.ensureWalletToken();
+    const pk = this.normalizeTronPrivateKeyHex(privateKeyHex);
+    await this.baseVault().write(`${mount}/accounts/${traderId}`, { private_key: pk });
+  }
+
+  /**
+   * Sweep AppRole — same storage write for one-off migration when the wallet provision did not reach the plugin.
+   */
+  async upsertTronSecpSignerAccountSweep(traderId: string, privateKeyHex: string): Promise<void> {
+    const mount = config.vault.tronSecpSignMount.trim();
+    if (!mount) {
+      throw new Error('VAULT_TRON_SECP_SIGN_MOUNT is not set');
+    }
+    await this.ensureSweepToken();
+    const pk = this.normalizeTronPrivateKeyHex(privateKeyHex);
+    await this.baseVault().write(`${mount}/accounts/${traderId}`, { private_key: pk });
+  }
+
+  /** Sweep AppRole — signs SHA256(Transaction.raw_data) without exporting the key from Vault. */
+  async signTronSweepDigestViaSecpEngine(traderId: string, digestHex32: string): Promise<string> {
+    const mount = config.vault.tronSecpSignMount.trim();
+    if (!mount) {
+      throw new Error('VAULT_TRON_SECP_SIGN_MOUNT is not set');
+    }
+    const digest = digestHex32.trim().toLowerCase().replace(/^0x/, '');
+    if (!/^[0-9a-f]{64}$/.test(digest)) {
+      throw new Error('digest must be 32-byte hex');
+    }
+    await this.ensureSweepToken();
+    const res = await this.baseVault().write(`${mount}/accounts/${traderId}/sign`, {
+      digest_hex: digest,
+    });
+    const sig = res?.data?.signature;
+    if (typeof sig !== 'string' || !/^[0-9a-f]{130}$/i.test(sig)) {
+      throw new Error('Vault tron-sign engine returned no signature');
+    }
+    return sig.toLowerCase();
+  }
 }

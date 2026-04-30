@@ -72,6 +72,12 @@ export class TraderWalletsService {
         index,
       });
 
+      try {
+        await this.vault.upsertTronSecpSignerAccountWallet(traderId, privateKeyHex);
+      } catch (e) {
+        this.logger.warn(`Vault TRON signer engine rejected key registration trader=${traderId}: ${e}`);
+      }
+
       await this.prisma.$transaction(async (tx) => {
         await tx.traderWallet.create({
           data: {

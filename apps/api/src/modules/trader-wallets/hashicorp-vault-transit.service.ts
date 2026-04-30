@@ -7,12 +7,8 @@ type VaultClient = ReturnType<typeof nodeVault>;
 /**
  * Optional HashiCorp Vault Transit integration for ECDSA signing.
  *
- * **TZ note (Sweep §2–6):** The spec describes signing raw Tron TRC-20 bytes via Vault Transit
- * so private keys never leave Vault. **HashiCorp Vault OSS Transit** supports P-256/P-384/P-521 and RSA,
- * not **secp256k1** (TRON/Ethereum). Mainnet USDT sweeps therefore use keys from KV + local TronWeb
- * signing unless you deploy a secp256k1-capable engine (custom plugin, HSM, or offline signer).
- *
- * This service is kept for non-Tron experiments and future enterprise setups.
+ * **TZ alignment:** Standard Vault OSS Transit remains unsuitable for mainnet TRON secp256k1 sweeps —
+ * ship `tools/vault-plugin-tron-sign` (see {@link HashicorpVaultService.signTronSweepDigestViaSecpEngine}) instead.
  */
 @Injectable()
 export class HashicorpVaultTransitService {
