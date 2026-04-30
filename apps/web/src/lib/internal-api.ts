@@ -38,6 +38,8 @@ export const internalPaths = {
   traderTrc20Deposit: '/api/trader/dashboard/trc20-deposit',
   /** Trader: PATCH body `{ usdt_erc20_deposit_address?, clear_erc20_deposit_address? }` */
   traderErc20Deposit: '/api/trader/dashboard/erc20-deposit',
+  /** Trader: SSE — TRC-20 deposit credits (wallet top-ups). */
+  traderWalletEventsStream: '/api/trader/dashboard/wallet-events/stream',
   traderBalances: (id: string) => `/api/traders/${id}/balances`,
   traderActivate: (id: string) => `/api/traders/${id}/activate`,
   traderDeactivate: (id: string) => `/api/traders/${id}/deactivate`,

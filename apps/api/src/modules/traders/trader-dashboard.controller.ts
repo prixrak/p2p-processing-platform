@@ -2,10 +2,15 @@ import {
   Body,
   Controller,
   Get,
+  Header,
+  MessageEvent,
   Patch,
+  Sse,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Observable } from 'rxjs';
+import { SkipThrottle } from '@nestjs/throttler';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiProduces } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -16,6 +21,7 @@ import { CascadeService } from '../cascade/cascade.service';
 import { TradersService } from './traders.service';
 import { TraderSelfTrc20Dto } from './dto/trader-self-trc20.dto';
 import { TraderSelfErc20Dto } from './dto/trader-self-erc20.dto';
+import { WalletDepositEventsService } from '../wallet-deposits/wallet-deposit-events.service';
 
 @ApiTags('Trader Dashboard')
 @ApiBearerAuth()
@@ -27,7 +33,22 @@ export class TraderDashboardController {
     private readonly prisma: PrismaService,
     private readonly tradersService: TradersService,
     private readonly cascadeService: CascadeService,
+    private readonly walletDepositEvents: WalletDepositEventsService,
   ) {}
+
+  @SkipThrottle()
+  @Sse('wallet-events/stream')
+  @Header('X-Accel-Buffering', 'no')
+  @Header('Cache-Control', 'no-cache')
+  @ApiOperation({
+    summary: 'SSE stream for TRC-20 deposit credits (custodial / monitored top-ups)',
+  })
+  @ApiProduces('text/event-stream')
+  streamWalletEvents(
+    @CurrentUser('traderId') traderId: string,
+  ): Observable<MessageEvent> {
+    return this.walletDepositEvents.streamForTrader(traderId);
+  }
 
   @Get('payin-assign-ranges')
   @ApiOperation({

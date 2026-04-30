@@ -1,5 +1,6 @@
 'use client';
 
+import { useQueryClient } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   ArrowDownToLine,
@@ -14,6 +15,7 @@ import {
 import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
 import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
+import { useTraderWalletDepositRealtime } from '@/lib/payin-realtime';
 
 const TRADER_ALLOWED = [UserRole.TRADER] as const;
 
@@ -30,6 +32,9 @@ const navItems: NavItem[] = [
 ];
 
 export default function TraderLayout({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
+  useTraderWalletDepositRealtime(queryClient);
+
   return (
     <AuthGuard allowedRoles={TRADER_ALLOWED}>
       <DashboardShell navItems={navItems} role="trader">

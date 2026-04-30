@@ -3,12 +3,18 @@ import { TradersService } from './traders.service';
 import { TradersController } from './traders.controller';
 import { TraderDashboardController } from './trader-dashboard.controller';
 import { BalanceTransactionsModule } from '../balance-transactions/balance-transactions.module';
+import { WalletDepositsModule } from '../wallet-deposits/wallet-deposits.module';
 
 import { CascadeModule } from '../cascade/cascade.module';
 import { PlatformSettingsModule } from '../platform-settings/platform-settings.module';
 
 @Module({
-  imports: [BalanceTransactionsModule, CascadeModule, PlatformSettingsModule],
+  imports: [
+    BalanceTransactionsModule,
+    WalletDepositsModule,
+    CascadeModule,
+    PlatformSettingsModule,
+  ],
   controllers: [TradersController, TraderDashboardController],
   providers: [TradersService],
   exports: [TradersService],

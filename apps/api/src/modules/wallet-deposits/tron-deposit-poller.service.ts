@@ -41,7 +41,10 @@ export class TronDepositPollerService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`Tron poller Redis connect failed (head block cache / alerts disabled): ${e}`);
     });
 
-    const ms = Math.max(5000, config.tron.depositPollMs);
+    const ms =
+      config.tron.depositPollMode === 'contract_events'
+        ? Math.max(5000, config.tron.contractEventsPollSec * 1000)
+        : Math.max(5000, config.tron.depositPollMs);
     void this.poll().catch((e) => this.logger.error(e));
     this.timer = setInterval(() => {
       void this.poll().catch((e) => this.logger.error(e));
@@ -112,6 +115,89 @@ export class TronDepositPollerService implements OnModuleInit, OnModuleDestroy {
   async poll(): Promise<void> {
     await this.maybeAlertStaleTron();
 
+    if (config.tron.depositPollMode === 'contract_events') {
+      await this.pollViaContractEvents();
+      return;
+    }
+
+    await this.pollPerAccount();
+  }
+
+  private async buildTronDepositAddressIndex(): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    const custodial = await this.prisma.traderWallet.findMany({
+      where: { isActive: true },
+      select: { traderId: true, address: true },
+    });
+    for (const w of custodial) {
+      map.set(w.address, w.traderId);
+    }
+    const legacy = await this.prisma.traderProfile.findMany({
+      where: { isActive: true, usdtTrc20DepositAddress: { not: null } },
+      select: { id: true, usdtTrc20DepositAddress: true },
+    });
+    for (const t of legacy) {
+      const a = t.usdtTrc20DepositAddress!;
+      if (!map.has(a)) map.set(a, t.id);
+    }
+    return map;
+  }
+
+  private parseTrc20ValueSun(raw: string): number {
+    try {
+      const n = raw.startsWith('0x') ? BigInt(raw) : BigInt(raw);
+      return Number(n) / 1e6;
+    } catch {
+      return NaN;
+    }
+  }
+
+  private async pollViaContractEvents(): Promise<void> {
+    const addrIndex = await this.buildTronDepositAddressIndex();
+    if (addrIndex.size === 0) return;
+
+    const currentBlock = await this.trongrid.getNowBlockNumber();
+    if (currentBlock === null) {
+      this.logger.warn('Tron: could not read current block; skipping contract events poll');
+      return;
+    }
+
+    const minConf = Math.max(1, config.tron.minConfirmations);
+    const minAmt = config.tron.minAmountUsdt;
+
+    const events = await this.trongrid.collectUsdtTransferEvents(config.tron.contractEventsMaxPages);
+    for (const ev of events) {
+      const traderId = addrIndex.get(ev.to_base58);
+      if (!traderId) continue;
+      if (ev.from_base58 === ev.to_base58) continue;
+
+      const amountUsdt = this.parseTrc20ValueSun(ev.value_raw);
+      if (!Number.isFinite(amountUsdt) || amountUsdt < minAmt) continue;
+
+      const confirmations = currentBlock - ev.block_number + 1;
+      if (confirmations < 1) continue;
+
+      const result = await this.walletDeposits.observeAndMaybeCredit(
+        traderId,
+        ev.transaction_id,
+        amountUsdt,
+        confirmations,
+        minConf,
+        null,
+        BlockchainNetwork.TRC20,
+        { toAddress: ev.to_base58, blockNumber: ev.block_number },
+      );
+      if (result.status === 'credited') {
+        this.logger.log(
+          `Tron TOP_UP (contract events) trader=${traderId} tx=${ev.transaction_id} amount=${amountUsdt}`,
+        );
+      }
+    }
+
+    await this.touchPollSuccess(currentBlock);
+  }
+
+  private async pollPerAccount(): Promise<void> {
     const traders = await this.prisma.traderProfile.findMany({
       where: {
         usdtTrc20DepositAddress: { not: null },
@@ -164,6 +250,7 @@ export class TronDepositPollerService implements OnModuleInit, OnModuleDestroy {
           minConf,
           null,
           BlockchainNetwork.TRC20,
+          { toAddress: addr, blockNumber: txBlock },
         );
         if (result.status === 'credited') {
           this.logger.log(`Tron TOP_UP trader=${t.id} tx=${txId} amount=${amountUsdt}`);

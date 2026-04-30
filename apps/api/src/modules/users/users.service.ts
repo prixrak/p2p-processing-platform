@@ -8,6 +8,7 @@ import {
 import { UserRole } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
 import { hashPassword } from '../../common/utils/password';
+import { TraderWalletsService } from '../trader-wallets/trader-wallets.service';
 
 const USER_SELECT = {
   id: true,
@@ -22,7 +23,10 @@ const USER_SELECT = {
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly traderWallets: TraderWalletsService,
+  ) {}
 
   async findAll(page = 1, limit = 20) {
     const skip = (page - 1) * limit;
@@ -104,6 +108,17 @@ export class UsersService {
     });
 
     this.logger.log(`User ${email} created with role ${role}`);
+
+    if (role === UserRole.TRADER) {
+      const profile = await this.prisma.traderProfile.findUnique({
+        where: { userId: user.id },
+        select: { id: true },
+      });
+      if (profile) {
+        void this.traderWallets.ensureProvisioned(profile.id);
+      }
+    }
+
     return user;
   }
 
@@ -125,11 +140,13 @@ export class UsersService {
     });
 
     if (updated.role === UserRole.TRADER) {
-      await this.prisma.traderProfile.upsert({
+      const profile = await this.prisma.traderProfile.upsert({
         where: { userId: id },
         create: { userId: id },
         update: {},
+        select: { id: true },
       });
+      void this.traderWallets.ensureProvisioned(profile.id);
     }
 
     this.logger.log(`User ${id} updated`);

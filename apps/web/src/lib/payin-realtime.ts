@@ -7,6 +7,7 @@ import {
   type PayOutOrderRealtimeEvent,
 } from '@p2p/shared';
 import { getToken } from '@/lib/auth';
+import { internalPaths } from '@/lib/internal-api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
 
@@ -204,6 +205,56 @@ export function usePayOutTraderRealtime(queryClient: QueryClient): void {
 
 export function usePayOutSpecialistRealtime(queryClient: QueryClient): void {
   usePayoutCabinetRealtime(queryClient, 'specialist');
+}
+
+/**
+ * Trader cabinet: live TRC-20 deposit credits (custodial / monitored addresses).
+ */
+export function useTraderWalletDepositRealtime(queryClient: QueryClient): void {
+  useEffect(() => {
+    const ac = new AbortController();
+    let cancelled = false;
+
+    const run = async () => {
+      while (!cancelled) {
+        const token = getToken();
+        if (!token) break;
+
+        try {
+          await consumeSseStream(internalPaths.traderWalletEventsStream, {
+            signal: ac.signal,
+            headers: { Authorization: `Bearer ${token}` },
+            onMessage: (raw) => {
+              try {
+                const parsed = JSON.parse(raw) as { type?: string };
+                if (parsed?.type === 'deposit') {
+                  void queryClient.invalidateQueries({ queryKey: ['trader', 'usdt-wallet'] });
+                  void queryClient.invalidateQueries({ queryKey: ['trader', 'balance-transactions'] });
+                }
+              } catch {
+                /* malformed line */
+              }
+            },
+          });
+        } catch (e) {
+          if ((e as Error).name === 'AbortError' || ac.signal.aborted) break;
+        }
+
+        if (cancelled || ac.signal.aborted) break;
+        try {
+          await sleep(RECONNECT_MS, ac.signal);
+        } catch {
+          break;
+        }
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [queryClient]);
 }
 
 /**

@@ -56,7 +56,7 @@ export const config = {
       'TRON_USDT_TRC20_CONTRACT',
       'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
     ),
-    minConfirmations: parseInt(optional('TRON_USDT_MIN_CONFIRMATIONS', '20'), 10),
+    minConfirmations: parseInt(optional('TRON_USDT_MIN_CONFIRMATIONS', '19'), 10),
     minAmountUsdt: parseFloat(optional('TRON_DEPOSIT_MIN_USDT', '1')),
     /** Ignore transfers below this (spam / dust). */
     trc20FetchLimit: parseInt(optional('TRON_TRC20_FETCH_LIMIT', '30'), 10),
@@ -71,6 +71,86 @@ export const config = {
       'TRON_DEPOSIT_STALE_NOTIFY_LOCK_REDIS_KEY',
       'tron:deposit:stale_notify_lock',
     ),
+    /**
+     * `per_account`: poll TronGrid per deposit address (legacy).
+     * `contract_events`: poll USDT contract Transfer events and filter by known addresses (TZ Monitor Service).
+     */
+    depositPollMode: optional('TRON_DEPOSIT_POLL_MODE', 'per_account') as
+      | 'per_account'
+      | 'contract_events',
+    contractEventsPollSec: parseInt(optional('TRON_CONTRACT_EVENTS_POLL_SEC', '8'), 10),
+    eventsFingerprintRedisKey: optional(
+      'TRON_DEPOSIT_EVENTS_FINGERPRINT_KEY',
+      'tron:deposit:events_fingerprint',
+    ),
+    /** Max TronGrid contract-event pages per poll (fingerprint pagination). */
+    contractEventsMaxPages: parseInt(optional('TRON_CONTRACT_EVENTS_MAX_PAGES', '12'), 10),
+    /** Delegate frozen ENERGY from an operator account to deposit addresses before sweep (TZ §3.4). */
+    resourceDelegationEnabled: optional('TRON_RESOURCE_DELEGATION_ENABLED', 'false') === 'true',
+    resourceDelegatorPrivateKey: optional('TRON_RESOURCE_DELEGATOR_PRIVATE_KEY', ''),
+    /** KV v2 path segment under mount for `{ private_key: hex }` (e.g. `tron/resource_delegator`). */
+    resourceDelegatorVaultSubPath: optional(
+      'TRON_RESOURCE_DELEGATOR_VAULT_PATH',
+      'tron/resource_delegator',
+    ),
+    /** Amount of TRX (in SUN) to delegate as ENERGY to the deposit address before USDT sweep. */
+    delegateEnergyTrxSun: parseInt(optional('TRON_DELEGATE_ENERGY_TRX_SUN', '50000000'), 10),
+    /** Pause after delegation tx so Energy is usable before USDT transfer. */
+    delegateEnergyWaitMs: parseInt(optional('TRON_DELEGATE_ENERGY_WAIT_MS', '2000'), 10),
+  },
+  sweep: {
+    enabled: optional('TRON_SWEEP_ENABLED', 'false') === 'true',
+    /** TZ Sweep §2: cron every 5 minutes; values below 300000 ms are clamped in the worker. */
+    intervalMs: parseInt(optional('TRON_SWEEP_INTERVAL_MS', '300000'), 10),
+    thresholdUsdt: parseFloat(optional('TRON_SWEEP_THRESHOLD_USDT', '1000')),
+    coldWalletAddress: optional('TRON_SWEEP_COLD_WALLET_ADDRESS', ''),
+    trxReserve: parseFloat(optional('TRON_SWEEP_TRX_RESERVE', '5')),
+    lockTtlSec: parseInt(optional('TRON_SWEEP_LOCK_TTL_SEC', '120'), 10),
+    lockKeyPrefix: optional('TRON_SWEEP_LOCK_KEY_PREFIX', 'sweep_lock:'),
+    sweepCheckChannel: optional('TRON_SWEEP_CHECK_CHANNEL', 'sweep_check'),
+    /** Poll interval while waiting for sweep tx inclusion (TZ `sweep_log` confirmation). */
+    confirmPollMs: parseInt(optional('TRON_SWEEP_CONFIRM_POLL_MS', '4000'), 10),
+    confirmMaxWaitMs: parseInt(optional('TRON_SWEEP_CONFIRM_MAX_MS', '180000'), 10),
+  },
+  internal: {
+    /** Protects /api/internal/*; empty in dev disables the guard (not allowed in production). */
+    apiKey: optional('INTERNAL_API_KEY', ''),
+  },
+  vault: {
+    addr: optional('VAULT_ADDR', ''),
+    /** Legacy single AppRole; used when wallet/sweep-specific IDs are unset. */
+    roleId: optional('VAULT_ROLE_ID', ''),
+    secretId: optional('VAULT_SECRET_ID', ''),
+    /** TZ Wallet Service policy (counter, master seed read, wallets/* create — no read of keys). */
+    walletRoleId:
+      optional('VAULT_WALLET_ROLE_ID', '').trim() ||
+      optional('VAULT_ROLE_ID', '').trim() ||
+      optional('VAULT_SWEEP_ROLE_ID', '').trim(),
+    walletSecretId:
+      optional('VAULT_WALLET_SECRET_ID', '').trim() ||
+      optional('VAULT_SECRET_ID', '').trim() ||
+      optional('VAULT_SWEEP_SECRET_ID', '').trim(),
+    /** TZ Sweep Scheduler policy (wallets/* read, optional Transit). */
+    sweepRoleId:
+      optional('VAULT_SWEEP_ROLE_ID', '').trim() ||
+      optional('VAULT_ROLE_ID', '').trim() ||
+      optional('VAULT_WALLET_ROLE_ID', '').trim(),
+    sweepSecretId:
+      optional('VAULT_SWEEP_SECRET_ID', '').trim() ||
+      optional('VAULT_SECRET_ID', '').trim() ||
+      optional('VAULT_WALLET_SECRET_ID', '').trim(),
+    kvMount: optional('VAULT_KV_MOUNT', 'secret'),
+    walletCounterPath: optional('VAULT_WALLET_COUNTER_PATH', 'wallet_counter'),
+    masterSeedPath: optional('VAULT_MASTER_SEED_PATH', 'master_seed'),
+    walletPrefixPath: optional('VAULT_WALLET_PREFIX_PATH', 'wallets'),
+    deriveLockKey: optional('WALLET_DERIVE_LOCK_REDIS_KEY', 'wallet:derive:lock'),
+    deriveLockTtlSec: parseInt(optional('WALLET_DERIVE_LOCK_TTL_SEC', '30'), 10),
+    /** Transit key name for signing experiments — see {@link HashicorpVaultTransitService}. */
+    transitSigningKeyName: optional('VAULT_TRANSIT_TRON_SIGNING_KEY', ''),
+  },
+  wallet: {
+    autoProvisionTronOnTraderCreate:
+      optional('WALLET_AUTO_PROVISION_TRON_ON_TRADER_CREATE', 'true') === 'true',
   },
   /** Ethereum mainnet JSON-RPC (Infura / Alchemy). Required only when ERC-20 deposit polling is enabled. */
   ethereum: {

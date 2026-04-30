@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { config } from '@p2p/config';
+import bs58check from 'bs58check';
 import {
   logExternalFailure,
   logHttpResponseFailure,
@@ -12,6 +13,62 @@ type Trc20Row = {
   value?: string;
   block_timestamp?: number;
 };
+
+export type TronContractTransferRow = {
+  transaction_id: string;
+  block_number: number;
+  from_base58: string;
+  to_base58: string;
+  value_raw: string;
+};
+
+function pickResultString(result: unknown, keys: string[]): string | undefined {
+  if (!result || typeof result !== 'object') return undefined;
+  const o = result as Record<string, unknown>;
+  for (const k of keys) {
+    const v = o[k];
+    if (typeof v === 'string' && v.length > 0) return v;
+  }
+  return undefined;
+}
+
+/** Normalize TronGrid log addresses (hex or base58) to mainnet base58. */
+export function normalizeTronAddress(raw: string | undefined | null): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (s.startsWith('T') && s.length >= 34) return s;
+  let hex = s.startsWith('0x') ? s.slice(2) : s;
+  if (/^[0-9a-fA-F]{40}$/.test(hex)) {
+    hex = '41' + hex;
+  }
+  try {
+    const buf = Buffer.from(hex, 'hex');
+    if (buf.length === 21 && buf[0] === 0x41) {
+      return bs58check.encode(buf);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function parseContractTransferEvent(raw: {
+  transaction_id?: string;
+  block_number?: number;
+  result?: unknown;
+}): TronContractTransferRow | null {
+  const txId = raw.transaction_id;
+  const blockNo = raw.block_number;
+  if (!txId || typeof blockNo !== 'number') return null;
+  const fromRaw = pickResultString(raw.result, ['from', '0', 'sender']);
+  const toRaw = pickResultString(raw.result, ['to', '1', 'recipient']);
+  const valueRaw = pickResultString(raw.result, ['value', '2']);
+  if (!fromRaw || !toRaw || valueRaw === undefined) return null;
+  const from_base58 = normalizeTronAddress(fromRaw);
+  const to_base58 = normalizeTronAddress(toRaw);
+  if (!from_base58 || !to_base58) return null;
+  return { transaction_id: txId, block_number: blockNo, from_base58, to_base58, value_raw: valueRaw };
+}
 
 /**
  * Minimal TronGrid REST client for USDT TRC-20 incoming transfers (Block 5 §10.5).
@@ -144,6 +201,228 @@ export class TrongridClient {
         level: 'warn',
       });
       return [];
+    }
+  }
+
+  /**
+   * Recent confirmed USDT TRC-20 Transfer events on the contract (TZ Monitor §2.1).
+   * Fetches up to `maxPages` TronGrid pages using `fingerprint` pagination.
+   */
+  async collectUsdtTransferEvents(maxPages: number): Promise<TronContractTransferRow[]> {
+    const merged: TronContractTransferRow[] = [];
+    const seen = new Set<string>();
+    let fp: string | undefined;
+    const pages = Math.max(1, Math.min(50, maxPages));
+    for (let i = 0; i < pages; i++) {
+      const { rows, nextFingerprint } = await this.fetchUsdtTransferEventsPage(fp);
+      for (const r of rows) {
+        const k = `${r.transaction_id}:${r.to_base58}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        merged.push(r);
+      }
+      if (!nextFingerprint) break;
+      fp = nextFingerprint;
+    }
+    return merged;
+  }
+
+  private async fetchUsdtTransferEventsPage(fingerprint?: string): Promise<{
+    rows: TronContractTransferRow[];
+    nextFingerprint?: string;
+  }> {
+    const contract = config.tron.usdtTrc20Contract;
+    const url = new URL(`${config.tron.baseUrl}/v1/contracts/${contract}/events`);
+    url.searchParams.set('only_confirmed', 'true');
+    url.searchParams.set('event_name', 'Transfer');
+    url.searchParams.set('limit', '200');
+    if (fingerprint) {
+      url.searchParams.set('fingerprint', fingerprint);
+    }
+
+    try {
+      const res = await fetch(url.toString(), {
+        method: 'GET',
+        headers: this.headers(),
+        signal: AbortSignal.timeout(config.http.webhookFetchTimeoutMs),
+      });
+      if (!res.ok) {
+        logHttpResponseFailure(this.logger, {
+          integration: 'TronGrid',
+          operation: 'v1/contracts/.../events',
+          context: { baseUrl: config.tron.baseUrl, contract },
+          status: res.status,
+          statusText: res.statusText,
+          level: 'warn',
+        });
+        return { rows: [] };
+      }
+      const j = (await res.json()) as {
+        data?: unknown[];
+        meta?: { fingerprint?: string; next_fingerprint?: string };
+      };
+      const rows: TronContractTransferRow[] = [];
+      if (Array.isArray(j.data)) {
+        for (const item of j.data) {
+          const parsed = parseContractTransferEvent(
+            item as { transaction_id?: string; block_number?: number; result?: unknown },
+          );
+          if (parsed) rows.push(parsed);
+        }
+      }
+      const nextFingerprint = j.meta?.fingerprint ?? j.meta?.next_fingerprint;
+      return { rows, nextFingerprint: nextFingerprint || undefined };
+    } catch (e) {
+      logExternalFailure(this.logger, {
+        integration: 'TronGrid',
+        operation: 'v1/contracts/.../events',
+        context: { baseUrl: config.tron.baseUrl },
+        error: e,
+        level: 'warn',
+      });
+      return { rows: [] };
+    }
+  }
+
+  /** Native TRX balance for `address` (human units, 6 dp). */
+  async getAccountTrxBalance(address: string): Promise<number | null> {
+    const url = new URL(`${config.tron.baseUrl}/v1/accounts/${address}`);
+    try {
+      const res = await fetch(url.toString(), {
+        method: 'GET',
+        headers: this.headers(),
+        signal: AbortSignal.timeout(config.http.webhookFetchTimeoutMs),
+      });
+      if (!res.ok) {
+        logHttpResponseFailure(this.logger, {
+          integration: 'TronGrid',
+          operation: 'v1/accounts (trx)',
+          context: { baseUrl: config.tron.baseUrl },
+          status: res.status,
+          statusText: res.statusText,
+          level: 'warn',
+        });
+        return null;
+      }
+      const j = (await res.json()) as { data?: { balance?: number | string }[] };
+      const raw = j.data?.[0]?.balance;
+      if (raw === undefined || raw === null) return 0;
+      const n = Number(raw) / 1e6;
+      return Number.isFinite(n) ? n : null;
+    } catch (e) {
+      logExternalFailure(this.logger, {
+        integration: 'TronGrid',
+        operation: 'v1/accounts (trx)',
+        context: { baseUrl: config.tron.baseUrl },
+        error: e,
+        level: 'warn',
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Canonical outcome after a tx is included (for sweep confirmation).
+   * Returns null if the tx is not yet finalized or TronGrid has no record.
+   */
+  async getTransactionOutcome(txId: string): Promise<{
+    blockNumber: number;
+    feeSun: number;
+    receiptResult: string;
+  } | null> {
+    const url = `${config.tron.baseUrl}/wallet/gettransactioninfobyid`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify({ value: txId }),
+        signal: AbortSignal.timeout(config.http.webhookFetchTimeoutMs),
+      });
+      if (!res.ok) {
+        logHttpResponseFailure(this.logger, {
+          integration: 'TronGrid',
+          operation: 'wallet/gettransactioninfobyid',
+          context: { baseUrl: config.tron.baseUrl, txIdPrefix: txId.slice(0, 12) },
+          status: res.status,
+          statusText: res.statusText,
+          level: 'warn',
+        });
+        return null;
+      }
+      const j = (await res.json()) as {
+        blockNumber?: number;
+        fee?: number;
+        receipt?: { result?: string };
+        resMessage?: string;
+      };
+      const blockNumber = j.blockNumber;
+      if (typeof blockNumber !== 'number') {
+        return null;
+      }
+      const receiptResult =
+        typeof j.receipt?.result === 'string' && j.receipt.result.length > 0
+          ? j.receipt.result
+          : typeof j.resMessage === 'string' && j.resMessage.length > 0
+            ? j.resMessage
+            : 'UNKNOWN';
+      const feeRaw = j.fee;
+      const feeSun = typeof feeRaw === 'number' && Number.isFinite(feeRaw) ? feeRaw : 0;
+      return { blockNumber, feeSun, receiptResult };
+    } catch (e) {
+      logExternalFailure(this.logger, {
+        integration: 'TronGrid',
+        operation: 'wallet/gettransactioninfobyid',
+        context: { baseUrl: config.tron.baseUrl, txIdPrefix: txId.slice(0, 12) },
+        error: e,
+        level: 'warn',
+      });
+      return null;
+    }
+  }
+
+  /** On-chain USDT TRC-20 balance for `address` (human units, 6 dp). */
+  async getAccountUsdtTrc20Balance(address: string): Promise<number | null> {
+    const url = new URL(`${config.tron.baseUrl}/v1/accounts/${address}/tokens`);
+    try {
+      const res = await fetch(url.toString(), {
+        method: 'GET',
+        headers: this.headers(),
+        signal: AbortSignal.timeout(config.http.webhookFetchTimeoutMs),
+      });
+      if (!res.ok) {
+        logHttpResponseFailure(this.logger, {
+          integration: 'TronGrid',
+          operation: 'v1/accounts/.../tokens',
+          context: { baseUrl: config.tron.baseUrl },
+          status: res.status,
+          statusText: res.statusText,
+          level: 'warn',
+        });
+        return null;
+      }
+      const j = (await res.json()) as {
+        data?: { token_address?: string; tokenAddress?: string; balance?: string }[];
+      };
+      const contract = config.tron.usdtTrc20Contract.toLowerCase();
+      for (const row of j.data ?? []) {
+        const addr = (row.token_address ?? row.tokenAddress ?? '').toLowerCase();
+        if (addr === contract || addr.endsWith(contract.slice(2))) {
+          const raw = row.balance;
+          if (raw === undefined) return 0;
+          const n = Number(raw) / 1e6;
+          return Number.isFinite(n) ? n : null;
+        }
+      }
+      return 0;
+    } catch (e) {
+      logExternalFailure(this.logger, {
+        integration: 'TronGrid',
+        operation: 'v1/accounts/.../tokens',
+        context: { baseUrl: config.tron.baseUrl },
+        error: e,
+        level: 'warn',
+      });
+      return null;
     }
   }
 }

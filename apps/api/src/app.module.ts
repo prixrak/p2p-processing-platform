@@ -40,6 +40,7 @@ import { PaymentMethodsModule } from './modules/payment-methods/payment-methods.
 import { MerchantDirectionsModule } from './modules/merchant-directions/merchant-directions.module';
 import { PlatformSettingsModule } from './modules/platform-settings/platform-settings.module';
 import { ExchangeRateModule } from './modules/exchange-rate/exchange-rate.module';
+import { TraderWalletsModule } from './modules/trader-wallets/trader-wallets.module';
 
 @Module({
   imports: [
@@ -90,6 +91,7 @@ import { ExchangeRateModule } from './modules/exchange-rate/exchange-rate.module
     PaymentMethodsModule,
     MerchantDirectionsModule,
     PlatformSettingsModule,
+    TraderWalletsModule,
   ],
   providers: [
     {

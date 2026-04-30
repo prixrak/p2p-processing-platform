@@ -12,6 +12,13 @@ import {
 import { PrismaService } from '../../config/prisma.service';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
 import type { WalletDepositConfirmDto } from '../admin/dto/wallet-deposit-confirm.dto';
+import { TrongridClient } from './trongrid.client';
+import { WalletDepositEventsService } from './wallet-deposit-events.service';
+
+function tronReceiptIndicatesFailure(receiptResult: string): boolean {
+  const r = receiptResult.trim().toUpperCase();
+  return r.length > 0 && r !== 'SUCCESS' && r !== 'UNKNOWN';
+}
 
 export type CreditDepositParams = {
   traderId: string;
@@ -21,6 +28,8 @@ export type CreditDepositParams = {
   confirmations: number;
   /** Null when credited by chain worker. */
   actorId: string | null;
+  toAddress?: string | null;
+  blockNumber?: bigint | number | null;
 };
 
 @Injectable()
@@ -30,6 +39,8 @@ export class WalletDepositsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly balanceTxService: BalanceTransactionsService,
+    private readonly depositEvents: WalletDepositEventsService,
+    private readonly trongrid: TrongridClient,
   ) {}
 
   /**
@@ -43,19 +54,37 @@ export class WalletDepositsService {
     minConfirmations: number,
     actorId: string | null,
     network: BlockchainNetwork,
-  ): Promise<{ status: 'pending' | 'credited' | 'skipped'; depositId?: string }> {
+    chainCtx?: { toAddress?: string | null; blockNumber?: bigint | number | null },
+  ): Promise<{ status: 'pending' | 'credited' | 'skipped' | 'failed'; depositId?: string }> {
     if (amountUsdt <= 0 || !Number.isFinite(amountUsdt)) {
       return { status: 'skipped' };
     }
 
+    const existingTop = await this.prisma.walletDeposit.findUnique({
+      where: { txHash },
+    });
+    if (existingTop?.status === 'FAILED') {
+      return { status: 'skipped', depositId: existingTop.id };
+    }
+    if (existingTop?.status === 'CREDITED') {
+      return { status: 'skipped', depositId: existingTop.id };
+    }
+
+    const failGate = await this.gateTronChainRejectedDeposit({
+      traderId,
+      txHash,
+      network,
+      amountUsdt,
+      confirmations,
+      chainCtx,
+      existing: existingTop,
+    });
+    if (failGate) {
+      return failGate;
+    }
+
     if (confirmations < minConfirmations) {
-      const existing = await this.prisma.walletDeposit.findUnique({
-        where: { txHash },
-      });
-      if (existing?.status === 'CREDITED') {
-        return { status: 'skipped', depositId: existing.id };
-      }
-      if (existing && existing.traderId !== traderId) {
+      if (existingTop && existingTop.traderId !== traderId) {
         this.logger.warn(`tx_hash ${txHash} linked to another trader; skipping`);
         return { status: 'skipped' };
       }
@@ -71,6 +100,11 @@ export class WalletDepositsService {
           amountUsdt,
           confirmations,
           status: interimStatus,
+          toAddress: chainCtx?.toAddress ?? undefined,
+          blockNumber:
+            chainCtx?.blockNumber !== undefined && chainCtx?.blockNumber !== null
+              ? BigInt(String(chainCtx.blockNumber))
+              : undefined,
         },
         update: {
           amountUsdt,
@@ -78,6 +112,10 @@ export class WalletDepositsService {
           traderId,
           network,
           status: interimStatus,
+          ...(chainCtx?.toAddress ? { toAddress: chainCtx.toAddress } : {}),
+          ...(chainCtx?.blockNumber !== undefined && chainCtx?.blockNumber !== null
+            ? { blockNumber: BigInt(String(chainCtx.blockNumber)) }
+            : {}),
         },
       });
       return { status: 'pending' };
@@ -90,8 +128,77 @@ export class WalletDepositsService {
       amountUsdt,
       confirmations,
       actorId,
+      toAddress: chainCtx?.toAddress,
+      blockNumber: chainCtx?.blockNumber,
     });
     return { status: 'credited', depositId: deposit.id };
+  }
+
+  /**
+   * When TronGrid reports a finalized tx with a non-success receipt, record {@link WalletDepositStatus.FAILED}.
+   */
+  private async gateTronChainRejectedDeposit(params: {
+    traderId: string;
+    txHash: string;
+    network: BlockchainNetwork;
+    amountUsdt: number;
+    confirmations: number;
+    chainCtx?: { toAddress?: string | null; blockNumber?: bigint | number | null };
+    existing: { id: string; traderId: string; status: string } | null;
+  }): Promise<{ status: 'failed'; depositId: string } | { status: 'skipped' } | null> {
+    if (params.network !== BlockchainNetwork.TRC20) {
+      return null;
+    }
+    const outcome = await this.trongrid.getTransactionOutcome(params.txHash);
+    if (!outcome || !tronReceiptIndicatesFailure(outcome.receiptResult)) {
+      return null;
+    }
+
+    if (params.existing?.status === 'CREDITED') {
+      this.logger.error(
+        `TRC-20 tx has non-success receipt but deposit already credited tx=${params.txHash} receipt=${outcome.receiptResult}`,
+      );
+      return { status: 'skipped' };
+    }
+    if (params.existing && params.existing.traderId !== params.traderId) {
+      this.logger.warn(
+        `tx_hash ${params.txHash} failed on chain but row belongs to another trader; skipping`,
+      );
+      return { status: 'skipped' };
+    }
+
+    const row = await this.prisma.walletDeposit.upsert({
+      where: { txHash: params.txHash },
+      create: {
+        traderId: params.traderId,
+        txHash: params.txHash,
+        network: params.network,
+        amountUsdt: params.amountUsdt,
+        confirmations: params.confirmations,
+        status: 'FAILED',
+        toAddress: params.chainCtx?.toAddress ?? undefined,
+        blockNumber:
+          params.chainCtx?.blockNumber !== undefined && params.chainCtx?.blockNumber !== null
+            ? BigInt(String(params.chainCtx.blockNumber))
+            : undefined,
+      },
+      update: {
+        traderId: params.traderId,
+        amountUsdt: params.amountUsdt,
+        confirmations: params.confirmations,
+        network: params.network,
+        status: 'FAILED',
+        ...(params.chainCtx?.toAddress ? { toAddress: params.chainCtx.toAddress } : {}),
+        ...(params.chainCtx?.blockNumber !== undefined && params.chainCtx?.blockNumber !== null
+          ? { blockNumber: BigInt(String(params.chainCtx.blockNumber)) }
+          : {}),
+      },
+    });
+
+    this.logger.warn(
+      `Wallet deposit marked FAILED (TRC-20 receipt) tx=${params.txHash} receipt=${outcome.receiptResult}`,
+    );
+    return { status: 'failed', depositId: row.id };
   }
 
   /**
@@ -108,11 +215,23 @@ export class WalletDepositsService {
     const existing = await this.prisma.walletDeposit.findUnique({
       where: { txHash: dto.tx_hash },
     });
+    if (existing?.status === 'FAILED') {
+      throw new BadRequestException('This on-chain transaction was marked failed and cannot be credited');
+    }
     if (existing?.status === 'CREDITED') {
       throw new BadRequestException('This transaction was already credited');
     }
     if (existing && existing.traderId !== dto.trader_id) {
       throw new BadRequestException('tx_hash belongs to another trader');
+    }
+
+    if (dto.network === BlockchainNetwork.TRC20) {
+      const outcome = await this.trongrid.getTransactionOutcome(dto.tx_hash);
+      if (outcome && tronReceiptIndicatesFailure(outcome.receiptResult)) {
+        throw new BadRequestException(
+          `On-chain receipt is not successful (${outcome.receiptResult}); cannot credit this deposit`,
+        );
+      }
     }
 
     return this.creditDepositAtomic({
@@ -128,20 +247,31 @@ export class WalletDepositsService {
   /**
    * RISK NOTE: increments trader USDT once per tx_hash; Serializable isolation prevents double credit.
    */
-  creditDepositAtomic(params: CreditDepositParams) {
-    return this.prisma.$transaction(
+  async creditDepositAtomic(params: CreditDepositParams) {
+    let skipRealtime = false;
+    const deposit = await this.prisma.$transaction(
       async (tx) => {
         const existing = await tx.walletDeposit.findUnique({
           where: { txHash: params.txHash },
         });
         if (existing?.status === 'CREDITED') {
+          skipRealtime = true;
           return existing;
+        }
+        if (existing?.status === 'FAILED') {
+          throw new BadRequestException('Cannot credit a failed on-chain deposit for this tx hash');
         }
         if (existing && existing.traderId !== params.traderId) {
           throw new BadRequestException('tx_hash belongs to another trader');
         }
 
-        const deposit = existing
+        const toAddr = params.toAddress ?? existing?.toAddress ?? undefined;
+        const blk =
+          params.blockNumber !== undefined && params.blockNumber !== null
+            ? BigInt(String(params.blockNumber))
+            : existing?.blockNumber ?? undefined;
+
+        const depositRow = existing
           ? await tx.walletDeposit.update({
               where: { txHash: params.txHash },
               data: {
@@ -150,6 +280,8 @@ export class WalletDepositsService {
                 confirmations: params.confirmations,
                 status: 'CREDITED',
                 creditedAt: new Date(),
+                ...(toAddr ? { toAddress: toAddr } : {}),
+                ...(blk !== undefined ? { blockNumber: blk } : {}),
               },
             })
           : await tx.walletDeposit.create({
@@ -161,6 +293,8 @@ export class WalletDepositsService {
                 confirmations: params.confirmations,
                 status: 'CREDITED',
                 creditedAt: new Date(),
+                ...(toAddr ? { toAddress: toAddr } : {}),
+                ...(blk !== undefined ? { blockNumber: blk } : {}),
               },
             });
 
@@ -175,8 +309,12 @@ export class WalletDepositsService {
             traderId: params.traderId,
             currency: 'USDT',
             amount: params.amountUsdt,
+            totalDeposited: params.amountUsdt,
           },
-          update: { amount: { increment: params.amountUsdt } },
+          update: {
+            amount: { increment: params.amountUsdt },
+            totalDeposited: { increment: params.amountUsdt },
+          },
         });
 
         await this.balanceTxService.record({
@@ -184,7 +322,7 @@ export class WalletDepositsService {
           type: BalanceTransactionType.TOP_UP,
           amount: params.amountUsdt,
           currency: 'USDT',
-          referenceId: deposit.id,
+          referenceId: depositRow.id,
           createdById: params.actorId ?? undefined,
           comment: `On-chain deposit ${params.txHash} (${params.network})`,
           tx,
@@ -196,7 +334,7 @@ export class WalletDepositsService {
               actorId: params.actorId,
               action: 'wallet_deposit_credited',
               entityType: 'WalletDeposit',
-              entityId: deposit.id,
+              entityId: depositRow.id,
               newValue: {
                 txHash: params.txHash,
                 amountUsdt: params.amountUsdt,
@@ -209,7 +347,7 @@ export class WalletDepositsService {
             data: {
               action: 'wallet_deposit_credited_auto',
               entityType: 'WalletDeposit',
-              entityId: deposit.id,
+              entityId: depositRow.id,
               newValue: {
                 txHash: params.txHash,
                 amountUsdt: params.amountUsdt,
@@ -224,9 +362,32 @@ export class WalletDepositsService {
           `Wallet deposit credited: trader=${params.traderId} amount=${params.amountUsdt} tx=${params.txHash}`,
         );
 
-        return deposit;
+        return depositRow;
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+
+    if (
+      !skipRealtime &&
+      WalletDepositEventsService.shouldPublish(params.network, params.actorId)
+    ) {
+      const depositAddr = deposit.toAddress ?? params.toAddress ?? null;
+      let onChainBalance = Number(deposit.amountUsdt);
+      if (depositAddr?.startsWith('T')) {
+        const live = await this.trongrid.getAccountUsdtTrc20Balance(depositAddr);
+        if (live !== null && Number.isFinite(live)) {
+          onChainBalance = live;
+        }
+      }
+      await this.depositEvents.publishAfterTrc20Credit({
+        traderId: params.traderId,
+        txHash: params.txHash,
+        amountUsdt: deposit.amountUsdt.toString(),
+        toAddress: depositAddr,
+        sweepBalanceHint: onChainBalance.toFixed(6),
+      });
+    }
+
+    return deposit;
   }
 }

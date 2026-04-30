@@ -6,6 +6,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { TronDepositWorkerModule } from './modules/wallet-deposits/tron-deposit-worker.module';
 import { Erc20DepositWorkerModule } from './modules/wallet-deposits/erc20-deposit-worker.module';
+import { WalletSweepWorkerModule } from './modules/wallet-sweep/wallet-sweep-worker.module';
 
 /**
  * Minimal module for background queue workers without an HTTP server.
@@ -25,6 +26,7 @@ import { Erc20DepositWorkerModule } from './modules/wallet-deposits/erc20-deposi
     TelegramModule,
     TronDepositWorkerModule,
     Erc20DepositWorkerModule,
+    WalletSweepWorkerModule,
   ],
 })
 export class WorkerModule {}

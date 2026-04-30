@@ -457,10 +457,54 @@ model TraderProfile {
   settlements         Settlement[]
   balanceTransactions BalanceTransaction[]
   walletDeposits      WalletDeposit[]
+  traderWallet        TraderWallet?
+  walletSweepLogs     WalletSweepLog[]
   platformIncomeRows  PlatformIncome[]
   trafficDistributionLogs TrafficDistributionLog[]
 
   @@map("trader_profiles")
+}
+
+/// Custodial TRON deposit address (BIP44 / Vault). One per trader; mirrors `usdt_trc20_deposit_address` for workers.
+model TraderWallet {
+  id              String   @id @default(uuid()) @db.Uuid
+  traderId        String   @unique @map("trader_id") @db.Uuid
+  address         String   @unique @db.VarChar(42)
+  derivationIndex Int      @unique @map("derivation_index")
+  vaultPath       String   @map("vault_path") @db.VarChar(255)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  trader TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
+
+  @@index([address])
+  @@map("trader_wallets")
+}
+
+enum WalletSweepStatus {
+  PENDING
+  BROADCAST
+  CONFIRMED
+  FAILED
+}
+
+model WalletSweepLog {
+  id          String            @id @default(uuid()) @db.Uuid
+  traderId    String            @map("trader_id") @db.Uuid
+  fromAddress String            @map("from_address") @db.VarChar(42)
+  toAddress   String            @map("to_address") @db.VarChar(42)
+  txHash      String?           @unique @map("tx_hash") @db.VarChar(128)
+  amountUsdt  Decimal           @map("amount_usdt") @db.Decimal(20, 6)
+  feeTrx      Decimal           @default(0) @map("fee_trx") @db.Decimal(20, 6)
+  status      WalletSweepStatus @default(PENDING)
+  error       String?           @db.Text
+  createdAt   DateTime          @default(now()) @map("created_at")
+  confirmedAt DateTime?         @map("confirmed_at")
+
+  trader TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
+
+  @@index([traderId])
+  @@map("wallet_sweep_logs")
 }
 
 model CascadeSetting {
@@ -513,6 +557,8 @@ model TraderBalance {
   traderId String  @map("trader_id") @db.Uuid
   currency String
   amount   Decimal @default(0) @db.Decimal(18, 4)
+  /// Cumulative on-chain USDT credited via wallet deposits (TZ `trader_balances.total_deposited`). Meaningful when currency is USDT.
+  totalDeposited Decimal @default(0) @map("total_deposited") @db.Decimal(20, 6)
 
   trader TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
 
@@ -969,6 +1015,7 @@ enum WalletDepositStatus {
   PENDING
   CONFIRMED
   CREDITED
+  FAILED
 }
 
 model WalletDeposit {
@@ -979,13 +1026,16 @@ model WalletDeposit {
   amountUsdt    Decimal             @map("amount_usdt") @db.Decimal(18, 6)
   confirmations Int                 @default(0)
   status        WalletDepositStatus @default(PENDING)
+  /// Receiving deposit address (TRON base58) when known from chain monitoring.
+  toAddress     String?             @map("to_address") @db.VarChar(42)
+  blockNumber   BigInt?             @map("block_number")
   creditedAt    DateTime?           @map("credited_at")
   createdAt     DateTime            @default(now()) @map("created_at")
 
   trader TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
 
   @@index([traderId])
-  @@map("wallet_deposits")
+  @@map("deposits")
 }
 
 model PlatformWithdrawal {
