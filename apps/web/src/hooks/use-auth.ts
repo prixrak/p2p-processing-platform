@@ -2,6 +2,7 @@
 
 import { create } from 'zustand';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import {
   getToken,
   getUserFromToken,
@@ -54,7 +55,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       requires2FA?: boolean;
       tempToken?: string;
       user?: AuthUser;
-    }>('/api/auth/login', { email, password });
+    }>(internalPaths.authLogin, { email, password });
 
     if (data.requires2FA) {
       set({ requires2FA: true, tempToken: data.tempToken ?? null });
@@ -80,7 +81,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       accessToken: string;
       refreshToken: string;
       user?: AuthUser;
-    }>('/api/auth/2fa/verify', { code, tempToken });
+    }>(internalPaths.authTwoFaVerify, { code, tempToken });
 
     setTokens(data.accessToken, data.refreshToken);
     const decoded = getUserFromToken();

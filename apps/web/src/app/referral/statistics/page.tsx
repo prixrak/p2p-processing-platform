@@ -14,6 +14,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { formatCurrency, cn } from '@/lib/utils';
 
 interface TraderStat {
@@ -52,7 +53,7 @@ interface Statistics {
 export default function ReferralStatisticsPage() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['referral', 'statistics'],
-    queryFn: () => api.get<Statistics>('/api/referral/me/statistics'),
+    queryFn: () => api.get<Statistics>(internalPaths.referralMeStatistics),
   });
 
   return (

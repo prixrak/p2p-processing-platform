@@ -74,7 +74,7 @@ export default function MerchantBalancesPage() {
 
   const { data: balances = [], isLoading: balancesLoading } = useQuery<BalanceRow[]>({
     queryKey: ['merchant', 'balances'],
-    queryFn: () => api.get('/api/merchant/balances'),
+    queryFn: () => api.get(internalPaths.merchantBalances),
   });
 
   const { data: summary, isLoading: sumLoading } = useQuery<BalanceSummary>({

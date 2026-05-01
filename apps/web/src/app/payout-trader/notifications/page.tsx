@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Bell } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 
 interface NotificationItem {
   id: string;
@@ -17,7 +18,7 @@ interface NotificationItem {
 export default function PayoutTraderNotificationsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['payout-trader', 'notifications'],
-    queryFn: () => api.get<{ items: NotificationItem[] }>('/api/payout-trader/payout/me/notifications'),
+    queryFn: () => api.get<{ items: NotificationItem[] }>(internalPaths.payoutSpecialistNotifications),
   });
 
   return (

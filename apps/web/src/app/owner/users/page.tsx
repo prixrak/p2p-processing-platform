@@ -87,7 +87,7 @@ export default function UsersPage() {
     queryKey: ['countries', 'active'],
     queryFn: () =>
       api.get<Array<{ id: string; name: string; code: string; currency: string }>>(
-        '/api/countries?activeOnly=true',
+        internalPaths.countriesQuery('activeOnly=true'),
       ),
   });
 

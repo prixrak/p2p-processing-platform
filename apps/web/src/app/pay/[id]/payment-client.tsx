@@ -20,6 +20,7 @@ import { PayInOrderStatus } from '@p2p/shared';
 import { CountdownTimer } from '@/components/ui/countdown-timer';
 import { FileUpload } from '@/components/ui/file-upload';
 import { confirmPayment, api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { formatErrorMessage } from '@/lib/format-error';
 import { usePayinOrderRealtime } from '@/lib/payin-realtime';
 
@@ -70,7 +71,7 @@ export function PaymentClient({ order }: PaymentClientProps) {
 
   const syncOrderFromServer = useCallback(async () => {
     try {
-      const fresh = await api.get<OrderDto>(`/api/pay/${order.id}`);
+      const fresh = await api.get<OrderDto>(internalPaths.payOrder(order.id));
       setCurrentOrder(fresh);
       if (fresh.status === PayInOrderStatus.CANCELED) setStep('expired');
       if (

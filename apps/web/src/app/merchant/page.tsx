@@ -8,6 +8,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { StatCard } from '@/components/ui/stat-card';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -28,12 +29,12 @@ export default function MerchantDashboard() {
 
   const { data: balances = [], isLoading: balancesLoading } = useQuery<MerchantBalance[]>({
     queryKey: ['merchant', 'balances'],
-    queryFn: () => api.get('/api/merchant/balances'),
+    queryFn: () => api.get(internalPaths.merchantBalances),
   });
 
   const { data: stats, isLoading: statsLoading } = useQuery<MerchantStats>({
     queryKey: ['merchant', 'stats'],
-    queryFn: () => api.get('/api/merchant/stats'),
+    queryFn: () => api.get(internalPaths.merchantStats),
   });
 
   return (

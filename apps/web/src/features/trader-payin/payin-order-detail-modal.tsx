@@ -10,6 +10,7 @@ import {
 } from '@p2p/shared';
 import type { OrderDto } from '@p2p/shared';
 import { formatCurrency, formatDateFull } from '@/lib/utils';
+import { internalPaths } from '@/lib/internal-api';
 import { payinStatusVariant } from '@/lib/status-helpers';
 import { payinStatusLabel } from '@/lib/order-status-ui';
 import { CountdownTimer } from './payin-order-cells';
@@ -109,7 +110,7 @@ export function PayInOrderDetailModal({
                           >
                             <div className="pointer-events-none aspect-video max-h-28">
                               <AuthorizedFilePreview
-                                path={`/api/files/${fileId}`}
+                                path={internalPaths.fileById(fileId)}
                                 alt="Appeal proof"
                                 className="h-full max-h-28"
                               />
@@ -164,7 +165,7 @@ export function PayInOrderDetailModal({
       {proofFileId && (
         <div className="flex min-h-[40vh] items-center justify-center">
           <AuthorizedFilePreview
-            path={`/api/files/${proofFileId}`}
+            path={internalPaths.fileById(proofFileId)}
             alt="Appeal proof"
             className="max-h-[75vh]"
           />

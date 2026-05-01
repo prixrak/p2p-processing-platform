@@ -18,6 +18,7 @@ import { Table } from '@/components/ui/table';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { usePayoutCabinetRealtime } from '@/lib/payin-realtime';
 import { cn } from '@/lib/utils';
 import { getToken } from '@/lib/auth';
@@ -47,7 +48,7 @@ export function TraderPayoutPage({
   const router = useRouter();
   const pathname = usePathname();
   const isSpecialist = variant === 'specialist';
-  const apiBase = isSpecialist ? '/api/payout-trader/payout' : '/api/trader/payout';
+  const apiBase = isSpecialist ? internalPaths.payoutCabinetSpecialist : internalPaths.payoutCabinetTrader;
   const qk = isSpecialist ? 'payout-trader' : 'trader';
   const apiPublicBase = process.env.NEXT_PUBLIC_API_URL ?? '';
 

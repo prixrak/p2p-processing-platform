@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 
 interface GlobalSettings {
   pool_b_global_percent: number;
@@ -26,13 +27,13 @@ export function AdminPayoutPoolPage() {
   const qc = useQueryClient();
   const globalQ = useQuery({
     queryKey: ['admin', 'payout-pool', 'global'],
-    queryFn: () => api.get<GlobalSettings | null>('/api/admin/payout-pool/global'),
+    queryFn: () => api.get<GlobalSettings | null>(internalPaths.adminPayoutPoolGlobal),
   });
 
   const listQ = useQuery({
     queryKey: ['admin', 'payout-pool', 'merchants'],
     queryFn: () =>
-      api.get<{ items: MerchantRow[]; total: number }>('/api/admin/payout-pool/merchants'),
+      api.get<{ items: MerchantRow[]; total: number }>(internalPaths.adminPayoutPoolMerchants),
   });
 
   const patchGlobal = useMutation({
@@ -41,13 +42,13 @@ export function AdminPayoutPoolPage() {
       pool_timeout_enabled?: boolean;
       pool_timeout_hours?: number | null;
       specialist_fail_returns_to_pool?: boolean;
-    }) => api.patch<GlobalSettings>('/api/admin/payout-pool/global', body),
+    }) => api.patch<GlobalSettings>(internalPaths.adminPayoutPoolGlobal, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'payout-pool'] }),
   });
 
   const upsertMerchant = useMutation({
     mutationFn: (body: { merchantId: string; pool_b_percent: number; is_active?: boolean }) =>
-      api.put(`/api/admin/payout-pool/merchants/${body.merchantId}`, {
+      api.put(internalPaths.adminPayoutPoolMerchantUpsert(body.merchantId), {
         pool_b_percent: body.pool_b_percent,
         is_active: body.is_active,
       }),

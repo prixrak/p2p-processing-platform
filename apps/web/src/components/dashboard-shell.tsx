@@ -8,6 +8,7 @@ import { clsx } from 'clsx';
 import { LogOut, Menu, Power, PowerOff, X, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { Tooltip } from '@/components/ui/tooltip';
 
 export interface NavItem {
@@ -39,7 +40,7 @@ function TraderHeaderOrderStatus() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['trader', 'dashboard-stats'],
     queryFn: () =>
-      api.get<TraderDashboardStatsToggleFields>('/api/trader/dashboard/stats'),
+      api.get<TraderDashboardStatsToggleFields>(internalPaths.traderDashboardStats),
     select: (s) => ({
       accepting_orders: s.accepting_orders ?? true,
       account_active: s.account_active ?? true,
@@ -48,7 +49,7 @@ function TraderHeaderOrderStatus() {
 
   const mutation = useMutation({
     mutationFn: (accepting_orders: boolean) =>
-      api.patch<TraderAcceptingOrdersResponse>('/api/traders/me/accepting-orders', {
+      api.patch<TraderAcceptingOrdersResponse>(internalPaths.tradersMeAcceptingOrders, {
         accepting_orders,
       }),
     onSuccess: () => {

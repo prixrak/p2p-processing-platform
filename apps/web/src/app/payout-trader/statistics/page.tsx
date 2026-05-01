@@ -5,6 +5,7 @@ import { BarChart3 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 
 interface SpecialistStats {
   payout_trader_id: string;
@@ -21,7 +22,7 @@ export default function PayoutTraderStatisticsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['payout-trader', 'statistics', { period: '30d' }] as const,
     queryFn: () =>
-      api.get<SpecialistStats>('/api/payout-trader/payout/me/statistics', { period: '30d' }),
+      api.get<SpecialistStats>(internalPaths.payoutSpecialistStatistics, { period: '30d' }),
   });
 
   const loading = isLoading || !data;

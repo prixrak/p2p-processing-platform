@@ -1,14 +1,13 @@
 /**
  * Internal (JWT) API URL helpers.
  *
- * The API uses `app.setGlobalPrefix('api')` in Nest. Most resources are exposed as
- * `/api/<controller>` (e.g. `/api/merchants`, `/api/audit`). The `/api/admin/*`
- * prefix exists only for {@link internalPaths.adminStats} (`@Controller('admin')`).
- *
- * Strings under {@link internalPaths.notImplemented} are legacy UI paths: there is
- * no matching Nest route today — keep them here so gaps are visible in one place.
+ * The API uses `app.setGlobalPrefix('api')` in Nest. Prefer these helpers over raw
+ * `/api/…` literals in UI code so route drift is visible in one place.
  */
 export const internalPaths = {
+  authLogin: '/api/auth/login',
+  authTwoFaVerify: '/api/auth/2fa/verify',
+
   adminStats: '/api/admin/stats',
   adminStatistics: '/api/admin/statistics',
 
@@ -45,6 +44,26 @@ export const internalPaths = {
   traderDeactivate: (id: string) => `/api/traders/${id}/deactivate`,
   traderPayoutLimits: (id: string) => `/api/traders/${id}/payout-limits`,
   traderBalanceModel: (id: string) => `/api/traders/${id}/balance-model`,
+  tradersMeAcceptingOrders: '/api/traders/me/accepting-orders',
+
+  traderDashboardStats: '/api/trader/dashboard/stats',
+  traderDashboardRecentOrders: '/api/trader/dashboard/recent-orders',
+  traderDashboardPayinAssignRanges: '/api/trader/dashboard/payin-assign-ranges',
+
+  traderPayinStream: '/api/trader/payin/stream',
+  traderPayinOrders: '/api/trader/payin/orders',
+  traderPayinOrderConfirm: (orderId: string) => `/api/trader/payin/orders/${orderId}/confirm`,
+  traderPayinOrderCancel: (orderId: string) => `/api/trader/payin/orders/${orderId}/cancel`,
+
+  /** Standard trader Pay-Out cabinet REST prefix (JWT). */
+  payoutCabinetTrader: '/api/trader/payout',
+  /** Geo-scoped payout specialist REST + SSE prefix */
+  payoutCabinetSpecialist: '/api/payout-trader/payout',
+  traderPayoutStream: '/api/trader/payout/stream',
+  payoutSpecialistStream: '/api/payout-trader/payout/stream',
+  payoutSpecialistSummary: '/api/payout-trader/payout/me/summary',
+  payoutSpecialistStatistics: '/api/payout-trader/payout/me/statistics',
+  payoutSpecialistNotifications: '/api/payout-trader/payout/me/notifications',
 
   adminPlatformExchangeRate: '/api/admin/platform/exchange-rate',
   adminPlatformIncomeSummary: (qs = '') =>
@@ -60,6 +79,11 @@ export const internalPaths = {
   adminPlatformWalletDepositConfirm: '/api/admin/platform/wallet-deposits/confirm',
   adminPlatformOperationsSummary: (qs = '') =>
     `/api/admin/platform/operations/summary${qs ? `?${qs}` : ''}`,
+
+  adminPayoutPoolGlobal: '/api/admin/payout-pool/global',
+  adminPayoutPoolMerchants: '/api/admin/payout-pool/merchants',
+  adminPayoutPoolMerchantUpsert: (merchantId: string) =>
+    `/api/admin/payout-pool/merchants/${merchantId}`,
 
   // Pay-Out pool (trader cabinet)
   payoutPool: '/api/trader/payout/pool',
@@ -86,6 +110,15 @@ export const internalPaths = {
   /** Merchant period stats — query: dateFrom?, dateTo? */
   merchantBalanceSummary: (qs = '') =>
     `/api/merchant/balance-summary${qs ? `?${qs}` : ''}`,
+  merchantBalances: '/api/merchant/balances',
+  merchantStats: '/api/merchant/stats',
+  merchantDirectionsSelf: '/api/merchant/directions',
+  merchantOrders: (qs: string) => `/api/merchant/orders?${qs}`,
+  merchantOrdersStream: '/api/merchant/orders/stream',
+  merchantWebhooks: (qs: string) => `/api/merchant/webhooks?${qs}`,
+  merchantWebhookResend: (webhookId: string) => `/api/merchant/webhooks/${webhookId}/resend`,
+  merchantApiKeys: '/api/merchant/api-keys',
+  merchantApiKeyRegenerate: (keyId: string) => `/api/merchant/api-keys/${keyId}/regenerate`,
   merchantLock: (id: string) => `/api/merchants/${id}/lock`,
   merchantUnlock: (id: string) => `/api/merchants/${id}/unlock`,
 
@@ -103,6 +136,8 @@ export const internalPaths = {
   banksAdmin: '/api/banks/admin',
   /** Multipart field name: `file`. Returns `{ id, ... }`. */
   fileUpload: '/api/files/upload',
+  fileById: (fileId: string) => `/api/files/${fileId}`,
+  fileSignedUrl: (fileId: string) => `/api/files/${fileId}/signed-url`,
   banks: '/api/banks',
   bank: (id: string | number) => `/api/banks/${id}`,
   bankActivate: (id: string | number) => `/api/banks/${id}/activate`,
@@ -124,6 +159,8 @@ export const internalPaths = {
   adminCountries: '/api/admin/countries',
   adminCountry: (id: string) => `/api/admin/countries/${id}`,
   paymentMethods: '/api/payment-methods',
+  paymentMethodsQuery: (qs: string) => `/api/payment-methods?${qs}`,
+  countriesQuery: (qs: string) => `/api/countries?${qs}`,
   adminPaymentMethods: '/api/admin/payment-methods',
   adminPaymentMethod: (id: string) => `/api/admin/payment-methods/${id}`,
 
@@ -146,14 +183,27 @@ export const internalPaths = {
 
   /** Appeals — GET returns `{ items, total, page, limit }`. */
   appeals: '/api/appeals',
+  appealResolve: (appealId: string) => `/api/appeals/${appealId}/resolve`,
 
-  /**
-   * Endpoints not yet implemented on the Nest API.
-   * All former stubs (platformStatistics, ordersQuery, order, orderStatus,
-   * settlement, bankStatus) have been wired to real routes above.
-   */
-  notImplemented: {
-    orderAssign: (orderId: string) => `/api/admin/orders/${orderId}/assign`,
-    merchantConfig: (id: string) => `/api/admin/merchants/${id}/config`,
-  },
+  requisiteGroupsMy: (qs: string) => `/api/requisite-groups/my?${qs}`,
+  requisiteGroupsMyRoot: '/api/requisite-groups/my',
+  requisiteGroupMy: (id: string) => `/api/requisite-groups/my/${id}`,
+  requisiteGroupMyRestore: (id: string) => `/api/requisite-groups/my/${id}/restore`,
+  requisitesMy: '/api/requisites/my',
+  requisite: (id: string) => `/api/requisites/${id}`,
+  requisiteActivate: (id: string) => `/api/requisites/${id}/activate`,
+  requisiteDeactivate: (id: string) => `/api/requisites/${id}/deactivate`,
+  requisiteHistory: (id: string) => `/api/requisites/${id}/history`,
+
+  supportStats: '/api/support/stats',
+  supportOrders: (qs: string) => `/api/support/orders?${qs}`,
+  supportOrder: (id: string) => `/api/support/orders/${id}`,
+  supportDisputes: (qs: string) => `/api/support/disputes?${qs}`,
+  supportDispute: (id: string) => `/api/support/disputes/${id}`,
+  supportDisputeNotes: (id: string) => `/api/support/disputes/${id}/notes`,
+  supportBalances: (tab: string, qs: string) => `/api/support/balances/${tab}?${qs}`,
+
+  payOrder: (id: string) => `/api/pay/${id}`,
+  payOrderConfirm: (orderId: string) => `/api/pay/${orderId}/confirm`,
+  payOrderStream: (orderId: string) => `/api/pay/${orderId}/stream`,
 } as const;

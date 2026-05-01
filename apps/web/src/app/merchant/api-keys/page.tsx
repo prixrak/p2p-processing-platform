@@ -13,6 +13,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Badge } from '@/components/ui/badge';
@@ -42,12 +43,12 @@ export default function ApiKeysPage() {
 
   const { data: keys = [], isLoading } = useQuery<ApiKeyPair[]>({
     queryKey: ['merchant', 'api-keys'],
-    queryFn: () => api.get('/api/merchant/api-keys'),
+    queryFn: () => api.get(internalPaths.merchantApiKeys),
   });
 
   const generateMutation = useMutation<NewKeyPairResponse, Error, 'PAYIN' | 'PAYOUT'>({
     mutationFn: (direction) =>
-      api.post<NewKeyPairResponse>('/api/merchant/api-keys', { direction }),
+      api.post<NewKeyPairResponse>(internalPaths.merchantApiKeys, { direction }),
     onSuccess: (data) => {
       setNewSecret(data.secretKey);
       queryClient.invalidateQueries({ queryKey: ['merchant', 'api-keys'] });
@@ -56,7 +57,7 @@ export default function ApiKeysPage() {
 
   const regenerateMutation = useMutation<NewKeyPairResponse, Error, string>({
     mutationFn: (keyId: string) =>
-      api.post(`/api/merchant/api-keys/${keyId}/regenerate`),
+      api.post(internalPaths.merchantApiKeyRegenerate(keyId)),
     onSuccess: (data) => {
       setNewSecret(data.secretKey);
       setRegeneratingId(null);

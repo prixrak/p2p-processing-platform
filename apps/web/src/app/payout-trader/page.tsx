@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { usePayoutCabinetRealtime } from '@/lib/payin-realtime';
 
 interface SpecialistSummary {
@@ -30,7 +31,7 @@ export default function PayoutTraderDashboardPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['payout-trader', 'summary'] as const,
-    queryFn: () => api.get<SpecialistSummary>('/api/payout-trader/payout/me/summary'),
+    queryFn: () => api.get<SpecialistSummary>(internalPaths.payoutSpecialistSummary),
   });
 
   return (

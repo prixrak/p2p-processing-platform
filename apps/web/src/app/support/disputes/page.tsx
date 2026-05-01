@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Eye, FileImage, MessageSquare } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
@@ -72,19 +73,19 @@ export default function DisputesPage() {
         limit: '20',
       });
       if (search) params.set('search', search);
-      return api.get<DisputesResponse>(`/api/support/disputes?${params}`);
+      return api.get<DisputesResponse>(internalPaths.supportDisputes(params.toString()));
     },
   });
 
   const { data: details } = useQuery({
     queryKey: ['support', 'dispute-details', detailId],
-    queryFn: () => api.get<DisputeDetails>(`/api/support/disputes/${detailId}`),
+    queryFn: () => api.get<DisputeDetails>(internalPaths.supportDispute(detailId!)),
     enabled: !!detailId,
   });
 
   const addNote = useMutation({
     mutationFn: ({ id, content }: { id: string; content: string }) =>
-      api.post(`/api/support/disputes/${id}/notes`, { content }),
+      api.post(internalPaths.supportDisputeNotes(id), { content }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['support', 'dispute-details', detailId] });
       setNote('');
@@ -93,7 +94,7 @@ export default function DisputesPage() {
 
   const updateStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.patch(`/api/support/disputes/${id}`, { status }),
+      api.patch(internalPaths.supportDispute(id), { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['support', 'disputes'] });
       queryClient.invalidateQueries({ queryKey: ['support', 'dispute-details', detailId] });

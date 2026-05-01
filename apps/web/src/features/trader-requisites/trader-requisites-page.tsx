@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { cn } from '@/lib/utils';
 import { getUserFromToken } from '@/lib/auth';
 import type {
@@ -72,17 +73,18 @@ export function TraderRequisitesPage() {
 
   const { data: banks = [] } = useQuery({
     queryKey: ['banks', 'list'],
-    queryFn: () => api.get<BankOption[]>('/api/banks'),
+    queryFn: () => api.get<BankOption[]>(internalPaths.banks),
   });
 
   const { data: currencies = [] } = useQuery({
     queryKey: ['currencies', 'list'],
-    queryFn: () => api.get<CurrencyRow[]>('/api/currencies'),
+    queryFn: () => api.get<CurrencyRow[]>(internalPaths.currencies),
   });
 
   const { data: paymentMethods = [] } = useQuery({
     queryKey: ['payment-methods', 'list'],
-    queryFn: () => api.get<PaymentMethodRow[]>('/api/payment-methods?activeOnly=true'),
+    queryFn: () =>
+      api.get<PaymentMethodRow[]>(internalPaths.paymentMethodsQuery('activeOnly=true')),
   });
 
   const groupsQueryKey = ['trader', 'requisite-groups', archivedTab] as const;
@@ -91,14 +93,14 @@ export function TraderRequisitesPage() {
     queryKey: groupsQueryKey,
     queryFn: () =>
       api.get<RequisiteGroupApi[]>(
-        `/api/requisite-groups/my?archived=${archivedTab}&includeInactiveRequisites=true`,
+        internalPaths.requisiteGroupsMy(`archived=${archivedTab}&includeInactiveRequisites=true`),
       ),
   });
 
   const { data: assignRangesData } = useQuery({
     queryKey: ['trader', 'payin-assign-ranges'],
     queryFn: () =>
-      api.get<{ requisites: PayinAssignRangeRow[] }>('/api/trader/dashboard/payin-assign-ranges'),
+      api.get<{ requisites: PayinAssignRangeRow[] }>(internalPaths.traderDashboardPayinAssignRanges),
   });
 
   const assignRangeByReqId = useMemo(() => {
@@ -113,7 +115,7 @@ export function TraderRequisitesPage() {
     queryKey: ['requisite', 'history', historyRequisiteId],
     queryFn: () =>
       api.get<{ items: AuditItem[]; total: number; page: number; limit: number }>(
-        `/api/requisites/${historyRequisiteId}/history`,
+        internalPaths.requisiteHistory(historyRequisiteId!),
         { limit: '50' },
       ),
     enabled: !!historyRequisiteId,
@@ -142,7 +144,7 @@ export function TraderRequisitesPage() {
 
   const createGroupMutation = useMutation({
     mutationFn: () =>
-      api.post('/api/requisite-groups/my', {
+      api.post(internalPaths.requisiteGroupsMyRoot, {
         name: groupForm.name,
         currency: groupForm.currency,
         ...(groupForm.payment_method_id ? { paymentMethodId: groupForm.payment_method_id } : {}),
@@ -161,7 +163,7 @@ export function TraderRequisitesPage() {
     }: {
       id: string;
       body: { name?: string; isActive?: boolean; paymentMethodId?: string | null };
-    }) => api.patch(`/api/requisite-groups/my/${id}`, body),
+    }) => api.patch(internalPaths.requisiteGroupMy(id), body),
     onSuccess: () => {
       invalidateGroups();
       setEditingGroup(null);
@@ -169,19 +171,19 @@ export function TraderRequisitesPage() {
   });
 
   const restoreGroupMutation = useMutation({
-    mutationFn: (id: string) => api.patch(`/api/requisite-groups/my/${id}/restore`),
+    mutationFn: (id: string) => api.patch(internalPaths.requisiteGroupMyRestore(id)),
     onSuccess: () => invalidateGroups(),
   });
 
   const deleteGroupMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/api/requisite-groups/my/${id}`),
+    mutationFn: (id: string) => api.delete(internalPaths.requisiteGroupMy(id)),
     onSuccess: () => invalidateGroups(),
   });
 
   const createMutation = useMutation({
     mutationFn: ({ groupId, data }: { groupId: string; data: RequisiteFormData }) => {
       const bankId = data.bank_id ? Number(data.bank_id) : undefined;
-      return api.post('/api/requisites/my', {
+      return api.post(internalPaths.requisitesMy, {
         groupId,
         type: data.type,
         number: data.number,
@@ -214,7 +216,7 @@ export function TraderRequisitesPage() {
       >;
       acceptsOtherBanks: boolean;
     }) =>
-      api.put(`/api/requisites/${id}`, {
+      api.put(internalPaths.requisite(id), {
         minAmount: limits.min_amount,
         maxAmount: limits.max_amount,
         limitTotalAmount: limits.limit_amount,
@@ -230,9 +232,9 @@ export function TraderRequisitesPage() {
   const toggleMutation = useMutation({
     mutationFn: async ({ id, makeActive }: { id: string; makeActive: boolean }) => {
       if (makeActive) {
-        return api.patch(`/api/requisites/${id}/activate`);
+        return api.patch(internalPaths.requisiteActivate(id));
       }
-      return api.patch(`/api/requisites/${id}/deactivate`);
+      return api.patch(internalPaths.requisiteDeactivate(id));
     },
     onSuccess: () => invalidateGroups(),
   });

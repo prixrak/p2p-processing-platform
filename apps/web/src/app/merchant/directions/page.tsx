@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Percent, Info } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { Badge } from '@/components/ui/badge';
 
 const DIR_LABELS: Record<string, string> = { PAYIN: 'Pay-In', PAYOUT: 'Pay-Out' };
@@ -35,7 +36,7 @@ function num(v: unknown): number {
 export default function MerchantDirectionsPage() {
   const { data: directions = [], isLoading } = useQuery({
     queryKey: ['merchant', 'directions'],
-    queryFn: () => api.get<MerchantDirectionRow[]>('/api/merchant/directions'),
+    queryFn: () => api.get<MerchantDirectionRow[]>(internalPaths.merchantDirectionsSelf),
   });
 
   return (

@@ -45,7 +45,7 @@ export default function AppealsPage() {
 
   const resolveAppeal = useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: AppealStatus }) =>
-      api.patch<AppealDto>(`/api/appeals/${id}/resolve`, { decision }),
+      api.patch<AppealDto>(internalPaths.appealResolve(id), { decision }),
     onSuccess: (updated) => {
       void queryClient.invalidateQueries({ queryKey: ['trader', 'appeals'] });
       setSelectedAppeal((prev) => (prev?.id === updated.id ? updated : prev));
@@ -255,7 +255,7 @@ export default function AppealsPage() {
                     >
                       <div className="pointer-events-none aspect-video max-h-36">
                         <AuthorizedFilePreview
-                          path={`/api/files/${fileId}`}
+                          path={internalPaths.fileById(fileId)}
                           alt="Proof of payment"
                           className="h-full max-h-36"
                         />
@@ -311,7 +311,7 @@ export default function AppealsPage() {
         {viewingProof && (
           <div className="flex min-h-[40vh] items-center justify-center">
             <AuthorizedFilePreview
-              path={`/api/files/${viewingProof}`}
+              path={internalPaths.fileById(viewingProof)}
               alt="Proof of payment"
               className="max-h-[75vh]"
             />

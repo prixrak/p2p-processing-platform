@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeftRight } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { DataTable } from '@/components/ui/data-table';
 import { StatusBadge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
@@ -51,7 +52,7 @@ export default function MerchantOrdersPage() {
       if (search) params.set('search', search);
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
-      return api.get(`/api/merchant/orders?${params}`);
+      return api.get(internalPaths.merchantOrders(params.toString()));
     },
   });
 

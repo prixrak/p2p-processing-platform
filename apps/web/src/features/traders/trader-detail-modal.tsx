@@ -169,8 +169,8 @@ export function TraderDetailModal({
   const toggleRequisiteMutation = useMutation({
     mutationFn: ({ id, makeActive }: { id: string; makeActive: boolean }) =>
       makeActive
-        ? api.patch(`/api/requisites/${id}/activate`)
-        : api.patch(`/api/requisites/${id}/deactivate`),
+        ? api.patch(internalPaths.requisiteActivate(id))
+        : api.patch(internalPaths.requisiteDeactivate(id)),
     onSuccess: () => {
       if (traderId) {
         queryClient.invalidateQueries({ queryKey: staffTraderKeys.detail(queryPrefix, traderId) });

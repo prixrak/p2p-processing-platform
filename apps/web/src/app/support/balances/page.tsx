@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { Tabs } from '@/components/ui/tabs';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
@@ -35,7 +36,7 @@ export default function BalancesPage() {
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
       if (search) params.set('search', search);
-      return api.get<BalancesResponse>(`/api/support/balances/${tab}?${params}`);
+      return api.get<BalancesResponse>(internalPaths.supportBalances(tab, params.toString()));
     },
   });
 

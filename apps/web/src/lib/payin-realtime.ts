@@ -98,7 +98,7 @@ export function usePayinTraderRealtime(queryClient: QueryClient): void {
         if (!token) break;
 
         try {
-          await consumeSseStream('/api/trader/payin/stream', {
+          await consumeSseStream(internalPaths.traderPayinStream, {
             signal: ac.signal,
             headers: { Authorization: `Bearer ${token}` },
             onMessage: (raw) => {
@@ -146,7 +146,7 @@ export function usePayoutCabinetRealtime(
     const ac = new AbortController();
     let cancelled = false;
     const streamPath =
-      variant === 'specialist' ? '/api/payout-trader/payout/stream' : '/api/trader/payout/stream';
+      variant === 'specialist' ? internalPaths.payoutSpecialistStream : internalPaths.traderPayoutStream;
     const qk = variant === 'specialist' ? 'payout-trader' : 'trader';
 
     const run = async () => {
@@ -271,7 +271,7 @@ export function useMerchantOrdersRealtime(queryClient: QueryClient): void {
         if (!token) break;
 
         try {
-          await consumeSseStream('/api/merchant/orders/stream', {
+          await consumeSseStream(internalPaths.merchantOrdersStream, {
             signal: ac.signal,
             headers: { Authorization: `Bearer ${token}` },
             onMessage: (raw) => {
@@ -331,7 +331,7 @@ export function usePayinOrderRealtime(
     const run = async () => {
       while (!cancelled) {
         try {
-          await consumeSseStream(`/api/pay/${orderId}/stream`, {
+          await consumeSseStream(internalPaths.payOrderStream(orderId), {
             signal: ac.signal,
             onMessage: () => {
               onUpdateRef.current();

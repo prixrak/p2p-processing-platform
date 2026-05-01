@@ -15,6 +15,7 @@ import { StatCard, Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table } from '@/components/ui/table';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { usePayinTraderRealtime, usePayOutTraderRealtime } from '@/lib/payin-realtime';
 import { formatCurrency, formatDate, shortId } from '@/lib/utils';
 import type { PayInOrderStatus, PayOutOrderStatus } from '@p2p/shared';
@@ -60,12 +61,12 @@ export default function TraderDashboard() {
   usePayOutTraderRealtime(queryClient);
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['trader', 'dashboard-stats'],
-    queryFn: () => api.get<DashboardStats>('/api/trader/dashboard/stats'),
+    queryFn: () => api.get<DashboardStats>(internalPaths.traderDashboardStats),
   });
 
   const { data: recentOrders, isLoading: ordersLoading } = useQuery({
     queryKey: ['trader', 'recent-orders'],
-    queryFn: () => api.get<RecentOrder[]>('/api/trader/dashboard/recent-orders'),
+    queryFn: () => api.get<RecentOrder[]>(internalPaths.traderDashboardRecentOrders),
   });
 
   const columns = [

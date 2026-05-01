@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Eye } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { IconButton } from '@/components/ui/icon-button';
 import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
@@ -73,13 +74,13 @@ export default function SupportOrdersPage() {
       if (statusFilter) params.set('status', statusFilter);
       if (merchantFilter) params.set('merchant', merchantFilter);
       if (traderFilter) params.set('trader', traderFilter);
-      return api.get<OrdersResponse>(`/api/support/orders?${params}`);
+      return api.get<OrdersResponse>(internalPaths.supportOrders(params.toString()));
     },
   });
 
   const { data: details } = useQuery({
     queryKey: ['support', 'order-details', detailOrder],
-    queryFn: () => api.get<OrderDetails>(`/api/support/orders/${detailOrder}`),
+    queryFn: () => api.get<OrderDetails>(internalPaths.supportOrder(detailOrder!)),
     enabled: !!detailOrder,
   });
 

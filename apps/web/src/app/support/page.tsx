@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, FileText, Clock, MessageSquare } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { StatCard, Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
@@ -41,7 +42,7 @@ export default function SupportDashboard() {
   const router = useRouter();
   const { data: stats } = useQuery({
     queryKey: ['support', 'stats'],
-    queryFn: () => api.get<SupportStats>('/api/support/stats'),
+    queryFn: () => api.get<SupportStats>(internalPaths.supportStats),
   });
 
   return (

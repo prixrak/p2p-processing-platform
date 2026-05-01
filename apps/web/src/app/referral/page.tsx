@@ -14,6 +14,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { UserRole } from '@p2p/shared';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
@@ -36,7 +37,7 @@ interface ReferralProfile {
 export default function ReferralDashboard() {
   const { data: profile, isLoading, refetch } = useQuery({
     queryKey: ['referral', 'me'],
-    queryFn: () => api.get<ReferralProfile>('/api/referral/me'),
+    queryFn: () => api.get<ReferralProfile>(internalPaths.referralMe),
   });
 
   const traderCount = profile?.referrals.filter((u) => u.role === UserRole.TRADER).length ?? 0;

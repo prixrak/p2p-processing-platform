@@ -1,4 +1,5 @@
 import { getToken } from '@/lib/auth';
+import { internalPaths } from '@/lib/internal-api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
 
@@ -63,7 +64,7 @@ export const api = {
 
   /** Signed GET URLs cannot follow API→S3 redirects in fetch() due to CORS; response includes mimeType for previews (no extra metadata request). */
   getFileSignedUrl: (fileId: string) =>
-    request<{ url: string; mimeType: string }>(`/api/files/${fileId}/signed-url`),
+    request<{ url: string; mimeType: string }>(internalPaths.fileSignedUrl(fileId)),
 
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
@@ -101,7 +102,7 @@ export const api = {
 };
 
 export async function fetchOrder(id: string) {
-  const res = await fetch(`${API_BASE}/api/pay/${id}`, {
+  const res = await fetch(`${API_BASE}${internalPaths.payOrder(id)}`, {
     cache: 'no-store',
   });
   if (!res.ok) {
@@ -115,7 +116,7 @@ export async function confirmPayment(orderId: string, files?: File[]) {
     const formData = new FormData();
     formData.append('orderId', orderId);
     files.forEach((file) => formData.append('files', file));
-    return api.upload(`/api/pay/${orderId}/confirm`, formData);
+    return api.upload(internalPaths.payOrderConfirm(orderId), formData);
   }
-  return api.post(`/api/pay/${orderId}/confirm`, { orderId });
+  return api.post(internalPaths.payOrderConfirm(orderId), { orderId });
 }

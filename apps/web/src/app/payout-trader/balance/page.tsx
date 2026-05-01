@@ -28,7 +28,7 @@ interface SettlementItem {
 export default function PayoutTraderBalancePage() {
   const { data, isLoading } = useQuery({
     queryKey: ['payout-trader', 'summary'] as const,
-    queryFn: () => api.get<SpecialistSummary>('/api/payout-trader/payout/me/summary'),
+    queryFn: () => api.get<SpecialistSummary>(internalPaths.payoutSpecialistSummary),
   });
 
   const { data: settlementPage, isLoading: settlementsLoading } = useQuery({

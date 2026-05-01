@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Webhook, RotateCw } from 'lucide-react';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,13 +39,13 @@ export default function WebhooksPage() {
     queryFn: () => {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
-      return api.get(`/api/merchant/webhooks?${params}`);
+      return api.get(internalPaths.merchantWebhooks(params.toString()));
     },
   });
 
   const resendMutation = useMutation({
     mutationFn: (webhookId: string) =>
-      api.post(`/api/merchant/webhooks/${webhookId}/resend`),
+      api.post(internalPaths.merchantWebhookResend(webhookId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['merchant', 'webhooks'] });
       setResendingId(null);

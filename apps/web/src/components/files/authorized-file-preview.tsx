@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 
 export type AuthorizedFilePreviewProps = {
-  /** E.g. `/api/files/${fileId}` (must include Bearer token from `api`). */
+  /** API path from `internalPaths.fileById` (Bearer via `api`). */
   path: string;
   alt: string;
   className?: string;
@@ -19,7 +19,7 @@ function fileIdFromInternalFilesPath(path: string): string | null {
 
 /**
  * Loads a secured file with JWT: resolves a storage URL via JSON (avoids fetch redirect→S3 CORS).
- * Plain `<img src="/api/files/..." />` does not send Authorization; fetch()+302 to S3 also breaks CORS.
+ * Plain `<img>` to `/api/files/...` cannot send Authorization; fetch()+302 to S3 breaks CORS.
  */
 export function AuthorizedFilePreview({ path, alt, className }: AuthorizedFilePreviewProps) {
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');

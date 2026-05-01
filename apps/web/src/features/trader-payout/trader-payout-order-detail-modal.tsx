@@ -11,6 +11,7 @@ import { PayOutOrderStatus } from '@p2p/shared';
 import { formatCurrency, formatDateFull } from '@/lib/utils';
 import { payoutStatusVariant } from '@/lib/status-helpers';
 import { api } from '@/lib/api';
+import { internalPaths } from '@/lib/internal-api';
 import { PayoutDetailRow } from './payout-detail-row';
 import type { PayoutCompleteVars } from './trader-payout-columns';
 
@@ -139,7 +140,7 @@ export function TraderPayoutOrderDetailModal({
                     if (isSpecialist && proofFile) {
                       const fd = new FormData();
                       fd.append('file', proofFile);
-                      const meta = await api.upload<{ id: string }>('/api/files/upload', fd);
+                      const meta = await api.upload<{ id: string }>(internalPaths.fileUpload, fd);
                       completionProofFileId = meta.id;
                     }
                     completeMutation.mutate({
