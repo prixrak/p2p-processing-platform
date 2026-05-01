@@ -3,8 +3,6 @@
 import {
   LayoutDashboard,
   Users,
-  Store,
-  UserCheck,
   FileText,
   ArrowLeftRight,
   Coins,
@@ -27,8 +25,6 @@ const OWNER_ALLOWED = [UserRole.OWNER] as const;
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/owner', icon: LayoutDashboard },
   { label: 'Users', href: '/owner/users', icon: Users },
-  { label: 'Merchants', href: '/owner/merchants', icon: Store },
-  { label: 'Traders', href: '/owner/traders', icon: UserCheck },
   { label: 'Orders', href: '/owner/orders', icon: FileText },
   { label: 'Directions', href: '/owner/directions', icon: ArrowLeftRight },
   { label: 'Cascade', href: '/owner/cascade', icon: GitFork },

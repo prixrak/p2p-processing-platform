@@ -33,6 +33,7 @@ import {
 import { PrismaService } from '../../config/prisma.service';
 import { PayinService } from '../payin/payin.service';
 import { IsString } from 'class-validator';
+import { buildPayinPayoutOrderSearchOr } from '../../common/order-search-where';
 
 class UpdateOrderStatusDto {
   @IsString()
@@ -92,11 +93,7 @@ export class AdminOrdersController {
       if (status) where.status = status.toUpperCase();
       if (dateFilter.gte || dateFilter.lte) where.createdAt = dateFilter;
       if (search) {
-        where.OR = [
-          { id: { contains: search, mode: 'insensitive' } },
-          { requestId: { contains: search, mode: 'insensitive' } },
-          { merchant: { name: { contains: search, mode: 'insensitive' } } },
-        ];
+        where.OR = buildPayinPayoutOrderSearchOr(search, { merchantNameContains: true });
       }
       if (merchantFilter) {
         where.merchant = { name: { contains: merchantFilter, mode: 'insensitive' } };
@@ -144,11 +141,7 @@ export class AdminOrdersController {
       if (status) where.status = status.toUpperCase();
       if (dateFilter.gte || dateFilter.lte) where.createdAt = dateFilter;
       if (search) {
-        where.OR = [
-          { id: { contains: search, mode: 'insensitive' } },
-          { requestId: { contains: search, mode: 'insensitive' } },
-          { merchant: { name: { contains: search, mode: 'insensitive' } } },
-        ];
+        where.OR = buildPayinPayoutOrderSearchOr(search, { merchantNameContains: true });
       }
       if (merchantFilter) {
         where.merchant = { name: { contains: merchantFilter, mode: 'insensitive' } };

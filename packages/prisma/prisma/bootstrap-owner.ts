@@ -7,9 +7,12 @@ import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+const DEFAULT_OWNER_EMAIL = 'owner@p2p.local';
+const DEFAULT_OWNER_PASSWORD = 'admin123';
+
 async function main() {
-  const email = process.env.BOOTSTRAP_OWNER_EMAIL ?? 'owner@e2e.local';
-  const password = process.env.BOOTSTRAP_OWNER_PASSWORD ?? 'E2ETest123!';
+  const email = process.env.BOOTSTRAP_OWNER_EMAIL ?? DEFAULT_OWNER_EMAIL;
+  const password = process.env.BOOTSTRAP_OWNER_PASSWORD ?? DEFAULT_OWNER_PASSWORD;
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -24,7 +27,7 @@ async function main() {
 
   console.log(`Bootstrap OK: OWNER created — ${email}`);
   if (!process.env.BOOTSTRAP_OWNER_PASSWORD) {
-    console.log('Default password: E2ETest123! (set BOOTSTRAP_OWNER_PASSWORD to override)');
+    console.log(`Default password: ${DEFAULT_OWNER_PASSWORD} (set BOOTSTRAP_OWNER_PASSWORD to override)`);
   }
 }
 

@@ -9,23 +9,22 @@ import {
   Query,
   UseGuards,
   ParseUUIDPipe,
-  ParseIntPipe,
-  DefaultValuePipe,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiBearerAuth,
-  ApiQuery,
 } from '@nestjs/swagger';
 import { AuditAction, AuditEntityType, UserRole } from '@p2p/shared';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Audited } from '../../common/decorators/audited.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -36,14 +35,12 @@ export class UsersController {
 
   @Get()
   @Roles(UserRole.ADMIN, UserRole.OWNER)
-  @ApiOperation({ summary: 'List all users (admin/owner)' })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiOperation({ summary: 'List users with filters, profile hints, and stats (admin/owner)' })
   async findAll(
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query() query: ListUsersQueryDto,
+    @CurrentUser('role') viewerRole: UserRole,
   ) {
-    return this.usersService.findAll(page, limit);
+    return this.usersService.findAll(query, viewerRole);
   }
 
   @Post()
@@ -54,6 +51,9 @@ export class UsersController {
     return this.usersService.create(dto.email, dto.password, dto.role, {
       countryId: dto.countryId,
       payoutRate: dto.payoutRate,
+      referralPercent: dto.referralPercent,
+      referralCurrency: dto.referralCurrency,
+      merchantName: dto.merchantName,
     });
   }
 
@@ -72,7 +72,12 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() data: UpdateUserDto,
   ) {
-    return this.usersService.update(id, data);
+    return this.usersService.update(id, {
+      email: data.email,
+      role: data.role,
+      isActive: data.isActive,
+      merchantName: data.merchantName,
+    });
   }
 
   @Delete(':id')

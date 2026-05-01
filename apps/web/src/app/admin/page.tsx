@@ -25,7 +25,11 @@ interface AdminStats {
 }
 
 const quickLinks = [
-  { label: 'Manage Traders', href: '/admin/traders', description: 'Enable, disable, and review traders' },
+  {
+    label: 'Manage Users',
+    href: '/admin/users',
+    description: 'Accounts, merchants, and Pay-In trader profiles',
+  },
   { label: 'View Orders', href: '/admin/orders', description: 'Monitor all Pay-In and Pay-Out orders' },
   { label: 'Settlements', href: '/admin/settlements', description: 'Create and review settlements' },
   { label: 'Audit Log', href: '/admin/audit', description: 'Review all platform activity' },
@@ -60,7 +64,7 @@ export default function AdminDashboard() {
           label="Active Traders"
           value={isLoading ? '...' : String(stats?.activeTraders ?? 0)}
           icon={Users}
-          href="/admin/traders"
+          href="/admin/users"
           tone={statCardToneAt(1)}
         />
         <StatCard

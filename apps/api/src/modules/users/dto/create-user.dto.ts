@@ -1,5 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsString, IsOptional, MinLength, IsUUID, IsNumber, Min } from 'class-validator';
+import {
+  IsEmail,
+  IsIn,
+  IsString,
+  IsOptional,
+  MinLength,
+  IsUUID,
+  IsNumber,
+  Min,
+  Max,
+  ValidateIf,
+} from 'class-validator';
 import { UserRole } from '@p2p/shared';
 
 export const CREATABLE_USER_ROLES = [
@@ -8,6 +19,7 @@ export const CREATABLE_USER_ROLES = [
   UserRole.PAYOUT_TRADER,
   UserRole.MERCHANT,
   UserRole.SUPPORT,
+  UserRole.REFERRAL,
 ] as const;
 
 export class CreateUserDto {
@@ -36,4 +48,28 @@ export class CreateUserDto {
   @Min(0)
   @IsOptional()
   payoutRate?: number;
+
+  @ApiPropertyOptional({
+    description: 'Referral commission percent (0–100) when role is REFERRAL',
+    example: 5,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  referralPercent?: number;
+
+  @ApiPropertyOptional({ description: 'Referral balance currency when role is REFERRAL', example: 'UAH' })
+  @IsOptional()
+  @IsString()
+  referralCurrency?: string;
+
+  @ApiPropertyOptional({
+    description: 'Merchant display name (required when role is MERCHANT)',
+    example: 'Acme Corp',
+  })
+  @ValidateIf((o) => o.role === UserRole.MERCHANT)
+  @IsString()
+  @MinLength(1)
+  merchantName?: string;
 }

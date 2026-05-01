@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsIn, IsOptional } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 import { UserRole } from '@p2p/shared';
 
 const UPDATABLE_ROLES = [
@@ -7,6 +7,7 @@ const UPDATABLE_ROLES = [
   UserRole.TRADER,
   UserRole.MERCHANT,
   UserRole.SUPPORT,
+  UserRole.REFERRAL,
 ] as const;
 
 export class UpdateUserDto {
@@ -24,4 +25,13 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'When assigning MERCHANT, supply a display name if no merchant profile exists yet. Optional when renaming an existing merchant.',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  merchantName?: string;
 }

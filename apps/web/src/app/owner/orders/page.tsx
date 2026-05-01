@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Eye } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -58,8 +58,14 @@ export default function OrdersPage() {
   const [tab, setTab] = useState('PAYIN');
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
-  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [detailOrder, setDetailOrder] = useState<string | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchInput.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   const statusFilterOptions = useMemo(
     () => (tab === 'PAYIN' ? payinStatusFilterOptions : payoutStatusFilterOptions),
@@ -67,7 +73,7 @@ export default function OrdersPage() {
   );
 
   const { data, isLoading } = useQuery({
-    queryKey: ['owner', 'orders', tab, page, statusFilter, search],
+    queryKey: ['owner', 'orders', tab, page, statusFilter, debouncedSearch],
     queryFn: () => {
       const params = new URLSearchParams({
         type: tab,
@@ -75,7 +81,7 @@ export default function OrdersPage() {
         limit: '20',
       });
       if (statusFilter) params.set('status', statusFilter);
-      if (search) params.set('search', search);
+      if (debouncedSearch) params.set('search', debouncedSearch);
       return api.get<OrdersResponse>(
         internalPaths.adminOrders(params.toString()),
       );
@@ -211,8 +217,8 @@ export default function OrdersPage() {
       <FilterBar>
         <FilterInput
           label="Search"
-          value={search}
-          onChange={(v) => { setSearch(v); setPage(1); }}
+          value={searchInput}
+          onChange={(v) => { setSearchInput(v); setPage(1); }}
           placeholder="Search by ID or merchant..."
           className="w-72 min-w-[12rem]"
         />

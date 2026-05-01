@@ -3,5 +3,5 @@
 import { StaffUsersPage } from '@/features/staff-users';
 
 export default function UsersPage() {
-  return <StaffUsersPage staffRole="owner" />;
+  return <StaffUsersPage staffRole="admin" />;
 }

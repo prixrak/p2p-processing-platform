@@ -34,6 +34,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { GenerateApiKeysDto } from './dto';
 import { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
+import { buildPayinPayoutOrderSearchOr } from '../../common/order-search-where';
 import { PayinRealtimeService } from '../payin/payin-realtime.service';
 import { PayoutRealtimeService } from '../payout/payout-realtime.service';
 
@@ -238,10 +239,7 @@ export class MerchantCabinetController {
       if (status) where.status = status.toUpperCase();
       if (createdAt) where.createdAt = createdAt;
       if (search) {
-        where.OR = [
-          { id: { contains: search } },
-          { requestId: { contains: search } },
-        ];
+        where.OR = buildPayinPayoutOrderSearchOr(search);
       }
 
       const orders = await this.prisma.payoutOrder.findMany({
@@ -269,10 +267,7 @@ export class MerchantCabinetController {
     if (status) where.status = status.toUpperCase();
     if (createdAt) where.createdAt = createdAt;
     if (search) {
-      where.OR = [
-        { id: { contains: search } },
-        { requestId: { contains: search } },
-      ];
+      where.OR = buildPayinPayoutOrderSearchOr(search);
     }
 
     const orders = await this.prisma.payinOrder.findMany({

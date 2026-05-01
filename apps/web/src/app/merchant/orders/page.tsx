@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeftRight } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -33,9 +33,15 @@ interface MerchantOrder {
 export default function MerchantOrdersPage() {
   const [tab, setTab] = useState<OrderListUiTab>(ORDER_LIST_UI_TAB.PAY_IN);
   const [statusFilter, setStatusFilter] = useState('');
-  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchInput.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   const direction = orderListUiTabToDirection(tab);
 
@@ -45,11 +51,11 @@ export default function MerchantOrdersPage() {
   );
 
   const { data: orders = [], isLoading } = useQuery<MerchantOrder[]>({
-    queryKey: ['merchant', 'orders', { direction, statusFilter, search, dateFrom, dateTo }],
+    queryKey: ['merchant', 'orders', { direction, statusFilter, debouncedSearch, dateFrom, dateTo }],
     queryFn: () => {
       const params = new URLSearchParams({ direction });
       if (statusFilter) params.set('status', statusFilter);
-      if (search) params.set('search', search);
+      if (debouncedSearch) params.set('search', debouncedSearch);
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
       return api.get(internalPaths.merchantOrders(params.toString()));
@@ -152,8 +158,8 @@ export default function MerchantOrdersPage() {
         />
         <FilterInput
           label="Search"
-          value={search}
-          onChange={setSearch}
+          value={searchInput}
+          onChange={setSearchInput}
           placeholder="Order or external ID..."
         />
         <FilterInput

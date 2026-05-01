@@ -18,6 +18,7 @@ export function ConfirmDialog({
   tone = 'default',
   loading,
   onConfirm,
+  confirmDisabled,
   icon,
 }: {
   open: boolean;
@@ -29,6 +30,7 @@ export function ConfirmDialog({
   tone?: ConfirmDialogTone;
   loading?: boolean;
   onConfirm: () => void;
+  confirmDisabled?: boolean;
   /** Optional icon beside the title (defaults to warning for danger tone). */
   icon?: ReactNode;
 }) {
@@ -66,6 +68,7 @@ export function ConfirmDialog({
             type="button"
             variant={tone === 'danger' ? 'danger' : 'primary'}
             loading={loading}
+            disabled={loading || confirmDisabled}
             className={clsx(tone === 'danger' && 'min-w-[7rem]')}
             onClick={() => onConfirm()}
           >

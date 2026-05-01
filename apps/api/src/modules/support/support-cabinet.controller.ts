@@ -20,6 +20,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole, DirectionType } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
+import { buildAppealPayinOrderSearchOr } from '../../common/order-search-where';
 
 @ApiTags('Support Cabinet')
 @ApiBearerAuth()
@@ -209,10 +210,7 @@ export class SupportCabinetController {
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
     if (search) {
-      where.OR = [
-        { payinOrder: { id: { contains: search } } },
-        { payinOrder: { merchant: { name: { contains: search, mode: 'insensitive' } } } },
-      ];
+      where.OR = buildAppealPayinOrderSearchOr(search);
     }
 
     const [appeals, total] = await Promise.all([

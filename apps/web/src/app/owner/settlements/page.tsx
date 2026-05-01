@@ -332,8 +332,8 @@ export default function SettlementsPage() {
             Incorrect rows stay in the ledger — post offsetting MANUAL CREDIT/DEBIT via{' '}
             <code className="text-xs bg-bg-primary px-1 rounded">{internalPaths.adminBalanceAdjust}</code>
             {' '}after picking a trader in{' '}
-            <Link href="/owner/traders" className="underline text-accent-blue">
-              Traders
+            <Link href="/owner/users" className="underline text-accent-blue">
+              Users
             </Link>
             .
           </p>

@@ -12,9 +12,11 @@ import { useStaffTraders } from './use-staff-traders';
 
 export interface StaffTradersPageProps {
   staffRole: StaffRolePrefix;
+  /** Hide page title when embedded under another screen (e.g. Users tabs). */
+  embedded?: boolean;
 }
 
-export function StaffTradersPage({ staffRole }: StaffTradersPageProps) {
+export function StaffTradersPage({ staffRole, embedded = false }: StaffTradersPageProps) {
   const [limitsTrader, setLimitsTrader] = useState<PayoutLimitsTrader | null>(null);
   const [detailTraderId, setDetailTraderId] = useState<string | null>(null);
   const [detailTraderName, setDetailTraderName] = useState('');
@@ -45,18 +47,20 @@ export function StaffTradersPage({ staffRole }: StaffTradersPageProps) {
   );
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-            <Users size={24} />
-            Traders
-          </h1>
-          <p className="text-sm text-text-muted mt-1">
-            Manage platform traders and their activity
-          </p>
+    <div className={embedded ? 'space-y-4' : 'space-y-6 animate-fade-in'}>
+      {!embedded ? (
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+              <Users size={24} />
+              Traders
+            </h1>
+            <p className="text-sm text-text-muted mt-1">
+              Manage platform traders and their activity
+            </p>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <FilterBar>
         <FilterInput

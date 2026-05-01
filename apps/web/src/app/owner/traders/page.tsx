@@ -1,7 +1,5 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import { StaffTradersPage } from '@/features/traders';
-
-export default function TradersPage() {
-  return <StaffTradersPage staffRole="owner" />;
+export default function TradersRedirectPage() {
+  redirect('/owner/users');
 }

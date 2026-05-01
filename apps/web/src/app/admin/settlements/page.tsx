@@ -327,11 +327,14 @@ export default function SettlementsPage() {
           <p className="font-medium text-text-primary">Corrections and reversals</p>
           <p className="mt-1 text-xs leading-relaxed">
             Ledger rows are append-only. Incorrect settlements are reversed via separate manual CREDIT /
-            DEBIT balance lines (audit comment required). Trader list:&nbsp;
-            <Link className="underline text-accent-blue hover:text-accent-blue/90" href="/admin/traders">
-              Open trader directory
-            </Link>{' '}
-            then use&nbsp;
+            DEBIT balance lines (audit comment required). Pick a trader under{' '}
+            <Link
+              className="underline text-accent-blue hover:text-accent-blue/90"
+              href="/admin/users"
+            >
+              Users
+            </Link>
+            , filter role <strong>Trader</strong> and search if needed, then use&nbsp;
             <code className="text-xs bg-bg-primary px-1 rounded">{internalPaths.adminBalanceAdjust}</code>{' '}
             from API clients or internal tooling.
           </p>

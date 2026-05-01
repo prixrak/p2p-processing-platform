@@ -48,29 +48,62 @@ export const ownerCreateUserFormSchema = z
     role: z.nativeEnum(UserRole),
     countryId: z.string(),
     payoutRate: z.number(),
+    referralPercent: z.number(),
+    referralCurrency: z.string(),
+    merchantName: z.string(),
   })
   .superRefine((data, ctx) => {
-    if (data.role !== UserRole.PAYOUT_TRADER) return;
-    if (!data.countryId.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['countryId'],
-        message: 'Select a country',
-      });
+    if (data.role === UserRole.PAYOUT_TRADER) {
+      if (!data.countryId.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['countryId'],
+          message: 'Select a country',
+        });
+      }
+      if (!Number.isFinite(data.payoutRate) || data.payoutRate < 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['payoutRate'],
+          message: 'Payout rate must be zero or greater',
+        });
+      }
+      if (data.payoutRate > 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['payoutRate'],
+          message: 'Payout rate cannot exceed 1 (100%)',
+        });
+      }
     }
-    if (!Number.isFinite(data.payoutRate) || data.payoutRate < 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['payoutRate'],
-        message: 'Payout rate must be zero or greater',
-      });
+    if (data.role === UserRole.REFERRAL) {
+      if (
+        !Number.isFinite(data.referralPercent) ||
+        data.referralPercent < 0 ||
+        data.referralPercent > 100
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['referralPercent'],
+          message: 'Referral percent must be between 0 and 100',
+        });
+      }
+      if (!data.referralCurrency.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['referralCurrency'],
+          message: 'Enter a currency code',
+        });
+      }
     }
-    if (data.payoutRate > 1) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['payoutRate'],
-        message: 'Payout rate cannot exceed 1 (100%)',
-      });
+    if (data.role === UserRole.MERCHANT) {
+      if (!data.merchantName.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['merchantName'],
+          message: 'Enter merchant display name',
+        });
+      }
     }
   });
 

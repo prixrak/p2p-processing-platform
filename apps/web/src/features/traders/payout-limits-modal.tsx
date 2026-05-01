@@ -54,6 +54,7 @@ export function PayoutLimitsModal({
                 },
           ),
       );
+      void queryClient.invalidateQueries({ queryKey: [queryPrefix, 'users', 'directory'] });
       onClose();
     },
   });

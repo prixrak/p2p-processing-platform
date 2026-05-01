@@ -22,7 +22,7 @@ const ADMIN_ALLOWED = [UserRole.ADMIN] as const;
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
-  { label: 'Traders', href: '/admin/traders', icon: Users },
+  { label: 'Users', href: '/admin/users', icon: Users },
   { label: 'Orders', href: '/admin/orders', icon: ArrowLeftRight },
   { label: 'Treasury', href: '/admin/treasury', icon: CircleDollarSign },
   { label: 'Cascade', href: '/admin/cascade', icon: GitFork },
