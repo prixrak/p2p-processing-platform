@@ -75,13 +75,15 @@ model ReferralProfile {
   userId          String   @unique @map("user_id") @db.Uuid
   referralPercent Decimal  @default(0) @map("referral_percent") @db.Decimal(8, 4)
   balance         Decimal  @default(0) @db.Decimal(18, 4)
-  currency        String   @default("UAH")
+  currencyId      String   @map("currency_id") @db.Uuid
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currency Currency @relation(fields: [currencyId], references: [id], onDelete: Restrict)
   referrals User[] @relation("ReferredUsers")
 
+  @@index([currencyId])
   @@map("referral_profiles")
 }
 
@@ -133,12 +135,14 @@ model MerchantApiKey {
 model MerchantBalance {
   id         String  @id @default(uuid()) @db.Uuid
   merchantId String  @map("merchant_id") @db.Uuid
-  currency   String
+  currencyId String  @map("currency_id") @db.Uuid
   amount     Decimal @default(0) @db.Decimal(18, 4)
 
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  currency Currency @relation(fields: [currencyId], references: [id], onDelete: Restrict)
 
-  @@unique([merchantId, currency])
+  @@unique([merchantId, currencyId])
+  @@index([currencyId])
   @@map("merchant_balances")
 }
 
@@ -149,6 +153,22 @@ model Currency {
   code     String  @unique
   isActive Boolean @default(true) @map("is_active")
 
+  referralProfiles                 ReferralProfile[]
+  merchantBalances                 MerchantBalance[]
+  directionsFrom                   Direction[]                         @relation("DirectionFromCurrency")
+  directionsTo                     Direction[]                         @relation("DirectionToCurrency")
+  countries                        Country[]
+  payoutTraderBalanceTransactions PayoutTraderBalanceTransaction[]
+  merchantDirections               MerchantDirection[]
+  balanceTransactions              BalanceTransaction[]
+  traderBalances                   TraderBalance[]
+  requisiteGroups                  RequisiteGroup[]
+  requisites                       Requisite[]
+  payinOrders                      PayinOrder[]
+  payoutOrders                     PayoutOrder[]
+  settlements                      Settlement[]
+  merchantBalanceTransactions      MerchantBalanceTransaction[]
+
   @@map("currencies")
 }
 
@@ -158,34 +178,41 @@ enum DirectionType {
 }
 
 model Direction {
-  id           String        @id @default(uuid()) @db.Uuid
-  name         String
-  type         DirectionType
-  fromCurrency String        @map("from_currency")
-  toCurrency   String        @map("to_currency")
-  minAmount    Decimal       @default(0) @map("min_amount") @db.Decimal(18, 4)
-  maxAmount    Decimal       @default(0) @map("max_amount") @db.Decimal(18, 4)
-  rate         Decimal       @default(1) @db.Decimal(18, 8)
-  percentFee   Decimal       @default(0) @map("percent_fee") @db.Decimal(8, 4)
-  isOnline     Boolean       @default(true) @map("is_online")
-  createdAt    DateTime      @default(now()) @map("created_at")
+  id             String        @id @default(uuid()) @db.Uuid
+  name           String
+  type           DirectionType
+  fromCurrencyId String        @map("from_currency_id") @db.Uuid
+  toCurrencyId   String        @map("to_currency_id") @db.Uuid
+  minAmount      Decimal       @default(0) @map("min_amount") @db.Decimal(18, 4)
+  maxAmount      Decimal       @default(0) @map("max_amount") @db.Decimal(18, 4)
+  rate           Decimal       @default(1) @db.Decimal(18, 8)
+  percentFee     Decimal       @default(0) @map("percent_fee") @db.Decimal(8, 4)
+  isOnline       Boolean       @default(true) @map("is_online")
+  createdAt      DateTime      @default(now()) @map("created_at")
 
+  fromCurrency Currency @relation("DirectionFromCurrency", fields: [fromCurrencyId], references: [id], onDelete: Restrict)
+  toCurrency   Currency @relation("DirectionToCurrency", fields: [toCurrencyId], references: [id], onDelete: Restrict)
+
+  @@index([fromCurrencyId])
+  @@index([toCurrencyId])
   @@map("directions")
 }
 
 // ─── Geo: Countries ───
 
 model Country {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  code      String   @unique
-  currency  String
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  code       String   @unique
+  currencyId String   @map("currency_id") @db.Uuid
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
 
+  currency              Currency              @relation(fields: [currencyId], references: [id], onDelete: Restrict)
   paymentMethods        PaymentMethod[]
   payoutTraderProfiles PayoutTraderProfile[]
 
+  @@index([currencyId])
   @@map("countries")
 }
 
@@ -289,16 +316,18 @@ model PayoutTraderBalanceTransaction {
   payoutTraderId String                   @map("payout_trader_id") @db.Uuid
   type           PayoutTraderBalanceTxType
   amount         Decimal                  @db.Decimal(18, 6)
-  currency       String                   @default("USDT")
+  currencyId     String                   @map("currency_id") @db.Uuid
   referenceId    String?                  @map("reference_id") @db.Uuid
   createdById    String?                  @map("created_by_id") @db.Uuid
   comment        String?
   createdAt      DateTime                 @default(now()) @map("created_at")
 
   payoutTrader PayoutTraderProfile @relation(fields: [payoutTraderId], references: [id], onDelete: Cascade)
+  currency     Currency            @relation(fields: [currencyId], references: [id], onDelete: Restrict)
   createdBy    User?               @relation("PayoutTraderBalanceTxCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([payoutTraderId])
+  @@index([currencyId])
   @@index([createdAt])
   @@map("payout_trader_balance_transactions")
 }
@@ -351,7 +380,7 @@ model MerchantDirection {
   merchantId              String        @map("merchant_id") @db.Uuid
   paymentMethodId         String?       @map("payment_method_id") @db.Uuid
   directionType           DirectionType @map("direction_type")
-  currency                String
+  currencyId              String        @map("currency_id") @db.Uuid
   minAmount               Decimal       @default(0) @map("min_amount") @db.Decimal(18, 4)
   maxAmount               Decimal       @default(0) @map("max_amount") @db.Decimal(18, 4)
   defaultCommissionPercent Decimal      @default(0) @map("default_commission_percent") @db.Decimal(8, 4)
@@ -360,10 +389,12 @@ model MerchantDirection {
 
   merchant        Merchant         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   paymentMethod   PaymentMethod?   @relation(fields: [paymentMethodId], references: [id])
+  currency        Currency         @relation(fields: [currencyId], references: [id], onDelete: Restrict)
   commissionTiers MerchantCommissionTier[]
 
-  @@unique([merchantId, directionType, currency])
+  @@unique([merchantId, directionType, currencyId])
   @@index([merchantId, directionType])
+  @@index([currencyId])
   @@map("merchant_directions")
 }
 
@@ -401,16 +432,18 @@ model BalanceTransaction {
   traderId    String                 @map("trader_id") @db.Uuid
   type        BalanceTransactionType
   amount      Decimal                @db.Decimal(18, 4)
-  currency    String
+  currencyId  String                 @map("currency_id") @db.Uuid
   referenceId String?                @map("reference_id") @db.Uuid
   createdById String?                @map("created_by_id") @db.Uuid
   comment     String?
   createdAt   DateTime               @default(now()) @map("created_at")
 
   trader    TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
+  currency  Currency      @relation(fields: [currencyId], references: [id], onDelete: Restrict)
   createdBy User?         @relation("BalanceTxCreator", fields: [createdById], references: [id])
 
   @@index([traderId])
+  @@index([currencyId])
   @@index([createdAt])
   @@map("balance_transactions")
 }
@@ -553,16 +586,18 @@ model CoverageNominalSetting {
 }
 
 model TraderBalance {
-  id       String  @id @default(uuid()) @db.Uuid
-  traderId String  @map("trader_id") @db.Uuid
-  currency String
-  amount   Decimal @default(0) @db.Decimal(18, 4)
+  id         String  @id @default(uuid()) @db.Uuid
+  traderId   String  @map("trader_id") @db.Uuid
+  currencyId String  @map("currency_id") @db.Uuid
+  amount     Decimal @default(0) @db.Decimal(18, 4)
   /// Cumulative on-chain USDT credited via wallet deposits (TZ `trader_balances.total_deposited`). Meaningful when currency is USDT.
   totalDeposited Decimal @default(0) @map("total_deposited") @db.Decimal(20, 6)
 
-  trader TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
+  trader   TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
+  currency Currency      @relation(fields: [currencyId], references: [id], onDelete: Restrict)
 
-  @@unique([traderId, currency])
+  @@unique([traderId, currencyId])
+  @@index([currencyId])
   @@map("trader_balances")
 }
 
@@ -581,7 +616,7 @@ model RequisiteGroup {
   id              String    @id @default(uuid()) @db.Uuid
   traderId        String    @map("trader_id") @db.Uuid
   name            String
-  currency        String    @default("UAH")
+  currencyId      String    @map("currency_id") @db.Uuid
   paymentMethodId String?   @map("payment_method_id") @db.Uuid
   isActive        Boolean   @default(true) @map("is_active")
   archivedAt      DateTime? @map("archived_at")
@@ -591,9 +626,11 @@ model RequisiteGroup {
 
   trader         TraderProfile  @relation(fields: [traderId], references: [id], onDelete: Cascade)
   paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  currency       Currency       @relation(fields: [currencyId], references: [id], onDelete: Restrict)
   requisites     Requisite[]
 
   @@index([traderId, archivedAt])
+  @@index([currencyId])
   @@map("requisite_groups")
 }
 
@@ -615,16 +652,17 @@ model Requisite {
   limitTotalOps     Int                      @default(999999) @map("limit_total_ops")
   usedAmount        Decimal                  @default(0) @map("used_amount") @db.Decimal(18, 4)
   usedOps           Int                      @default(0) @map("used_ops")
-  currency          String                   @default("UAH")
+  currencyId        String                   @map("currency_id") @db.Uuid
   createdAt         DateTime                 @default(now()) @map("created_at")
 
   trader        TraderProfile  @relation(fields: [traderId], references: [id], onDelete: Cascade)
   group         RequisiteGroup @relation(fields: [requisiteGroupId], references: [id], onDelete: Restrict)
   bank          Bank?          @relation(fields: [bankId], references: [id])
+  currency      Currency       @relation(fields: [currencyId], references: [id], onDelete: Restrict)
   payinOrders   PayinOrder[]
 
   @@index([traderId, isActive])
-  @@index([currency, isActive])
+  @@index([currencyId, isActive])
   @@index([requisiteGroupId])
   @@map("requisites")
 }
@@ -667,7 +705,7 @@ model PayinOrder {
   requisiteId       String?     @map("requisite_id") @db.Uuid
   paymentMethodId   String?     @map("payment_method_id") @db.Uuid
   amount            Decimal     @db.Decimal(18, 4)
-  currency          String
+  currencyId        String      @map("currency_id") @db.Uuid
   commissionPercent Decimal     @default(0) @map("commission_percent") @db.Decimal(8, 4)
   commission        Decimal     @default(0) @db.Decimal(18, 4)
   partnerAmount     Decimal     @default(0) @map("partner_amount") @db.Decimal(18, 4)
@@ -692,6 +730,7 @@ model PayinOrder {
   trader        TraderProfile? @relation(fields: [traderId], references: [id])
   requisite     Requisite?     @relation(fields: [requisiteId], references: [id])
   paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  currency      Currency       @relation(fields: [currencyId], references: [id], onDelete: Restrict)
   appeals       Appeal[]
   webhookOutbox WebhookOutbox[]
   trafficDistributionLog TrafficDistributionLog?
@@ -700,6 +739,7 @@ model PayinOrder {
   @@index([status])
   @@index([merchantId])
   @@index([traderId])
+  @@index([currencyId])
   @@index([createdAt])
   @@map("payin_orders")
 }
@@ -733,7 +773,7 @@ model PayoutOrder {
   payoutTraderId  String?           @map("payout_trader_id") @db.Uuid
   paymentMethodId String?           @map("payment_method_id") @db.Uuid
   amount          Decimal           @db.Decimal(18, 4)
-  currency        String
+  currencyId      String            @map("currency_id") @db.Uuid
   status          PayoutStatus      @default(PENDING)
   poolType        PayoutPoolType    @default(STANDARD) @map("pool_type")
   poolAssignedAt  DateTime?         @map("pool_assigned_at")
@@ -761,6 +801,7 @@ model PayoutOrder {
   trader          TraderProfile?      @relation(fields: [traderId], references: [id])
   payoutTrader    PayoutTraderProfile? @relation(fields: [payoutTraderId], references: [id])
   paymentMethod   PaymentMethod?      @relation(fields: [paymentMethodId], references: [id])
+  currency        Currency            @relation(fields: [currencyId], references: [id], onDelete: Restrict)
   completionProofFileId String?      @map("completion_proof_file_id") @db.Uuid
   completionProofFile File?        @relation("PayoutOrderCompletionProof", fields: [completionProofFileId], references: [id], onDelete: SetNull)
   webhookOutbox   WebhookOutbox[]
@@ -770,6 +811,7 @@ model PayoutOrder {
   @@index([merchantId])
   @@index([traderId])
   @@index([payoutTraderId])
+  @@index([currencyId])
   @@index([createdAt])
   @@map("payout_orders")
 }
@@ -891,7 +933,7 @@ model Settlement {
   merchantId     String?            @map("merchant_id") @db.Uuid
   type           SettlementTypeEnum
   amount         Decimal            @db.Decimal(18, 4)
-  currency       String
+  currencyId     String             @map("currency_id") @db.Uuid
   /// Merchant-only: manual local fiat per USDT reference stored when an operator confirms a fiat withdrawal settlement (audit).
   manualRate     Decimal?           @map("manual_rate") @db.Decimal(18, 8)
   /// Merchant or Pay-Out specialist: finalized USDT amount sent off-platform (merchant audit).
@@ -904,10 +946,12 @@ model Settlement {
   trader       TraderProfile?       @relation(fields: [traderId], references: [id])
   payoutTrader PayoutTraderProfile? @relation(fields: [payoutTraderId], references: [id])
   merchant     Merchant?            @relation(fields: [merchantId], references: [id])
+  currency     Currency             @relation(fields: [currencyId], references: [id], onDelete: Restrict)
 
   @@index([traderId])
   @@index([payoutTraderId])
   @@index([merchantId])
+  @@index([currencyId])
   @@map("settlements")
 }
 
@@ -994,14 +1038,16 @@ model MerchantBalanceTransaction {
   merchantId  String                         @map("merchant_id") @db.Uuid
   type        MerchantBalanceTransactionType
   amount      Decimal                        @db.Decimal(18, 2)
-  currency    String
+  currencyId  String                         @map("currency_id") @db.Uuid
   referenceId String?                        @map("reference_id") @db.Uuid
   comment     String?
   createdAt   DateTime                       @default(now()) @map("created_at")
 
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  currency Currency @relation(fields: [currencyId], references: [id], onDelete: Restrict)
 
   @@index([merchantId])
+  @@index([currencyId])
   @@index([createdAt])
   @@map("merchant_balance_transactions")
 }

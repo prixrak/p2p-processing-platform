@@ -83,6 +83,7 @@ export class RequisitesService {
         usedAmount: { increment: amount },
         usedOps: { increment: 1 },
       },
+      include: { currency: { select: { code: true } } },
     });
 
     const amountLimitReached =
@@ -99,7 +100,7 @@ export class RequisitesService {
         `Requisite ${requisiteId} auto-disabled [${reason}]: usedAmount=${requisite.usedAmount}, usedOps=${requisite.usedOps}`,
       );
     }
-    void this.cascadeCoverageCache.invalidateCurrency(requisite.currency);
+    void this.cascadeCoverageCache.invalidateCurrency(requisite.currency.code);
   }
 
   /**
@@ -113,8 +114,9 @@ export class RequisitesService {
         usedAmount: { decrement: amount },
         usedOps: { decrement: 1 },
       },
+      include: { currency: { select: { code: true } } },
     });
-    void this.cascadeCoverageCache.invalidateCurrency(updated.currency);
+    void this.cascadeCoverageCache.invalidateCurrency(updated.currency.code);
     this.logger.log(
       `Requisite ${requisiteId} usage released: amount=${amount}, ops=1`,
     );
@@ -127,6 +129,7 @@ export class RequisitesService {
   async checkAndAutoDisable(requisiteId: string): Promise<boolean> {
     const requisite = await this.prisma.requisite.findUnique({
       where: { id: requisiteId },
+      include: { currency: { select: { code: true } } },
     });
     if (!requisite) {
       throw new NotFoundException(`Requisite ${requisiteId} not found`);
@@ -147,7 +150,7 @@ export class RequisitesService {
       this.logger.warn(
         `Requisite ${requisiteId} auto-disabled [${reason}] after limit check`,
       );
-      void this.cascadeCoverageCache.invalidateCurrency(requisite.currency);
+      void this.cascadeCoverageCache.invalidateCurrency(requisite.currency.code);
       return true;
     }
 
@@ -179,11 +182,11 @@ export class RequisitesService {
         maxAmount: dto.maxAmount ?? 999999999,
         limitTotalAmount: dto.limitTotalAmount ?? 999999999,
         limitTotalOps: dto.limitTotalOps ?? 999999,
-        currency: group.currency,
+        currencyId: group.currencyId,
       },
-      include: { bank: true, group: true },
+      include: { bank: true, group: true, currency: { select: { code: true } } },
     });
-    void this.cascadeCoverageCache.invalidateCurrency(created.currency);
+    void this.cascadeCoverageCache.invalidateCurrency(created.currency.code);
     return created;
   }
 
@@ -201,7 +204,7 @@ export class RequisitesService {
   async findById(id: string) {
     const requisite = await this.prisma.requisite.findUnique({
       where: { id },
-      include: { bank: true, trader: true, group: true },
+      include: { bank: true, trader: true, group: true, currency: { select: { code: true } } },
     });
     if (!requisite) throw new NotFoundException('Requisite not found');
     return requisite;
@@ -226,16 +229,16 @@ export class RequisitesService {
           ? { limitTotalOps: dto.limitTotalOps }
           : {}),
       },
-      include: { bank: true, group: true },
+      include: { bank: true, group: true, currency: { select: { code: true } } },
     });
-    void this.cascadeCoverageCache.invalidateCurrency(updated.currency);
+    void this.cascadeCoverageCache.invalidateCurrency(updated.currency.code);
     return updated;
   }
 
   async delete(id: string) {
     const prev = await this.findById(id);
     const removed = await this.prisma.requisite.delete({ where: { id } });
-    void this.cascadeCoverageCache.invalidateCurrency(prev.currency);
+    void this.cascadeCoverageCache.invalidateCurrency(prev.currency.code);
     return removed;
   }
 
@@ -246,7 +249,7 @@ export class RequisitesService {
       data: { isActive: true, disabledReason: null },
       include: { bank: true, group: true },
     });
-    void this.cascadeCoverageCache.invalidateCurrency(prev.currency);
+    void this.cascadeCoverageCache.invalidateCurrency(prev.currency.code);
     return updated;
   }
 
@@ -257,7 +260,7 @@ export class RequisitesService {
       data: { isActive: false, disabledReason: 'MANUAL' },
       include: { bank: true, group: true },
     });
-    void this.cascadeCoverageCache.invalidateCurrency(prev.currency);
+    void this.cascadeCoverageCache.invalidateCurrency(prev.currency.code);
     return updated;
   }
 }

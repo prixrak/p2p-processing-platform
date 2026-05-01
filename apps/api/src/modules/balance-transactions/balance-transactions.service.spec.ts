@@ -2,6 +2,12 @@ import { BalanceTransactionType } from '@prisma/client';
 import { BalanceTransactionsService } from './balance-transactions.service';
 
 describe('BalanceTransactionsService', () => {
+  const currencies = {
+    requireActiveCurrencyIdByCode: jest.fn().mockResolvedValue('00000000-0000-0000-0000-000000000001'),
+    normalizeCode: (c: string) => c.trim().toUpperCase(),
+    findCurrencyIdByCode: jest.fn(),
+  };
+
   it('schedules settlement handbook Telegram alerts after USDT ledger rows', async () => {
     const prisma = {
       balanceTransaction: {
@@ -14,6 +20,7 @@ describe('BalanceTransactionsService', () => {
     const service = new BalanceTransactionsService(
       prisma as never,
       telegram as never,
+      currencies as never,
     );
 
     await service.record({
@@ -42,6 +49,7 @@ describe('BalanceTransactionsService', () => {
     const service = new BalanceTransactionsService(
       prisma as never,
       telegram as never,
+      currencies as never,
     );
 
     await service.record({
@@ -70,6 +78,7 @@ describe('BalanceTransactionsService', () => {
     const service = new BalanceTransactionsService(
       prisma as never,
       telegram as never,
+      currencies as never,
     );
 
     await service.record({

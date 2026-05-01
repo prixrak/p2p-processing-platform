@@ -8,6 +8,7 @@ import {
   PlatformSettingsService,
   PLATFORM_SETTING_TRADER_PAYIN_LOW_CAPACITY_ALERT_THRESHOLD_USDT,
 } from '../platform-settings/platform-settings.service';
+import { CurrenciesService } from '../currencies/currencies.service';
 import {
   logExternalFailure,
   logHttpResponseFailure,
@@ -38,6 +39,7 @@ export class TelegramService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly platformSettings: PlatformSettingsService,
+    private readonly currencies: CurrenciesService,
   ) {
     this.botToken = config.telegram.botToken;
   }
@@ -301,7 +303,7 @@ export class TelegramService {
     const specialists = await this.prisma.payoutTraderProfile.findMany({
       where: {
         isActive: true,
-        country: { currency: orderCurrency },
+        country: { currency: { code: orderCurrency.trim().toUpperCase() } },
       },
       include: {
         telegramSettings: true,
@@ -403,6 +405,7 @@ export class TelegramService {
     balanceTxType: BalanceTransactionType;
     topUpAmountUsdt?: number;
   }): Promise<void> {
+    const usdtId = await this.currencies.getUsdtCurrencyId();
     const [profile, balRow, tg, thresholdRow] = await Promise.all([
       this.prisma.traderProfile.findUnique({
         where: { id: payload.traderId },
@@ -414,7 +417,7 @@ export class TelegramService {
       }),
       this.prisma.traderBalance.findUnique({
         where: {
-          traderId_currency: { traderId: payload.traderId, currency: 'USDT' },
+          traderId_currencyId: { traderId: payload.traderId, currencyId: usdtId },
         },
         select: { amount: true },
       }),

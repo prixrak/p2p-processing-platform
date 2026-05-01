@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ReactNode,
   type SelectHTMLAttributes,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -33,6 +34,8 @@ export interface SelectProps
   options: SelectOption[];
   placeholder?: string;
   onChange?: SelectHTMLAttributes<HTMLSelectElement>['onChange'];
+  /** Extra content rendered at the bottom of the dropdown panel (outside normal options). */
+  renderListFooter?: (helpers: { close: () => void }) => ReactNode;
 }
 
 function emitChange(
@@ -56,6 +59,7 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(function Select(
     error,
     options,
     placeholder,
+    renderListFooter,
     id,
     value,
     onChange,
@@ -234,6 +238,14 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(function Select(
                   </li>
                 );
               })}
+              {renderListFooter ? (
+                <li
+                  role="presentation"
+                  className="sticky bottom-0 border-t border-border-primary bg-surface-secondary"
+                >
+                  {renderListFooter({ close: () => setOpen(false) })}
+                </li>
+              ) : null}
             </ul>,
             document.body,
           )}

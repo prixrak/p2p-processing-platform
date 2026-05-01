@@ -7,6 +7,7 @@ import { WalletDepositsModule } from '../wallet-deposits/wallet-deposits.module'
 
 import { CascadeModule } from '../cascade/cascade.module';
 import { PlatformSettingsModule } from '../platform-settings/platform-settings.module';
+import { CurrenciesModule } from '../currencies/currencies.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { PlatformSettingsModule } from '../platform-settings/platform-settings.m
     WalletDepositsModule,
     CascadeModule,
     PlatformSettingsModule,
+    CurrenciesModule,
   ],
   controllers: [TradersController, TraderDashboardController],
   providers: [TradersService],

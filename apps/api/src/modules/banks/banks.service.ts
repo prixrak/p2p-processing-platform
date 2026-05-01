@@ -13,7 +13,14 @@ export class BanksService {
       where: {
         isActive: true,
         ...(currency
-          ? { requisites: { some: { currency, isActive: true } } }
+          ? {
+              requisites: {
+                some: {
+                  isActive: true,
+                  currency: { code: currency.trim().toUpperCase() },
+                },
+              },
+            }
           : {}),
       },
     });

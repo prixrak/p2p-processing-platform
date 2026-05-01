@@ -24,9 +24,10 @@ export class MerchantDashboardController {
   async getBalances(@CurrentUser('merchantId') merchantId: string) {
     const balances = await this.prisma.merchantBalance.findMany({
       where: { merchantId },
+      include: { currency: { select: { code: true } } },
     });
     return balances.map((b) => ({
-      currency: b.currency,
+      currency: b.currency.code,
       available: Number(b.amount),
       frozen: 0,
     }));

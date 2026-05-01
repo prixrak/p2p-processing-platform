@@ -6,6 +6,7 @@ import { AppealStatus } from '@p2p/shared';
 export const ORDER_INCLUDE = {
   requisite: { include: { bank: true } },
   appeals: { include: { proofs: true } },
+  currency: { select: { code: true } },
 } as const;
 
 export type OrderWithRelations = Prisma.PayinOrderGetPayload<{
@@ -23,7 +24,7 @@ export function payinOrderToOrderDto(order: OrderWithRelations): OrderDto {
     autoclose_at: order.autocloseAt
       ? Math.floor(order.autocloseAt.getTime() / 1000)
       : null,
-    currency: order.currency,
+    currency: order.currency.code,
     amount: Number(order.amount),
     commission: Number(order.commission),
     partner_amount: Number(order.partnerAmount),
@@ -39,7 +40,7 @@ export function payinOrderToOrderDto(order: OrderWithRelations): OrderDto {
       created_at: Math.floor(a.createdAt.getTime() / 1000),
       payin_order_id: order.id,
       order_amount: Number(order.amount),
-      currency: order.currency,
+      currency: order.currency.code,
       paid_amount: Number(a.paidAmount),
       requisite_number: order.requisite?.number ?? '',
       requisite_owner: order.requisite?.owner ?? '',

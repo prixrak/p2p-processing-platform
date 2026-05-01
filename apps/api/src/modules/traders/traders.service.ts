@@ -15,6 +15,7 @@ import type { UpdateTraderBalanceModelDto } from './dto/update-trader-balance-mo
 import type { UpdateTraderCascadeDto } from './dto/update-trader-cascade.dto';
 import { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
 import { PlatformSettingsService, PLATFORM_SETTING_TRADER_PAYIN_LOW_CAPACITY_ALERT_THRESHOLD_USDT } from '../platform-settings/platform-settings.service';
+import { CurrenciesService } from '../currencies/currencies.service';
 import {
   CASCADE_TRAFFIC_PERCENT_ASSIGNMENT_NOTE,
   CASCADE_TRAFFIC_PERCENT_POLICY_TEXT,
@@ -84,6 +85,7 @@ export class TradersService {
     private readonly balanceTxService: BalanceTransactionsService,
     private readonly cascadeCoverageCache: CascadeRedisStateService,
     private readonly platformSettings: PlatformSettingsService,
+    private readonly currencies: CurrenciesService,
   ) {}
 
   /**
@@ -107,11 +109,12 @@ export class TradersService {
   private async pickDisplayCurrency(traderId: string): Promise<string> {
     const balances = await this.prisma.traderBalance.findMany({
       where: { traderId },
-      orderBy: { currency: 'asc' },
+      orderBy: { currency: { code: 'asc' } },
       take: 1,
+      include: { currency: { select: { code: true } } },
     });
     if (balances.length > 0) {
-      return balances[0].currency;
+      return balances[0].currency.code;
     }
     return 'UAH';
   }
@@ -121,7 +124,7 @@ export class TradersService {
       where: { id: traderId },
       include: {
         user: { select: { email: true, role: true, isActive: true } },
-        balances: true,
+        balances: { include: { currency: { select: { code: true } } } },
         requisites: {
           include: { bank: { select: { name: true } }, group: true },
           orderBy: { createdAt: 'desc' },
@@ -140,7 +143,7 @@ export class TradersService {
       where: { userId },
       include: {
         user: { select: { email: true, role: true, isActive: true } },
-        balances: true,
+        balances: { include: { currency: { select: { code: true } } } },
         requisites: { where: { isActive: true } },
         telegramSettings: true,
       },
@@ -161,6 +164,7 @@ export class TradersService {
 
     return this.prisma.traderBalance.findMany({
       where: { traderId },
+      include: { currency: { select: { code: true } } },
     });
   }
 
@@ -174,14 +178,15 @@ export class TradersService {
 
     const window = resolveStatisticsWindow(query);
     const currency = await this.pickDisplayCurrency(traderId);
+    const currencyId = await this.currencies.requireActiveCurrencyIdByCode(currency);
 
     const dateWhere = {
       gte: window.from,
       lte: window.to,
     };
 
-    const basePayin = { traderId, currency, createdAt: dateWhere };
-    const basePayout = { traderId, currency, createdAt: dateWhere };
+    const basePayin = { traderId, currencyId, createdAt: dateWhere };
+    const basePayout = { traderId, currencyId, createdAt: dateWhere };
 
     const [
       payinTotal,
@@ -236,12 +241,12 @@ export class TradersService {
         Prisma.sql`
           SELECT (date_trunc('day', created_at AT TIME ZONE 'UTC'))::date AS day,
                  COALESCE(SUM(amount), 0) AS volume
-          FROM payin_orders
-          WHERE trader_id = ${traderId}::uuid
-            AND currency = ${currency}
-            AND status = 'PAID'
-            AND created_at >= ${window.from}
-            AND created_at <= ${window.to}
+          FROM payin_orders po
+          INNER JOIN currencies c ON c.id = po.currency_id AND c.code = ${currency}
+          WHERE po.trader_id = ${traderId}::uuid
+            AND po.status = 'PAID'
+            AND po.created_at >= ${window.from}
+            AND po.created_at <= ${window.to}
           GROUP BY 1
           ORDER BY 1
         `,
@@ -250,12 +255,12 @@ export class TradersService {
         Prisma.sql`
           SELECT (date_trunc('day', created_at AT TIME ZONE 'UTC'))::date AS day,
                  COALESCE(SUM(amount), 0) AS volume
-          FROM payout_orders
-          WHERE trader_id = ${traderId}::uuid
-            AND currency = ${currency}
-            AND status = 'COMPLETED'
-            AND created_at >= ${window.from}
-            AND created_at <= ${window.to}
+          FROM payout_orders po
+          INNER JOIN currencies c ON c.id = po.currency_id AND c.code = ${currency}
+          WHERE po.trader_id = ${traderId}::uuid
+            AND po.status = 'COMPLETED'
+            AND po.created_at >= ${window.from}
+            AND po.created_at <= ${window.to}
           GROUP BY 1
           ORDER BY 1
         `,
@@ -383,15 +388,15 @@ export class TradersService {
           SELECT
             COALESCE((SELECT SUM(po.commission)::float
               FROM payin_orders po
+              INNER JOIN currencies c ON c.id = po.currency_id AND c.code = ${currency}
               WHERE po.trader_id = ${traderId}::uuid
-                AND po.currency = ${currency}
                 AND po.status = 'PAID'
                 AND ${payinTs} >= ${window.from}
                 AND ${payinTs} <= ${window.to}), 0) AS "payinProfit",
             COALESCE((SELECT SUM(po.commission_amount)::float
               FROM payout_orders po
+              INNER JOIN currencies c ON c.id = po.currency_id AND c.code = ${currency}
               WHERE po.trader_id = ${traderId}::uuid
-                AND po.currency = ${currency}
                 AND po.status = 'COMPLETED'
                 AND ${payoutTs} >= ${window.from}
                 AND ${payoutTs} <= ${window.to}), 0) AS "payoutProfit"
@@ -411,8 +416,8 @@ export class TradersService {
                  COALESCE(SUM(po.amount), 0)::float AS amt,
                  COALESCE(SUM(po.commission), 0)::float AS profit
           FROM payin_orders po
+          INNER JOIN currencies c ON c.id = po.currency_id AND c.code = ${currency}
           WHERE po.trader_id = ${traderId}::uuid
-            AND po.currency = ${currency}
             AND po.status = 'PAID'
             AND ${payinTs} >= ${window.from}
             AND ${payinTs} <= ${window.to}
@@ -434,8 +439,8 @@ export class TradersService {
                  COALESCE(SUM(po.amount), 0)::float AS amt,
                  COALESCE(SUM(po.commission_amount), 0)::float AS profit
           FROM payout_orders po
+          INNER JOIN currencies c ON c.id = po.currency_id AND c.code = ${currency}
           WHERE po.trader_id = ${traderId}::uuid
-            AND po.currency = ${currency}
             AND po.status = 'COMPLETED'
             AND ${payoutTs} >= ${window.from}
             AND ${payoutTs} <= ${window.to}
@@ -450,8 +455,8 @@ export class TradersService {
                  COALESCE(SUM(a.paid_amount), 0)::float AS amt
           FROM appeals a
           INNER JOIN payin_orders po ON po.id = a.payin_order_id
+          INNER JOIN currencies c ON c.id = po.currency_id AND c.code = ${currency}
           WHERE po.trader_id = ${traderId}::uuid
-            AND po.currency = ${currency}
             AND ${appealTs} >= ${window.from}
             AND ${appealTs} <= ${window.to}
             ${appealExtraWhere}
@@ -562,7 +567,7 @@ export class TradersService {
         take: limit,
         include: {
           user: { select: { email: true, role: true, isActive: true } },
-          balances: true,
+          balances: { include: { currency: { select: { code: true } } } },
           _count: {
             select: {
               payinOrders: true,
@@ -860,9 +865,10 @@ export class TradersService {
       throw new NotFoundException('Trader profile not found');
     }
 
+    const usdtId = await this.currencies.getUsdtCurrencyId();
     const row = await this.prisma.traderBalance.findUnique({
       where: {
-        traderId_currency: { traderId: profile.id, currency: 'USDT' },
+        traderId_currencyId: { traderId: profile.id, currencyId: usdtId },
       },
       select: { amount: true },
     });

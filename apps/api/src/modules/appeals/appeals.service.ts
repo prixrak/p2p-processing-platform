@@ -13,7 +13,12 @@ import { AppealFiltersDto } from './dto';
 
 const APPEAL_INCLUDE = {
   proofs: true,
-  payinOrder: { include: { requisite: { include: { bank: true } } } },
+  payinOrder: {
+    include: {
+      currency: { select: { code: true } },
+      requisite: { include: { bank: true } },
+    },
+  },
 } as const;
 
 export type AppealResolveActor = {
@@ -137,7 +142,7 @@ export class AppealsService {
       created_at: Math.floor(appeal.createdAt.getTime() / 1000),
       payin_order_id: appeal.payinOrderId,
       order_amount: order ? Number(order.amount) : 0,
-      currency: order?.currency ?? '',
+      currency: order ? order.currency.code : '',
       paid_amount: Number(appeal.paidAmount),
       requisite_number: req?.number ?? '',
       requisite_owner: req?.owner ?? '',

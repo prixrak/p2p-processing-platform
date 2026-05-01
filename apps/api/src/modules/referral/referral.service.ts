@@ -8,12 +8,17 @@ import {
 import { PrismaService } from '../../config/prisma.service';
 import { hashPassword } from '../../common/utils/password';
 import { CreateReferralDto, UpdateReferralDto } from './dto';
+import { CurrenciesService } from '../currencies/currencies.service';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ReferralService {
   private readonly logger = new Logger(ReferralService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly currencies: CurrenciesService,
+  ) {}
 
   // ─── Admin: list all referral agents ───
 
@@ -27,6 +32,7 @@ export class ReferralService {
         orderBy: { createdAt: 'desc' },
         include: {
           user: { select: { id: true, email: true, isActive: true, createdAt: true } },
+          currency: { select: { code: true } },
           referrals: {
             select: { id: true, email: true, role: true, isActive: true, createdAt: true },
           },
@@ -45,6 +51,7 @@ export class ReferralService {
       where: { id: profileId },
       include: {
         user: { select: { id: true, email: true, isActive: true, createdAt: true } },
+        currency: { select: { code: true } },
         referrals: {
           select: {
             id: true,
@@ -56,12 +63,19 @@ export class ReferralService {
               select: {
                 id: true,
                 isActive: true,
-                balances: true,
+                balances: { include: { currency: { select: { code: true } } } },
                 payoutMinLimit: true,
                 payoutMaxLimit: true,
               },
             },
-            merchant: { select: { id: true, name: true, isLock: true, balances: true } },
+            merchant: {
+              select: {
+                id: true,
+                name: true,
+                isLock: true,
+                balances: { include: { currency: { select: { code: true } } } },
+              },
+            },
           },
         },
       },
@@ -78,6 +92,7 @@ export class ReferralService {
       where: { userId },
       include: {
         user: { select: { id: true, email: true, isActive: true } },
+        currency: { select: { code: true } },
         referrals: {
           select: { id: true, email: true, role: true, isActive: true },
         },
@@ -95,6 +110,9 @@ export class ReferralService {
     if (existing) throw new ConflictException('Email already registered');
 
     const passwordHash = await hashPassword(dto.password);
+    const currencyId = await this.currencies.requireActiveCurrencyIdByCode(
+      (dto.currency ?? 'UAH').trim() || 'UAH',
+    );
 
     const result = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -105,7 +123,7 @@ export class ReferralService {
         data: {
           userId: user.id,
           referralPercent: dto.referralPercent ?? 0,
-          currency: dto.currency ?? 'UAH',
+          currencyId,
         },
         include: {
           user: { select: { id: true, email: true, isActive: true } },
@@ -124,13 +142,16 @@ export class ReferralService {
   async update(profileId: string, dto: UpdateReferralDto) {
     await this.findById(profileId);
 
-    const data: Record<string, unknown> = {};
+    const data: Prisma.ReferralProfileUpdateInput = {};
     if (dto.referralPercent !== undefined) data.referralPercent = dto.referralPercent;
-    if (dto.currency !== undefined) data.currency = dto.currency;
+    if (dto.currency !== undefined) {
+      const cid = await this.currencies.requireActiveCurrencyIdByCode(dto.currency);
+      data.currency = { connect: { id: cid } };
+    }
 
     const updated = await this.prisma.referralProfile.update({
       where: { id: profileId },
-      data: data as any,
+      data,
       include: {
         user: { select: { id: true, email: true, isActive: true } },
       },
@@ -194,7 +215,7 @@ export class ReferralService {
         referralProfileId: profile.id,
         referralPercent: Number(profile.referralPercent),
         balance: Number(profile.balance),
-        currency: profile.currency,
+        currency: profile.currency.code,
         totalReferred: 0,
         traders: [],
         merchants: [],
@@ -214,7 +235,7 @@ export class ReferralService {
           select: {
             id: true,
             isActive: true,
-            balances: true,
+            balances: { include: { currency: { select: { code: true } } } },
             payinOrders: {
               where: { status: 'PAID' },
               select: { amount: true, commission: true },
@@ -230,7 +251,7 @@ export class ReferralService {
             id: true,
             name: true,
             isLock: true,
-            balances: true,
+            balances: { include: { currency: { select: { code: true } } } },
           },
         },
       },
@@ -245,7 +266,7 @@ export class ReferralService {
         traderId: u.traderProfile!.id,
         traderActive: u.traderProfile!.isActive,
         balances: u.traderProfile!.balances.map((b) => ({
-          currency: b.currency,
+          currency: b.currency.code,
           amount: Number(b.amount),
         })),
         completedPayins: u.traderProfile!.payinOrders.length,
@@ -270,7 +291,7 @@ export class ReferralService {
         merchantName: u.merchant!.name,
         isLock: u.merchant!.isLock,
         balances: u.merchant!.balances.map((b) => ({
-          currency: b.currency,
+          currency: b.currency.code,
           amount: Number(b.amount),
         })),
       }));
@@ -279,7 +300,7 @@ export class ReferralService {
       referralProfileId: profile.id,
       referralPercent: Number(profile.referralPercent),
       balance: Number(profile.balance),
-      currency: profile.currency,
+      currency: profile.currency.code,
       totalReferred: referredIds.length,
       traders,
       merchants,

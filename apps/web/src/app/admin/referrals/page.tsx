@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Users,
@@ -15,11 +15,13 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
+import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Table } from '@/components/ui/table';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { fetchCurrencyList } from '@/lib/currency-queries';
 import { formatDate, formatCurrency, shortId } from '@/lib/utils';
 import { mergeIntoDataTotalList } from '@/lib/query-cache-merge';
 
@@ -82,6 +84,23 @@ export default function ReferralsAdminPage() {
     queryKey: ['admin', 'referrals'],
     queryFn: () => api.get<ReferralListResponse>(internalPaths.referrals),
   });
+
+  const { data: currencyRows = [] } = useQuery({
+    queryKey: ['currencies'],
+    queryFn: fetchCurrencyList,
+  });
+
+  const newAgentCurrencyOptions = useMemo(() => {
+    const active = currencyRows
+      .filter((c) => c.isActive)
+      .map((c) => ({ value: c.code, label: c.code }));
+    const v = newCurrency.trim().toUpperCase();
+    if (v && !active.some((o) => o.value === v)) {
+      active.push({ value: v, label: `${v} (inactive)` });
+    }
+    active.sort((a, b) => a.value.localeCompare(b.value));
+    return active;
+  }, [currencyRows, newCurrency]);
 
   const createMutation = useMutation({
     mutationFn: (payload: { email: string; password: string; referralPercent: number; currency: string }) =>
@@ -295,8 +314,10 @@ export default function ReferralsAdminPage() {
               value={newPercent}
               onChange={(e) => setNewPercent(e.target.value)}
             />
-            <Input
+            <CurrencySelectWithCreate
               label="Currency"
+              placeholder="Select currency"
+              options={newAgentCurrencyOptions}
               value={newCurrency}
               onChange={(e) => setNewCurrency(e.target.value)}
             />

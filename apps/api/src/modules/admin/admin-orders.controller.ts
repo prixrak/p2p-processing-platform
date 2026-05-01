@@ -113,6 +113,7 @@ export class AdminOrdersController {
           include: {
             merchant: { select: { name: true } },
             trader: { select: { user: { select: { email: true } } } },
+            currency: { select: { code: true } },
           },
         }),
         this.prisma.payinOrder.count({ where }),
@@ -126,7 +127,7 @@ export class AdminOrdersController {
           merchantName: o.merchant.name,
           traderName: o.trader?.user?.email ?? null,
           amount: Number(o.amount),
-          currency: o.currency,
+          currency: o.currency.code,
           status: o.status,
           paymentMethod: null,
           createdAt: o.createdAt,
@@ -161,6 +162,7 @@ export class AdminOrdersController {
           include: {
             merchant: { select: { name: true } },
             trader: { select: { user: { select: { email: true } } } },
+            currency: { select: { code: true } },
           },
         }),
         this.prisma.payoutOrder.count({ where }),
@@ -174,7 +176,7 @@ export class AdminOrdersController {
           merchantName: o.merchant.name,
           traderName: o.trader?.user?.email ?? null,
           amount: Number(o.amount),
-          currency: o.currency,
+          currency: o.currency.code,
           status: o.status,
           paymentMethod: null,
           createdAt: o.createdAt,
@@ -203,6 +205,7 @@ export class AdminOrdersController {
           merchant: { select: { name: true } },
           trader: { select: { user: { select: { email: true } } } },
           requisite: { include: { bank: { select: { name: true } } } },
+          currency: { select: { code: true } },
         },
       });
 
@@ -212,6 +215,7 @@ export class AdminOrdersController {
           include: {
             merchant: { select: { name: true } },
             trader: { select: { user: { select: { email: true } } } },
+            currency: { select: { code: true } },
           },
         });
         if (!payoutOrder) throw new NotFoundException(`Order ${id} not found`);
@@ -235,7 +239,7 @@ export class AdminOrdersController {
         merchantName: order.merchant.name,
         traderName: order.trader?.user?.email ?? null,
         amount: Number(order.amount),
-        currency: order.currency,
+        currency: order.currency.code,
         status: order.status,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
@@ -257,6 +261,7 @@ export class AdminOrdersController {
         include: {
           merchant: { select: { name: true } },
           trader: { select: { user: { select: { email: true } } } },
+          currency: { select: { code: true } },
         },
       });
       if (!order) throw new NotFoundException(`Order ${id} not found`);
@@ -351,7 +356,7 @@ export class AdminOrdersController {
     merchant: { name: string };
     trader?: { user: { email: string } } | null;
     amount: unknown;
-    currency: string;
+    currency: { code: string };
     status: string;
     createdAt: Date;
     updatedAt: Date;
@@ -363,7 +368,7 @@ export class AdminOrdersController {
       merchantName: order.merchant.name,
       traderName: order.trader?.user?.email ?? null,
       amount: Number(order.amount),
-      currency: order.currency,
+      currency: order.currency.code,
       status: order.status,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,

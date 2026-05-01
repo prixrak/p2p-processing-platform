@@ -56,14 +56,25 @@ async function main() {
     create: { email: 'referral@p2p.local', passwordHash, role: 'REFERRAL' },
   });
 
+  for (const code of ['UAH', 'USD', 'USDT', 'EUR', 'RUB']) {
+    await prisma.currency.upsert({
+      where: { code },
+      update: {},
+      create: { code },
+    });
+  }
+
+  const uahRow = await prisma.currency.findUniqueOrThrow({ where: { code: 'UAH' } });
+  const usdtRow = await prisma.currency.findUniqueOrThrow({ where: { code: 'USDT' } });
+
   // ─── Referral Profile ───
-  const referralProfile = await (prisma as any).referralProfile.upsert({
+  const referralProfile = await prisma.referralProfile.upsert({
     where: { userId: referralUser.id },
     update: {},
     create: {
       userId: referralUser.id,
       referralPercent: 5,
-      currency: 'UAH',
+      currencyId: uahRow.id,
     },
   });
 
@@ -79,15 +90,15 @@ async function main() {
   });
 
   await prisma.traderBalance.upsert({
-    where: { traderId_currency: { traderId: traderProfile.id, currency: 'UAH' } },
+    where: { traderId_currencyId: { traderId: traderProfile.id, currencyId: uahRow.id } },
     update: {},
-    create: { traderId: traderProfile.id, currency: 'UAH', amount: 50000 },
+    create: { traderId: traderProfile.id, currencyId: uahRow.id, amount: 50000 },
   });
 
   await prisma.traderBalance.upsert({
-    where: { traderId_currency: { traderId: traderProfile.id, currency: 'USDT' } },
+    where: { traderId_currencyId: { traderId: traderProfile.id, currencyId: usdtRow.id } },
     update: {},
-    create: { traderId: traderProfile.id, currency: 'USDT', amount: 1000 },
+    create: { traderId: traderProfile.id, currencyId: usdtRow.id, amount: 1000 },
   });
 
   // ─── Merchant & Balance ───
@@ -98,15 +109,15 @@ async function main() {
   });
 
   await prisma.merchantBalance.upsert({
-    where: { merchantId_currency: { merchantId: merchant.id, currency: 'USDT' } },
+    where: { merchantId_currencyId: { merchantId: merchant.id, currencyId: usdtRow.id } },
     update: {},
-    create: { merchantId: merchant.id, currency: 'USDT', amount: 10000 },
+    create: { merchantId: merchant.id, currencyId: usdtRow.id, amount: 10000 },
   });
 
   await prisma.merchantBalance.upsert({
-    where: { merchantId_currency: { merchantId: merchant.id, currency: 'UAH' } },
+    where: { merchantId_currencyId: { merchantId: merchant.id, currencyId: uahRow.id } },
     update: {},
-    create: { merchantId: merchant.id, currency: 'UAH', amount: 500000 },
+    create: { merchantId: merchant.id, currencyId: uahRow.id, amount: 500000 },
   });
 
   // ─── API Keys (encrypted at rest — same codec as MerchantService / HmacAuthGuard) ───
@@ -169,19 +180,12 @@ async function main() {
     };
   }
 
-  for (const code of ['UAH', 'USD', 'USDT', 'EUR', 'RUB']) {
-    await prisma.currency.upsert({
-      where: { code },
-      update: {},
-      create: { code },
-    });
-  }
 
   // ─── Countries ───
   const ukraine = await prisma.country.upsert({
     where: { code: 'UA' },
     update: {},
-    create: { name: 'Ukraine', code: 'UA', currency: 'UAH' },
+    create: { name: 'Ukraine', code: 'UA', currencyId: uahRow.id },
   });
 
   // ─── Pay-Out specialist user (pool B cabinet) ───
@@ -247,10 +251,10 @@ async function main() {
   // ─── Merchant Directions + Commission Tiers ───
   const payinDir = await prisma.merchantDirection.upsert({
     where: {
-      merchantId_directionType_currency: {
+      merchantId_directionType_currencyId: {
         merchantId: merchant.id,
         directionType: 'PAYIN',
-        currency: 'UAH',
+        currencyId: uahRow.id,
       },
     },
     update: {},
@@ -258,7 +262,7 @@ async function main() {
       merchantId: merchant.id,
       paymentMethodId: cardP2P.id,
       directionType: 'PAYIN',
-      currency: 'UAH',
+      currencyId: uahRow.id,
       minAmount: 100,
       maxAmount: 50000,
       defaultCommissionPercent: 5,
@@ -280,16 +284,50 @@ async function main() {
 
   // ─── Directions (idempotent) ───
   const directions = [
-    { name: 'PayIn UAH → USDT', type: 'PAYIN' as const, fromCurrency: 'UAH', toCurrency: 'USDT', minAmount: 100, maxAmount: 50000, rate: 0.024, percentFee: 5 },
-    { name: 'PayOut USDT → UAH', type: 'PAYOUT' as const, fromCurrency: 'USDT', toCurrency: 'UAH', minAmount: 10, maxAmount: 5000, rate: 41.5, percentFee: 3 },
+    {
+      name: 'PayIn UAH → USDT',
+      type: 'PAYIN' as const,
+      fromCurrencyId: uahRow.id,
+      toCurrencyId: usdtRow.id,
+      minAmount: 100,
+      maxAmount: 50000,
+      rate: 0.024,
+      percentFee: 5,
+    },
+    {
+      name: 'PayOut USDT → UAH',
+      type: 'PAYOUT' as const,
+      fromCurrencyId: usdtRow.id,
+      toCurrencyId: uahRow.id,
+      minAmount: 10,
+      maxAmount: 5000,
+      rate: 41.5,
+      percentFee: 3,
+    },
   ];
 
   for (const d of directions) {
     const existing = await prisma.direction.findFirst({
-      where: { type: d.type, fromCurrency: d.fromCurrency, toCurrency: d.toCurrency },
+      where: {
+        type: d.type,
+        fromCurrencyId: d.fromCurrencyId,
+        toCurrencyId: d.toCurrencyId,
+      },
     });
     if (!existing) {
-      await prisma.direction.create({ data: { ...d, isOnline: true } });
+      await prisma.direction.create({
+        data: {
+          name: d.name,
+          type: d.type,
+          fromCurrencyId: d.fromCurrencyId,
+          toCurrencyId: d.toCurrencyId,
+          minAmount: d.minAmount,
+          maxAmount: d.maxAmount,
+          rate: d.rate,
+          percentFee: d.percentFee,
+          isOnline: true,
+        },
+      });
     }
   }
 
@@ -312,7 +350,7 @@ async function main() {
       data: {
         traderId: traderProfile.id,
         name: 'Seed UAH',
-        currency: 'UAH',
+        currencyId: uahRow.id,
         paymentMethodId: cardP2P.id,
       },
     });
@@ -325,7 +363,7 @@ async function main() {
           number: '5375411234567890',
           owner: 'Test Trader',
           bankId: bankRecords['Monobank'].id,
-          currency: 'UAH',
+          currencyId: uahRow.id,
           minAmount: 100,
           maxAmount: 50000,
           limitTotalAmount: 500000,
@@ -338,7 +376,7 @@ async function main() {
           number: '4149629876543210',
           owner: 'Test Trader',
           bankId: bankRecords['PrivatBank'].id,
-          currency: 'UAH',
+          currencyId: uahRow.id,
           minAmount: 200,
           maxAmount: 30000,
           limitTotalAmount: 300000,
@@ -373,7 +411,7 @@ async function main() {
           traderId: traderProfile.id,
           requisiteId: requisite?.id,
           amount: 1000 + i * 500,
-          currency: 'UAH',
+          currencyId: uahRow.id,
           commission: (1000 + i * 500) * 0.05,
           partnerAmount: (1000 + i * 500) * 0.024,
           rate: 0.024,
@@ -402,7 +440,7 @@ async function main() {
           merchantId: merchant.id,
           traderId: traderProfile.id,
           amount: 500 + i * 250,
-          currency: 'UAH',
+          currencyId: uahRow.id,
           status: assignedStatuses[i],
           detailsType: 'CARD',
           detailsNumber: '5375411234567890',
@@ -423,7 +461,7 @@ async function main() {
           merchantId: merchant.id,
           traderId: null,
           amount: poolAmounts[i],
-          currency: 'UAH',
+          currencyId: uahRow.id,
           status: 'PENDING',
           detailsType: 'CARD',
           detailsNumber: '4149629876543210',

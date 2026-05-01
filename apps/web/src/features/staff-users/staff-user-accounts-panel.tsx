@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
@@ -28,6 +29,7 @@ import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { FormAlert } from '@/components/ui/form-alert';
 import { errorMessageFromUnknown } from '@/lib/error-message';
+import { fetchCurrencyList } from '@/lib/currency-queries';
 import { ownerCreateUserFormSchema } from '@/lib/validation/schemas';
 import { fieldErrorsFromZod } from '@/lib/validation/zod-field-errors';
 import type { StaffRolePrefix } from '@/features/traders';
@@ -238,6 +240,24 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         internalPaths.countriesQuery('activeOnly=true'),
       ),
   });
+
+  const { data: staffCurrencies = [] } = useQuery({
+    queryKey: ['currencies'],
+    queryFn: fetchCurrencyList,
+    enabled: showCreate,
+  });
+
+  const referralCurrencySelectOptions = useMemo(() => {
+    const active = staffCurrencies
+      .filter((c) => c.isActive)
+      .map((c) => ({ value: c.code, label: c.code }));
+    const v = form.referralCurrency.trim().toUpperCase();
+    if (v && !active.some((o) => o.value === v)) {
+      active.push({ value: v, label: `${v} (inactive)` });
+    }
+    active.sort((a, b) => a.value.localeCompare(b.value));
+    return active;
+  }, [staffCurrencies, form.referralCurrency]);
 
   const invalidateDirectory = () => {
     void queryClient.invalidateQueries({ queryKey: [...directoryKey] });
@@ -831,11 +851,12 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                 }
                 error={createFieldErrors.referralPercent}
               />
-              <Input
+              <CurrencySelectWithCreate
                 label="Referral balance currency"
+                placeholder="Select currency"
+                options={referralCurrencySelectOptions}
                 value={form.referralCurrency}
                 onChange={(e) => setForm({ ...form, referralCurrency: e.target.value.toUpperCase() })}
-                placeholder="UAH"
                 error={createFieldErrors.referralCurrency}
               />
             </>

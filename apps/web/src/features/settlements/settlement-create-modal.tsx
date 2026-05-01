@@ -26,6 +26,8 @@ import {
 import { FormAlert } from '@/components/ui/form-alert';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { errorMessageFromUnknown } from '@/lib/error-message';
+import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
+import { fetchCurrencyList } from '@/lib/currency-queries';
 
 type SettlementTab = 'trader' | 'payout' | 'merchant';
 
@@ -151,16 +153,12 @@ export function SettlementCreateModal({
     enabled: open && tab === 'trader' && !!traderId,
   });
 
-  const { data: currencyOptions = [] } = useQuery<{ code: string }[]>({
+  const { data: currencyOptionsRaw = [] } = useQuery({
     queryKey: ['currencies'],
-    queryFn: async () => {
-      const res = await api.get<{ data: { code: string }[] } | { code: string }[]>(
-        internalPaths.currencies,
-      );
-      return Array.isArray(res) ? res : res.data;
-    },
+    queryFn: fetchCurrencyList,
     enabled: open,
   });
+  const currencyOptions = currencyOptionsRaw;
 
   const createMutation = useMutation<SettlementListRow, Error, void>({
     mutationFn: () => {
@@ -360,7 +358,7 @@ export function SettlementCreateModal({
                   setTraderSettlementType(e.target.value as 'credit' | 'debit')
                 }
               />
-              <Select
+              <CurrencySelectWithCreate
                 label="Currency"
                 options={
                   currencyOptions.length > 0

@@ -2,164 +2,173 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
-  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
+import { CurrenciesService } from '../currencies/currencies.service';
 import { CreateDirectionDto, UpdateDirectionDto } from './dto';
 import { DirectionType } from '@p2p/shared';
+import type { Currency, Direction } from '@prisma/client';
+
+type DirectionWithCurrencies = Direction & { fromCurrency: Currency; toCurrency: Currency };
 
 @Injectable()
 export class DirectionsService {
   private readonly logger = new Logger(DirectionsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly currencies: CurrenciesService,
+  ) {}
 
-  /**
-   * New directions must reference currencies that exist in `currencies` and are active.
-   * On update, only newly chosen codes are validated so existing directions can be edited
-   * if their stored codes were later deactivated.
-   */
-  private async assertSingleActiveCurrency(code: string) {
-    const c = code.trim().toUpperCase();
-    if (!c) {
-      throw new BadRequestException('Currency code is required');
-    }
-    const row = await this.prisma.currency.findUnique({ where: { code: c } });
-    if (!row) {
-      throw new BadRequestException(
-        `Unknown currency code: ${c}. Add it in Currencies first.`,
-      );
-    }
-    if (!row.isActive) {
-      throw new BadRequestException(
-        `Inactive currency: ${c}. Activate the currency or pick another.`,
-      );
-    }
+  /** Flatten currency relations to code strings for API compatibility. */
+  private toApiDirection(row: DirectionWithCurrencies) {
+    const { fromCurrency, toCurrency, ...rest } = row;
+    return {
+      ...rest,
+      fromCurrency: fromCurrency.code,
+      toCurrency: toCurrency.code,
+    };
   }
 
   async create(dto: CreateDirectionDto) {
-    const fromCurrency = dto.fromCurrency.trim().toUpperCase();
-    const toCurrency = dto.toCurrency.trim().toUpperCase();
-    await this.assertSingleActiveCurrency(fromCurrency);
-    await this.assertSingleActiveCurrency(toCurrency);
+    const fromCurrencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.fromCurrency);
+    const toCurrencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.toCurrency);
 
     const direction = await this.prisma.direction.create({
       data: {
         name: dto.name,
         type: dto.type,
-        fromCurrency,
-        toCurrency,
+        fromCurrencyId,
+        toCurrencyId,
         minAmount: dto.minAmount ?? 0,
         maxAmount: dto.maxAmount ?? 0,
         rate: dto.rate ?? 1,
         percentFee: dto.percentFee ?? 0,
         isOnline: dto.isOnline ?? true,
       },
+      include: { fromCurrency: true, toCurrency: true },
     });
 
-    this.logger.log(
-      `Direction created: ${direction.id} — ${direction.name} (${direction.type})`,
-    );
-    return direction;
+    this.logger.log(`Direction created: ${direction.id} — ${direction.name} (${direction.type})`);
+    return this.toApiDirection(direction);
   }
 
   async update(id: string, dto: UpdateDirectionDto) {
-    const existing = await this.findById(id);
-
-    const fromCurrency =
-      dto.fromCurrency !== undefined
-        ? dto.fromCurrency.trim().toUpperCase()
-        : existing.fromCurrency;
-    const toCurrency =
-      dto.toCurrency !== undefined
-        ? dto.toCurrency.trim().toUpperCase()
-        : existing.toCurrency;
-
-    if (
-      dto.fromCurrency !== undefined &&
-      fromCurrency !== existing.fromCurrency
-    ) {
-      await this.assertSingleActiveCurrency(fromCurrency);
+    const existing = await this.prisma.direction.findUnique({
+      where: { id },
+      include: { fromCurrency: true, toCurrency: true },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Direction ${id} not found`);
     }
-    if (
-      dto.toCurrency !== undefined &&
-      toCurrency !== existing.toCurrency
-    ) {
-      await this.assertSingleActiveCurrency(toCurrency);
+
+    let fromCurrencyId = existing.fromCurrencyId;
+    let toCurrencyId = existing.toCurrencyId;
+
+    if (dto.fromCurrency !== undefined) {
+      const next = this.currencies.normalizeCode(dto.fromCurrency);
+      if (next !== existing.fromCurrency.code) {
+        fromCurrencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.fromCurrency);
+      }
+    }
+    if (dto.toCurrency !== undefined) {
+      const next = this.currencies.normalizeCode(dto.toCurrency);
+      if (next !== existing.toCurrency.code) {
+        toCurrencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.toCurrency);
+      }
     }
 
     const { fromCurrency: _fc, toCurrency: _tc, ...rest } = dto;
-    return this.prisma.direction.update({
+    const updated = await this.prisma.direction.update({
       where: { id },
       data: {
         ...rest,
-        ...(dto.fromCurrency !== undefined ? { fromCurrency } : {}),
-        ...(dto.toCurrency !== undefined ? { toCurrency } : {}),
+        ...(dto.fromCurrency !== undefined ? { fromCurrencyId } : {}),
+        ...(dto.toCurrency !== undefined ? { toCurrencyId } : {}),
       },
+      include: { fromCurrency: true, toCurrency: true },
     });
+    return this.toApiDirection(updated);
   }
 
   async findAll() {
-    return this.prisma.direction.findMany({
+    const rows = await this.prisma.direction.findMany({
+      include: { fromCurrency: true, toCurrency: true },
       orderBy: [{ type: 'asc' }, { name: 'asc' }],
     });
+    return rows.map((r) => this.toApiDirection(r));
   }
 
   async findById(id: string) {
     const direction = await this.prisma.direction.findUnique({
       where: { id },
+      include: { fromCurrency: true, toCurrency: true },
     });
     if (!direction) {
       throw new NotFoundException(`Direction ${id} not found`);
     }
-    return direction;
+    return this.toApiDirection(direction);
   }
 
   async findByType(type: DirectionType) {
-    return this.prisma.direction.findMany({
+    const rows = await this.prisma.direction.findMany({
       where: { type },
+      include: { fromCurrency: true, toCurrency: true },
       orderBy: { name: 'asc' },
     });
+    return rows.map((r) => this.toApiDirection(r));
   }
 
   async toggleOnline(id: string) {
-    const direction = await this.findById(id);
+    const direction = await this.prisma.direction.findUniqueOrThrow({
+      where: { id },
+      include: { fromCurrency: true, toCurrency: true },
+    });
 
     const updated = await this.prisma.direction.update({
       where: { id },
       data: { isOnline: !direction.isOnline },
+      include: { fromCurrency: true, toCurrency: true },
     });
 
-    this.logger.log(
-      `Direction ${id} toggled: isOnline=${updated.isOnline}`,
-    );
-    return updated;
+    this.logger.log(`Direction ${id} toggled: isOnline=${updated.isOnline}`);
+    return this.toApiDirection(updated);
   }
 
   async setOnline(id: string) {
-    const direction = await this.findById(id);
+    const direction = await this.prisma.direction.findUniqueOrThrow({
+      where: { id },
+      include: { fromCurrency: true, toCurrency: true },
+    });
     if (direction.isOnline) {
       throw new ConflictException('Direction is already online');
     }
 
     this.logger.log(`Direction set online: ${id}`);
-    return this.prisma.direction.update({
+    const updated = await this.prisma.direction.update({
       where: { id },
       data: { isOnline: true },
+      include: { fromCurrency: true, toCurrency: true },
     });
+    return this.toApiDirection(updated);
   }
 
   async setOffline(id: string) {
-    const direction = await this.findById(id);
+    const direction = await this.prisma.direction.findUniqueOrThrow({
+      where: { id },
+      include: { fromCurrency: true, toCurrency: true },
+    });
     if (!direction.isOnline) {
       throw new ConflictException('Direction is already offline');
     }
 
     this.logger.warn(`Direction set offline: ${id}`);
-    return this.prisma.direction.update({
+    const updated = await this.prisma.direction.update({
       where: { id },
       data: { isOnline: false },
+      include: { fromCurrency: true, toCurrency: true },
     });
+    return this.toApiDirection(updated);
   }
 }

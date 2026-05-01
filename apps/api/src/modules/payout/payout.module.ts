@@ -7,6 +7,7 @@ import { PayoutController, PayoutInternalController, PayoutSpecialistInternalCon
 import { BalanceTransactionsModule } from '../balance-transactions/balance-transactions.module';
 import { MerchantDirectionsModule } from '../merchant-directions/merchant-directions.module';
 import { TelegramModule } from '../telegram/telegram.module';
+import { CurrenciesModule } from '../currencies/currencies.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { TelegramModule } from '../telegram/telegram.module';
     BalanceTransactionsModule,
     MerchantDirectionsModule,
     TelegramModule,
+    CurrenciesModule,
   ],
   controllers: [PayoutController, PayoutInternalController, PayoutSpecialistInternalController],
   providers: [PayoutService, PayoutRealtimeService, PayoutPoolPromotionService],

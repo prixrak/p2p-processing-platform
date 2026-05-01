@@ -67,6 +67,7 @@ import { validate as uuidValidate } from 'uuid';
 import { CascadeService } from '../cascade/cascade.service';
 import { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { CurrenciesService } from '../currencies/currencies.service';
 import {
   ORDER_INCLUDE,
   type OrderWithRelations,
@@ -90,6 +91,7 @@ export class PayinService {
     private readonly cascadeService: CascadeService,
     private readonly cascadeCoverageCache: CascadeRedisStateService,
     private readonly telegram: TelegramService,
+    private readonly currencies: CurrenciesService,
   ) {}
 
   private emitPayinOrderRealtime(order: {
@@ -119,6 +121,7 @@ export class PayinService {
     if (dto.callback_url) {
       await validateCallbackUrl(dto.callback_url);
     }
+    const fiatCurrencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.currency);
     const direction = await this.findActiveDirection(dto.currency, DirectionType.PAYIN);
 
     const merchantCommissionPct =
@@ -169,7 +172,7 @@ export class PayinService {
               traderId: null,
               requisiteId: null,
               amount: dto.amount,
-              currency: dto.currency,
+              currencyId: fiatCurrencyId,
               commissionPercent,
               commission,
               partnerAmount,
@@ -221,7 +224,7 @@ export class PayinService {
             traderId: requisite.traderId,
             requisiteId: requisite.id,
             amount: dto.amount,
-            currency: dto.currency,
+            currencyId: fiatCurrencyId,
             commissionPercent,
             commission,
             partnerAmount,
@@ -269,7 +272,7 @@ export class PayinService {
       );
 
       if (order.requisiteId) {
-        void this.cascadeCoverageCache.invalidateCurrency(order.currency);
+        void this.cascadeCoverageCache.invalidateCurrency(order.currency.code);
       }
 
       this.emitPayinOrderRealtime({
@@ -283,7 +286,7 @@ export class PayinService {
         void this.telegram.notifyNewPayin(order.traderId, {
           id: order.id,
           amount: Number(order.amount),
-          currency: order.currency,
+          currency: order.currency.code,
         });
       }
 
@@ -434,7 +437,7 @@ export class PayinService {
   async getInfo(merchantId: string): Promise<ProfileDto> {
     const merchant = await this.prisma.merchant.findUniqueOrThrow({
       where: { id: merchantId },
-      include: { balances: true },
+      include: { balances: { include: { currency: true } } },
     });
 
     const direction = await this.prisma.direction.findFirst({
@@ -443,7 +446,7 @@ export class PayinService {
 
     const balances: Record<string, number> = {};
     for (const b of merchant.balances) {
-      balances[b.currency] = Number(b.amount);
+      balances[b.currency.code] = Number(b.amount);
     }
 
     return {
@@ -476,6 +479,7 @@ export class PayinService {
     if (dto.callback_url) {
       await validateCallbackUrl(dto.callback_url);
     }
+    const fiatCurrencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.currency);
     const direction = await this.findActiveDirection(dto.currency, DirectionType.PAYIN);
 
     const merchantCommissionPct =
@@ -526,7 +530,7 @@ export class PayinService {
               traderId: null,
               requisiteId: null,
               amount: dto.amount,
-              currency: dto.currency,
+              currencyId: fiatCurrencyId,
               commissionPercent,
               commission,
               partnerAmount,
@@ -579,7 +583,7 @@ export class PayinService {
             traderId: requisite.traderId,
             requisiteId: requisite.id,
             amount: dto.amount,
-            currency: dto.currency,
+            currencyId: fiatCurrencyId,
             commissionPercent,
             commission,
             partnerAmount,
@@ -624,7 +628,7 @@ export class PayinService {
       this.logPayinCreateTransactionMetrics(order, payinTxMs, 'h2h_init_payin_order');
 
       if (order.requisiteId) {
-        void this.cascadeCoverageCache.invalidateCurrency(order.currency);
+        void this.cascadeCoverageCache.invalidateCurrency(order.currency.code);
       }
 
       this.emitPayinOrderRealtime({
@@ -638,7 +642,7 @@ export class PayinService {
         void this.telegram.notifyNewPayin(order.traderId, {
           id: order.id,
           amount: Number(order.amount),
-          currency: order.currency,
+          currency: order.currency.code,
         });
       }
 
@@ -762,7 +766,9 @@ export class PayinService {
     const baseWhere: Prisma.PayinOrderWhereInput = {
       traderId,
       ...(statusResolution ? { status: statusResolution } : {}),
-      ...(filters.currency ? { currency: filters.currency } : {}),
+      ...(filters.currency
+        ? { currency: { code: filters.currency.trim().toUpperCase() } }
+        : {}),
     };
 
     const searchOr = this.buildTraderOrderSearchOr(q, idMatchIds);
@@ -1041,7 +1047,7 @@ export class PayinService {
       event: 'payin_create_order_tx_ms',
       duration_ms,
       status: order.status,
-      currency: order.currency,
+      currency: order.currency.code,
       amount: Number(order.amount),
       merchant_id: order.merchantId,
       context,
@@ -1051,7 +1057,7 @@ export class PayinService {
       this.logger.log({
         msg: 'payin.no_requisite_order',
         event: 'payin_order_no_requisite',
-        currency: order.currency,
+        currency: order.currency.code,
         amount: Number(order.amount),
         merchant_id: order.merchantId,
         context,
@@ -1079,8 +1085,9 @@ export class PayinService {
   }
 
   private async findActiveDirection(currency: string, type: DirectionType) {
+    const currencyId = await this.currencies.requireActiveCurrencyIdByCode(currency);
     const direction = await this.prisma.direction.findFirst({
-      where: { type, fromCurrency: currency, isOnline: true },
+      where: { type, fromCurrencyId: currencyId, isOnline: true },
     });
     if (!direction) {
       throw new BadRequestException(`No active ${type} direction for ${currency}`);
@@ -1119,7 +1126,7 @@ export class PayinService {
     paidAmountLocal: number,
   ): Promise<void> {
     if (
-      order.currency !== 'UAH' ||
+      order.currency.code !== 'UAH' ||
       order.parserRate == null ||
       order.rateTraderIn == null ||
       order.rateAdminIn == null ||
@@ -1129,6 +1136,8 @@ export class PayinService {
         'Pay-In settlement requires UAH with parser rate snapshots (rateTraderIn, rateAdminIn) and an assigned trader.',
       );
     }
+
+    const usdtId = await this.currencies.getUsdtCurrencyId();
 
     const P = Number(order.parserRate);
     const rt = Number(order.rateTraderIn);
@@ -1145,14 +1154,14 @@ export class PayinService {
 
     await tx.merchantBalance.upsert({
       where: {
-        merchantId_currency: {
+        merchantId_currencyId: {
           merchantId: order.merchantId,
-          currency: order.currency,
+          currencyId: order.currencyId,
         },
       },
       create: {
         merchantId: order.merchantId,
-        currency: order.currency,
+        currencyId: order.currencyId,
         amount: merchantCredit,
       },
       update: { amount: { increment: merchantCredit } },
@@ -1163,7 +1172,7 @@ export class PayinService {
         merchantId: order.merchantId,
         type: MerchantBalanceTransactionType.PAYIN_CREDIT,
         amount: merchantCredit,
-        currency: order.currency,
+        currencyId: order.currencyId,
         referenceId: order.id,
         comment: `Pay-in credit order ${order.id}`,
       },
@@ -1171,14 +1180,14 @@ export class PayinService {
 
     await tx.traderBalance.upsert({
       where: {
-        traderId_currency: {
+        traderId_currencyId: {
           traderId: order.traderId,
-          currency: 'USDT',
+          currencyId: usdtId,
         },
       },
       create: {
         traderId: order.traderId,
-        currency: 'USDT',
+        currencyId: usdtId,
         amount: -debitUsdt,
       },
       update: { amount: { increment: -debitUsdt } },
@@ -1212,7 +1221,7 @@ export class PayinService {
     });
 
     this.logger.log(
-      `Balances updated for order ${order.id}: merchant +${merchantCredit} ${order.currency}, trader -${debitUsdt} USDT, platform +${marginUsdt} USDT`,
+      `Balances updated for order ${order.id}: merchant +${merchantCredit} ${order.currency.code}, trader -${debitUsdt} USDT, platform +${marginUsdt} USDT`,
     );
   }
 

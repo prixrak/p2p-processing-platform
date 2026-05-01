@@ -11,6 +11,7 @@ import { BalanceTransactionsModule } from '../balance-transactions/balance-trans
 import { PlatformSettingsModule } from '../platform-settings/platform-settings.module';
 import { CascadeModule } from '../cascade/cascade.module';
 import { TelegramModule } from '../telegram/telegram.module';
+import { CurrenciesModule } from '../currencies/currencies.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { TelegramModule } from '../telegram/telegram.module';
     PlatformSettingsModule,
     CascadeModule,
     TelegramModule,
+    CurrenciesModule,
   ],
   controllers: [PayinController, PayinInternalController, PaymentPageController],
   providers: [PayinService, PayinRealtimeService],

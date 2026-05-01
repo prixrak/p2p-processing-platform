@@ -12,6 +12,7 @@ import { PrismaService } from '../../config/prisma.service';
 import { hashPassword } from '../../common/utils/password';
 import { TraderWalletsService } from '../trader-wallets/trader-wallets.service';
 import type { ListUsersQueryDto } from './dto/list-users-query.dto';
+import { CurrenciesService } from '../currencies/currencies.service';
 
 const USER_SELECT = {
   id: true,
@@ -44,6 +45,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly traderWallets: TraderWalletsService,
+    private readonly currencies: CurrenciesService,
   ) {}
 
   /** Roles hidden from the directory for the viewer (hierarchy / peer isolation). */
@@ -225,6 +227,12 @@ export class UsersService {
       }
     }
 
+    let referralCurrencyId: string | undefined;
+    if (role === UserRole.REFERRAL) {
+      const code = (opts?.referralCurrency ?? 'UAH').trim() || 'UAH';
+      referralCurrencyId = await this.currencies.requireActiveCurrencyIdByCode(code);
+    }
+
     const passwordHash = await hashPassword(password);
 
     const user = await this.prisma.user.create({
@@ -248,7 +256,7 @@ export class UsersService {
               referralProfile: {
                 create: {
                   referralPercent: opts?.referralPercent ?? 0,
-                  currency: (opts?.referralCurrency ?? 'UAH').trim() || 'UAH',
+                  currencyId: referralCurrencyId!,
                 },
               },
             }
@@ -319,9 +327,10 @@ export class UsersService {
     }
 
     if (updated.role === UserRole.REFERRAL) {
+      const uahId = await this.currencies.requireActiveCurrencyIdByCode('UAH');
       await this.prisma.referralProfile.upsert({
         where: { userId: id },
-        create: { userId: id, referralPercent: 0, currency: 'UAH' },
+        create: { userId: id, referralPercent: 0, currencyId: uahId },
         update: {},
       });
     }

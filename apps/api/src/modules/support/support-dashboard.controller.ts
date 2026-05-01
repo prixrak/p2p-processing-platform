@@ -52,6 +52,7 @@ export class SupportDashboardController {
         where: { status: { in: ['APPEAL', 'UNDERPAID', 'OVERPAID'] } },
         take: 5,
         orderBy: { createdAt: 'desc' },
+        include: { currency: { select: { code: true } } },
       }),
     ]);
 
@@ -72,7 +73,7 @@ export class SupportDashboardController {
         id: o.id,
         type: DirectionType.PAYIN,
         amount: Number(o.amount),
-        currency: o.currency,
+        currency: o.currency.code,
         status: o.status,
         reason: o.status === 'UNDERPAID' ? 'Underpaid' : o.status === 'OVERPAID' ? 'Overpaid' : 'Appeal',
       })),

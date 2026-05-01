@@ -73,7 +73,7 @@ export class MerchantCabinetController {
   async getBalances(@CurrentUser('merchantId') merchantId: string) {
     const merchant = await this.merchantsService.findById(merchantId);
     return merchant.balances.map((b) => ({
-      currency: b.currency,
+      currency: b.currency.code,
       available: Number(b.amount),
       frozen: 0,
     }));
@@ -247,6 +247,7 @@ export class MerchantCabinetController {
         orderBy: { createdAt: 'desc' },
         take,
         skip,
+        include: { currency: { select: { code: true } } },
       });
 
       return orders.map((o) => ({
@@ -254,7 +255,7 @@ export class MerchantCabinetController {
         externalId: o.requestId,
         type: ORDER_LIST_DIRECTION.PAY_OUT,
         amount: Number(o.amount),
-        currency: o.currency,
+        currency: o.currency.code,
         status: o.status,
         paymentMethod: '',
         customerEmail: null,
@@ -275,6 +276,7 @@ export class MerchantCabinetController {
       orderBy: { createdAt: 'desc' },
       take,
       skip,
+      include: { currency: { select: { code: true } } },
     });
 
     return orders.map((o) => ({
@@ -282,7 +284,7 @@ export class MerchantCabinetController {
       externalId: o.requestId,
       type: ORDER_LIST_DIRECTION.PAY_IN,
       amount: Number(o.amount),
-      currency: o.currency,
+      currency: o.currency.code,
       status: o.status,
       paymentMethod: '',
       customerEmail: o.userFullName ?? null,

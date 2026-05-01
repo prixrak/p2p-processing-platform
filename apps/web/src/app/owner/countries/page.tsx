@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Power, PowerOff, Globe } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -11,7 +11,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
+import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
 import { upsertSortedArrayCache } from '@/lib/query-cache-merge';
+import { fetchCurrencyList } from '@/lib/currency-queries';
 
 interface Country {
   id: string;
@@ -31,6 +33,24 @@ export default function CountriesPage() {
     queryKey: ['owner', 'countries'],
     queryFn: () => api.get<Country[]>(internalPaths.countries),
   });
+
+  const { data: currencyCatalog = [] } = useQuery({
+    queryKey: ['currencies'],
+    queryFn: fetchCurrencyList,
+    enabled: showCreate,
+  });
+
+  const countryCurrencyOptions = useMemo(() => {
+    const active = currencyCatalog
+      .filter((c) => c.isActive)
+      .map((c) => ({ value: c.code, label: c.code }));
+    const v = form.currency.trim().toUpperCase();
+    if (v && !active.some((o) => o.value === v)) {
+      active.push({ value: v, label: `${v} (inactive)` });
+    }
+    active.sort((a, b) => a.value.localeCompare(b.value));
+    return active;
+  }, [currencyCatalog, form.currency]);
 
   const create = useMutation({
     mutationFn: (body: typeof form) => api.post<Country>(internalPaths.adminCountries, body),
@@ -155,13 +175,13 @@ export default function CountriesPage() {
             maxLength={5}
             required
           />
-          <Input
+          <CurrencySelectWithCreate
             label="Currency"
+            placeholder="Select currency"
+            required
+            options={countryCurrencyOptions}
             value={form.currency}
             onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })}
-            placeholder="UAH"
-            maxLength={10}
-            required
           />
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" type="button" onClick={() => setShowCreate(false)}>

@@ -6,44 +6,69 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { DirectionType } from '@prisma/client';
+import { CurrenciesService } from '../currencies/currencies.service';
 import {
   CreateMerchantDirectionDto,
   UpdateMerchantDirectionDto,
   UpsertCommissionTiersDto,
 } from './dto/merchant-direction.dto';
+import type { Currency, MerchantDirection } from '@prisma/client';
+
+type MerchantDirectionWithCurrency = MerchantDirection & { currency: Currency };
 
 @Injectable()
 export class MerchantDirectionsService {
   private readonly logger = new Logger(MerchantDirectionsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly currencies: CurrenciesService,
+  ) {}
+
+  private toApiMerchantDirection(row: MerchantDirectionWithCurrency) {
+    const { currency, ...rest } = row;
+    return {
+      ...rest,
+      currency: currency.code,
+    };
+  }
+
+  private dirInclude() {
+    return {
+      commissionTiers: { orderBy: { amountFrom: 'asc' as const } },
+      paymentMethod: true,
+      currency: true,
+    } as const;
+  }
 
   // ── CRUD: Merchant Directions ───────────────────────────────────────────────
 
   async findByMerchant(merchantId: string) {
-    return this.prisma.merchantDirection.findMany({
+    const rows = await this.prisma.merchantDirection.findMany({
       where: { merchantId },
-      include: { commissionTiers: { orderBy: { amountFrom: 'asc' } }, paymentMethod: true },
+      include: this.dirInclude(),
       orderBy: { createdAt: 'asc' },
     });
+    return rows.map((r) => this.toApiMerchantDirection(r as MerchantDirectionWithCurrency));
   }
 
   async findOne(id: string) {
     const dir = await this.prisma.merchantDirection.findUnique({
       where: { id },
-      include: { commissionTiers: { orderBy: { amountFrom: 'asc' } }, paymentMethod: true },
+      include: this.dirInclude(),
     });
     if (!dir) throw new NotFoundException(`MerchantDirection ${id} not found`);
-    return dir;
+    return this.toApiMerchantDirection(dir as MerchantDirectionWithCurrency);
   }
 
   async create(merchantId: string, dto: CreateMerchantDirectionDto) {
+    const currencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.currency);
     const existing = await this.prisma.merchantDirection.findUnique({
       where: {
-        merchantId_directionType_currency: {
+        merchantId_directionType_currencyId: {
           merchantId,
           directionType: dto.directionType,
-          currency: dto.currency,
+          currencyId,
         },
       },
     });
@@ -55,36 +80,46 @@ export class MerchantDirectionsService {
 
     const { tiers, ...rest } = dto;
 
-    return this.prisma.merchantDirection.create({
+    const created = await this.prisma.merchantDirection.create({
       data: {
         merchantId,
         directionType: rest.directionType,
-        currency: rest.currency,
+        currencyId,
         minAmount: rest.minAmount ?? 0,
         maxAmount: rest.maxAmount ?? 0,
         defaultCommissionPercent: rest.defaultCommissionPercent ?? 0,
         paymentMethodId: rest.paymentMethodId,
         commissionTiers: tiers?.length
-          ? { create: tiers.map((t) => ({ amountFrom: t.amountFrom, amountTo: t.amountTo, commissionPercent: t.commissionPercent })) }
+          ? {
+              create: tiers.map((t) => ({
+                amountFrom: t.amountFrom,
+                amountTo: t.amountTo,
+                commissionPercent: t.commissionPercent,
+              })),
+            }
           : undefined,
       },
-      include: { commissionTiers: { orderBy: { amountFrom: 'asc' } }, paymentMethod: true },
+      include: this.dirInclude(),
     });
+    return this.toApiMerchantDirection(created as MerchantDirectionWithCurrency);
   }
 
   async update(id: string, dto: UpdateMerchantDirectionDto) {
     await this.findOne(id);
-    return this.prisma.merchantDirection.update({
+    const updated = await this.prisma.merchantDirection.update({
       where: { id },
       data: {
         ...(dto.minAmount !== undefined ? { minAmount: dto.minAmount } : {}),
         ...(dto.maxAmount !== undefined ? { maxAmount: dto.maxAmount } : {}),
-        ...(dto.defaultCommissionPercent !== undefined ? { defaultCommissionPercent: dto.defaultCommissionPercent } : {}),
+        ...(dto.defaultCommissionPercent !== undefined
+          ? { defaultCommissionPercent: dto.defaultCommissionPercent }
+          : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
         ...(dto.paymentMethodId !== undefined ? { paymentMethodId: dto.paymentMethodId } : {}),
       },
-      include: { commissionTiers: { orderBy: { amountFrom: 'asc' } }, paymentMethod: true },
+      include: this.dirInclude(),
     });
+    return this.toApiMerchantDirection(updated as MerchantDirectionWithCurrency);
   }
 
   async remove(id: string) {
@@ -115,10 +150,11 @@ export class MerchantDirectionsService {
         });
       }
 
-      return tx.merchantDirection.findUnique({
+      const row = await tx.merchantDirection.findUnique({
         where: { id: directionId },
-        include: { commissionTiers: { orderBy: { amountFrom: 'asc' } } },
+        include: this.dirInclude(),
       });
+      return row ? this.toApiMerchantDirection(row as MerchantDirectionWithCurrency) : null;
     });
   }
 
@@ -134,9 +170,10 @@ export class MerchantDirectionsService {
     currency: string,
     amount: number,
   ): Promise<number | null> {
+    const currencyId = await this.currencies.requireActiveCurrencyIdByCode(currency);
     const direction = await this.prisma.merchantDirection.findUnique({
       where: {
-        merchantId_directionType_currency: { merchantId, directionType, currency },
+        merchantId_directionType_currencyId: { merchantId, directionType, currencyId },
       },
       include: { commissionTiers: { orderBy: { amountFrom: 'asc' } } },
     });

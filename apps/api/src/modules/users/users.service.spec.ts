@@ -48,8 +48,13 @@ describe('UsersService', () => {
       country: { findUnique: jest.fn() },
     };
     const traderWallets = { ensureProvisioned: jest.fn() };
-    const service = new UsersService(prisma as any, traderWallets as any);
-    return { service, prisma, traderWallets };
+    const currencies = {
+      requireActiveCurrencyIdByCode: jest
+        .fn()
+        .mockResolvedValue('00000000-0000-0000-0000-00000000c001'),
+    };
+    const service = new UsersService(prisma as any, traderWallets as any, currencies as any);
+    return { service, prisma, traderWallets, currencies };
   }
 
   describe('findAll', () => {
@@ -198,7 +203,11 @@ describe('UsersService', () => {
 
       expect(prisma.referralProfile.upsert).toHaveBeenCalledWith({
         where: { userId },
-        create: { userId, referralPercent: 0, currency: 'UAH' },
+        create: {
+          userId,
+          referralPercent: 0,
+          currencyId: '00000000-0000-0000-0000-00000000c001',
+        },
         update: {},
       });
     });

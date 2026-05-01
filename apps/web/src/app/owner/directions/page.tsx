@@ -11,6 +11,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Select } from '@/components/ui/select';
+import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
@@ -322,7 +323,7 @@ export default function DirectionsPage() {
         />
       )}
       <div className="grid grid-cols-2 gap-3">
-        <Select
+        <CurrencySelectWithCreate
           label="From Currency"
           placeholder="Select currency"
           options={currencySelectOptions}
@@ -331,7 +332,7 @@ export default function DirectionsPage() {
           required
           disabled={currenciesLoading}
         />
-        <Select
+        <CurrencySelectWithCreate
           label="To Currency"
           placeholder="Select currency"
           options={currencySelectOptions}

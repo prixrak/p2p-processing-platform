@@ -41,7 +41,7 @@ export class MerchantsService {
     const merchant = await this.prisma.merchant.findUnique({
       where: { id },
       include: {
-        balances: true,
+        balances: { include: { currency: { select: { code: true } } } },
         apiKeys: { where: { isActive: true } },
         user: { select: { email: true, role: true, isActive: true } },
       },
@@ -56,7 +56,7 @@ export class MerchantsService {
     const merchant = await this.prisma.merchant.findUnique({
       where: { userId },
       include: {
-        balances: true,
+        balances: { include: { currency: { select: { code: true } } } },
         apiKeys: { where: { isActive: true } },
       },
     });
@@ -73,7 +73,7 @@ export class MerchantsService {
         skip,
         take: limit,
         include: {
-          balances: true,
+          balances: { include: { currency: { select: { code: true } } } },
           user: { select: { email: true, role: true, isActive: true } },
           _count: { select: { payinOrders: true, payoutOrders: true } },
         },

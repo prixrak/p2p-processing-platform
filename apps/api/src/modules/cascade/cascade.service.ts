@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma, type CascadeSetting } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
+import { CurrenciesService } from '../currencies/currencies.service';
 import {
   CascadeRedisStateService,
   type CascadeCurrencyPayload,
@@ -40,6 +41,7 @@ export class CascadeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisState: CascadeRedisStateService,
+    private readonly currencies: CurrenciesService,
   ) {}
 
   async getSettings(): Promise<CascadeSetting> {
@@ -161,8 +163,8 @@ export class CascadeService {
       INNER JOIN trader_profiles tp ON tp.id = r.trader_id
         AND tp.is_active = true
         AND tp.accepting_orders = true
-      WHERE r.currency = ${currency}
-        AND r.is_active = true
+      INNER JOIN currencies rc ON rc.id = r.currency_id AND rc.code = ${currency}
+      WHERE r.is_active = true
         AND r.used_ops < r.limit_total_ops
     `;
 
@@ -260,8 +262,8 @@ export class CascadeService {
       INNER JOIN trader_profiles tp ON tp.id = r.trader_id
         AND tp.is_active = true
         AND tp.accepting_orders = true
-      WHERE r.currency = ${currency}
-        AND r.is_active = true
+      INNER JOIN currencies rc ON rc.id = r.currency_id AND rc.code = ${currency}
+      WHERE r.is_active = true
         AND r.used_ops < r.limit_total_ops
     `;
     return this.snapshotSignature(
@@ -363,8 +365,8 @@ export class CascadeService {
       SELECT tdl.trader_id AS "traderId", COALESCE(SUM(tdl.amount), 0)::decimal AS vol
       FROM traffic_distribution_logs tdl
       INNER JOIN payin_orders po ON po.id = tdl.payin_order_id
-      WHERE po.currency = ${params.currency}
-        AND tdl.created_at >= ${windowStart}
+      INNER JOIN currencies poc ON poc.id = po.currency_id AND poc.code = ${cur}
+      WHERE tdl.created_at >= ${windowStart}
       GROUP BY tdl.trader_id
     `;
 
@@ -389,8 +391,9 @@ export class CascadeService {
       return a.traderId.localeCompare(b.traderId);
     });
 
+    const usdtId = await this.currencies.getUsdtCurrencyId();
     const balanceRows = await tx.traderBalance.findMany({
-      where: { currency: 'USDT' },
+      where: { currencyId: usdtId },
       select: { traderId: true, amount: true },
     });
     const usdtBal = new Map<string, number>();
@@ -587,6 +590,7 @@ export class CascadeService {
         traderId,
         group: { archivedAt: null },
       },
+      include: { currency: { select: { code: true } } },
     });
 
     const traderProfile = await this.prisma.traderProfile.findUnique({
@@ -595,7 +599,7 @@ export class CascadeService {
     });
     const fallbackMethod = (traderProfile?.processingMethod ?? 'CARD') as TraderCascadeMethod;
 
-    const currencies = [...new Set(traderReqs.map((r) => r.currency))];
+    const currencies = [...new Set(traderReqs.map((r) => r.currency.code))];
     const snapshotsByCurrency = new Map<string, ReqSnapshot[]>();
 
     for (const currency of currencies) {
@@ -618,8 +622,8 @@ export class CascadeService {
         INNER JOIN trader_profiles tp ON tp.id = r.trader_id
           AND tp.is_active = true
           AND tp.accepting_orders = true
-        WHERE r.currency = ${currency}
-          AND r.is_active = true
+        INNER JOIN currencies rc ON rc.id = r.currency_id AND rc.code = ${currency}
+        WHERE r.is_active = true
           AND r.used_ops < r.limit_total_ops
       `;
       snapshotsByCurrency.set(currency, snaps);
@@ -639,7 +643,7 @@ export class CascadeService {
     for (const req of traderReqs) {
       const manualMin = Number(req.minAmount);
       const manualMax = Number(req.maxAmount);
-      const snaps = snapshotsByCurrency.get(req.currency) ?? [];
+      const snaps = snapshotsByCurrency.get(req.currency.code) ?? [];
       const row = snaps.find((s) => s.id === req.id);
 
       if (!row) {
@@ -656,7 +660,7 @@ export class CascadeService {
         };
         requisites.push({
           requisite_id: req.id,
-          currency: req.currency,
+          currency: req.currency.code,
           manual_min: manualMin,
           manual_max: manualMax,
           eff_min: null,
@@ -709,7 +713,7 @@ export class CascadeService {
 
       requisites.push({
         requisite_id: req.id,
-        currency: req.currency,
+        currency: req.currency.code,
         manual_min: manualMin,
         manual_max: manualMax,
         eff_min: bounds ? bounds.effMin : null,

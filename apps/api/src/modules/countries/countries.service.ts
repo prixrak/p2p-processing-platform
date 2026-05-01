@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException, Logger } from '@nestj
 import { IsString, IsOptional, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PrismaService } from '../../config/prisma.service';
+import { CurrenciesService } from '../currencies/currencies.service';
 
 export class CreateCountryDto {
   @ApiProperty({ example: 'Ukraine' })
@@ -33,12 +34,18 @@ export class UpdateCountryDto {
 export class CountriesService {
   private readonly logger = new Logger(CountriesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly currencies: CurrenciesService,
+  ) {}
 
   async findAll(activeOnly = false) {
     return this.prisma.country.findMany({
       where: activeOnly ? { isActive: true } : {},
-      include: { _count: { select: { paymentMethods: true } } },
+      include: {
+        _count: { select: { paymentMethods: true } },
+        currency: { select: { id: true, code: true, isActive: true } },
+      },
       orderBy: { name: 'asc' },
     });
   }
@@ -46,7 +53,10 @@ export class CountriesService {
   async findById(id: string) {
     const row = await this.prisma.country.findUnique({
       where: { id },
-      include: { paymentMethods: { orderBy: { name: 'asc' } } },
+      include: {
+        paymentMethods: { orderBy: { name: 'asc' } },
+        currency: { select: { id: true, code: true, isActive: true } },
+      },
     });
     if (!row) throw new NotFoundException(`Country ${id} not found`);
     return row;
@@ -57,8 +67,10 @@ export class CountriesService {
     const existing = await this.prisma.country.findUnique({ where: { code } });
     if (existing) throw new ConflictException(`Country code ${code} already exists`);
 
+    const currencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.currency);
+
     const row = await this.prisma.country.create({
-      data: { name: dto.name.trim(), code, currency: dto.currency.trim().toUpperCase() },
+      data: { name: dto.name.trim(), code, currencyId },
     });
     this.logger.log(`Country created: ${code}`);
     return row;

@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { PrismaService } from '../../config/prisma.service';
 import { BalanceTransactionType, Prisma } from '@prisma/client';
 import { TelegramService } from '../telegram/telegram.service';
+import { CurrenciesService } from '../currencies/currencies.service';
 
 export interface CreateBalanceTxParams {
   traderId: string;
@@ -29,6 +30,7 @@ export class BalanceTransactionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly telegram: TelegramService,
+    private readonly currencies: CurrenciesService,
   ) {}
 
   /**
@@ -38,12 +40,14 @@ export class BalanceTransactionsService {
   async record(params: CreateBalanceTxParams) {
     const client = params.tx ?? this.prisma;
 
+    const currencyId = await this.currencies.requireActiveCurrencyIdByCode(params.currency);
+
     const record = await client.balanceTransaction.create({
       data: {
         traderId: params.traderId,
         type: params.type,
         amount: params.amount,
-        currency: params.currency,
+        currencyId,
         referenceId: params.referenceId,
         createdById: params.createdById,
         comment: params.comment,
@@ -54,7 +58,7 @@ export class BalanceTransactionsService {
       `BalanceTx: ${params.type} ${params.amount} ${params.currency} trader=${params.traderId} ref=${params.referenceId ?? '-'}`,
     );
 
-    if (params.currency === 'USDT') {
+    if (this.currencies.normalizeCode(params.currency) === 'USDT') {
       this.telegram.scheduleTraderSettlementHandbookAlerts({
         traderId: params.traderId,
         balanceTxType: params.type,
@@ -72,7 +76,13 @@ export class BalanceTransactionsService {
     const where: Prisma.BalanceTransactionWhereInput = { traderId };
 
     if (filters.type) where.type = filters.type;
-    if (filters.currency) where.currency = filters.currency;
+    if (filters.currency) {
+      const cid = await this.currencies.findCurrencyIdByCode(filters.currency);
+      if (!cid) {
+        return { data: [], total: 0, page, limit };
+      }
+      where.currencyId = cid;
+    }
     if (filters.dateFrom || filters.dateTo) {
       where.createdAt = {};
       if (filters.dateFrom) where.createdAt.gte = new Date(filters.dateFrom);
@@ -84,7 +94,10 @@ export class BalanceTransactionsService {
         where,
         skip,
         take: limit,
-        include: { createdBy: { select: { email: true } } },
+        include: {
+          createdBy: { select: { email: true } },
+          currency: { select: { code: true } },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.balanceTransaction.count({ where }),
@@ -107,8 +120,10 @@ export class BalanceTransactionsService {
         row.type === BalanceTransactionType.TOP_UP && row.referenceId
           ? depById.get(row.referenceId)
           : undefined;
+      const { currency, ...rest } = row;
       return {
-        ...row,
+        ...rest,
+        currency: currency.code,
         /** When this TOP_UP row links to an on-chain monitored deposit, echo chain status (older rows may show null). */
         on_chain_deposit_status: dep?.status ?? null,
       };
@@ -138,20 +153,23 @@ export class BalanceTransactionsService {
       throw new NotFoundException(`Trader ${params.traderId} not found`);
     }
 
+    const currencyId = await this.currencies.requireActiveCurrencyIdByCode(params.currency);
+    const curCode = this.currencies.normalizeCode(params.currency);
+
     return this.prisma.$transaction(async (tx) => {
       let balance = await tx.traderBalance.findUnique({
-        where: { traderId_currency: { traderId: params.traderId, currency: params.currency } },
+        where: { traderId_currencyId: { traderId: params.traderId, currencyId } },
       });
 
       if (!balance) {
         balance = await tx.traderBalance.create({
-          data: { traderId: params.traderId, currency: params.currency, amount: 0 },
+          data: { traderId: params.traderId, currencyId, amount: 0 },
         });
       }
 
       if (params.type === 'MANUAL_DEBIT') {
         const current = Number(balance.amount);
-        if (params.currency === 'USDT') {
+        if (curCode === 'USDT') {
           const profile = await tx.traderProfile.findUnique({
             where: { id: params.traderId },
             select: { overdraftLimit: true },
@@ -172,7 +190,7 @@ export class BalanceTransactionsService {
       const delta = params.type === 'MANUAL_CREDIT' ? params.amount : -params.amount;
 
       await tx.traderBalance.update({
-        where: { traderId_currency: { traderId: params.traderId, currency: params.currency } },
+        where: { traderId_currencyId: { traderId: params.traderId, currencyId } },
         data: { amount: { increment: delta } },
       });
 
@@ -181,11 +199,11 @@ export class BalanceTransactionsService {
           traderId: params.traderId,
           type: params.type as BalanceTransactionType,
           amount: params.amount,
-          currency: params.currency,
+          currencyId,
           createdById: params.adminId,
           comment: params.comment,
         },
-        include: { createdBy: { select: { email: true } } },
+        include: { createdBy: { select: { email: true } }, currency: { select: { code: true } } },
       });
 
       this.logger.log(
@@ -195,7 +213,7 @@ export class BalanceTransactionsService {
       return txRecord;
     })
       .then((txRecord) => {
-        if (params.currency === 'USDT') {
+        if (curCode === 'USDT') {
           this.telegram.scheduleTraderSettlementHandbookAlerts({
             traderId: params.traderId,
             balanceTxType:
@@ -204,7 +222,8 @@ export class BalanceTransactionsService {
                 : BalanceTransactionType.MANUAL_DEBIT,
           });
         }
-        return txRecord;
+        const { currency, ...rest } = txRecord;
+        return { ...rest, currency: currency.code };
       });
   }
 
@@ -215,14 +234,20 @@ export class BalanceTransactionsService {
 
     if (filters.traderId) where.traderId = filters.traderId;
     if (filters.type) where.type = filters.type;
-    if (filters.currency) where.currency = filters.currency;
+    if (filters.currency) {
+      const cid = await this.currencies.findCurrencyIdByCode(filters.currency);
+      if (!cid) {
+        return { data: [], total: 0, page, limit };
+      }
+      where.currencyId = cid;
+    }
     if (filters.dateFrom || filters.dateTo) {
       where.createdAt = {};
       if (filters.dateFrom) where.createdAt.gte = new Date(filters.dateFrom);
       if (filters.dateTo) where.createdAt.lte = new Date(filters.dateTo);
     }
 
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.balanceTransaction.findMany({
         where,
         skip,
@@ -230,11 +255,17 @@ export class BalanceTransactionsService {
         include: {
           createdBy: { select: { email: true } },
           trader: { include: { user: { select: { email: true } } } },
+          currency: { select: { code: true } },
         },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.balanceTransaction.count({ where }),
     ]);
+
+    const data = rows.map(({ currency, ...rest }) => ({
+      ...rest,
+      currency: currency.code,
+    }));
 
     return { data, total, page, limit };
   }

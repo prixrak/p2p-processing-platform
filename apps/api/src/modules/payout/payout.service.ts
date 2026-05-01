@@ -6,7 +6,7 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
-import { Prisma, PayoutStatus, PayoutPoolType } from '@prisma/client';
+import { Prisma, PayoutOrder, PayoutStatus, PayoutPoolType } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import {
   PayOutOrderStatus,
@@ -40,6 +40,7 @@ import { BalanceTransactionsService } from '../balance-transactions/balance-tran
 import { MerchantDirectionsService } from '../merchant-directions/merchant-directions.service';
 import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { CurrenciesService } from '../currencies/currencies.service';
 import type { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
 import { OrderUploadDto, PayoutOrderInfoDto, PayoutListFiltersDto, SpecialistCompleteDto } from './dto';
@@ -47,9 +48,12 @@ import { PayoutRealtimeService } from './payout-realtime.service';
 
 const CABINET_ORDER_INCLUDE = {
   paymentMethod: { select: { displayName: true } },
+  currency: { select: { code: true } },
 } as const;
 
-const ORDER_INCLUDE = {} as const;
+const ORDER_INCLUDE = {
+  currency: { select: { code: true } },
+} as const;
 
 /** Singleton row for global pool B share (see migration seed). */
 const PAYOUT_POOL_SETTINGS_ROW_ID = '00000000-0000-0000-0000-000000000001';
@@ -57,6 +61,8 @@ const PAYOUT_POOL_SETTINGS_ROW_ID = '00000000-0000-0000-0000-000000000001';
 type _CabinetPayload = Prisma.PayoutOrderGetPayload<{ include: typeof CABINET_ORDER_INCLUDE }>;
 type PayoutOrderRow = Prisma.PayoutOrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
 type PayoutOrderApiSource = PayoutOrderRow | _CabinetPayload;
+/** Full payout order row for v2 settlement (no required relation beyond scalars). */
+type PayoutOrderScalars = PayoutOrder;
 
 function enumerateDaysUTC(from: Date, to: Date): string[] {
   const out: string[] = [];
@@ -99,9 +105,16 @@ export class PayoutService {
     private readonly merchantDirections: MerchantDirectionsService,
     private readonly exchangeRate: ExchangeRateService,
     private readonly telegram: TelegramService,
+    private readonly currencies: CurrenciesService,
   ) {}
 
-  private emitPayoutOrderRealtime(order: PayoutOrderApiSource, poolChanged: boolean): void {
+  private emitPayoutOrderRealtime(
+    order: Pick<
+      PayoutOrder,
+      'id' | 'status' | 'traderId' | 'payoutTraderId' | 'merchantId'
+    >,
+    poolChanged: boolean,
+  ): void {
     void this.payoutRealtime.publish({
       type: PAYOUT_ORDER_REALTIME_EVENT_TYPE,
       orderId: order.id,
@@ -196,8 +209,10 @@ export class PayoutService {
       await validateCallbackUrl(dto.callback_url);
     }
 
+    const fiatCurrencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.currency);
+
     const direction = await this.prisma.direction.findFirst({
-      where: { type: DirectionType.PAYOUT, fromCurrency: dto.currency, isOnline: true },
+      where: { type: DirectionType.PAYOUT, toCurrencyId: fiatCurrencyId, isOnline: true },
     });
     if (!direction) {
       throw new BadRequestException(`No active PAYOUT direction for ${dto.currency}`);
@@ -244,12 +259,12 @@ export class PayoutService {
         if (isFiatV2 && merchantDebitLocal !== null) {
           let bal = await tx.merchantBalance.findUnique({
             where: {
-              merchantId_currency: { merchantId, currency: dto.currency },
+              merchantId_currencyId: { merchantId, currencyId: fiatCurrencyId },
             },
           });
           if (!bal) {
             bal = await tx.merchantBalance.create({
-              data: { merchantId, currency: dto.currency, amount: 0 },
+              data: { merchantId, currencyId: fiatCurrencyId, amount: 0 },
             });
           }
           if (Number(bal.amount) < merchantDebitLocal) {
@@ -258,7 +273,7 @@ export class PayoutService {
 
           await tx.merchantBalance.update({
             where: {
-              merchantId_currency: { merchantId, currency: dto.currency },
+              merchantId_currencyId: { merchantId, currencyId: fiatCurrencyId },
             },
             data: { amount: { increment: -merchantDebitLocal } },
           });
@@ -269,7 +284,7 @@ export class PayoutService {
             requestId: dto.request_id,
             merchantId,
             amount: dto.amount,
-            currency: dto.currency,
+            currencyId: fiatCurrencyId,
             status: 'PENDING',
             poolType,
             poolAssignedAt,
@@ -286,6 +301,7 @@ export class PayoutService {
             merchantDebitLocal: merchantDebitLocal ?? undefined,
             callbackUrl: dto.callback_url,
           },
+          include: ORDER_INCLUDE,
         });
 
         if (isFiatV2 && merchantDebitLocal !== null) {
@@ -294,7 +310,7 @@ export class PayoutService {
               merchantId,
               type: MerchantBalanceTransactionType.PAYOUT_DEBIT,
               amount: merchantDebitLocal,
-              currency: dto.currency,
+              currencyId: fiatCurrencyId,
               referenceId: created.id,
               comment: `Pay-out reserve for order ${created.id}`,
             },
@@ -310,10 +326,10 @@ export class PayoutService {
 
       if (poolType === PayoutPoolType.PAYOUT_SPECIALIST) {
         void this.telegram
-          .notifyPayoutSpecialistsNewPoolOrder(order.currency, {
+          .notifyPayoutSpecialistsNewPoolOrder(dto.currency, {
             id: order.id,
             amount: Number(order.amount),
-            currency: order.currency,
+            currency: dto.currency,
           })
           .catch(() => undefined);
       }
@@ -346,7 +362,7 @@ export class PayoutService {
   async getInfo(merchantId: string): Promise<ProfileDto> {
     const merchant = await this.prisma.merchant.findUniqueOrThrow({
       where: { id: merchantId },
-      include: { balances: true },
+      include: { balances: { include: { currency: true } } },
     });
 
     const direction = await this.prisma.direction.findFirst({
@@ -355,7 +371,7 @@ export class PayoutService {
 
     const balances: Record<string, number> = {};
     for (const b of merchant.balances) {
-      balances[b.currency] = Number(b.amount);
+      balances[b.currency.code] = Number(b.amount);
     }
 
     return {
@@ -449,21 +465,21 @@ export class PayoutService {
 
     const profile = await this.prisma.payoutTraderProfile.findUnique({
       where: { id: payoutTraderId },
-      include: { country: true },
+      include: { country: { include: { currency: true } } },
     });
     if (!profile) throw new NotFoundException('Pay-Out specialist profile not found');
     if (!profile.isActive) {
       return { orders: [], total: 0, page, limit };
     }
 
-    const currency = profile.country.currency;
+    const currencyFilter = { code: profile.country.currency.code };
 
     const where: Prisma.PayoutOrderWhereInput = {
       status: 'PENDING',
       poolType: PayoutPoolType.PAYOUT_SPECIALIST,
       traderId: null,
       payoutTraderId: null,
-      currency,
+      currency: currencyFilter,
     };
 
     this.applyPayoutListFilters(where, filters);
@@ -552,7 +568,7 @@ export class PayoutService {
 
     this.emitPayoutOrderRealtime(updated, true);
 
-    return this.toPayOutOrderApiDto(updated);
+    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
 
   async specialistTakeFromPool(
@@ -561,7 +577,7 @@ export class PayoutService {
   ): Promise<PayOutOrderApiDto> {
     const profile = await this.prisma.payoutTraderProfile.findUnique({
       where: { id: payoutTraderId },
-      include: { country: true },
+      include: { country: { include: { currency: true } } },
     });
     if (!profile) throw new NotFoundException('Pay-Out specialist profile not found');
 
@@ -569,7 +585,7 @@ export class PayoutService {
       throw new ForbiddenException('Your specialist account is inactive.');
     }
 
-    const currency = profile.country.currency;
+    const currencyId = profile.country.currencyId;
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
@@ -580,7 +596,7 @@ export class PayoutService {
           AND trader_id IS NULL
           AND payout_trader_id IS NULL
           AND pool_type = 'PAYOUT_SPECIALIST'
-          AND currency = ${currency}
+          AND currency_id = ${currencyId}::uuid
         FOR UPDATE SKIP LOCKED
       `;
 
@@ -829,7 +845,7 @@ export class PayoutService {
     const p = await this.prisma.payoutTraderProfile.findUnique({
       where: { id: payoutTraderId },
       include: {
-        country: { select: { name: true, code: true, currency: true } },
+        country: { include: { currency: true } },
         user: { select: { email: true } },
       },
     });
@@ -837,14 +853,14 @@ export class PayoutService {
       throw new NotFoundException('Pay-Out specialist profile not found');
     }
 
-    const currency = p.country.currency;
+    const currencyId = p.country.currencyId;
     const now = new Date();
     const startOfUtcDay = new Date(now);
     startOfUtcDay.setUTCHours(0, 0, 0, 0);
 
     const baseToday = {
       payoutTraderId,
-      currency,
+      currencyId,
       endAt: { gte: startOfUtcDay, lte: now },
     };
 
@@ -867,7 +883,7 @@ export class PayoutService {
       this.prisma.payoutOrder.count({
         where: {
           payoutTraderId,
-          currency,
+          currencyId,
           status: { in: ['NEW', 'PROCESSING'] },
         },
       }),
@@ -877,7 +893,11 @@ export class PayoutService {
       email: p.user.email,
       balance_usdt: Number(p.balanceUsdt),
       payout_rate: Number(p.payoutRate),
-      country: p.country,
+      country: {
+        name: p.country.name,
+        code: p.country.code,
+        currency: p.country.currency.code,
+      },
       is_active: p.isActive,
       exchange_parser: p.exchangeParser,
       today_utc: {
@@ -942,16 +962,17 @@ export class PayoutService {
   async getSpecialistStatistics(payoutTraderId: string, query: StatisticsQueryDto) {
     const profile = await this.prisma.payoutTraderProfile.findUnique({
       where: { id: payoutTraderId },
-      include: { country: true },
+      include: { country: { include: { currency: true } } },
     });
     if (!profile) {
       throw new NotFoundException(`Pay-Out specialist ${payoutTraderId} not found`);
     }
 
     const window = resolveStatisticsWindow(query);
-    const currency = profile.country.currency;
+    const currencyId = profile.country.currencyId;
+    const currency = profile.country.currency.code;
     const dateWhere = { gte: window.from, lte: window.to };
-    const base = { payoutTraderId, currency, createdAt: dateWhere };
+    const base = { payoutTraderId, currencyId, createdAt: dateWhere };
 
     const [
       payoutTotal,
@@ -986,7 +1007,7 @@ export class PayoutService {
                  COALESCE(SUM(amount), 0) AS volume
           FROM payout_orders
           WHERE payout_trader_id = ${payoutTraderId}::uuid
-            AND currency = ${currency}
+            AND currency_id = ${currencyId}::uuid
             AND status = 'COMPLETED'
             AND created_at >= ${window.from}
             AND created_at <= ${window.to}
@@ -1067,6 +1088,7 @@ export class PayoutService {
         orderBy: { createdAt: 'desc' },
         skip,
         take,
+        include: { currency: { select: { code: true } } },
       }),
       this.prisma.payoutTraderBalanceTransaction.count({ where }),
     ]);
@@ -1076,7 +1098,7 @@ export class PayoutService {
         id: r.id,
         type: r.type,
         amount: Number(r.amount),
-        currency: r.currency,
+        currency: r.currency.code,
         comment: r.comment,
         reference_id: r.referenceId,
         created_at: r.createdAt.toISOString(),
@@ -1114,6 +1136,7 @@ export class PayoutService {
         orderBy: { createdAt: 'desc' },
         skip,
         take,
+        include: { currency: { select: { code: true } } },
       }),
       this.prisma.settlement.count({ where }),
     ]);
@@ -1123,7 +1146,7 @@ export class PayoutService {
         id: r.id,
         type: r.type,
         amount: Number(r.amount),
-        currency: r.currency,
+        currency: r.currency.code,
         note: r.note,
         usdt_address: r.usdtAddress,
         created_at: r.createdAt.toISOString(),
@@ -1149,11 +1172,13 @@ export class PayoutService {
         where: { payoutTraderId },
         orderBy: { createdAt: 'desc' },
         take: 25,
+        include: { currency: { select: { code: true } } },
       }),
       this.prisma.settlement.findMany({
         where: { payoutTraderId },
         orderBy: { createdAt: 'desc' },
         take: 25,
+        include: { currency: { select: { code: true } } },
       }),
       this.prisma.payoutOrder.findMany({
         where: {
@@ -1162,6 +1187,7 @@ export class PayoutService {
         },
         orderBy: { updatedAt: 'desc' },
         take: 25,
+        include: { currency: { select: { code: true } } },
       }),
     ]);
 
@@ -1172,7 +1198,7 @@ export class PayoutService {
         id: `ledger:${t.id}`,
         kind: 'ledger',
         title: 'Balance transaction',
-        message: `${t.type}: ${Number(t.amount)} ${t.currency}`,
+        message: `${t.type}: ${Number(t.amount)} ${t.currency.code}`,
         created_at: t.createdAt.toISOString(),
         reference_id: t.referenceId,
       });
@@ -1183,7 +1209,7 @@ export class PayoutService {
         id: `settlement:${s.id}`,
         kind: 'settlement',
         title: 'Settlement',
-        message: `${s.type}: ${Number(s.amount)} ${s.currency}`,
+        message: `${s.type}: ${Number(s.amount)} ${s.currency.code}`,
         created_at: s.createdAt.toISOString(),
         reference_id: s.id,
       });
@@ -1194,7 +1220,7 @@ export class PayoutService {
         id: `order:${o.id}`,
         kind: 'order',
         title: `Pay-Out ${o.status}`,
-        message: `${o.id} — ${Number(o.amount)} ${o.currency}`,
+        message: `${o.id} — ${Number(o.amount)} ${o.currency.code}`,
         created_at: o.updatedAt.toISOString(),
         reference_id: o.id,
       });
@@ -1244,6 +1270,7 @@ export class PayoutService {
       where,
       orderBy: { createdAt: 'desc' },
       take: 5000,
+      include: { currency: { select: { code: true } } },
     });
 
     const header = ['id', 'request_id', 'status', 'currency', 'amount', 'pool_type', 'created_at_iso'].join(
@@ -1254,7 +1281,7 @@ export class PayoutService {
         csvEscape(r.id),
         csvEscape(r.requestId),
         csvEscape(r.status),
-        csvEscape(r.currency),
+        csvEscape(r.currency.code),
         csvEscape(String(Number(r.amount))),
         csvEscape(r.poolType),
         csvEscape(r.createdAt.toISOString()),
@@ -1291,7 +1318,7 @@ export class PayoutService {
 
     this.emitPayoutOrderRealtime(updated, false);
 
-    return this.toPayOutOrderApiDto(updated);
+    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
 
   // ─── Internal: traderComplete ───
@@ -1341,7 +1368,7 @@ export class PayoutService {
 
     this.emitPayoutOrderRealtime(updated, false);
 
-    return this.toPayOutOrderApiDto(updated);
+    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
 
   // ─── Internal: traderFail ───
@@ -1372,14 +1399,14 @@ export class PayoutService {
         const refund = Number(order.merchantDebitLocal);
         await tx.merchantBalance.upsert({
           where: {
-            merchantId_currency: {
+            merchantId_currencyId: {
               merchantId: order.merchantId,
-              currency: order.currency,
+              currencyId: order.currencyId,
             },
           },
           create: {
             merchantId: order.merchantId,
-            currency: order.currency,
+            currencyId: order.currencyId,
             amount: refund,
           },
           update: { amount: { increment: refund } },
@@ -1389,7 +1416,7 @@ export class PayoutService {
             merchantId: order.merchantId,
             type: MerchantBalanceTransactionType.PAYOUT_REFUND,
             amount: refund,
-            currency: order.currency,
+            currencyId: order.currencyId,
             referenceId: order.id,
             comment: `Pay-out failed refund for order ${order.id}`,
           },
@@ -1403,7 +1430,7 @@ export class PayoutService {
 
     this.emitPayoutOrderRealtime(updated, false);
 
-    return this.toPayOutOrderApiDto(updated);
+    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
 
   async specialistStartProcessing(
@@ -1513,7 +1540,7 @@ export class PayoutService {
 
     this.emitPayoutOrderRealtime(updated, false);
 
-    return this.toPayOutOrderApiDto(updated);
+    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
 
   async specialistFail(
@@ -1573,14 +1600,14 @@ export class PayoutService {
         const refund = Number(order.merchantDebitLocal);
         await tx.merchantBalance.upsert({
           where: {
-            merchantId_currency: {
+            merchantId_currencyId: {
               merchantId: order.merchantId,
-              currency: order.currency,
+              currencyId: order.currencyId,
             },
           },
           create: {
             merchantId: order.merchantId,
-            currency: order.currency,
+            currencyId: order.currencyId,
             amount: refund,
           },
           update: { amount: { increment: refund } },
@@ -1590,7 +1617,7 @@ export class PayoutService {
             merchantId: order.merchantId,
             type: MerchantBalanceTransactionType.PAYOUT_REFUND,
             amount: refund,
-            currency: order.currency,
+            currencyId: order.currencyId,
             referenceId: order.id,
             comment: `Pay-out failed refund for order ${order.id}`,
           },
@@ -1604,9 +1631,7 @@ export class PayoutService {
 
     this.emitPayoutOrderRealtime(updated, returnToPool);
 
-    return returnToPool
-      ? this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId))
-      : this.toPayOutOrderApiDto(updated);
+    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
 
   // ─── Private helpers ───
@@ -1616,7 +1641,7 @@ export class PayoutService {
    */
   private async settlePayoutV2Specialist(
     tx: Prisma.TransactionClient,
-    order: PayoutOrderRow,
+    order: PayoutOrderScalars,
   ): Promise<void> {
     if (!order.payoutTraderId || order.parserRate == null || order.rateAdminOut == null) {
       throw new BadRequestException('Payout v2 specialist settlement: missing profile or rate snapshot');
@@ -1654,12 +1679,13 @@ export class PayoutService {
       data: { balanceUsdt: { increment: creditUsdtVal } },
     });
 
+    const usdtId = await this.currencies.getUsdtCurrencyId();
     await tx.payoutTraderBalanceTransaction.create({
       data: {
         payoutTraderId: order.payoutTraderId,
         type: PayoutTraderBalanceTxType.PAYOUT_CREDIT,
         amount: creditUsdtVal,
-        currency: 'USDT',
+        currencyId: usdtId,
         referenceId: order.id,
         comment: `Pay-out USDT credit for order ${order.id}`,
       },
@@ -1690,10 +1716,12 @@ export class PayoutService {
   /**
    * RISK NOTE: Fiat Pay-Out v2 — merchant was debited at order creation; credit trader USDT and book platform margin.
    */
-  private async settlePayoutV2(tx: Prisma.TransactionClient, order: PayoutOrderRow): Promise<void> {
+  private async settlePayoutV2(tx: Prisma.TransactionClient, order: PayoutOrderScalars): Promise<void> {
     if (!order.traderId || order.parserRate == null || order.rateAdminOut == null) {
       throw new BadRequestException('Payout v2 settlement: missing trader or rate snapshot');
     }
+
+    const usdtId = await this.currencies.getUsdtCurrencyId();
 
     const trader = await tx.traderProfile.findUnique({ where: { id: order.traderId } });
     if (!trader) {
@@ -1716,14 +1744,14 @@ export class PayoutService {
 
     await tx.traderBalance.upsert({
       where: {
-        traderId_currency: {
+        traderId_currencyId: {
           traderId: order.traderId,
-          currency: 'USDT',
+          currencyId: usdtId,
         },
       },
       create: {
         traderId: order.traderId,
-        currency: 'USDT',
+        currencyId: usdtId,
         amount: creditUsdtVal,
       },
       update: { amount: { increment: creditUsdtVal } },
@@ -1771,6 +1799,7 @@ export class PayoutService {
         merchantId,
         ...(id ? { id } : { requestId: requestId! }),
       },
+      include: ORDER_INCLUDE,
     });
 
     if (!order) throw new NotFoundException('Order not found');
@@ -1779,7 +1808,7 @@ export class PayoutService {
 
   private async createPayoutWebhookEntry(
     tx: Prisma.TransactionClient,
-    order: PayoutOrderRow,
+    order: Pick<PayoutOrder, 'id' | 'requestId' | 'status' | 'amount' | 'callbackUrl'>,
   ): Promise<void> {
     if (!order.callbackUrl) return;
 
@@ -1821,7 +1850,7 @@ export class PayoutService {
       created_at: Math.floor(order.createdAt.getTime() / 1000),
       start_at: order.startAt ? Math.floor(order.startAt.getTime() / 1000) : null,
       end_at: order.endAt ? Math.floor(order.endAt.getTime() / 1000) : null,
-      currency: order.currency,
+      currency: order.currency.code,
       details,
       amount: amountNum,
       status: order.status as PayOutOrderStatus,

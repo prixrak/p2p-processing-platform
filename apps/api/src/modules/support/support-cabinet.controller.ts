@@ -66,6 +66,7 @@ export class SupportCabinetController {
           include: {
             merchant: { select: { name: true } },
             trader: { include: { user: { select: { email: true } } } },
+            currency: { select: { code: true } },
           },
           orderBy: { createdAt: 'desc' },
           take,
@@ -81,7 +82,7 @@ export class SupportCabinetController {
           merchantName: o.merchant?.name ?? '—',
           traderName: o.trader?.user?.email ?? '',
           amount: Number(o.amount),
-          currency: o.currency,
+          currency: o.currency.code,
           status: o.status,
           createdAt: o.createdAt.toISOString(),
         })),
@@ -106,6 +107,7 @@ export class SupportCabinetController {
         include: {
           merchant: { select: { name: true } },
           trader: { include: { user: { select: { email: true } } } },
+          currency: { select: { code: true } },
         },
         orderBy: { createdAt: 'desc' },
         take,
@@ -121,7 +123,7 @@ export class SupportCabinetController {
         merchantName: o.merchant?.name ?? '—',
         traderName: o.trader?.user?.email ?? '',
         amount: Number(o.amount),
-        currency: o.currency,
+        currency: o.currency.code,
         status: o.status,
         createdAt: o.createdAt.toISOString(),
       })),
@@ -142,6 +144,7 @@ export class SupportCabinetController {
         requisite: {
           include: { bank: { select: { name: true } } },
         },
+        currency: { select: { code: true } },
       },
     });
 
@@ -152,7 +155,7 @@ export class SupportCabinetController {
         merchantName: payinOrder.merchant?.name ?? '—',
         traderName: payinOrder.trader?.user?.email ?? '',
         amount: Number(payinOrder.amount),
-        currency: payinOrder.currency,
+        currency: payinOrder.currency.code,
         status: payinOrder.status,
         createdAt: payinOrder.createdAt.toISOString(),
         updatedAt: payinOrder.updatedAt.toISOString(),
@@ -171,6 +174,7 @@ export class SupportCabinetController {
       include: {
         merchant: { select: { name: true } },
         trader: { include: { user: { select: { email: true } } } },
+        currency: { select: { code: true } },
       },
     });
 
@@ -181,7 +185,7 @@ export class SupportCabinetController {
         merchantName: payoutOrder.merchant?.name ?? '—',
         traderName: payoutOrder.trader?.user?.email ?? '',
         amount: Number(payoutOrder.amount),
-        currency: payoutOrder.currency,
+        currency: payoutOrder.currency.code,
         status: payoutOrder.status,
         createdAt: payoutOrder.createdAt.toISOString(),
         updatedAt: payoutOrder.updatedAt.toISOString(),
@@ -221,6 +225,7 @@ export class SupportCabinetController {
             include: {
               merchant: { select: { name: true } },
               trader: { include: { user: { select: { email: true } } } },
+              currency: { select: { code: true } },
             },
           },
         },
@@ -239,7 +244,7 @@ export class SupportCabinetController {
         merchantName: a.payinOrder?.merchant?.name ?? '—',
         traderName: a.payinOrder?.trader?.user?.email ?? '',
         amount: Number(a.payinOrder?.amount ?? 0),
-        currency: a.payinOrder?.currency ?? '',
+        currency: a.payinOrder?.currency.code ?? '',
         reason: `Paid amount discrepancy: ${Number(a.paidAmount)}`,
         status: a.status,
         createdAt: a.createdAt.toISOString(),
@@ -260,6 +265,7 @@ export class SupportCabinetController {
           include: {
             merchant: { select: { name: true } },
             trader: { include: { user: { select: { email: true } } } },
+            currency: { select: { code: true } },
           },
         },
         proofs: {
@@ -277,7 +283,7 @@ export class SupportCabinetController {
       merchantName: appeal.payinOrder?.merchant?.name ?? '—',
       traderName: appeal.payinOrder?.trader?.user?.email ?? '',
       amount: Number(appeal.payinOrder?.amount ?? 0),
-      currency: appeal.payinOrder?.currency ?? '',
+      currency: appeal.payinOrder?.currency.code ?? '',
       reason: `Paid amount discrepancy: ${Number(appeal.paidAmount)}`,
       status: appeal.status,
       createdAt: appeal.createdAt.toISOString(),
@@ -357,7 +363,7 @@ export class SupportCabinetController {
         this.prisma.merchant.findMany({
           where,
           include: {
-            balances: true,
+            balances: { include: { currency: { select: { code: true } } } },
             user: { select: { email: true, isActive: true } },
           },
           orderBy: { createdAt: 'desc' },
@@ -370,12 +376,12 @@ export class SupportCabinetController {
       const data = merchants.flatMap((m) =>
         m.balances.length > 0
           ? m.balances.map((b) => ({
-              id: `${m.id}-${b.currency}`,
+              id: `${m.id}-${b.currency.code}`,
               name: m.name,
               email: m.user?.email ?? '',
               balance: Number(b.amount),
               frozenBalance: 0,
-              currency: b.currency,
+              currency: b.currency.code,
               status: m.isLock ? 'locked' : 'active',
             }))
           : [{
@@ -407,7 +413,7 @@ export class SupportCabinetController {
         where,
         include: {
           user: { select: { email: true, isActive: true } },
-          balances: true,
+          balances: { include: { currency: { select: { code: true } } } },
         },
         orderBy: { createdAt: 'desc' },
         take,
@@ -419,12 +425,12 @@ export class SupportCabinetController {
     const data = traders.flatMap((t) =>
       t.balances.length > 0
         ? t.balances.map((b) => ({
-            id: `${t.id}-${b.currency}`,
+            id: `${t.id}-${b.currency.code}`,
             name: t.user?.email ?? '',
             email: t.user?.email ?? '',
             balance: Number(b.amount),
             frozenBalance: 0,
-            currency: b.currency,
+            currency: b.currency.code,
             status: t.user?.isActive ? 'active' : 'inactive',
           }))
         : [{

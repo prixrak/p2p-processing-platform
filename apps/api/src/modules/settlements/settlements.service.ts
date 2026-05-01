@@ -16,6 +16,7 @@ import {
 } from '@prisma/client';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { CurrenciesService } from '../currencies/currencies.service';
 
 @Injectable()
 export class SettlementsService {
@@ -25,6 +26,7 @@ export class SettlementsService {
     private readonly prisma: PrismaService,
     private readonly balanceTxService: BalanceTransactionsService,
     private readonly telegram: TelegramService,
+    private readonly currencies: CurrenciesService,
   ) {}
 
   /**
@@ -62,6 +64,8 @@ export class SettlementsService {
       throw new NotFoundException(`Trader ${traderId} not found`);
     }
 
+    const currencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.currency);
+
     const prismaType =
       dto.type === SettlementType.CREDIT
         ? SettlementTypeEnum.CREDIT
@@ -70,9 +74,9 @@ export class SettlementsService {
     return this.prisma.$transaction(async (tx) => {
       let balance = await tx.traderBalance.findUnique({
         where: {
-          traderId_currency: {
+          traderId_currencyId: {
             traderId,
-            currency: dto.currency,
+            currencyId,
           },
         },
       });
@@ -81,7 +85,7 @@ export class SettlementsService {
         balance = await tx.traderBalance.create({
           data: {
             traderId,
-            currency: dto.currency,
+            currencyId,
             amount: 0,
           },
         });
@@ -89,7 +93,7 @@ export class SettlementsService {
 
       if (dto.type === SettlementType.DEBIT) {
         const current = Number(balance.amount);
-        if (dto.currency === 'USDT') {
+        if (this.currencies.normalizeCode(dto.currency) === 'USDT') {
           const profile = await tx.traderProfile.findUnique({
             where: { id: traderId },
             select: { overdraftLimit: true },
@@ -112,9 +116,9 @@ export class SettlementsService {
 
       await tx.traderBalance.update({
         where: {
-          traderId_currency: {
+          traderId_currencyId: {
             traderId,
-            currency: dto.currency,
+            currencyId,
           },
         },
         data: {
@@ -128,7 +132,7 @@ export class SettlementsService {
           traderId,
           type: prismaType,
           amount: dto.amount,
-          currency: dto.currency,
+          currencyId,
           note: dto.note,
         },
         include: {
@@ -198,6 +202,8 @@ export class SettlementsService {
         ? SettlementTypeEnum.CREDIT
         : SettlementTypeEnum.DEBIT;
 
+    const usdtId = await this.currencies.getUsdtCurrencyId();
+
     const settlement = await this.prisma.$transaction(async (tx) => {
       const bal = Number(
         (
@@ -228,7 +234,7 @@ export class SettlementsService {
           traderId: null,
           type: prismaType,
           amount: dto.amount,
-          currency: dto.currency,
+          currencyId: usdtId,
           note: dto.note,
           usdtAddress: dto.usdtAddress ?? null,
         },
@@ -250,7 +256,7 @@ export class SettlementsService {
           payoutTraderId,
           type: ledgerType,
           amount: dto.amount,
-          currency: 'USDT',
+          currencyId: usdtId,
           referenceId: settlementRow.id,
           createdById: adminId,
           comment: dto.note ?? undefined,
@@ -302,12 +308,14 @@ export class SettlementsService {
       throw new NotFoundException(`Merchant ${merchantId} not found`);
     }
 
+    const currencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.currency);
+
     return this.prisma.$transaction(async (tx) => {
       const balRow = await tx.merchantBalance.findUnique({
         where: {
-          merchantId_currency: {
+          merchantId_currencyId: {
             merchantId,
-            currency: dto.currency,
+            currencyId,
           },
         },
       });
@@ -320,9 +328,9 @@ export class SettlementsService {
 
       await tx.merchantBalance.update({
         where: {
-          merchantId_currency: {
+          merchantId_currencyId: {
             merchantId,
-            currency: dto.currency,
+            currencyId,
           },
         },
         data: { amount: { increment: -dto.amount } },
@@ -336,7 +344,7 @@ export class SettlementsService {
           merchantId,
           type: SettlementTypeEnum.DEBIT,
           amount: dto.amount,
-          currency: dto.currency,
+          currencyId,
           manualRate: dto.manualRate,
           usdtEquivalent: dto.usdtEquivalent,
           note: dto.note,
@@ -353,7 +361,7 @@ export class SettlementsService {
           merchantId,
           type: MerchantBalanceTransactionType.SETTLEMENT,
           amount: dto.amount,
-          currency: dto.currency,
+          currencyId,
           referenceId: settlement.id,
           comment:
             `Settlement payout ${dto.amount} ${dto.currency} @ manual ${dto.manualRate} → ${dto.usdtEquivalent} USDT` +
@@ -397,7 +405,13 @@ export class SettlementsService {
     if (filters.payoutTraderId) where.payoutTraderId = filters.payoutTraderId;
     if (filters.merchantId) where.merchantId = filters.merchantId;
     if (filters.adminId) where.adminId = filters.adminId;
-    if (filters.currency) where.currency = filters.currency;
+    if (filters.currency) {
+      const cid = await this.currencies.findCurrencyIdByCode(filters.currency);
+      if (!cid) {
+        return { data: [], total: 0, page, limit };
+      }
+      where.currencyId = cid;
+    }
 
     if (filters.type) {
       where.type =
@@ -449,6 +463,7 @@ export class SettlementsService {
           merchant: {
             select: { id: true, name: true },
           },
+          currency: { select: { code: true } },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -472,6 +487,7 @@ export class SettlementsService {
         merchant: {
           select: { id: true, name: true },
         },
+        currency: { select: { code: true } },
       },
     });
     if (!settlement) {
@@ -495,18 +511,26 @@ export class SettlementsService {
         select: {
           id: true,
           amount: true,
-          currency: true,
           manualRate: true,
           usdtEquivalent: true,
           usdtAddress: true,
           note: true,
           createdAt: true,
           admin: { select: { email: true } },
+          currency: { select: { code: true } },
         },
       }),
       this.prisma.settlement.count({ where }),
     ]);
 
-    return { data, total, page, limit: take };
+    return {
+      data: data.map(({ currency, ...rest }) => ({
+        ...rest,
+        currency: currency.code,
+      })),
+      total,
+      page,
+      limit: take,
+    };
   }
 }

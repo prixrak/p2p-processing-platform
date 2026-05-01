@@ -14,6 +14,7 @@ import { BalanceTransactionsService } from '../balance-transactions/balance-tran
 import type { WalletDepositConfirmDto } from '../admin/dto/wallet-deposit-confirm.dto';
 import { TrongridClient } from './trongrid.client';
 import { WalletDepositEventsService } from './wallet-deposit-events.service';
+import { CurrenciesService } from '../currencies/currencies.service';
 
 function tronReceiptIndicatesFailure(receiptResult: string): boolean {
   const r = receiptResult.trim().toUpperCase();
@@ -41,6 +42,7 @@ export class WalletDepositsService {
     private readonly balanceTxService: BalanceTransactionsService,
     private readonly depositEvents: WalletDepositEventsService,
     private readonly trongrid: TrongridClient,
+    private readonly currencies: CurrenciesService,
   ) {}
 
   /**
@@ -249,6 +251,7 @@ export class WalletDepositsService {
    */
   async creditDepositAtomic(params: CreditDepositParams) {
     let skipRealtime = false;
+    const usdtId = await this.currencies.getUsdtCurrencyId();
     const deposit = await this.prisma.$transaction(
       async (tx) => {
         const existing = await tx.walletDeposit.findUnique({
@@ -300,14 +303,14 @@ export class WalletDepositsService {
 
         await tx.traderBalance.upsert({
           where: {
-            traderId_currency: {
+            traderId_currencyId: {
               traderId: params.traderId,
-              currency: 'USDT',
+              currencyId: usdtId,
             },
           },
           create: {
             traderId: params.traderId,
-            currency: 'USDT',
+            currencyId: usdtId,
             amount: params.amountUsdt,
             totalDeposited: params.amountUsdt,
           },

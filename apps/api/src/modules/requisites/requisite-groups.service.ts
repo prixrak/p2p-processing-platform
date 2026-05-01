@@ -8,10 +8,14 @@ import { PrismaService } from '../../config/prisma.service';
 import { PAYIN_IN_FLIGHT_STATUSES, PayInOrderStatus } from '@p2p/shared';
 import { CreateRequisiteGroupDto } from './dto/create-requisite-group.dto';
 import { UpdateRequisiteGroupDto } from './dto/update-requisite-group.dto';
+import { CurrenciesService } from '../currencies/currencies.service';
 
 @Injectable()
 export class RequisiteGroupsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly currencies: CurrenciesService,
+  ) {}
 
   async create(traderId: string, dto: CreateRequisiteGroupDto) {
     if (dto.paymentMethodId) {
@@ -23,11 +27,13 @@ export class RequisiteGroupsService {
       }
     }
 
+    const currencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.currency);
+
     return this.prisma.requisiteGroup.create({
       data: {
         traderId,
         name: dto.name.trim(),
-        currency: dto.currency.trim().toUpperCase(),
+        currencyId,
         paymentMethodId: dto.paymentMethodId ?? null,
       },
       include: {
@@ -49,6 +55,7 @@ export class RequisiteGroupsService {
       orderBy: { createdAt: 'desc' },
       include: {
         paymentMethod: { select: { id: true, displayName: true, name: true } },
+        currency: { select: { code: true } },
         requisites: {
           where: includeInactiveRequisites ? {} : { isActive: true },
           include: { bank: true },
