@@ -17,7 +17,7 @@ export class DirectionsService {
 
   /**
    * New directions must reference currencies that exist in `currencies` and are active.
-   * On update, only newly chosen codes are validated so legacy directions can be edited
+   * On update, only newly chosen codes are validated so existing directions can be edited
    * if their stored codes were later deactivated.
    */
   private async assertSingleActiveCurrency(code: string) {

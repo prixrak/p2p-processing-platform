@@ -109,7 +109,7 @@ export class BalanceTransactionsService {
           : undefined;
       return {
         ...row,
-        /** When this TOP_UP row links to an on-chain monitored deposit, echo chain status (legacy rows show null). */
+        /** When this TOP_UP row links to an on-chain monitored deposit, echo chain status (older rows may show null). */
         on_chain_deposit_status: dep?.status ?? null,
       };
     });

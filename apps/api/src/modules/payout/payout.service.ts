@@ -1324,10 +1324,14 @@ export class PayoutService {
         } else if (order.payoutTraderId) {
           await this.settlePayoutV2Specialist(tx, order);
         } else {
-          await this.debitMerchantOnCompleted(tx, order);
+          throw new BadRequestException(
+            'Pay-Out v2 settlement requires traderId or payoutTraderId on the order.',
+          );
         }
       } else {
-        await this.debitMerchantOnCompleted(tx, order);
+        throw new BadRequestException(
+          'Pay-Out settlement requires v2 fields: merchantDebitLocal, parserRate, and rateAdminOut.',
+        );
       }
 
       await this.createPayoutWebhookEntry(tx, result);
@@ -1492,10 +1496,14 @@ export class PayoutService {
         if (order.payoutTraderId) {
           await this.settlePayoutV2Specialist(tx, order);
         } else {
-          await this.debitMerchantOnCompleted(tx, order);
+          throw new BadRequestException(
+            'Pay-Out specialist settlement requires payoutTraderId on the order.',
+          );
         }
       } else {
-        await this.debitMerchantOnCompleted(tx, order);
+        throw new BadRequestException(
+          'Pay-Out settlement requires v2 fields: merchantDebitLocal, parserRate, and rateAdminOut.',
+        );
       }
 
       await this.createPayoutWebhookEntry(tx, result);
@@ -1750,65 +1758,6 @@ export class PayoutService {
 
     this.logger.log(
       `Payout v2 settled ${order.id}: trader +${creditUsdtVal} USDT, platform +${marginUsdt} USDT`,
-    );
-  }
-
-  /**
-   * RISK NOTE: legacy payout — deducts merchant balance and credits trader commission in order currency.
-   */
-  private async debitMerchantOnCompleted(
-    tx: Prisma.TransactionClient,
-    order: PayoutOrderRow,
-  ): Promise<void> {
-    const amount = Number(order.amount);
-    const commission = Number(order.percentFee) * amount / 100;
-
-    // Debit merchant balance
-    await tx.merchantBalance.upsert({
-      where: {
-        merchantId_currency: {
-          merchantId: order.merchantId,
-          currency: order.currency,
-        },
-      },
-      create: {
-        merchantId: order.merchantId,
-        currency: order.currency,
-        amount: -amount,
-      },
-      update: { amount: { increment: -amount } },
-    });
-
-    // Credit trader balance with commission
-    if (order.traderId && commission > 0) {
-      await tx.traderBalance.upsert({
-        where: {
-          traderId_currency: {
-            traderId: order.traderId,
-            currency: order.currency,
-          },
-        },
-        create: {
-          traderId: order.traderId,
-          currency: order.currency,
-          amount: commission,
-        },
-        update: { amount: { increment: commission } },
-      });
-
-      await this.balanceTxService.record({
-        traderId: order.traderId,
-        type: BalanceTransactionType.PAYOUT_DEBIT,
-        amount: commission,
-        currency: order.currency,
-        referenceId: order.id,
-        comment: `Pay-out commission for order ${order.id}`,
-        tx,
-      });
-    }
-
-    this.logger.log(
-      `Balances updated for COMPLETED payout ${order.id}: merchant -${amount} ${order.currency}`,
     );
   }
 

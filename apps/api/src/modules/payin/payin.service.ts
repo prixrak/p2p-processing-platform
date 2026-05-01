@@ -1110,17 +1110,14 @@ export class PayinService {
   }
 
   /**
-   * RISK NOTE: modifies merchant fiat balance, trader USDT balance (v2), and platform_income.
-   * Legacy path when Binance parser-backed ledger snapshots are not used for this order (e.g. currency without parser wiring): merchant +partnerAmount (scaled), trader +commission fiat.
+   * RISK NOTE: modifies merchant fiat balance, trader USDT balance, and platform_income.
+   * Requires UAH Pay-In v2 rate snapshots and an assigned trader; no non-v2 settlement path.
    */
   private async creditBalancesOnPaid(
     tx: Prisma.TransactionClient,
     order: OrderWithRelations,
     paidAmountLocal: number,
   ): Promise<void> {
-    const fullAmount = Number(order.amount);
-    const scale = fullAmount > 0 ? paidAmountLocal / fullAmount : 1;
-
     if (
       order.currency !== 'UAH' ||
       order.parserRate == null ||
@@ -1128,67 +1125,9 @@ export class PayinService {
       order.rateAdminIn == null ||
       !order.traderId
     ) {
-      const partnerAmount = Number(order.partnerAmount) * scale;
-      const commission = Number(order.commission) * scale;
-
-      await tx.merchantBalance.upsert({
-        where: {
-          merchantId_currency: {
-            merchantId: order.merchantId,
-            currency: order.currency,
-          },
-        },
-        create: {
-          merchantId: order.merchantId,
-          currency: order.currency,
-          amount: partnerAmount,
-        },
-        update: { amount: { increment: partnerAmount } },
-      });
-
-      if (commission > 0 && order.traderId) {
-        const tid = order.traderId;
-        await tx.traderBalance.upsert({
-          where: {
-            traderId_currency: {
-              traderId: tid,
-              currency: order.currency,
-            },
-          },
-          create: {
-            traderId: tid,
-            currency: order.currency,
-            amount: commission,
-          },
-          update: { amount: { increment: commission } },
-        });
-
-        await this.balanceTxService.record({
-          traderId: tid,
-          type: BalanceTransactionType.PAYIN_COMMISSION,
-          amount: commission,
-          currency: order.currency,
-          referenceId: order.id,
-          comment: `Pay-in commission for order ${order.id}`,
-          tx,
-        });
-      }
-
-      await tx.merchantBalanceTransaction.create({
-        data: {
-          merchantId: order.merchantId,
-          type: MerchantBalanceTransactionType.PAYIN_CREDIT,
-          amount: partnerAmount,
-          currency: order.currency,
-          referenceId: order.id,
-          comment: `Pay-in credit (legacy) order ${order.id}`,
-        },
-      });
-
-      this.logger.log(
-        `Balances updated (legacy) for order ${order.id}: merchant +${partnerAmount}, trader +${commission} ${order.currency}`,
+      throw new BadRequestException(
+        'Pay-In settlement requires UAH with parser rate snapshots (rateTraderIn, rateAdminIn) and an assigned trader.',
       );
-      return;
     }
 
     const P = Number(order.parserRate);
@@ -1273,7 +1212,7 @@ export class PayinService {
     });
 
     this.logger.log(
-      `Balances updated (v2) for order ${order.id}: merchant +${merchantCredit} ${order.currency}, trader -${debitUsdt} USDT, platform +${marginUsdt} USDT`,
+      `Balances updated for order ${order.id}: merchant +${merchantCredit} ${order.currency}, trader -${debitUsdt} USDT, platform +${marginUsdt} USDT`,
     );
   }
 

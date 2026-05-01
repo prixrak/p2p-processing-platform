@@ -132,11 +132,11 @@ export class TronDepositPollerService implements OnModuleInit, OnModuleDestroy {
     for (const w of custodial) {
       map.set(w.address, w.traderId);
     }
-    const legacy = await this.prisma.traderProfile.findMany({
+    const profileInlineTrc20 = await this.prisma.traderProfile.findMany({
       where: { isActive: true, usdtTrc20DepositAddress: { not: null } },
       select: { id: true, usdtTrc20DepositAddress: true },
     });
-    for (const t of legacy) {
+    for (const t of profileInlineTrc20) {
       const a = t.usdtTrc20DepositAddress!;
       if (!map.has(a)) map.set(a, t.id);
     }

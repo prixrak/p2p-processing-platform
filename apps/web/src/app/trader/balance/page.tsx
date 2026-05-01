@@ -48,9 +48,9 @@ function topUpFulfillmentLabel(tx: BalanceTx): string {
 }
 
 const TX_TYPE_LABELS: Record<string, string> = {
-  PAYIN_COMMISSION: 'Pay-In commission (legacy)',
+  PAYIN_COMMISSION: 'Pay-In commission (historical)',
   PAYIN_DEBIT: 'Pay-In USDT debit',
-  PAYOUT_DEBIT: 'Pay-Out debit (legacy)',
+  PAYOUT_DEBIT: 'Pay-Out commission credit (historical)',
   PAYOUT_CREDIT: 'Pay-Out USDT credit',
   TOP_UP: 'Top-up',
   OVERDRAFT_SET: 'Overdraft limit change',
