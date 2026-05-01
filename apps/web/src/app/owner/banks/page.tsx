@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
+import { upsertSortedArrayCache } from '@/lib/query-cache-merge';
 
 interface Bank {
   id: string;
@@ -41,20 +42,25 @@ export default function BanksPage() {
         const uploaded = await api.upload<{ id: string }>(internalPaths.fileUpload, fd);
         logoFileId = uploaded.id;
       }
-      return api.post(internalPaths.banks, {
+      return api.post<Bank>(internalPaths.banks, {
         name: form.name.trim(),
         ...(logoFileId ? { logoFileId } : {}),
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['owner', 'banks'] });
+    onSuccess: (row) => {
+      upsertSortedArrayCache(queryClient, ['owner', 'banks'], row, {
+        idOf: (b: Bank) => b.id,
+        sort: (a: Bank, b: Bank) => a.name.localeCompare(b.name),
+      });
       closeCreate();
     },
   });
 
   const updateBank = useMutation({
-    mutationFn: async () => {
-      if (!editItem) return;
+    mutationFn: async (): Promise<Bank> => {
+      if (!editItem) {
+        throw new Error('No bank selected');
+      }
       let logoFileId: string | undefined;
       if (logo) {
         const fd = new FormData();
@@ -62,13 +68,16 @@ export default function BanksPage() {
         const uploaded = await api.upload<{ id: string }>(internalPaths.fileUpload, fd);
         logoFileId = uploaded.id;
       }
-      return api.put(internalPaths.bank(editItem.id), {
+      return api.put<Bank>(internalPaths.bank(editItem.id), {
         name: form.name.trim(),
         ...(logoFileId ? { logoFileId } : {}),
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['owner', 'banks'] });
+    onSuccess: (row) => {
+      upsertSortedArrayCache(queryClient, ['owner', 'banks'], row, {
+        idOf: (b: Bank) => b.id,
+        sort: (a: Bank, b: Bank) => a.name.localeCompare(b.name),
+      });
       setEditItem(null);
     },
   });
@@ -76,9 +85,13 @@ export default function BanksPage() {
   const toggleStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       status === 'active'
-        ? api.patch(internalPaths.bankDeactivate(id))
-        : api.patch(internalPaths.bankActivate(id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'banks'] }),
+        ? api.patch<Bank>(internalPaths.bankDeactivate(id))
+        : api.patch<Bank>(internalPaths.bankActivate(id)),
+    onSuccess: (row) =>
+      upsertSortedArrayCache(queryClient, ['owner', 'banks'], row, {
+        idOf: (b: Bank) => b.id,
+        sort: (a: Bank, b: Bank) => a.name.localeCompare(b.name),
+      }),
   });
 
   const closeCreate = () => {

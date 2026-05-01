@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowDownCircle, ArrowUpCircle, DollarSign, MinusCircle } from 'lucide-react';
-import { ApiError, api } from '@/lib/api';
+import { api } from '@/lib/api';
+import { formatErrorMessage } from '@/lib/format-error';
 import { internalPaths } from '@/lib/internal-api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -258,17 +259,9 @@ export default function BalanceHistoryPage() {
         {walletError ? (
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-950 dark:text-red-100 space-y-1">
             <p className="font-medium">Could not load USDT wallet</p>
-            <p className="text-xs opacity-90 font-mono">
-              {walletErrorDetail instanceof ApiError
-                ? `${walletErrorDetail.status} ${walletErrorDetail.message}`
-                : String(walletErrorDetail)}
-            </p>
+            <p className="text-xs opacity-90">{formatErrorMessage(walletErrorDetail)}</p>
             <p className="text-xs opacity-85">
-              If this is unexpected, check that{' '}
-              <code className="bg-bg-primary/70 px-1 rounded">NEXT_PUBLIC_API_URL</code> in{' '}
-              <code className="bg-bg-primary/70 px-1 rounded">apps/web/.env.local</code> points to your
-              API (e.g. <code className="bg-bg-primary/70 px-1 rounded">http://localhost:3001</code>),
-              restart the Next dev server, and ensure you are logged in as TRADER.
+              Refresh the page or sign in again. If the problem continues, contact support.
             </p>
           </div>
         ) : walletLoading || !wallet ? (
@@ -276,8 +269,10 @@ export default function BalanceHistoryPage() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
             <div>
-              <p className="text-text-muted text-xs">Work mode</p>
-              <p className="font-mono text-text-primary">{wallet.work_mode}</p>
+              <p className="text-text-muted text-xs">Operating mode</p>
+              <p className="font-mono text-text-primary">
+                {wallet.work_mode.replace(/_/g, ' ')}
+              </p>
             </div>
             <div>
               <p className="text-text-muted text-xs">Overdraft limit (USDT)</p>
@@ -298,7 +293,7 @@ export default function BalanceHistoryPage() {
               </p>
             </div>
             <div className="sm:col-span-2">
-              <p className="text-text-muted text-xs">Raw USDT balance (may be negative)</p>
+              <p className="text-text-muted text-xs">USDT balance (ledger)</p>
               <p className="font-mono text-text-primary">
                 {wallet.balance_usdt.toLocaleString()}
               </p>

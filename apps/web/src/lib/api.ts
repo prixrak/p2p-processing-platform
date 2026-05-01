@@ -40,16 +40,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
 
   if (!res.ok) {
-    let message = `Request failed with status ${res.status}`;
+    const fallbackMessage = 'Unable to complete the request. Please try again.';
     const contentType = res.headers.get('content-type');
     if (contentType?.includes('application/json')) {
       const body = await res.json().catch(() => ({}));
-      message = body.message ?? message;
+      const message =
+        typeof body.message === 'string' && body.message.trim()
+          ? body.message.trim()
+          : fallbackMessage;
       throw new ApiError(res.status, body.code ?? 'UNKNOWN', message);
     }
-    const text = await res.text();
-    message = text || message;
-    throw new ApiError(res.status, 'FETCH_FAILED', message);
+    await res.text().catch(() => '');
+    throw new ApiError(res.status, 'FETCH_FAILED', fallbackMessage);
   }
 
   if (res.status === 204) return undefined as T;
@@ -106,7 +108,7 @@ export async function fetchOrder(id: string) {
     cache: 'no-store',
   });
   if (!res.ok) {
-    throw new Error(`Failed to load order: ${res.status}`);
+    throw new Error('PAYMENT_LOAD_FAILED');
   }
   return res.json();
 }

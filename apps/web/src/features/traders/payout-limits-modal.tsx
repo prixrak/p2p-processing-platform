@@ -7,7 +7,8 @@ import { internalPaths } from '@/lib/internal-api';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
-import type { StaffRolePrefix } from './query-keys';
+import { staffTraderKeys, type StaffRolePrefix } from './query-keys';
+import type { StaffTraderRow } from './staff-trader-types';
 
 export interface PayoutLimitsTrader {
   id: string;
@@ -39,8 +40,20 @@ export function PayoutLimitsModal({
   const setLimitsMutation = useMutation({
     mutationFn: ({ id, min, max }: { id: string; min: number; max: number }) =>
       api.post(internalPaths.traderPayoutLimits(id), { minLimit: min, maxLimit: max }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [queryPrefix, 'traders'] });
+    onSuccess: (_data, vars) => {
+      queryClient.setQueryData<StaffTraderRow[]>(
+        staffTraderKeys.list(queryPrefix),
+        (old) =>
+          old?.map((row) =>
+            row.id !== vars.id
+              ? row
+              : {
+                  ...row,
+                  payoutMinLimit: vars.min,
+                  payoutMaxLimit: vars.max,
+                },
+          ),
+      );
       onClose();
     },
   });

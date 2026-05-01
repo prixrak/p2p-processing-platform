@@ -6,10 +6,15 @@ import { Zap, Shield, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import { toast } from '@/components/ui/toast';
 import { useAuth } from '@/hooks/use-auth';
 import { ApiError } from '@/lib/api';
 import { UserRole } from '@p2p/shared';
 import { getDashboardPathForRole } from '@/lib/role-dashboard';
+import { loginCredentialsSchema, loginTwoFactorSchema } from '@/lib/validation/schemas';
+import { fieldErrorsFromZod } from '@/lib/validation/zod-field-errors';
+
+const AUTH_ERROR_TOAST_MS = 7000;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,7 +23,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code2FA, setCode2FA] = useState('');
-  const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -34,7 +39,12 @@ export default function LoginPage() {
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
+    setFieldErrors({});
+    const parsed = loginCredentialsSchema.safeParse({ email, password });
+    if (!parsed.success) {
+      setFieldErrors(fieldErrorsFromZod(parsed.error));
+      return;
+    }
     setLoading(true);
     try {
       const result = await login(email, password);
@@ -43,11 +53,11 @@ export default function LoginPage() {
         router.replace(getDashboardPathForRole(currentUser?.role ?? UserRole.TRADER));
       }
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError('Connection error. Please try again.');
-      }
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : 'Connection error. Please try again.';
+      toast.error(message, AUTH_ERROR_TOAST_MS);
     } finally {
       setLoading(false);
     }
@@ -55,18 +65,21 @@ export default function LoginPage() {
 
   async function handle2FA(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
+    setFieldErrors({});
+    const parsed = loginTwoFactorSchema.safeParse({ code: code2FA });
+    if (!parsed.success) {
+      setFieldErrors(fieldErrorsFromZod(parsed.error));
+      return;
+    }
     setLoading(true);
     try {
       await verify2FA(code2FA);
       const currentUser = useAuth.getState().user;
       router.replace(getDashboardPathForRole(currentUser?.role ?? UserRole.TRADER));
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError('Invalid verification code.');
-      }
+      const message =
+        err instanceof ApiError ? err.message : 'Invalid verification code.';
+      toast.error(message, AUTH_ERROR_TOAST_MS);
     } finally {
       setLoading(false);
     }
@@ -104,8 +117,15 @@ export default function LoginPage() {
                 type="email"
                 placeholder="you@example.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setFieldErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.email;
+                    return next;
+                  });
+                }}
+                error={fieldErrors.email}
                 autoComplete="email"
               />
               <Input
@@ -113,16 +133,17 @@ export default function LoginPage() {
                 type="password"
                 placeholder="Enter your password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setFieldErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.password;
+                    return next;
+                  });
+                }}
+                error={fieldErrors.password}
                 autoComplete="current-password"
               />
-
-              {error && (
-                <div className="rounded-lg bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
-                  {error}
-                </div>
-              )}
 
               <Button type="submit" loading={loading} className="w-full">
                 Sign In
@@ -143,18 +164,20 @@ export default function LoginPage() {
                 type="text"
                 placeholder="000000"
                 value={code2FA}
-                onChange={(e) => setCode2FA(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                required
+                onChange={(e) => {
+                  setCode2FA(e.target.value.replace(/\D/g, '').slice(0, 6));
+                  setFieldErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.code;
+                    return next;
+                  });
+                }}
+                error={fieldErrors.code}
                 autoComplete="one-time-code"
+                inputMode="numeric"
                 maxLength={6}
                 className="text-center text-lg tracking-[0.5em] font-mono"
               />
-
-              {error && (
-                <div className="rounded-lg bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
-                  {error}
-                </div>
-              )}
 
               <Button type="submit" loading={loading} className="w-full">
                 Verify
@@ -166,7 +189,7 @@ export default function LoginPage() {
                 onClick={() => {
                   useAuth.setState({ requires2FA: false, tempToken: null });
                   setCode2FA('');
-                  setError('');
+                  setFieldErrors({});
                 }}
                 className="w-full text-center text-sm text-text-muted hover:text-text-secondary transition-colors cursor-pointer"
               >

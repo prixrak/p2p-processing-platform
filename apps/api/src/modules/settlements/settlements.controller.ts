@@ -6,9 +6,7 @@ import {
   Query,
   Param,
   UseGuards,
-  ParseIntPipe,
   ParseUUIDPipe,
-  DefaultValuePipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -53,11 +51,9 @@ export class SettlementsController {
   @ApiOperation({ summary: 'List settlements with filters' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  findAll(
-    @Query() filters: FilterSettlementsDto,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
-  ) {
+  findAll(@Query() filters: FilterSettlementsDto) {
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 20;
     return this.settlementsService.findAll(filters, page, limit);
   }
 

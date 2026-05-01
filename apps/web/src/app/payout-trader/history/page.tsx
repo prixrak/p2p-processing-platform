@@ -1,7 +1,6 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import { TraderPayoutPage } from '@/features/trader-payout';
-
+/** Old path kept so bookmarks still open the History tab on Pay-Out. */
 export default function PayoutTraderHistoryPage() {
-  return <TraderPayoutPage variant="specialist" initialTab="history" />;
+  redirect('/payout-trader/payout?tab=history');
 }

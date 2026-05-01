@@ -23,11 +23,8 @@ export default async function PaymentPage({ params }: PageProps) {
 
   try {
     order = await fetchOrder(id);
-  } catch (err) {
-    error =
-      err instanceof Error
-        ? err.message
-        : 'Failed to load payment details. Please try again.';
+  } catch {
+    error = 'We could not open this payment. Check the link or contact the merchant for a new one.';
   }
 
   return (

@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
+import { upsertSortedArrayCache } from '@/lib/query-cache-merge';
 
 interface Country {
   id: string;
@@ -32,9 +33,12 @@ export default function CountriesPage() {
   });
 
   const create = useMutation({
-    mutationFn: (body: typeof form) => api.post(internalPaths.adminCountries, body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['owner', 'countries'] });
+    mutationFn: (body: typeof form) => api.post<Country>(internalPaths.adminCountries, body),
+    onSuccess: (row) => {
+      upsertSortedArrayCache(qc, ['owner', 'countries'], row, {
+        idOf: (c) => c.id,
+        sort: (a, b) => a.name.localeCompare(b.name),
+      });
       setShowCreate(false);
       setForm({ name: '', code: '', currency: '' });
     },
@@ -42,8 +46,12 @@ export default function CountriesPage() {
 
   const toggle = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
-      api.patch(internalPaths.adminCountry(id), { isActive: !isActive }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['owner', 'countries'] }),
+      api.patch<Country>(internalPaths.adminCountry(id), { isActive: !isActive }),
+    onSuccess: (row) =>
+      upsertSortedArrayCache(qc, ['owner', 'countries'], row, {
+        idOf: (c) => c.id,
+        sort: (a, b) => a.name.localeCompare(b.name),
+      }),
   });
 
   const columns = [

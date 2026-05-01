@@ -53,10 +53,17 @@ const iconMap = {
 } as const;
 
 const typeStyles = {
-  success: 'border-accent-green/30 bg-accent-green/10 text-accent-green',
-  error: 'border-accent-red/30 bg-accent-red/10 text-accent-red',
-  warning: 'border-accent-yellow/30 bg-accent-yellow/10 text-accent-yellow',
-  info: 'border-accent-blue/30 bg-accent-blue/10 text-accent-blue',
+  success: 'border-success/35 bg-success-muted text-text-primary',
+  error: 'border-danger/40 bg-danger-muted text-text-primary',
+  warning: 'border-warning/35 bg-warning-muted text-text-primary',
+  info: 'border-accent/35 bg-accent-muted text-text-primary',
+} as const;
+
+const iconClass = {
+  success: 'text-success',
+  error: 'text-danger',
+  warning: 'text-warning',
+  info: 'text-accent',
 } as const;
 
 function ToastItem({ toast: t }: { toast: Toast }) {
@@ -71,18 +78,20 @@ function ToastItem({ toast: t }: { toast: Toast }) {
   return (
     <div
       className={clsx(
-        'flex items-center gap-3 rounded-lg border px-4 py-3 shadow-lg shadow-black/20',
-        'animate-slide-up',
+        'pointer-events-auto w-full max-w-md flex items-center gap-3 rounded-xl border px-4 py-3 shadow-lg shadow-black/25',
+        'animate-fade-in backdrop-blur-md',
         typeStyles[t.type],
       )}
     >
-      <Icon className="h-5 w-5 shrink-0" />
+      <Icon className={clsx('h-5 w-5 shrink-0', iconClass[t.type])} />
       <p className="flex-1 text-sm font-medium text-text-primary">{t.message}</p>
       <button
+        type="button"
+        aria-label="Dismiss"
         onClick={() => remove(t.id)}
-        className="shrink-0 rounded p-0.5 opacity-60 transition-opacity hover:opacity-100"
+        className="shrink-0 rounded-md p-1 text-text-muted transition-colors hover:bg-black/15 hover:text-text-primary"
       >
-        <X className="h-4 w-4" />
+        <X className="h-4 w-4" strokeWidth={2} />
       </button>
     </div>
   );
@@ -94,7 +103,11 @@ export function Toaster() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 w-full max-w-sm">
+    <div
+      className="pointer-events-none fixed inset-x-0 top-0 z-[100] flex flex-col items-center gap-2 px-4 pt-4"
+      aria-live="polite"
+      aria-relevant="additions"
+    >
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} />
       ))}

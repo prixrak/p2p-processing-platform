@@ -58,8 +58,19 @@ export function useStaffTraders(staffRole: StaffRolePrefix) {
       enabled
         ? api.patch(internalPaths.traderActivate(id))
         : api.patch(internalPaths.traderDeactivate(id)),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: staffTraderKeys.list(staffRole) });
+    onSuccess: (_data, vars) => {
+      queryClient.setQueryData<StaffTraderRow[]>(
+        staffTraderKeys.list(staffRole),
+        (old) =>
+          old?.map((row) =>
+            row.id !== vars.id
+              ? row
+              : {
+                  ...row,
+                  status: vars.enabled ? 'active' : 'inactive',
+                },
+          ),
+      );
     },
   });
 

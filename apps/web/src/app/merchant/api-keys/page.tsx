@@ -6,7 +6,6 @@ import {
   Key,
   Eye,
   EyeOff,
-  RefreshCw,
   Copy,
   Check,
   AlertTriangle,
@@ -163,7 +162,7 @@ export default function ApiKeysPage() {
               onClick={() => {
                 if (regeneratingId) regenerateMutation.mutate(regeneratingId);
               }}
-              icon={<RefreshCw size={14} />}
+              icon={<Key size={14} />}
             >
               Regenerate
             </Button>
@@ -259,7 +258,7 @@ function KeySection({
                 <Button
                   size="sm"
                   variant="danger"
-                  icon={<RefreshCw size={12} />}
+                  icon={<Key size={12} />}
                   onClick={() => onRegenerate(key)}
                 >
                   Regenerate

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
+import { PayinOrderStatusBadge } from '@/components/ui/order-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { AuthorizedFilePreview } from '@/components/files/authorized-file-preview';
@@ -11,13 +12,11 @@ import {
 import type { OrderDto } from '@p2p/shared';
 import { formatCurrency, formatDateFull } from '@/lib/utils';
 import { internalPaths } from '@/lib/internal-api';
-import { payinStatusVariant } from '@/lib/status-helpers';
-import { payinStatusLabel } from '@/lib/order-status-ui';
-import { CountdownTimer } from './payin-order-cells';
 import { payinDirectionLabel } from './payin-finalize-utils';
 import { OrderFinalizeDropdown } from './order-finalize-dropdown';
 import { PayinDetailRow } from './payin-detail-row';
 import type { FinalizeKind } from './payin-types';
+import { CountdownTimer } from './payin-order-cells';
 
 export function PayInOrderDetailModal({
   selectedOrder,
@@ -58,16 +57,17 @@ export function PayInOrderDetailModal({
             <PayinDetailRow label="Rate" value={String(selectedOrder.rate)} />
             <PayinDetailRow label="Direction" value={payinDirectionLabel(selectedOrder)} />
             <PayinDetailRow label="Status">
-              <Badge variant={payinStatusVariant[selectedOrder.status]} dot>
-                {payinStatusLabel(selectedOrder.status)}
-              </Badge>
+              <PayinOrderStatusBadge status={selectedOrder.status} />
             </PayinDetailRow>
             <PayinDetailRow label="Created" value={formatDateFull(selectedOrder.created_at)} />
             <PayinDetailRow label="Bank" value={selectedOrder.bank || '-'} />
             <PayinDetailRow label="Requisite" value={selectedOrder.requisite_number || '-'} mono />
             <PayinDetailRow label="Owner" value={selectedOrder.requisite_owner || '-'} />
             <PayinDetailRow label="Time to complete">
-              <CountdownTimer autocloseAt={selectedOrder.autoclose_at} />
+              <CountdownTimer
+                autocloseAt={selectedOrder.autoclose_at}
+                createdAt={selectedOrder.created_at}
+              />
             </PayinDetailRow>
           </div>
 

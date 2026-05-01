@@ -1,20 +1,14 @@
 'use client';
 
-import { RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 export function CascadeCoverageSection({
   currency,
   setCurrency,
-  onRefresh,
-  isFetching,
   nominals,
 }: {
   currency: string;
   setCurrency: (v: string) => void;
-  onRefresh: () => void;
-  isFetching: boolean;
   nominals: { nominal: number; count: number }[] | undefined;
 }) {
   return (
@@ -28,16 +22,6 @@ export function CascadeCoverageSection({
             onChange={(e) => setCurrency(e.target.value.toUpperCase())}
           />
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          onClick={onRefresh}
-          disabled={isFetching}
-        >
-          <RefreshCw className={`mr-1.5 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-          Refresh coverage
-        </Button>
       </div>
       {nominals && (
         <div className="mt-4 overflow-x-auto">

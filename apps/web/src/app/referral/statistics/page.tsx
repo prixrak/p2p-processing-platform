@@ -3,7 +3,6 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   BarChart3,
-  RefreshCw,
   TrendingUp,
   Store,
   Wallet,
@@ -11,7 +10,6 @@ import {
   ArrowUpFromLine,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -51,7 +49,7 @@ interface Statistics {
 }
 
 export default function ReferralStatisticsPage() {
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['referral', 'statistics'],
     queryFn: () => api.get<Statistics>(internalPaths.referralMeStatistics),
   });
@@ -68,14 +66,9 @@ export default function ReferralStatisticsPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <a href="/referral" className="text-sm text-text-muted hover:text-text-primary">
-            ← Back to dashboard
-          </a>
-          <Button variant="secondary" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </div>
+        <a href="/referral" className="text-sm text-text-muted hover:text-text-primary">
+          ← Back to dashboard
+        </a>
       </div>
 
       {/* Summary row */}

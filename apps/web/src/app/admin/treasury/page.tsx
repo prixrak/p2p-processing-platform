@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CircleDollarSign, RefreshCw } from 'lucide-react';
+import { CircleDollarSign, Save } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
@@ -58,6 +58,13 @@ type OperationsSummary = {
     total_bonus_usdt: number;
   }>;
 };
+
+function incomeOrderKindLabel(orderType: string): string {
+  const u = orderType.toUpperCase();
+  if (u === 'PAYIN') return 'Pay-In';
+  if (u === 'PAYOUT') return 'Pay-Out';
+  return orderType.replace(/_/g, ' ');
+}
 
 export default function AdminTreasuryPage() {
   const queryClient = useQueryClient();
@@ -160,44 +167,34 @@ export default function AdminTreasuryPage() {
           Treasury
         </h1>
         <p className="text-sm text-text-muted mt-1">
-          Parser rate status, platform income, cold-wallet withdrawals, and deposit credits
+          Reference rate status, platform income, cold-wallet withdrawals, and deposit credits
         </p>
       </div>
 
       <section className="rounded-xl border border-border-subtle bg-bg-secondary p-4 space-y-2">
-        <h2 className="text-sm font-semibold text-text-primary">Binance P2P parser (primary fiat pair)</h2>
+        <h2 className="text-sm font-semibold text-text-primary">Reference rate (fiat per USDT)</h2>
         {xrLoading ? (
           <p className="text-sm text-text-muted">Loading…</p>
         ) : xr ? (
-          <div className="text-sm space-y-1 font-mono">
+          <div className="text-sm space-y-1">
             <p>
               <span className="text-text-muted">Rate:</span>{' '}
-              {xr.primaryPairParserFiatPerUsdt ?? '—'}
+              <span className="tabular-nums">{xr.primaryPairParserFiatPerUsdt ?? '—'}</span>
             </p>
             <p>
-              <span className="text-text-muted">Cache updated:</span>{' '}
+              <span className="text-text-muted">Last update:</span>{' '}
               {xr.cacheUpdatedAt ?? '—'}
             </p>
             <p>
-              <span className="text-text-muted">Last successful poll:</span>{' '}
+              <span className="text-text-muted">Last successful refresh:</span>{' '}
               {xr.lastSuccessAt ?? '—'}
             </p>
             <p>
-              <span className="text-text-muted">Stale ({xr.staleThresholdMinutes}m):</span>{' '}
+              <span className="text-text-muted">Stale after {xr.staleThresholdMinutes} min:</span>{' '}
               <span className={xr.stale ? 'text-accent-yellow' : 'text-accent-green'}>
                 {xr.stale ? 'yes' : 'no'}
               </span>
             </p>
-            {xr.cacheRawSample != null ? (
-              <div className="mt-2">
-                <p className="text-text-muted text-xs mb-1">Live cache sample (raw)</p>
-                <pre className="text-[10px] overflow-auto max-h-32 bg-bg-primary/60 rounded p-2 whitespace-pre-wrap">
-                  {typeof xr.cacheRawSample === 'string'
-                    ? xr.cacheRawSample
-                    : JSON.stringify(xr.cacheRawSample, null, 2)}
-                </pre>
-              </div>
-            ) : null}
           </div>
         ) : null}
       </section>
@@ -221,13 +218,13 @@ export default function AdminTreasuryPage() {
               </p>
             </div>
             <div>
-              <p className="text-text-muted">Rows</p>
-              <p className="font-mono text-text-primary">{summary.rowCount}</p>
+              <p className="text-text-muted">Income lines</p>
+              <p className="font-mono text-text-primary tabular-nums">{summary.rowCount}</p>
             </div>
             {summary.byOrderType.map((r) => (
               <div key={r.order_type} className="sm:col-span-3 text-xs text-text-secondary">
-                {r.order_type}: {r.income_usdt.toFixed(4)} USDT / {r.income_local.toFixed(2)} local fiat ({r.count}{' '}
-                orders)
+                {incomeOrderKindLabel(r.order_type)}: {r.income_usdt.toFixed(4)} USDT /{' '}
+                {r.income_local.toFixed(2)} local fiat ({r.count} orders)
               </div>
             ))}
           </div>
@@ -237,7 +234,7 @@ export default function AdminTreasuryPage() {
       {summary?.topMerchants && summary.topMerchants.length > 0 ? (
         <section className="rounded-xl border border-border-subtle bg-bg-secondary p-4 space-y-2">
           <h2 className="text-sm font-semibold text-text-primary">Income by merchant (top)</h2>
-          <div className="max-h-48 overflow-auto text-xs font-mono space-y-1">
+          <div className="max-h-48 overflow-auto text-xs space-y-1">
             {summary.topMerchants.map((m) => (
               <div
                 key={m.merchant_id}
@@ -253,7 +250,7 @@ export default function AdminTreasuryPage() {
       ) : null}
 
       <section className="rounded-xl border border-border-subtle bg-bg-secondary p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-text-primary">Operations & conversion (Block 5 section 6.4)</h2>
+        <h2 className="text-sm font-semibold text-text-primary">Operations and conversion</h2>
         <div className="flex flex-wrap gap-2 items-end">
           <div>
             <label className="text-xs text-text-muted block mb-1">From</label>
@@ -277,27 +274,34 @@ export default function AdminTreasuryPage() {
         {opsLoading || !ops ? (
           <p className="text-sm text-text-muted">Loading…</p>
         ) : (
-          <div className="text-xs space-y-2 font-mono">
-            <p>
+          <div className="text-xs space-y-2">
+            <p className="tabular-nums">
               Pay-In: {ops.payin_orders_paid} paid / {ops.payin_orders_created} created (
               {ops.conversion_payin_pct.toFixed(1)}%)
             </p>
-            <p>
+            <p className="tabular-nums">
               Pay-Out: {ops.payout_orders_completed} completed / {ops.payout_orders_created} created (
               {ops.conversion_payout_pct.toFixed(1)}%)
             </p>
-            <p>Overall funnel: {ops.conversion_overall_pct.toFixed(1)}%</p>
-            <p>
-              Turnover local fiat (from platform_income rows):{' '}
-              {ops.turnover_local_from_income_ledger.toFixed(2)}
+            <p className="tabular-nums">Overall funnel: {ops.conversion_overall_pct.toFixed(1)}%</p>
+            <p className="tabular-nums">
+              Turnover (local fiat, booked): {ops.turnover_local_from_income_ledger.toFixed(2)}
             </p>
-            <p>Income USDT (range): {ops.sum_income_usdt_in_range.toFixed(6)}</p>
-            <p>Income local fiat booked (range): {ops.sum_income_local_booked_in_range.toFixed(2)}</p>
-            <p>
-              Reference: income USDT × current P ≈{' '}
-              {ops.reference_income_local_at_current_parser != null
-                ? `${ops.reference_income_local_at_current_parser.toFixed(2)} local fiat (P=${ops.current_parser_fiat_per_usdt ?? '—'})`
-                : '—'}
+            <p className="tabular-nums">Income USDT (range): {ops.sum_income_usdt_in_range.toFixed(6)}</p>
+            <p className="tabular-nums">
+              Income local fiat booked (range): {ops.sum_income_local_booked_in_range.toFixed(2)}
+            </p>
+            <p className="tabular-nums">
+              {ops.reference_income_local_at_current_parser != null &&
+              ops.current_parser_fiat_per_usdt != null ? (
+                <>
+                  Estimated local fiat at current rate:{' '}
+                  {ops.reference_income_local_at_current_parser.toFixed(2)} (
+                  {ops.current_parser_fiat_per_usdt.toFixed(4)} local per USDT)
+                </>
+              ) : (
+                'Estimated local fiat at current rate: —'
+              )}
             </p>
             <div className="pt-2">
               <p className="text-text-muted mb-1">Trader rate bonus (USDT est.)</p>
@@ -319,13 +323,18 @@ export default function AdminTreasuryPage() {
       </section>
 
       <section className="rounded-xl border border-border-subtle bg-bg-secondary p-4">
-        <h2 className="text-sm font-semibold text-text-primary mb-3">Recent income rows</h2>
-        <div className="max-h-56 overflow-auto text-xs font-mono space-y-1">
+        <h2 className="text-sm font-semibold text-text-primary mb-3">Recent income</h2>
+        <div className="max-h-56 overflow-auto text-xs space-y-1">
           {(recent?.data as Array<{ id: string; incomeUsdt: unknown; orderType: string }>)?.map(
             (r) => (
-              <div key={r.id} className="flex justify-between gap-2 border-b border-border-subtle/50 py-1">
-                <span className="text-text-muted truncate">{r.id.slice(0, 8)}…</span>
-                <span>{r.orderType}</span>
+              <div
+                key={r.id}
+                className="flex justify-between gap-2 border-b border-border-subtle/50 py-1 tabular-nums"
+              >
+                <span className="text-text-muted truncate" title={r.id}>
+                  …{r.id.slice(0, 8)}
+                </span>
+                <span>{incomeOrderKindLabel(r.orderType)}</span>
                 <span>{String(r.incomeUsdt)}</span>
               </div>
             ),
@@ -367,20 +376,20 @@ export default function AdminTreasuryPage() {
           onClick={() => withdrawalMut.mutate()}
           disabled={withdrawalMut.isPending || !wAmount || !wAddress}
         >
-          <RefreshCw size={16} className="mr-2 inline" />
+          <Save size={16} className="mr-2 inline" />
           Save withdrawal
         </Button>
       </section>
 
       <section className="rounded-xl border border-border-subtle bg-bg-secondary p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-text-primary">Manual deposit credit (TOP_UP)</h2>
+        <h2 className="text-sm font-semibold text-text-primary">Manual deposit credit</h2>
         <p className="text-xs text-text-muted">
-          Prefer the worker for TRC-20 when traders have a deposit address set. Use this for ERC-20
-          or overrides.
+          Automated TRC-20 crediting runs when the trader has a deposit address. Use this form for ERC-20
+          or manual overrides.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <Input
-            label="Trader ID (UUID)"
+            label="Trader ID"
             value={dTrader}
             onChange={(e) => setDTrader(e.target.value)}
           />
@@ -409,7 +418,7 @@ export default function AdminTreasuryPage() {
 
       <section className="rounded-xl border border-border-subtle bg-bg-secondary p-4">
         <h2 className="text-sm font-semibold text-text-primary mb-3">Recent withdrawals</h2>
-        <div className="max-h-48 overflow-auto text-xs font-mono space-y-1">
+        <div className="max-h-48 overflow-auto text-xs space-y-1">
           {(
             withdrawals?.data as Array<{
               id: string;
@@ -429,7 +438,7 @@ export default function AdminTreasuryPage() {
 
       <section className="rounded-xl border border-border-subtle bg-bg-secondary p-4">
         <h2 className="text-sm font-semibold text-text-primary mb-3">Wallet deposits</h2>
-        <div className="max-h-48 overflow-auto text-xs font-mono space-y-1">
+        <div className="max-h-48 overflow-auto text-xs space-y-1">
           {(
             deposits?.data as Array<{
               id: string;

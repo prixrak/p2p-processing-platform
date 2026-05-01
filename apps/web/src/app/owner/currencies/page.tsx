@@ -11,12 +11,28 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
+import { upsertSortedArrayCache } from '@/lib/query-cache-merge';
 
 interface Currency {
   id: string;
   code: string;
   name: string;
   status: string;
+}
+
+interface CurrencyApiRow {
+  id: string;
+  code: string;
+  isActive: boolean;
+}
+
+function mapCurrencyApiRow(r: CurrencyApiRow): Currency {
+  return {
+    id: r.id,
+    code: r.code,
+    name: r.code,
+    status: r.isActive ? 'active' : 'inactive',
+  };
 }
 
 export default function CurrenciesPage() {
@@ -41,9 +57,12 @@ export default function CurrenciesPage() {
 
   const createCurrency = useMutation({
     mutationFn: (payload: typeof form) =>
-      api.post(internalPaths.currencies, { code: payload.code.trim() }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['owner', 'currencies'] });
+      api.post<CurrencyApiRow>(internalPaths.currencies, { code: payload.code.trim() }),
+    onSuccess: (row) => {
+      upsertSortedArrayCache(queryClient, ['owner', 'currencies'], mapCurrencyApiRow(row), {
+        idOf: (c) => c.id,
+        sort: (a, b) => a.code.localeCompare(b.code),
+      });
       setShowCreate(false);
       setForm({ code: '', name: '' });
     },
@@ -51,10 +70,14 @@ export default function CurrenciesPage() {
 
   const toggleStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.patch(internalPaths.currency(id), {
+      api.patch<CurrencyApiRow>(internalPaths.currency(id), {
         isActive: status !== 'active',
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'currencies'] }),
+    onSuccess: (row) =>
+      upsertSortedArrayCache(queryClient, ['owner', 'currencies'], mapCurrencyApiRow(row), {
+        idOf: (c) => c.id,
+        sort: (a, b) => a.code.localeCompare(b.code),
+      }),
   });
 
   const columns = [

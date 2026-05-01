@@ -1,17 +1,26 @@
 import { ApiError } from '@/lib/api';
 
+const FALLBACK = 'Something went wrong. Please try again.';
+
+function isPlausibleUserMessage(s: string): boolean {
+  const t = s.trim();
+  if (!t || t.length > 280) return false;
+  if (/^\s*at\s+/m.test(t) || t.includes('digest:') || /\bstack\b/i.test(t)) return false;
+  return true;
+}
+
 /**
- * Human-readable message for UI (toasts, banners). Keeps API messages when present.
+ * Safe message for UI (toasts, banners). Uses API `message` when present; hides client/runtime exceptions.
  */
 export function formatErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    return error.message || `Request failed (${error.status})`;
-  }
-  if (error instanceof Error) {
-    return error.message;
+    const m = error.message?.trim();
+    return m || FALLBACK;
   }
   if (typeof error === 'string' && error.trim()) {
-    return error;
+    const t = error.trim();
+    if (isPlausibleUserMessage(t)) return t;
+    return FALLBACK;
   }
-  return 'Something went wrong. Please try again.';
+  return FALLBACK;
 }

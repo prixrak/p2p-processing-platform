@@ -7,6 +7,7 @@ import { internalPaths } from '@/lib/internal-api';
 import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
+import { summarizeAuditValue } from '@/lib/audit-display';
 
 interface AuditEntry {
   id: string;
@@ -31,14 +32,9 @@ interface AuditResponse {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function serializeJson(v: unknown): string | null {
+function valueSummary(v: unknown): string | null {
   if (v === null || v === undefined) return null;
-  if (typeof v === 'string') return v;
-  try {
-    return JSON.stringify(v);
-  } catch {
-    return String(v);
-  }
+  return summarizeAuditValue(v, 200);
 }
 
 const actionColors: Record<string, 'green' | 'yellow' | 'red' | 'blue' | 'default'> = {
@@ -104,8 +100,8 @@ export default function AuditPage() {
         action: log.action,
         entity: log.entityType,
         entityId: log.entityId ?? '',
-        previousValue: serializeJson(log.oldValue),
-        newValue: serializeJson(log.newValue),
+        previousValue: valueSummary(log.oldValue),
+        newValue: valueSummary(log.newValue),
         ipAddress: log.ip ?? '—',
         timestamp: log.createdAt,
       }));
@@ -204,7 +200,7 @@ export default function AuditPage() {
           label="Actor ID"
           value={search}
           onChange={(v) => { setSearch(v); setPage(1); }}
-          placeholder="User UUID (optional)…"
+          placeholder="User ID (optional)"
           className="w-60 min-w-[12rem]"
         />
         <FilterSelect

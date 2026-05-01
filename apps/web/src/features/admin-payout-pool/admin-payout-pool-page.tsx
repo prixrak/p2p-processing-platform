@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Percent, Clock, RefreshCw } from 'lucide-react';
+import { Percent, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -59,27 +59,15 @@ export function AdminPayoutPoolPage() {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-            <Percent size={24} />
-            Pay-Out pool (specialist)
-          </h1>
-          <p className="text-sm text-text-muted mt-1">
-            Global pool B share, timeout from standard pool to specialist pool, and per-merchant
-            overrides.
-          </p>
-        </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => {
-            void globalQ.refetch();
-            void listQ.refetch();
-          }}
-        >
-          <RefreshCw className="h-4 w-4" />
-        </Button>
+      <div>
+        <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+          <Percent size={24} />
+          Pay-Out pool (specialist)
+        </h1>
+        <p className="text-sm text-text-muted mt-1">
+          Global pool B share, timeout from standard pool to specialist pool, and per-merchant
+          overrides.
+        </p>
       </div>
 
       <Card className="p-6 space-y-4">
@@ -189,7 +177,7 @@ export function AdminPayoutPoolPage() {
             });
           }}
         >
-          <Input name="merchant_id" label="Merchant ID (UUID)" className="min-w-[280px]" />
+          <Input name="merchant_id" label="Merchant ID" className="min-w-[280px]" />
           <Input
             name="pool_b_percent"
             label="Pool B percent"

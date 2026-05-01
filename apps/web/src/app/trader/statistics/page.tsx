@@ -9,11 +9,9 @@ import {
   CheckCircle2,
   XCircle,
   Percent,
-  RefreshCw,
   LineChart,
 } from 'lucide-react';
 import { StatCard, Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -57,14 +55,13 @@ const PERIOD_OPTIONS = [
 export default function StatisticsPage() {
   const [period, setPeriod] = useState('7d');
 
-  const { data: stats, isLoading, refetch, isFetching } = useQuery({
+  const { data: stats, isLoading } = useQuery({
     queryKey: ['trader', 'statistics', period],
     queryFn: () =>
       api.get<TraderStatistics>(internalPaths.traderMeStatistics, { period }),
   });
 
   const loading = isLoading || !stats;
-  const busy = isLoading || isFetching;
 
   const hasVolume =
     stats?.volumeByDay?.some((d) => d.totalVolume > 0) ?? false;
@@ -87,9 +84,6 @@ export default function StatisticsPage() {
             className="w-44"
             rootClassName="gap-1"
           />
-          <Button variant="secondary" size="sm" onClick={() => refetch()} disabled={busy}>
-            <RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
-          </Button>
         </div>
       </div>
 

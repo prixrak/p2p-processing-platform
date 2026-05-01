@@ -16,6 +16,7 @@ export const payinStatusVariant: Record<string, BadgeVariant> = {
   OVERPAID: 'warning',
   UPLOAD_FAILED: 'danger',
   EXPIRED: 'danger',
+  NO_REQUISITE: 'danger',
 };
 
 export const payoutStatusVariant: Record<string, BadgeVariant> = {

@@ -6,13 +6,11 @@ import {
   Wallet,
   TrendingUp,
   Percent,
-  RefreshCw,
   UserCheck,
   Store,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { UserRole } from '@p2p/shared';
@@ -35,7 +33,7 @@ interface ReferralProfile {
 }
 
 export default function ReferralDashboard() {
-  const { data: profile, isLoading, refetch } = useQuery({
+  const { data: profile, isLoading } = useQuery({
     queryKey: ['referral', 'me'],
     queryFn: () => api.get<ReferralProfile>(internalPaths.referralMe),
   });
@@ -46,19 +44,12 @@ export default function ReferralDashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Users className="h-6 w-6 text-accent-blue" />
-          <div>
-            <h1 className="text-2xl font-bold text-text-primary">Referral Cabinet</h1>
-            <p className="text-sm text-text-muted">
-              {profile?.user.email ?? '—'}
-            </p>
-          </div>
+      <div className="flex items-center gap-3">
+        <Users className="h-6 w-6 text-accent-blue" />
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Referral Cabinet</h1>
+          <p className="text-sm text-text-muted">{profile?.user.email ?? '—'}</p>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
       </div>
 
       {/* Stats Cards */}

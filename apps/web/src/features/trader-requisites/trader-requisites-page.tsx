@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CreditCard,
   Plus,
-  RefreshCw,
   Pencil,
   ChevronDown,
   ChevronRight,
@@ -39,6 +38,7 @@ import {
   TraderEditRequisiteLimitsModal,
   TraderRequisiteHistoryModal,
 } from './requisite-modals';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 export function TraderRequisitesPage() {
   const queryClient = useQueryClient();
@@ -70,6 +70,7 @@ export function TraderRequisitesPage() {
   });
 
   const [historyRequisiteId, setHistoryRequisiteId] = useState<string | null>(null);
+  const [deleteGroupId, setDeleteGroupId] = useState<string | null>(null);
 
   const { data: banks = [] } = useQuery({
     queryKey: ['banks', 'list'],
@@ -89,7 +90,7 @@ export function TraderRequisitesPage() {
 
   const groupsQueryKey = ['trader', 'requisite-groups', archivedTab] as const;
 
-  const { data: groups = [], isLoading, refetch } = useQuery({
+  const { data: groups = [], isLoading } = useQuery({
     queryKey: groupsQueryKey,
     queryFn: () =>
       api.get<RequisiteGroupApi[]>(
@@ -277,6 +278,22 @@ export function TraderRequisitesPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <ConfirmDialog
+        open={!!deleteGroupId}
+        onOpenChange={(next) => !next && setDeleteGroupId(null)}
+        tone="danger"
+        title="Delete payment method group?"
+        description="Only empty groups can be deleted. Remove all requisites first if any remain."
+        confirmLabel="Delete group"
+        loading={deleteGroupMutation.isPending}
+        onConfirm={() => {
+          if (!deleteGroupId) return;
+          const id = deleteGroupId;
+          deleteGroupMutation.mutate(id, {
+            onSettled: () => setDeleteGroupId(null),
+          });
+        }}
+      />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-3">
           <CreditCard className="h-6 w-6 text-accent-blue" />
@@ -288,10 +305,7 @@ export function TraderRequisitesPage() {
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
+        <div className="flex flex-wrap items-center gap-2 justify-end">
           {!archivedTab && (
             <Button
               onClick={() => {
@@ -463,15 +477,7 @@ export function TraderRequisitesPage() {
                         size="sm"
                         variant="danger"
                         className="h-8 w-8 rounded-full p-0"
-                        onClick={() => {
-                          if (
-                            confirm(
-                              'Delete this empty group only? Remove all requisites first if any remain.',
-                            )
-                          ) {
-                            deleteGroupMutation.mutate(g.id);
-                          }
-                        }}
+                        onClick={() => setDeleteGroupId(g.id)}
                         title="Delete group"
                         disabled={g.requisites.length > 0}
                       >

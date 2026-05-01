@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Users,
   Plus,
-  RefreshCw,
   Percent,
   Link,
   Unlink,
@@ -22,6 +21,15 @@ import { Table } from '@/components/ui/table';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { formatDate, formatCurrency, shortId } from '@/lib/utils';
+import { mergeIntoDataTotalList } from '@/lib/query-cache-merge';
+
+interface ReferralProfileApi {
+  id: string;
+  referralPercent: unknown;
+  currency: string;
+  createdAt: string;
+  user: { id: string; email: string; isActive: boolean };
+}
 
 interface ReferralAgent {
   id: string;
@@ -38,6 +46,25 @@ interface ReferralListResponse {
   total: number;
 }
 
+interface LinkedUserPayload {
+  id: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+}
+
+function referralAgentFromCreatedProfile(profile: ReferralProfileApi): ReferralAgent {
+  return {
+    id: profile.id,
+    referralPercent: Number(profile.referralPercent),
+    balance: 0,
+    currency: profile.currency,
+    createdAt: profile.createdAt,
+    user: profile.user,
+    referrals: [],
+  };
+}
+
 export default function ReferralsAdminPage() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
@@ -51,16 +78,21 @@ export default function ReferralsAdminPage() {
   const [newCurrency, setNewCurrency] = useState('UAH');
   const [editPercent, setEditPercent] = useState('');
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['admin', 'referrals'],
     queryFn: () => api.get<ReferralListResponse>(internalPaths.referrals),
   });
 
   const createMutation = useMutation({
     mutationFn: (payload: { email: string; password: string; referralPercent: number; currency: string }) =>
-      api.post(internalPaths.referrals, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'referrals'] });
+      api.post<ReferralProfileApi>(internalPaths.referrals, payload),
+    onSuccess: (profile) => {
+      mergeIntoDataTotalList(
+        queryClient,
+        ['admin', 'referrals'],
+        referralAgentFromCreatedProfile(profile),
+        { maxChunk: 20 },
+      );
       setCreateOpen(false);
       setNewEmail('');
       setNewPassword('');
@@ -69,18 +101,53 @@ export default function ReferralsAdminPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, referralPercent }: { id: string; referralPercent: number }) =>
-      api.patch(internalPaths.referral(id), { referralPercent }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'referrals'] });
+      api.patch<ReferralProfileApi>(internalPaths.referral(id), { referralPercent }),
+    onSuccess: (profile) => {
+      queryClient.setQueryData<ReferralListResponse>(['admin', 'referrals'], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          data: old.data.map((row) =>
+            row.id === profile.id
+              ? {
+                  ...row,
+                  referralPercent: Number(profile.referralPercent),
+                  currency: profile.currency,
+                }
+              : row,
+          ),
+        };
+      });
       setDetailAgent(null);
     },
   });
 
   const linkMutation = useMutation({
     mutationFn: ({ agentId, userId }: { agentId: string; userId: string }) =>
-      api.post(internalPaths.referralLinkUser(agentId), { userId }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'referrals'] });
+      api.post<LinkedUserPayload>(internalPaths.referralLinkUser(agentId), { userId }),
+    onSuccess: (linkedUser, vars) => {
+      queryClient.setQueryData<ReferralListResponse>(['admin', 'referrals'], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          data: old.data.map((agent) =>
+            agent.id !== vars.agentId
+              ? agent
+              : {
+                  ...agent,
+                  referrals: [
+                    ...agent.referrals.filter((u) => u.id !== linkedUser.id),
+                    {
+                      id: linkedUser.id,
+                      email: linkedUser.email,
+                      role: linkedUser.role,
+                      isActive: linkedUser.isActive,
+                    },
+                  ],
+                },
+          ),
+        };
+      });
       setLinkOpen(false);
       setLinkUserId('');
     },
@@ -88,8 +155,17 @@ export default function ReferralsAdminPage() {
 
   const unlinkMutation = useMutation({
     mutationFn: (userId: string) => api.delete(internalPaths.referralUnlinkUser(userId)),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'referrals'] });
+    onSuccess: (_data, userId) => {
+      queryClient.setQueryData<ReferralListResponse>(['admin', 'referrals'], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          data: old.data.map((agent) => ({
+            ...agent,
+            referrals: agent.referrals.filter((u) => u.id !== userId),
+          })),
+        };
+      });
     },
   });
 
@@ -189,15 +265,10 @@ export default function ReferralsAdminPage() {
             <p className="text-sm text-text-muted">{data?.total ?? 0} agents total</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-          <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" />
-            New Agent
-          </Button>
-        </div>
+        <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
+          <Plus className="h-4 w-4" />
+          New Agent
+        </Button>
       </div>
 
       <Table
@@ -252,13 +323,14 @@ export default function ReferralsAdminPage() {
       <Modal open={linkOpen} onClose={() => setLinkOpen(false)} title="Link User to Agent">
         <div className="space-y-4">
           <p className="text-sm text-text-secondary">
-            Enter the UUID of the user (trader/merchant) to link to this referral agent.
+            Enter the user ID for the trader or merchant to attach to this referral agent (copy from the
+            user profile).
           </p>
           <Input
-            label="User UUID"
+            label="User ID"
             value={linkUserId}
             onChange={(e) => setLinkUserId(e.target.value)}
-            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            placeholder="User ID"
           />
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setLinkOpen(false)}>Cancel</Button>

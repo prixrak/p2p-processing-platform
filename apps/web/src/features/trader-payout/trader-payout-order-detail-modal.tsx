@@ -3,13 +3,12 @@
 import { useState } from 'react';
 import { Play, CheckCircle2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { PayoutOrderStatusBadge } from '@/components/ui/order-status-badge';
 import { Modal } from '@/components/ui/modal';
 import type { UseMutationResult } from '@tanstack/react-query';
 import type { PayOutOrderApiDto } from '@p2p/shared';
 import { PayOutOrderStatus } from '@p2p/shared';
 import { formatCurrency, formatDateFull } from '@/lib/utils';
-import { payoutStatusVariant } from '@/lib/status-helpers';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { PayoutDetailRow } from './payout-detail-row';
@@ -56,9 +55,7 @@ export function TraderPayoutOrderDetailModal({
             />
             <PayoutDetailRow label="Currency" value={selectedOrder.currency} />
             <PayoutDetailRow label="Status">
-              <Badge variant={payoutStatusVariant[selectedOrder.status]} dot>
-                {selectedOrder.status}
-              </Badge>
+              <PayoutOrderStatusBadge status={selectedOrder.status} />
             </PayoutDetailRow>
             <PayoutDetailRow label="Rate" value={String(selectedOrder.rate)} />
             <PayoutDetailRow label="Partner Amount" value={String(selectedOrder.partner_amount)} />

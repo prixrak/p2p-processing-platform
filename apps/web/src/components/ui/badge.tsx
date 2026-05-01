@@ -1,13 +1,16 @@
+import type { ReactNode } from 'react';
 import { clsx } from 'clsx';
 
 type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'muted';
 type BadgeColor = 'green' | 'yellow' | 'red' | 'blue' | 'default';
 
 interface BadgeProps {
-  children: React.ReactNode;
+  children: ReactNode;
   variant?: BadgeVariant;
   color?: BadgeColor;
   dot?: boolean;
+  /** Renders instead of the dot when provided (same size as icon-sized dots elsewhere). */
+  leadingIcon?: ReactNode;
   className?: string;
 }
 
@@ -37,8 +40,9 @@ const colorToVariant: Record<BadgeColor, BadgeVariant> = {
   default: 'default',
 };
 
-export function Badge({ children, variant, color, dot, className }: BadgeProps) {
+export function Badge({ children, variant, color, dot, leadingIcon, className }: BadgeProps) {
   const resolved = variant ?? (color ? colorToVariant[color] : 'default');
+  const showDot = dot && leadingIcon == null;
   return (
     <span
       className={clsx(
@@ -47,8 +51,12 @@ export function Badge({ children, variant, color, dot, className }: BadgeProps) 
         className,
       )}
     >
-      {dot && (
-        <span className={clsx('h-1.5 w-1.5 rounded-full', dotStyles[resolved])} />
+      {leadingIcon != null ? (
+        <span className="inline-flex shrink-0 opacity-90 [&_svg]:h-3.5 [&_svg]:w-3.5">
+          {leadingIcon}
+        </span>
+      ) : (
+        showDot && <span className={clsx('h-1.5 w-1.5 rounded-full', dotStyles[resolved])} />
       )}
       {children}
     </span>

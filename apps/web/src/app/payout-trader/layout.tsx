@@ -6,7 +6,6 @@ import {
   Wallet,
   BarChart3,
   Bell,
-  History,
 } from 'lucide-react';
 import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
@@ -17,7 +16,6 @@ const PAYOUT_TRADER_ALLOWED = [UserRole.PAYOUT_TRADER] as const;
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/payout-trader', icon: LayoutDashboard },
   { label: 'Pay-Out', href: '/payout-trader/payout', icon: ArrowUpFromLine },
-  { label: 'History', href: '/payout-trader/history', icon: History },
   { label: 'Statistics', href: '/payout-trader/statistics', icon: BarChart3 },
   { label: 'Balance', href: '/payout-trader/balance', icon: Wallet },
   { label: 'Notifications', href: '/payout-trader/notifications', icon: Bell },

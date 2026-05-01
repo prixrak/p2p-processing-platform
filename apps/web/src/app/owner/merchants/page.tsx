@@ -14,6 +14,10 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
+import {
+  mergeCreatedIntoPaginatedQueries,
+  patchEntitiesInPaginatedQueries,
+} from '@/lib/query-cache-merge';
 
 interface Merchant {
   id: string;
@@ -54,6 +58,18 @@ function mapMerchantRow(m: MerchantApiRow): Merchant {
     ordersCount: m.ordersCount ?? 0,
     createdAt: m.createdAt,
   };
+}
+
+function mapMerchantCreatedToRow(api: MerchantApiRow): Merchant {
+  return mapMerchantRow({
+    id: api.id,
+    userId: api.userId,
+    name: api.name,
+    isLock: api.isLock ?? false,
+    createdAt: api.createdAt,
+    balances: api.balances ?? [],
+    ordersCount: api.ordersCount ?? 0,
+  });
 }
 
 interface MerchantDirection {
@@ -141,13 +157,27 @@ export default function MerchantsPage() {
 
   const createMerchant = useMutation({
     mutationFn: (payload: { userId: string; name: string }) =>
-      api.post(internalPaths.merchants, {
+      api.post<MerchantApiRow>(internalPaths.merchants, {
         userId: payload.userId,
         name: payload.name.trim(),
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['owner', 'merchants'] });
-      queryClient.invalidateQueries({ queryKey: ['owner', 'merchants', 'linked-user-ids'] });
+    onSuccess: (created, variables) => {
+      mergeCreatedIntoPaginatedQueries(queryClient, {
+        queryKeyPrefix: ['owner', 'merchants'],
+        row: mapMerchantCreatedToRow(created),
+        matchesQueryKey: () => true,
+        getPageNumber: (key) => (typeof key[2] === 'number' ? (key[2] as number) : undefined),
+        defaultLimit: 20,
+      });
+      queryClient.setQueryData<Set<string> | undefined>(
+        ['owner', 'merchants', 'linked-user-ids'],
+        (old) => {
+          if (!old) return old;
+          const next = new Set(old);
+          next.add(variables.userId);
+          return next;
+        },
+      );
       setShowCreate(false);
       setForm({ userId: '', name: '' });
     },
@@ -158,14 +188,30 @@ export default function MerchantsPage() {
       status === 'active'
         ? api.patch(internalPaths.merchantLock(id))
         : api.patch(internalPaths.merchantUnlock(id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'merchants'] }),
+    onSuccess: (_data, variables) => {
+      patchEntitiesInPaginatedQueries(queryClient, {
+        queryKeyPrefix: ['owner', 'merchants'],
+        whereId: variables.id,
+        mapRow: (row) => ({
+          ...row,
+          status: variables.status === 'active' ? 'locked' : 'active',
+        }),
+      });
+    },
   });
 
   const createDirection = useMutation({
     mutationFn: (body: typeof dirForm) =>
-      api.post(internalPaths.merchantDirections(directionsModal!.id), body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['owner', 'merchant-directions', directionsModal?.id] });
+      api.post<MerchantDirection>(internalPaths.merchantDirections(directionsModal!.id), body),
+    onSuccess: (row, _vars) => {
+      const mid = directionsModal?.id;
+      if (!mid) return;
+      queryClient.setQueryData<MerchantDirection[]>(['owner', 'merchant-directions', mid], (old) => {
+        if (!old) return [row];
+        const next = [...old.filter((d) => d.id !== row.id), row];
+        next.sort((a, b) => a.directionType.localeCompare(b.directionType) || a.currency.localeCompare(b.currency));
+        return next;
+      });
       setShowAddDir(false);
       setDirForm({ directionType: 'PAYIN', currency: 'UAH', minAmount: 0, maxAmount: 0, defaultCommissionPercent: 5 });
     },
@@ -174,15 +220,29 @@ export default function MerchantsPage() {
   const deleteDirection = useMutation({
     mutationFn: ({ dirId }: { dirId: string }) =>
       api.delete(internalPaths.merchantDirection(directionsModal!.id, dirId)),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['owner', 'merchant-directions', directionsModal?.id] }),
+    onSuccess: (_data, variables) => {
+      const mid = directionsModal?.id;
+      if (!mid) return;
+      queryClient.setQueryData<MerchantDirection[]>(
+        ['owner', 'merchant-directions', mid],
+        (old) => old?.filter((d) => d.id !== variables.dirId) ?? [],
+      );
+    },
   });
 
   const toggleDirection = useMutation({
     mutationFn: ({ dirId, isActive }: { dirId: string; isActive: boolean }) =>
-      api.patch(internalPaths.merchantDirection(directionsModal!.id, dirId), { isActive: !isActive }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['owner', 'merchant-directions', directionsModal?.id] }),
+      api.patch<MerchantDirection>(internalPaths.merchantDirection(directionsModal!.id, dirId), {
+        isActive: !isActive,
+      }),
+    onSuccess: (updated, variables) => {
+      const mid = directionsModal?.id;
+      if (!mid) return;
+      queryClient.setQueryData<MerchantDirection[]>(
+        ['owner', 'merchant-directions', mid],
+        (old) => old?.map((d) => (d.id === variables.dirId ? updated : d)) ?? [],
+      );
+    },
   });
 
   const columns = [

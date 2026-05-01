@@ -9,6 +9,11 @@ import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { FilterBar, FilterSelect, FilterInput } from '@/components/ui/filters';
 import { format } from 'date-fns';
+import {
+  summarizeAuditValue,
+  humanizeFieldKey,
+  formatAuditFieldValue,
+} from '@/lib/audit-display';
 
 interface AuditEntry {
   id: string;
@@ -32,17 +37,6 @@ function toJsonRecord(v: unknown): Record<string, unknown> | null {
     return v as Record<string, unknown>;
   }
   return { value: v as string | number | boolean };
-}
-
-function summarizeDetails(v: unknown): string {
-  if (v === null || v === undefined) return '—';
-  if (typeof v === 'string') return v.length > 120 ? `${v.slice(0, 117)}…` : v;
-  try {
-    const s = JSON.stringify(v);
-    return s.length > 120 ? `${s.slice(0, 117)}…` : s;
-  } catch {
-    return '—';
-  }
 }
 
 export default function AuditLogPage() {
@@ -93,7 +87,7 @@ export default function AuditLogPage() {
         action: log.action,
         entity: log.entityType,
         entityId: log.entityId ?? '',
-        details: summarizeDetails(log.newValue),
+        details: summarizeAuditValue(log.newValue),
         oldValue: toJsonRecord(log.oldValue),
         newValue: toJsonRecord(log.newValue),
       }));
@@ -179,7 +173,7 @@ export default function AuditLogPage() {
           label="Actor ID"
           value={actorFilter}
           onChange={setActorFilter}
-          placeholder="User UUID (optional)…"
+          placeholder="User ID (optional)"
         />
         <FilterSelect
           label="Action"
@@ -235,22 +229,28 @@ export default function AuditLogPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {row.oldValue && (
               <div>
-                <p className="text-xs text-text-muted mb-1 font-medium">
-                  Previous Value
-                </p>
-                <pre className="text-xs text-text-secondary bg-bg-primary rounded-lg p-3 overflow-x-auto max-h-48">
-                  {JSON.stringify(row.oldValue, null, 2)}
-                </pre>
+                <p className="text-xs text-text-muted mb-2 font-medium">Previous value</p>
+                <dl className="text-xs space-y-2 text-text-secondary max-h-48 overflow-y-auto">
+                  {Object.entries(row.oldValue).map(([key, val]) => (
+                    <div key={key}>
+                      <dt className="text-text-muted">{humanizeFieldKey(key)}</dt>
+                      <dd className="text-text-primary break-words">{formatAuditFieldValue(val)}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
             )}
             {row.newValue && (
               <div>
-                <p className="text-xs text-text-muted mb-1 font-medium">
-                  New Value
-                </p>
-                <pre className="text-xs text-text-secondary bg-bg-primary rounded-lg p-3 overflow-x-auto max-h-48">
-                  {JSON.stringify(row.newValue, null, 2)}
-                </pre>
+                <p className="text-xs text-text-muted mb-2 font-medium">New value</p>
+                <dl className="text-xs space-y-2 text-text-secondary max-h-48 overflow-y-auto">
+                  {Object.entries(row.newValue).map(([key, val]) => (
+                    <div key={key}>
+                      <dt className="text-text-muted">{humanizeFieldKey(key)}</dt>
+                      <dd className="text-text-primary break-words">{formatAuditFieldValue(val)}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
             )}
             {!row.oldValue && !row.newValue && (

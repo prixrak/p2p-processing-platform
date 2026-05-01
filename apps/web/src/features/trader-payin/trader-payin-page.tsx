@@ -4,14 +4,13 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDownToLine,
-  RefreshCw,
   Filter,
   Eye,
   FileText,
 } from 'lucide-react';
 import type { OrderDto } from '@p2p/shared';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { PayinOrderStatusBadge } from '@/components/ui/order-status-badge';
 import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { Table } from '@/components/ui/table';
@@ -21,9 +20,9 @@ import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/toast';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { formatErrorMessage } from '@/lib/format-error';
 import { formatCurrency, formatDateFull } from '@/lib/utils';
 import { usePayinTraderRealtime } from '@/lib/payin-realtime';
-import { payinStatusVariant } from '@/lib/status-helpers';
 import { payinStatusLabel } from '@/lib/order-status-ui';
 import {
   PayInOrderStatus,
@@ -80,7 +79,7 @@ export function TraderPayInPage() {
   if (statusFilter) queryParams.status = statusFilter;
   if (debouncedSearch) queryParams.search = debouncedSearch;
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['trader', 'payin-orders', queryParams],
     queryFn: async () => {
       const res = await api.get<PayInListApiResponse>(internalPaths.traderPayinOrders, queryParams);
@@ -120,7 +119,7 @@ export function TraderPayInPage() {
       setFinalizeDialog(null);
     },
     onError: (e: unknown) => {
-      toast.error(e instanceof Error ? e.message : 'Request failed');
+      toast.error(formatErrorMessage(e));
     },
   });
 
@@ -132,7 +131,7 @@ export function TraderPayInPage() {
       setFinalizeDialog(null);
     },
     onError: (e: unknown) => {
-      toast.error(e instanceof Error ? e.message : 'Request failed');
+      toast.error(formatErrorMessage(e));
     },
   });
 
@@ -187,7 +186,9 @@ export function TraderPayInPage() {
         key: 'timer',
         header: 'Time to complete',
         className: 'text-end font-mono tabular-nums',
-        render: (row: OrderDto) => <CountdownTimer autocloseAt={row.autoclose_at} />,
+        render: (row: OrderDto) => (
+          <CountdownTimer autocloseAt={row.autoclose_at} createdAt={row.created_at} />
+        ),
       },
       {
         key: 'direction',
@@ -209,11 +210,7 @@ export function TraderPayInPage() {
         key: 'status',
         header: 'Status',
         className: 'text-center',
-        render: (row: OrderDto) => (
-          <Badge variant={payinStatusVariant[row.status]} dot>
-            {payinStatusLabel(row.status)}
-          </Badge>
-        ),
+        render: (row: OrderDto) => <PayinOrderStatusBadge status={row.status} />,
       },
       {
         key: 'appeal',
@@ -301,9 +298,6 @@ export function TraderPayInPage() {
           <Button variant="secondary" size="sm" onClick={() => setShowFilters(!showFilters)}>
             <Filter className="h-4 w-4" />
             Filters
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
       </div>

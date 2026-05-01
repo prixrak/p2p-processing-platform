@@ -12,8 +12,15 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
+import { upsertSortedArrayCache } from '@/lib/query-cache-merge';
 
-interface Country { id: string; name: string; code: string; currency: string; }
+interface Country {
+  id: string;
+  name: string;
+  code: string;
+  currency: string;
+  _count?: { paymentMethods: number };
+}
 interface PaymentMethod {
   id: string;
   name: string;
@@ -52,18 +59,47 @@ export default function PaymentMethodsPage() {
   });
 
   const create = useMutation({
-    mutationFn: (body: typeof form) => api.post(internalPaths.adminPaymentMethods, body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['owner', 'payment-methods'] });
+    mutationFn: (body: typeof form) =>
+      api.post<PaymentMethod>(internalPaths.adminPaymentMethods, body),
+    onSuccess: (row) => {
+      qc.setQueryData<Array<Country>>(['owner', 'countries'], (countryRows) =>
+        countryRows?.map((c) =>
+          c.id === row.country.id
+            ? {
+                ...c,
+                _count: {
+                  paymentMethods: (c._count?.paymentMethods ?? 0) + 1,
+                },
+              }
+            : c,
+        ),
+      );
+      upsertSortedArrayCache(qc, ['owner', 'payment-methods'], row, {
+        idOf: (m) => m.id,
+        sort: (a, b) =>
+          a.country.code.localeCompare(b.country.code) || a.name.localeCompare(b.name),
+      });
       setShowCreate(false);
-      setForm({ countryId: '', name: '', displayName: '', flowType: 'P2P', requisiteType: 'CARD', availability: 'BOTH' });
+      setForm({
+        countryId: '',
+        name: '',
+        displayName: '',
+        flowType: 'P2P',
+        requisiteType: 'CARD',
+        availability: 'BOTH',
+      });
     },
   });
 
   const toggle = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
-      api.patch(internalPaths.adminPaymentMethod(id), { isActive: !isActive }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['owner', 'payment-methods'] }),
+      api.patch<PaymentMethod>(internalPaths.adminPaymentMethod(id), { isActive: !isActive }),
+    onSuccess: (row) =>
+      upsertSortedArrayCache(qc, ['owner', 'payment-methods'], row, {
+        idOf: (m) => m.id,
+        sort: (a, b) =>
+          a.country.code.localeCompare(b.country.code) || a.name.localeCompare(b.name),
+      }),
   });
 
   const columns = [

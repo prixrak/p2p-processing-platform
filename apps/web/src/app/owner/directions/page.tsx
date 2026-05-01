@@ -61,6 +61,12 @@ function mapDirection(d: DirectionApiRow): Direction {
   };
 }
 
+function sortDirections(rows: Direction[]): Direction[] {
+  return [...rows].sort(
+    (a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name),
+  );
+}
+
 const emptyForm: {
   name: string;
   type: 'PAYIN' | 'PAYOUT';
@@ -134,7 +140,7 @@ export default function DirectionsPage() {
 
   const createDirection = useMutation({
     mutationFn: (payload: typeof emptyForm) =>
-      api.post(internalPaths.directions, {
+      api.post<DirectionApiRow>(internalPaths.directions, {
         name: payload.name.trim(),
         type: payload.type,
         fromCurrency: payload.fromCurrency.trim().toUpperCase(),
@@ -144,8 +150,13 @@ export default function DirectionsPage() {
         rate: payload.rate,
         percentFee: payload.fee,
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['owner', 'directions'] });
+    onSuccess: (raw) => {
+      const mapped = mapDirection(raw);
+      queryClient.setQueryData<DirectionsTableData>(['owner', 'directions'], (old) => {
+        if (!old) return { data: [mapped], totalPages: 1 };
+        if (old.data.some((d) => d.id === mapped.id)) return old;
+        return { ...old, data: sortDirections([...old.data, mapped]) };
+      });
       setShowCreate(false);
       setForm(emptyForm);
     },
@@ -153,7 +164,7 @@ export default function DirectionsPage() {
 
   const updateDirection = useMutation({
     mutationFn: (args: { id: string; form: typeof emptyForm }) =>
-      api.put(internalPaths.direction(args.id), {
+      api.put<DirectionApiRow>(internalPaths.direction(args.id), {
         name: args.form.name.trim(),
         fromCurrency: args.form.fromCurrency.trim().toUpperCase(),
         toCurrency: args.form.toCurrency.trim().toUpperCase(),
@@ -162,15 +173,32 @@ export default function DirectionsPage() {
         rate: args.form.rate,
         percentFee: args.form.fee,
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['owner', 'directions'] });
+    onSuccess: (raw) => {
+      const mapped = mapDirection(raw);
+      queryClient.setQueryData<DirectionsTableData>(['owner', 'directions'], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          data: sortDirections(old.data.map((d) => (d.id === mapped.id ? mapped : d))),
+        };
+      });
       setEditItem(null);
     },
   });
 
   const toggleOnline = useMutation({
-    mutationFn: ({ id }: { id: string }) => api.patch(internalPaths.directionToggle(id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'directions'] }),
+    mutationFn: ({ id }: { id: string }) =>
+      api.patch<DirectionApiRow>(internalPaths.directionToggle(id)),
+    onSuccess: (raw) => {
+      const mapped = mapDirection(raw);
+      queryClient.setQueryData<DirectionsTableData>(['owner', 'directions'], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          data: sortDirections(old.data.map((d) => (d.id === mapped.id ? mapped : d))),
+        };
+      });
+    },
   });
 
   const openEdit = (d: Direction) => {

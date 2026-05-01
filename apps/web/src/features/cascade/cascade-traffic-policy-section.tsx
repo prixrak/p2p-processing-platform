@@ -25,8 +25,10 @@ export function CascadeTrafficPolicySection({
           <p
             className={`font-medium ${data.matches_rule ? 'text-green-600 dark:text-green-400' : 'text-danger'}`}
           >
-            Current sum (active traders, accepting orders): {data.active_traders_sum_percent}%
-            {data.matches_rule ? ' — OK' : ' — invalid (PATCH will be rejected until fixed)'}
+            Current total share (active traders accepting orders): {data.active_traders_sum_percent}%
+            {data.matches_rule
+              ? ' — valid'
+              : ' — totals must equal 100% before changes can be saved'}
           </p>
         </div>
       ) : (

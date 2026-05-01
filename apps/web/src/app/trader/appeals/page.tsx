@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
-  RefreshCw,
   Eye,
   ExternalLink,
 } from 'lucide-react';
@@ -38,7 +37,7 @@ export default function AppealsPage() {
   const [selectedAppeal, setSelectedAppeal] = useState<AppealDto | null>(null);
   const [viewingProof, setViewingProof] = useState<string | null>(null);
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['trader', 'appeals'],
     queryFn: () => api.get<AppealsListResponse>(internalPaths.appeals),
   });
@@ -164,7 +163,7 @@ export default function AppealsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <AlertTriangle className="h-6 w-6 text-accent-yellow" />
           <div>
@@ -175,9 +174,6 @@ export default function AppealsPage() {
             </p>
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
       </div>
 
       <section className="space-y-3">

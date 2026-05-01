@@ -10,10 +10,13 @@ type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 interface ModalProps {
   open: boolean;
   onClose: () => void;
-  title: string;
+  /** Omit or pass empty string for a headerless dialog (custom layout inside children). */
+  title?: string;
   children: React.ReactNode;
   size?: ModalSize;
   className?: string;
+  /** Overlay z-index when stacking dialogs (e.g. confirm above another modal). */
+  overlayClassName?: string;
 }
 
 const sizeStyles: Record<ModalSize, string> = {
@@ -23,7 +26,15 @@ const sizeStyles: Record<ModalSize, string> = {
   xl: 'max-w-4xl',
 };
 
-export function Modal({ open, onClose, title, children, size = 'md', className }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  size = 'md',
+  className,
+  overlayClassName,
+}: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,7 +55,10 @@ export function Modal({ open, onClose, title, children, size = 'md', className }
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+      className={clsx(
+        'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in',
+        overlayClassName,
+      )}
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}
@@ -57,21 +71,23 @@ export function Modal({ open, onClose, title, children, size = 'md', className }
           className,
         )}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-text-primary">{title}</h2>
-          <Tooltip content="Close (Esc)" side="bottom">
-            <span className="inline-flex">
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close dialog"
-                className="cursor-pointer rounded-lg p-1.5 text-text-muted transition-colors hover:bg-surface-tertiary hover:text-text-primary"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </span>
-          </Tooltip>
-        </div>
+        {title ? (
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-text-primary">{title}</h2>
+            <Tooltip content="Close (Esc)" side="bottom">
+              <span className="inline-flex">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close dialog"
+                  className="cursor-pointer rounded-lg p-1.5 text-text-muted transition-colors hover:bg-surface-tertiary hover:text-text-primary"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </span>
+            </Tooltip>
+          </div>
+        ) : null}
         {children}
       </div>
     </div>

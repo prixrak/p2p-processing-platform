@@ -13,6 +13,19 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs } from '@/components/ui/tabs';
 import type { StaffRolePrefix } from '@/features/traders/query-keys';
 import { staffTraderKeys } from '@/features/traders/query-keys';
+import {
+  mergeSettlementIntoListCaches,
+  type SettlementListRow,
+} from '@/lib/query-cache-merge';
+import { fieldErrorsFromZod } from '@/lib/validation/zod-field-errors';
+import {
+  settlementMerchantFieldsSchema,
+  settlementPayoutFieldsSchema,
+  settlementTraderFieldsSchema,
+} from '@/lib/validation/schemas';
+import { FormAlert } from '@/components/ui/form-alert';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { errorMessageFromUnknown } from '@/lib/error-message';
 
 type SettlementTab = 'trader' | 'payout' | 'merchant';
 
@@ -74,6 +87,9 @@ export function SettlementCreateModal({
   const [usdtEquivalent, setUsdtEquivalent] = useState('');
   const [merchantUsdtAddress, setMerchantUsdtAddress] = useState('');
   const [merchantNote, setMerchantNote] = useState('');
+
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const { data: traders = [] } = useQuery<TraderOption[]>({
     queryKey: staffTraderKeys.traderOptions(queryPrefix),
@@ -146,10 +162,10 @@ export function SettlementCreateModal({
     enabled: open,
   });
 
-  const createMutation = useMutation({
+  const createMutation = useMutation<SettlementListRow, Error, void>({
     mutationFn: () => {
       if (tab === 'trader') {
-        return api.post(internalPaths.settlements, {
+        return api.post<SettlementListRow>(internalPaths.settlements, {
           traderId,
           type:
             traderSettlementType === 'credit' ? SettlementType.CREDIT : SettlementType.DEBIT,
@@ -159,7 +175,7 @@ export function SettlementCreateModal({
         });
       }
       if (tab === 'payout') {
-        return api.post(internalPaths.settlements, {
+        return api.post<SettlementListRow>(internalPaths.settlements, {
           payoutTraderId: payoutSpecialistId,
           type: payoutType === 'credit' ? SettlementType.CREDIT : SettlementType.DEBIT,
           amount: parseFloat(payoutAmount),
@@ -168,7 +184,7 @@ export function SettlementCreateModal({
           usdtAddress: payoutUsdtAddress.trim() || undefined,
         });
       }
-      return api.post(internalPaths.settlements, {
+      return api.post<SettlementListRow>(internalPaths.settlements, {
         merchantId,
         type: SettlementType.DEBIT,
         amount: parseFloat(merchantDebitAmount),
@@ -179,11 +195,18 @@ export function SettlementCreateModal({
         note: merchantNote,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [queryPrefix, 'settlements'] });
+    onSuccess: (created) => {
+      mergeSettlementIntoListCaches(queryClient, queryPrefix, created);
       resetForm();
     },
   });
+
+  useEffect(() => {
+    if (!open) return;
+    setFieldErrors({});
+    setConfirmOpen(false);
+    createMutation.reset();
+  }, [open]);
 
   function resetForm() {
     setTraderId('');
@@ -204,39 +227,96 @@ export function SettlementCreateModal({
     setMerchantUsdtAddress('');
     setMerchantNote('');
     setTab('trader');
+    setFieldErrors({});
+    setConfirmOpen(false);
     onClose();
   }
 
   function handleTabChange(next: SettlementTab) {
     setTab(next);
     createMutation.reset();
+    setFieldErrors({});
+  }
+
+  function requestCreate() {
+    setFieldErrors({});
+    createMutation.reset();
+    if (tab === 'trader') {
+      const r = settlementTraderFieldsSchema.safeParse({
+        traderId,
+        traderAmount,
+        traderCurrency,
+        traderNote,
+      });
+      if (!r.success) {
+        setFieldErrors(fieldErrorsFromZod(r.error));
+        return;
+      }
+    } else if (tab === 'payout') {
+      const r = settlementPayoutFieldsSchema.safeParse({
+        payoutSpecialistId,
+        payoutAmount,
+        payoutUsdtAddress,
+        payoutNote,
+      });
+      if (!r.success) {
+        setFieldErrors(fieldErrorsFromZod(r.error));
+        return;
+      }
+    } else {
+      const r = settlementMerchantFieldsSchema.safeParse({
+        merchantId,
+        merchantDebitAmount,
+        merchantCurrency,
+        manualRate,
+        usdtEquivalent,
+        merchantUsdtAddress,
+        merchantNote,
+      });
+      if (!r.success) {
+        setFieldErrors(fieldErrorsFromZod(r.error));
+        return;
+      }
+    }
+    setConfirmOpen(true);
+  }
+
+  function confirmSummary(): string {
+    if (tab === 'trader') {
+      const amount = Number(String(traderAmount).replace(/,/g, ''));
+      return `${traderSettlementType === 'credit' ? 'Credit' : 'Debit'} ${amount.toLocaleString()} ${traderCurrency} for the selected trader. This updates the ledger immediately.`;
+    }
+    if (tab === 'payout') {
+      const amount = Number(String(payoutAmount).replace(/,/g, ''));
+      return `${payoutType === 'credit' ? 'Credit' : 'Debit'} ${amount.toLocaleString()} USDT for the Pay-Out specialist.`;
+    }
+    const fiat = Number(String(merchantDebitAmount).replace(/,/g, ''));
+    const usdt = Number(String(usdtEquivalent).replace(/,/g, ''));
+    return `Debit ${fiat.toLocaleString()} ${merchantCurrency} from the merchant and record ${usdt.toLocaleString()} USDT paid out to the listed address.`;
   }
 
   const currentTraderBalance = traderBalances?.find((b) => b.currency === traderCurrency);
 
   const payoutSelected = payoutOptions.find((p) => p.id === payoutSpecialistId);
 
-  const traderSubmitDisabled =
-    !traderId || !traderAmount || parseFloat(traderAmount) <= 0 || createMutation.isPending;
-
-  const payoutSubmitDisabled =
-    !payoutSpecialistId ||
-    !payoutAmount ||
-    parseFloat(payoutAmount) <= 0 ||
-    createMutation.isPending;
-
-  const merchantSubmitDisabled =
-    !merchantId ||
-    !merchantDebitAmount ||
-    parseFloat(merchantDebitAmount) <= 0 ||
-    !manualRate ||
-    parseFloat(manualRate) <= 0 ||
-    !usdtEquivalent ||
-    parseFloat(usdtEquivalent) <= 0 ||
-    !merchantUsdtAddress.trim() ||
-    createMutation.isPending;
+  const submitBusy = createMutation.isPending;
 
   return (
+    <>
+    <ConfirmDialog
+      open={confirmOpen}
+      onOpenChange={setConfirmOpen}
+      tone="danger"
+      title="Create this settlement?"
+      description={confirmSummary()}
+      confirmLabel="Yes, create settlement"
+      cancelLabel="Back to edit"
+      loading={submitBusy}
+      onConfirm={() => {
+        setConfirmOpen(false);
+        createMutation.mutate();
+      }}
+    />
     <Modal open={open} onClose={resetForm} title="Create settlement">
       <div className="space-y-4">
         <Tabs
@@ -264,6 +344,8 @@ export function SettlementCreateModal({
               ]}
               value={traderId}
               onChange={(e) => setTraderId(e.target.value)}
+              error={fieldErrors.traderId}
+              required
             />
 
             <div className="grid grid-cols-2 gap-4">
@@ -287,6 +369,7 @@ export function SettlementCreateModal({
                 }
                 value={traderCurrency}
                 onChange={(e) => setTraderCurrency(e.target.value)}
+                error={fieldErrors.traderCurrency}
               />
             </div>
 
@@ -297,6 +380,7 @@ export function SettlementCreateModal({
               onChange={(e) => setTraderAmount(e.target.value)}
               placeholder="0.00"
               min={0}
+              error={fieldErrors.traderAmount}
             />
 
             <Textarea
@@ -358,6 +442,8 @@ export function SettlementCreateModal({
               ]}
               value={payoutSpecialistId}
               onChange={(e) => setPayoutSpecialistId(e.target.value)}
+              error={fieldErrors.payoutSpecialistId}
+              required
             />
 
             <div className="grid grid-cols-2 gap-4">
@@ -379,6 +465,7 @@ export function SettlementCreateModal({
               onChange={(e) => setPayoutAmount(e.target.value)}
               placeholder="0.00"
               min={0}
+              error={fieldErrors.payoutAmount}
             />
 
             <Textarea
@@ -387,6 +474,7 @@ export function SettlementCreateModal({
               onChange={(e) => setPayoutUsdtAddress(e.target.value)}
               rows={2}
               placeholder="TR… or 0x… payout destination"
+              error={fieldErrors.payoutUsdtAddress}
             />
 
             <Textarea
@@ -428,6 +516,8 @@ export function SettlementCreateModal({
               ]}
               value={merchantId}
               onChange={(e) => setMerchantId(e.target.value)}
+              error={fieldErrors.merchantId}
+              required
             />
 
             <div className="grid grid-cols-2 gap-4">
@@ -443,6 +533,7 @@ export function SettlementCreateModal({
                 }
                 value={merchantCurrency}
                 onChange={(e) => setMerchantCurrency(e.target.value)}
+                error={fieldErrors.merchantCurrency}
               />
               <NumberInput
                 label="Debit amount (fiat)"
@@ -450,6 +541,7 @@ export function SettlementCreateModal({
                 value={merchantDebitAmount}
                 onChange={(e) => setMerchantDebitAmount(e.target.value)}
                 min={0}
+                error={fieldErrors.merchantDebitAmount}
               />
             </div>
 
@@ -460,6 +552,7 @@ export function SettlementCreateModal({
                 value={manualRate}
                 onChange={(e) => setManualRate(e.target.value)}
                 min={0}
+                error={fieldErrors.manualRate}
               />
               <NumberInput
                 label="USDT paid out"
@@ -467,6 +560,7 @@ export function SettlementCreateModal({
                 value={usdtEquivalent}
                 onChange={(e) => setUsdtEquivalent(e.target.value)}
                 min={0}
+                error={fieldErrors.usdtEquivalent}
               />
             </div>
 
@@ -476,6 +570,7 @@ export function SettlementCreateModal({
               onChange={(e) => setMerchantUsdtAddress(e.target.value)}
               rows={2}
               placeholder="TR… or 0x… payout destination"
+              error={fieldErrors.merchantUsdtAddress}
             />
 
             <Textarea
@@ -497,25 +592,20 @@ export function SettlementCreateModal({
           </>
         )}
 
+        {createMutation.isError ? (
+          <FormAlert>{errorMessageFromUnknown(createMutation.error)}</FormAlert>
+        ) : null}
+
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={resetForm}>
             Cancel
           </Button>
-          <Button
-            onClick={() => createMutation.mutate()}
-            loading={createMutation.isPending}
-            disabled={
-              tab === 'trader'
-                ? traderSubmitDisabled
-                : tab === 'payout'
-                  ? payoutSubmitDisabled
-                  : merchantSubmitDisabled
-            }
-          >
+          <Button onClick={requestCreate} loading={submitBusy} disabled={submitBusy}>
             Create settlement
           </Button>
         </div>
       </div>
     </Modal>
+    </>
   );
 }

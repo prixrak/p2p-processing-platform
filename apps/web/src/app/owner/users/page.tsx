@@ -13,6 +13,15 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
+import {
+  mergeCreatedIntoPaginatedQueries,
+  replaceEntityInPaginatedQueries,
+} from '@/lib/query-cache-merge';
+import { ownerCreateUserFormSchema } from '@/lib/validation/schemas';
+import { fieldErrorsFromZod } from '@/lib/validation/zod-field-errors';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { FormAlert } from '@/components/ui/form-alert';
+import { errorMessageFromUnknown } from '@/lib/error-message';
 
 interface User {
   id: string;
@@ -71,6 +80,17 @@ function canUpdateRole(role: UserRole): boolean {
   return roleOptions.some((o) => o.value === role);
 }
 
+function mapUserApiRow(row: UsersApiRow): User {
+  return {
+    id: row.id,
+    email: row.email,
+    name: '',
+    role: row.role,
+    status: row.isActive ? 'active' : 'inactive',
+    createdAt: row.createdAt,
+  };
+}
+
 export default function UsersPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -82,6 +102,19 @@ export default function UsersPage() {
     countryId: '',
     payoutRate: 0.01,
   });
+  const [createFieldErrors, setCreateFieldErrors] = useState<Record<string, string>>({});
+  const [confirmCreateOpen, setConfirmCreateOpen] = useState(false);
+  const [pendingRoleChange, setPendingRoleChange] = useState<{
+    id: string;
+    email: string;
+    from: UserRole;
+    to: UserRole;
+  } | null>(null);
+  const [pendingStatusToggle, setPendingStatusToggle] = useState<{
+    id: string;
+    email: string;
+    nextActive: boolean;
+  } | null>(null);
 
   const { data: countries } = useQuery({
     queryKey: ['countries', 'active'],
@@ -129,25 +162,44 @@ export default function UsersPage() {
         body.countryId = payload.countryId;
         body.payoutRate = payload.payoutRate;
       }
-      return api.post(internalPaths.users, body);
+      return api.post<UsersApiRow>(internalPaths.users, body);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['owner', 'users'] });
+    onSuccess: (created) => {
+      mergeCreatedIntoPaginatedQueries(queryClient, {
+        queryKeyPrefix: ['owner', 'users'],
+        row: mapUserApiRow(created),
+        matchesQueryKey: () => true,
+        getPageNumber: (key) => (typeof key[2] === 'number' ? (key[2] as number) : undefined),
+        defaultLimit: 20,
+      });
       setShowCreate(false);
+      setConfirmCreateOpen(false);
+      setCreateFieldErrors({});
+      createUser.reset();
       setForm({ email: '', password: '', role: UserRole.TRADER, countryId: '', payoutRate: 0.01 });
     },
   });
 
   const toggleStatus = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
-      api.patch(internalPaths.user(id), { isActive }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'users'] }),
+      api.patch<UsersApiRow>(internalPaths.user(id), { isActive }),
+    onSuccess: (updated) => {
+      replaceEntityInPaginatedQueries(queryClient, {
+        queryKeyPrefix: ['owner', 'users'],
+        next: mapUserApiRow(updated),
+      });
+    },
   });
 
   const updateRole = useMutation({
     mutationFn: ({ id, role }: { id: string; role: UserRole }) =>
-      api.patch(internalPaths.user(id), { role }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['owner', 'users'] }),
+      api.patch<UsersApiRow>(internalPaths.user(id), { role }),
+    onSuccess: (updated) => {
+      replaceEntityInPaginatedQueries(queryClient, {
+        queryKeyPrefix: ['owner', 'users'],
+        next: mapUserApiRow(updated),
+      });
+    },
   });
 
   const columns = [
@@ -203,10 +255,17 @@ export default function UsersPage() {
           ) : (
             <Select
               options={roleOptions}
-              value={u.role}
-              onChange={(e) =>
-                updateRole.mutate({ id: u.id, role: e.target.value as UserRole })
-              }
+              value={pendingRoleChange?.id === u.id ? pendingRoleChange.from : u.role}
+              onChange={(e) => {
+                const nextRole = e.target.value as UserRole;
+                if (nextRole === u.role) return;
+                setPendingRoleChange({
+                  id: u.id,
+                  email: u.email,
+                  from: u.role,
+                  to: nextRole,
+                });
+              }}
               className="!py-1.5 !text-xs w-28"
             />
           )}
@@ -214,9 +273,10 @@ export default function UsersPage() {
             label={u.status === 'active' ? 'Deactivate user' : 'Activate user'}
             variant={u.status === 'active' ? 'danger' : 'success'}
             onClick={() =>
-              toggleStatus.mutate({
+              setPendingStatusToggle({
                 id: u.id,
-                isActive: u.status !== 'active',
+                email: u.email,
+                nextActive: u.status !== 'active',
               })
             }
           >
@@ -233,6 +293,87 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <ConfirmDialog
+        open={confirmCreateOpen}
+        onOpenChange={(next) => {
+          setConfirmCreateOpen(next);
+          if (!next) createUser.reset();
+        }}
+        tone="danger"
+        title="Create this user?"
+        description={
+          <>
+            <span className="font-medium text-text-primary">{form.email.trim()}</span>
+            {' · '}
+            <span>{roleLabel[form.role]}</span>
+            {form.role === UserRole.PAYOUT_TRADER ? (
+              <span className="block mt-2 text-text-muted">
+                Pay-Out specialist with payout rate {form.payoutRate}. Access cannot be inferred from
+                this dialog alone — double-check role and geo before confirming.
+              </span>
+            ) : null}
+          </>
+        }
+        confirmLabel="Yes, create user"
+        cancelLabel="Back"
+        loading={createUser.isPending}
+        onConfirm={() => createUser.mutate(form)}
+      />
+
+      <ConfirmDialog
+        open={!!pendingRoleChange}
+        onOpenChange={(next) => !next && setPendingRoleChange(null)}
+        tone="danger"
+        title="Change user role?"
+        description={
+          pendingRoleChange ? (
+            <>
+              Update <span className="font-medium text-text-primary">{pendingRoleChange.email}</span>{' '}
+              from <strong>{roleLabel[pendingRoleChange.from]}</strong> to{' '}
+              <strong>{roleLabel[pendingRoleChange.to]}</strong>? Role changes affect cabinet access
+              immediately.
+            </>
+          ) : null
+        }
+        confirmLabel="Change role"
+        loading={updateRole.isPending}
+        onConfirm={() => {
+          if (!pendingRoleChange) return;
+          const payload = { id: pendingRoleChange.id, role: pendingRoleChange.to };
+          updateRole.mutate(payload, {
+            onSettled: () => setPendingRoleChange(null),
+          });
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!pendingStatusToggle}
+        onOpenChange={(next) => !next && setPendingStatusToggle(null)}
+        tone={pendingStatusToggle?.nextActive ? 'default' : 'danger'}
+        title={
+          pendingStatusToggle?.nextActive ? 'Activate this user?' : 'Deactivate this user?'
+        }
+        description={
+          pendingStatusToggle ? (
+            <>
+              {pendingStatusToggle.nextActive
+                ? 'They will be able to sign in again if credentials are valid.'
+                : 'They will be blocked from signing in until reactivated.'}{' '}
+              <span className="font-medium text-text-primary">{pendingStatusToggle.email}</span>
+            </>
+          ) : null
+        }
+        confirmLabel={pendingStatusToggle?.nextActive ? 'Activate' : 'Deactivate'}
+        loading={toggleStatus.isPending}
+        onConfirm={() => {
+          if (!pendingStatusToggle) return;
+          toggleStatus.mutate(
+            { id: pendingStatusToggle.id, isActive: pendingStatusToggle.nextActive },
+            { onSettled: () => setPendingStatusToggle(null) },
+          );
+        }}
+      />
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Users</h1>
@@ -255,12 +396,27 @@ export default function UsersPage() {
         emptyMessage="No users found"
       />
 
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create User">
+      <Modal
+        open={showCreate}
+        onClose={() => {
+          setShowCreate(false);
+          setCreateFieldErrors({});
+          createUser.reset();
+        }}
+        title="Create User"
+      >
         <form
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
-            createUser.mutate(form);
+            setCreateFieldErrors({});
+            createUser.reset();
+            const parsed = ownerCreateUserFormSchema.safeParse(form);
+            if (!parsed.success) {
+              setCreateFieldErrors(fieldErrorsFromZod(parsed.error));
+              return;
+            }
+            setConfirmCreateOpen(true);
           }}
         >
           <Input
@@ -269,7 +425,7 @@ export default function UsersPage() {
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             placeholder="user@example.com"
-            required
+            error={createFieldErrors.email}
           />
           <Input
             label="Password"
@@ -277,7 +433,7 @@ export default function UsersPage() {
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
             placeholder="••••••••"
-            required
+            error={createFieldErrors.password}
           />
           <Select
             label="Role"
@@ -286,6 +442,7 @@ export default function UsersPage() {
             onChange={(e) =>
               setForm({ ...form, role: e.target.value as UserRole })
             }
+            error={createFieldErrors.role}
           />
           {form.role === UserRole.PAYOUT_TRADER && (
             <>
@@ -300,7 +457,7 @@ export default function UsersPage() {
                 value={form.countryId}
                 onChange={(e) => setForm({ ...form, countryId: e.target.value })}
                 placeholder="Select country"
-                required
+                error={createFieldErrors.countryId}
               />
               <Input
                 label="Payout rate (fraction, e.g. 0.01 = 1%)"
@@ -311,11 +468,23 @@ export default function UsersPage() {
                 onChange={(e) =>
                   setForm({ ...form, payoutRate: parseFloat(e.target.value) || 0 })
                 }
+                error={createFieldErrors.payoutRate}
               />
             </>
           )}
+          {createUser.isError ? (
+            <FormAlert>{errorMessageFromUnknown(createUser.error)}</FormAlert>
+          ) : null}
           <div className="flex justify-end gap-3 pt-2">
-            <Button variant="ghost" type="button" onClick={() => setShowCreate(false)}>
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => {
+                setShowCreate(false);
+                setCreateFieldErrors({});
+                createUser.reset();
+              }}
+            >
               Cancel
             </Button>
             <Button type="submit" loading={createUser.isPending}>

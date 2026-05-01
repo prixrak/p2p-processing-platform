@@ -1,15 +1,24 @@
 'use client';
 
-import type { Dispatch, SetStateAction } from 'react';
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { Hash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Select } from '@/components/ui/select';
+import { FormAlert } from '@/components/ui/form-alert';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { RequisiteType } from '@p2p/shared';
 import type { AuditItem, RequisiteApiRow, RequisiteFormData, RequisiteGroupApi } from './types';
+import {
+  requisiteCreateSchema,
+  requisiteGroupCreateSchema,
+  requisiteGroupEditSchema,
+  requisiteLimitsSchema,
+} from '@/lib/validation/schemas';
+import { fieldErrorsFromZod } from '@/lib/validation/zod-field-errors';
+import { errorMessageFromUnknown } from '@/lib/error-message';
 
 export function TraderAddGroupModal({
   open,
@@ -32,12 +41,24 @@ export function TraderAddGroupModal({
   createGroupMutation: UseMutationResult<unknown, unknown, void>;
   onSubmit: () => void;
 }) {
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!open) setErrors({});
+  }, [open]);
+
   return (
     <Modal open={open} onClose={onClose} title="Add payment method group" size="md">
       <form
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
+          const parsed = requisiteGroupCreateSchema.safeParse(groupForm);
+          if (!parsed.success) {
+            setErrors(fieldErrorsFromZod(parsed.error));
+            return;
+          }
+          setErrors({});
           onSubmit();
         }}
       >
@@ -46,13 +67,14 @@ export function TraderAddGroupModal({
           placeholder="e.g. Monobank cards"
           value={groupForm.name}
           onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
-          required
+          error={errors.name}
         />
         <Select
           label="Currency"
           options={currencyOptions.length ? currencyOptions : [{ value: 'UAH', label: 'UAH' }]}
           value={groupForm.currency}
           onChange={(e) => setGroupForm({ ...groupForm, currency: e.target.value })}
+          error={errors.currency}
         />
         <Select
           label="Catalog payment method (optional)"
@@ -60,6 +82,9 @@ export function TraderAddGroupModal({
           value={groupForm.payment_method_id}
           onChange={(e) => setGroupForm({ ...groupForm, payment_method_id: e.target.value })}
         />
+        {createGroupMutation.isError ? (
+          <FormAlert>{errorMessageFromUnknown(createGroupMutation.error)}</FormAlert>
+        ) : null}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
@@ -97,6 +122,12 @@ export function TraderEditGroupModal({
   >;
   onSubmit: () => void;
 }) {
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!editingGroup) setErrors({});
+  }, [editingGroup]);
+
   return (
     <Modal open={!!editingGroup} onClose={onClose} title="Edit payment method group" size="md">
       {editingGroup && (
@@ -104,6 +135,12 @@ export function TraderEditGroupModal({
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
+            const parsed = requisiteGroupEditSchema.safeParse(groupEditForm);
+            if (!parsed.success) {
+              setErrors(fieldErrorsFromZod(parsed.error));
+              return;
+            }
+            setErrors({});
             onSubmit();
           }}
         >
@@ -111,7 +148,7 @@ export function TraderEditGroupModal({
             label="Name"
             value={groupEditForm.name}
             onChange={(e) => setGroupEditForm({ ...groupEditForm, name: e.target.value })}
-            required
+            error={errors.name}
           />
           <Select
             label="Catalog payment method"
@@ -121,6 +158,9 @@ export function TraderEditGroupModal({
               setGroupEditForm({ ...groupEditForm, payment_method_id: e.target.value })
             }
           />
+          {updateGroupMutation.isError ? (
+            <FormAlert>{errorMessageFromUnknown(updateGroupMutation.error)}</FormAlert>
+          ) : null}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={onClose}>
               Cancel
@@ -156,12 +196,24 @@ export function TraderAddRequisiteModal({
   >;
   onSubmit: (groupId: string) => void;
 }) {
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!addRequisiteGroupId) setErrors({});
+  }, [addRequisiteGroupId]);
+
   return (
     <Modal open={!!addRequisiteGroupId} onClose={onClose} title="Add requisite" size="md">
       <form
         onSubmit={(e) => {
           e.preventDefault();
           if (!addRequisiteGroupId) return;
+          const parsed = requisiteCreateSchema.safeParse(form);
+          if (!parsed.success) {
+            setErrors(fieldErrorsFromZod(parsed.error));
+            return;
+          }
+          setErrors({});
           onSubmit(addRequisiteGroupId);
         }}
         className="space-y-4"
@@ -174,6 +226,7 @@ export function TraderAddRequisiteModal({
           ]}
           value={form.type}
           onChange={(e) => setForm({ ...form, type: e.target.value as RequisiteType })}
+          error={errors.type}
         />
         <Input
           label={form.type === RequisiteType.CARD ? 'Card number' : 'IBAN'}
@@ -184,14 +237,14 @@ export function TraderAddRequisiteModal({
           }
           value={form.number}
           onChange={(e) => setForm({ ...form, number: e.target.value })}
-          required
+          error={errors.number}
         />
         <Input
           label="Owner name"
           placeholder="Account owner"
           value={form.owner}
           onChange={(e) => setForm({ ...form, owner: e.target.value })}
-          required
+          error={errors.owner}
         />
         <Select
           label="Bank (optional)"
@@ -214,12 +267,14 @@ export function TraderAddRequisiteModal({
             variant="amount"
             value={form.min_amount}
             onChange={(e) => setForm({ ...form, min_amount: Number(e.target.value) })}
+            error={errors.min_amount}
           />
           <NumberInput
             label="Max amount"
             variant="amount"
             value={form.max_amount}
             onChange={(e) => setForm({ ...form, max_amount: Number(e.target.value) })}
+            error={errors.max_amount}
           />
         </div>
         <div className="grid grid-cols-2 gap-4">
@@ -228,14 +283,19 @@ export function TraderAddRequisiteModal({
             variant="amount"
             value={form.limit_amount}
             onChange={(e) => setForm({ ...form, limit_amount: Number(e.target.value) })}
+            error={errors.limit_amount}
           />
           <NumberInput
             label="Operations limit"
             variant="integer"
             value={form.limit_operations}
             onChange={(e) => setForm({ ...form, limit_operations: Number(e.target.value) })}
+            error={errors.limit_operations}
           />
         </div>
+        {createMutation.isError ? (
+          <FormAlert>{errorMessageFromUnknown(createMutation.error)}</FormAlert>
+        ) : null}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
@@ -275,12 +335,30 @@ export function TraderEditRequisiteLimitsModal({
   >;
   onSubmit: () => void;
 }) {
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!editingRequisite) setErrors({});
+  }, [editingRequisite]);
+
   return (
     <Modal open={!!editingRequisite} onClose={onClose} title="Edit requisite limits" size="md">
       {editingRequisite && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            const parsed = requisiteLimitsSchema.safeParse({
+              accepts_other_banks: form.accepts_other_banks,
+              min_amount: form.min_amount,
+              max_amount: form.max_amount,
+              limit_amount: form.limit_amount,
+              limit_operations: form.limit_operations,
+            });
+            if (!parsed.success) {
+              setErrors(fieldErrorsFromZod(parsed.error));
+              return;
+            }
+            setErrors({});
             onSubmit();
           }}
           className="space-y-4"
@@ -308,12 +386,14 @@ export function TraderEditRequisiteLimitsModal({
               variant="amount"
               value={form.min_amount}
               onChange={(e) => setForm({ ...form, min_amount: Number(e.target.value) })}
+              error={errors.min_amount}
             />
             <NumberInput
               label="Max amount"
               variant="amount"
               value={form.max_amount}
               onChange={(e) => setForm({ ...form, max_amount: Number(e.target.value) })}
+              error={errors.max_amount}
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -322,14 +402,19 @@ export function TraderEditRequisiteLimitsModal({
               variant="amount"
               value={form.limit_amount}
               onChange={(e) => setForm({ ...form, limit_amount: Number(e.target.value) })}
+              error={errors.limit_amount}
             />
             <NumberInput
               label="Operations limit"
               variant="integer"
               value={form.limit_operations}
               onChange={(e) => setForm({ ...form, limit_operations: Number(e.target.value) })}
+              error={errors.limit_operations}
             />
           </div>
+          {updateLimitsMutation.isError ? (
+            <FormAlert>{errorMessageFromUnknown(updateLimitsMutation.error)}</FormAlert>
+          ) : null}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={onClose}>
               Cancel

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Webhook, RotateCw } from 'lucide-react';
+import { Webhook, Repeat2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { DataTable } from '@/components/ui/data-table';
@@ -131,7 +131,7 @@ export default function WebhooksPage() {
           <Button
             size="sm"
             variant="ghost"
-            icon={<RotateCw size={12} />}
+            icon={<Repeat2 size={12} />}
             loading={resendingId === row.id && resendMutation.isPending}
             onClick={(e) => {
               e.stopPropagation();

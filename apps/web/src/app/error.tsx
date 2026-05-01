@@ -20,9 +20,7 @@ export default function GlobalError({
         <AlertCircle className="mx-auto mb-4 h-12 w-12 text-danger" aria-hidden />
         <h1 className="text-lg font-semibold text-text-primary">Something went wrong</h1>
         <p className="mt-2 text-sm text-text-secondary">
-          {error.message?.trim()
-            ? error.message
-            : 'An unexpected error occurred. Try again or refresh the page.'}
+          An unexpected error occurred. Try again or refresh the page.
         </p>
         <button
           type="button"

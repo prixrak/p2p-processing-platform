@@ -10,16 +10,24 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import { Badge } from '@/components/ui/badge';
+import { PayoutOrderStatusBadge } from '@/components/ui/order-status-badge';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { PayOutOrderStatus } from '@p2p/shared';
 import type { PayOutOrderApiDto } from '@p2p/shared';
-import { formatCurrency, formatDate, shortId, formatDurationShort } from '@/lib/utils';
-import { payoutStatusVariant } from '@/lib/status-helpers';
+import { formatCurrency, formatDate, shortId, formatDurationShort, cn } from '@/lib/utils';
 
 export type PayoutTableVariant = 'standard' | 'specialist';
 
-function LiveElapsed({ fromUnix }: { fromUnix: number | null | undefined }) {
+function LiveElapsed({
+  fromUnix,
+  warnAfterSec,
+  critAfterSec,
+}: {
+  fromUnix: number | null | undefined;
+  /** When both hints are set, elapsed duration changes color and pulses after thresholds. */
+  warnAfterSec?: number;
+  critAfterSec?: number;
+}) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (fromUnix == null) return;
@@ -30,8 +38,30 @@ function LiveElapsed({ fromUnix }: { fromUnix: number | null | undefined }) {
     return <span className="text-text-muted">—</span>;
   }
   const sec = Math.max(0, Math.floor(now / 1000) - fromUnix);
+  const tiered =
+    warnAfterSec != null &&
+    critAfterSec != null &&
+    warnAfterSec < critAfterSec;
+  if (!tiered) {
+    return (
+      <span className="tabular-nums text-sm text-text-secondary">{formatDurationShort(sec)}</span>
+    );
+  }
+  const stressed = sec >= critAfterSec;
+  const warn = sec >= warnAfterSec;
   return (
-    <span className="tabular-nums text-sm text-text-secondary">{formatDurationShort(sec)}</span>
+    <span
+      className={cn(
+        'inline-flex min-w-[3.5rem] justify-end rounded-md border px-1.5 py-0.5 font-mono tabular-nums text-sm transition-colors duration-300',
+        stressed
+          ? 'border-accent-red/45 bg-accent-red/10 font-semibold text-accent-red animate-countdown-urgent-pulse'
+          : warn
+            ? 'border-accent-yellow/40 bg-accent-yellow/10 font-medium text-accent-yellow'
+            : 'border-accent-green/35 bg-accent-green/10 font-medium text-accent-green',
+      )}
+    >
+      {formatDurationShort(sec)}
+    </span>
   );
 }
 
@@ -226,7 +256,7 @@ export function buildPayoutOrdersColumns(opts: {
           header: 'Active',
           render: (row: PayOutOrderApiDto) =>
             row.status === PayOutOrderStatus.PROCESSING ? (
-              <LiveElapsed fromUnix={row.start_at} />
+              <LiveElapsed fromUnix={row.start_at} warnAfterSec={180} critAfterSec={600} />
             ) : (
               <span className="text-text-muted">—</span>
             ),
@@ -259,11 +289,7 @@ export function buildPayoutOrdersColumns(opts: {
       key: 'status',
       header: 'Status',
       className: 'text-center',
-      render: (row: PayOutOrderApiDto) => (
-        <Badge variant={payoutStatusVariant[row.status]} dot>
-          {row.status}
-        </Badge>
-      ),
+      render: (row: PayOutOrderApiDto) => <PayoutOrderStatusBadge status={row.status} />,
     },
     {
       key: 'created_at',

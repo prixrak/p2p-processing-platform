@@ -2,14 +2,14 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Coins, PieChart, RefreshCw } from 'lucide-react';
-import { clsx } from 'clsx';
+import { Coins, PieChart } from 'lucide-react';
 import { Card, StatCard } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { formatCurrency } from '@/lib/utils';
+import { formatErrorMessage } from '@/lib/format-error';
 
 type AnalyticsGranularity = 'hour' | 'day' | 'week' | 'month';
 
@@ -103,7 +103,7 @@ export default function TraderAnalyticsPage() {
     return p;
   }, [currency, customDates.from, customDates.to, dateBasis, granularity, presetPeriod, rangeMode]);
 
-  const { data, isLoading, isFetching, refetch, error } = useQuery({
+  const { data, isLoading, isFetching, error } = useQuery({
     queryKey: ['trader', 'analytics', queryParams],
     queryFn: () => api.get<TraderCabinetAnalytics>(internalPaths.traderMeAnalytics, queryParams),
   });
@@ -130,7 +130,7 @@ export default function TraderAnalyticsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
           <PieChart className="h-6 w-6 text-accent-blue" />
           <div>
@@ -140,9 +140,6 @@ export default function TraderAnalyticsPage() {
             </p>
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => refetch()} disabled={busy}>
-          <RefreshCw className={clsx('h-4 w-4', busy && 'animate-spin')} />
-        </Button>
       </div>
 
       <Card className="p-4 space-y-4">
@@ -228,7 +225,7 @@ export default function TraderAnalyticsPage() {
 
       {error && (
         <Card className="p-4">
-          <p className="text-sm text-accent-red">{(error as Error).message}</p>
+          <p className="text-sm text-accent-red">{formatErrorMessage(error)}</p>
         </Card>
       )}
 

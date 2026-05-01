@@ -159,8 +159,6 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
       <CascadeCoverageSection
         currency={currency}
         setCurrency={setCurrency}
-        onRefresh={() => void coverageQ.refetch()}
-        isFetching={coverageQ.isFetching}
         nominals={coverageQ.data?.nominals}
       />
 

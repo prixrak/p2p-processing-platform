@@ -106,7 +106,8 @@ export function usePayinTraderRealtime(queryClient: QueryClient): void {
                 const evt = JSON.parse(raw) as PayinOrderRealtimeEvent;
                 if (evt.type === PAYIN_ORDER_REALTIME_EVENT_TYPE) {
                   queryClient.invalidateQueries({ queryKey: ['trader', 'payin-orders'] });
-                  queryClient.invalidateQueries({ queryKey: ['trader', 'recent-orders'] });
+                  queryClient.invalidateQueries({ queryKey: ['trader', 'balances', 'me'] });
+                  queryClient.invalidateQueries({ queryKey: ['trader', 'usdt-wallet'] });
                   queryClient.invalidateQueries({ queryKey: ['trader', 'dashboard-stats'] });
                 }
               } catch {
@@ -167,7 +168,8 @@ export function usePayoutCabinetRealtime(
                   if (variant === 'specialist') {
                     void queryClient.invalidateQueries({ queryKey: [qk, 'summary'] });
                   } else {
-                    void queryClient.invalidateQueries({ queryKey: ['trader', 'recent-orders'] });
+                    void queryClient.invalidateQueries({ queryKey: ['trader', 'balances', 'me'] });
+                    void queryClient.invalidateQueries({ queryKey: ['trader', 'usdt-wallet'] });
                     void queryClient.invalidateQueries({ queryKey: ['trader', 'dashboard-stats'] });
                   }
                   void queryClient.refetchQueries({ queryKey: [qk, 'payout-orders'] });
@@ -229,6 +231,7 @@ export function useTraderWalletDepositRealtime(queryClient: QueryClient): void {
                 const parsed = JSON.parse(raw) as { type?: string };
                 if (parsed?.type === 'deposit') {
                   void queryClient.invalidateQueries({ queryKey: ['trader', 'usdt-wallet'] });
+                  void queryClient.invalidateQueries({ queryKey: ['trader', 'balances', 'me'] });
                   void queryClient.invalidateQueries({ queryKey: ['trader', 'balance-transactions'] });
                 }
               } catch {

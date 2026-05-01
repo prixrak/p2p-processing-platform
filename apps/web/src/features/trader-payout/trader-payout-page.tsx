@@ -2,10 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowUpFromLine,
-  RefreshCw,
   Filter,
   Layers,
   ListTodo,
@@ -41,12 +40,12 @@ export function TraderPayoutPage({
   initialTab = 'new',
 }: {
   variant?: TraderPayoutPageVariant;
-  /** Used by Pay-Out specialist `/payout-trader/history` route (cabinet spec: History section). */
+  /** Initial tab; specialist cabinet also syncs `?tab=` on `/payout-trader/payout`. */
   initialTab?: TabType;
 }) {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const isSpecialist = variant === 'specialist';
   const apiBase = isSpecialist ? internalPaths.payoutCabinetSpecialist : internalPaths.payoutCabinetTrader;
   const qk = isSpecialist ? 'payout-trader' : 'trader';
@@ -60,21 +59,25 @@ export function TraderPayoutPage({
     (tab: TabType) => {
       setActiveTab(tab);
       if (!isSpecialist) return;
-      if (tab === 'history') {
-        router.push('/payout-trader/history');
+      const path = '/payout-trader/payout';
+      if (tab === 'new') {
+        router.replace(path);
       } else {
-        router.push('/payout-trader/payout');
+        router.replace(`${path}?tab=${tab}`);
       }
     },
     [isSpecialist, router],
   );
 
+  const tabParam = searchParams.get('tab');
   useEffect(() => {
-    if (!isSpecialist || !pathname) return;
-    if (pathname.startsWith('/payout-trader/history')) {
-      setActiveTab('history');
+    if (!isSpecialist) return;
+    if (tabParam === 'history' || tabParam === 'in_progress') {
+      setActiveTab(tabParam);
+    } else {
+      setActiveTab('new');
     }
-  }, [isSpecialist, pathname]);
+  }, [isSpecialist, tabParam]);
 
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -84,7 +87,7 @@ export function TraderPayoutPage({
   const [selectedOrder, setSelectedOrder] = useState<PayOutOrderApiDto | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
-  const { data: inProgressData, isLoading: inProgressLoading, refetch: refetchInProgress } =
+  const { data: inProgressData, isLoading: inProgressLoading } =
     useQuery({
       queryKey: [qk, 'payout-orders', { queue: 'in_progress' }],
       queryFn: () =>
@@ -98,12 +101,12 @@ export function TraderPayoutPage({
   if (minAmount.trim()) historyListParams.min_amount = minAmount.trim();
   if (maxAmount.trim()) historyListParams.max_amount = maxAmount.trim();
 
-  const { data: historyData, isLoading: historyLoading, refetch: refetchHistory } = useQuery({
+  const { data: historyData, isLoading: historyLoading } = useQuery({
     queryKey: [qk, 'payout-orders', historyListParams],
     queryFn: () => api.get<PayOutListResponse>(`${apiBase}/orders`, historyListParams),
   });
 
-  const { data: poolData, isLoading: poolLoading, refetch: refetchPool } = useQuery({
+  const { data: poolData, isLoading: poolLoading } = useQuery({
     queryKey: [qk, 'payout-pool'],
     queryFn: () => api.get<PayOutListResponse>(`${apiBase}/pool`),
   });
@@ -205,12 +208,6 @@ export function TraderPayoutPage({
     URL.revokeObjectURL(url);
   };
 
-  const handleRefetch = () => {
-    if (activeTab === 'new') void refetchPool();
-    else if (activeTab === 'in_progress') void refetchInProgress();
-    else void refetchHistory();
-  };
-
   const headerSubtitle =
     activeTab === 'new'
       ? isSpecialist
@@ -243,9 +240,6 @@ export function TraderPayoutPage({
               Filters
             </Button>
           )}
-          <Button variant="secondary" size="sm" onClick={handleRefetch}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
         </div>
       </div>
 
