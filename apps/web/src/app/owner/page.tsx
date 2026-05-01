@@ -16,6 +16,7 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { StatCard, Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { statCardToneAt } from '@/lib/surface-ring';
 
 interface PlatformStats {
   totalUsers: number;
@@ -65,24 +66,28 @@ export default function OwnerDashboard() {
           value={stats?.totalUsers ?? '—'}
           icon={Users}
           href="/owner/users"
+          tone={statCardToneAt(0)}
         />
         <StatCard
           title="Merchants"
           value={stats?.totalMerchants ?? '—'}
           icon={Store}
           href="/owner/merchants"
+          tone={statCardToneAt(1)}
         />
         <StatCard
           title="Total Orders"
           value={stats?.totalOrders?.toLocaleString() ?? '—'}
           icon={FileText}
           href="/owner/orders"
+          tone={statCardToneAt(2)}
         />
         <StatCard
           title="Total Volume"
           value={stats?.totalVolume ? `$${stats.totalVolume.toLocaleString()}` : '—'}
           icon={TrendingUp}
           href="/owner/statistics"
+          tone={statCardToneAt(3)}
         />
       </div>
 
@@ -92,25 +97,28 @@ export default function OwnerDashboard() {
           value={stats?.activePayins ?? '—'}
           icon={ArrowDownLeft}
           href="/owner/orders"
+          tone={statCardToneAt(4)}
         />
         <StatCard
           title="Active Pay-Outs"
           value={stats?.activePayouts ?? '—'}
           icon={ArrowUpRight}
           href="/owner/orders"
+          tone={statCardToneAt(5)}
         />
         <StatCard
           title="Pending Settlements"
           value={stats?.pendingSettlements ?? '—'}
           icon={Wallet}
           href="/owner/settlements"
+          tone={statCardToneAt(6)}
         />
         <StatCard
           title="Open Disputes"
           value={stats?.disputesCount ?? '—'}
           icon={AlertTriangle}
           href="/owner/orders"
-          className={stats?.disputesCount ? 'border-danger/30' : ''}
+          tone={stats?.disputesCount ? 'rose' : statCardToneAt(7)}
         />
       </div>
 

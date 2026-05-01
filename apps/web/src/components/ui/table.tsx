@@ -25,7 +25,7 @@ export function Table<T>({
   loading,
 }: TableProps<T>) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border-primary">
+    <div className="overflow-x-auto rounded-xl border border-border-primary ring-1 ring-border-secondary/40">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border-primary bg-bg-secondary">

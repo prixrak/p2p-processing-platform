@@ -311,7 +311,7 @@ export function TraderPayInPage() {
       />
 
       {showFilters && (
-        <Card className="animate-slide-up">
+        <Card>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Select
               label="Status"

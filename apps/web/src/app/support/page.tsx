@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { StatCard, Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { statCardToneAt } from '@/lib/surface-ring';
 
 interface SupportStats {
   activeDisputes: number;
@@ -58,25 +59,28 @@ export default function SupportDashboard() {
           value={stats?.activeDisputes ?? '—'}
           icon={AlertTriangle}
           href="/support/disputes"
-          className={stats?.activeDisputes ? 'border-danger/30' : ''}
+          tone={stats?.activeDisputes ? 'rose' : statCardToneAt(0)}
         />
         <StatCard
           title="Orders Needing Attention"
           value={stats?.ordersNeedingAttention ?? '—'}
           icon={FileText}
           href="/support/orders"
+          tone={statCardToneAt(1)}
         />
         <StatCard
           title="Avg Resolution Time"
           value={stats?.avgResolutionTime ?? '—'}
           icon={Clock}
           href="/support/disputes"
+          tone={statCardToneAt(2)}
         />
         <StatCard
           title="Resolved Today"
           value={stats?.resolvedToday ?? '—'}
           icon={MessageSquare}
           href="/support/disputes"
+          tone={statCardToneAt(3)}
         />
       </div>
 

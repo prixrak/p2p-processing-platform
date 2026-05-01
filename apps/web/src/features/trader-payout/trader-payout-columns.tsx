@@ -54,7 +54,7 @@ function LiveElapsed({
       className={cn(
         'inline-flex min-w-[3.5rem] justify-end rounded-md border px-1.5 py-0.5 font-mono tabular-nums text-sm transition-colors duration-300',
         stressed
-          ? 'border-accent-red/45 bg-accent-red/10 font-semibold text-accent-red animate-countdown-urgent-pulse'
+          ? 'border-accent-red/45 bg-accent-red/10 font-semibold text-accent-red'
           : warn
             ? 'border-accent-yellow/40 bg-accent-yellow/10 font-medium text-accent-yellow'
             : 'border-accent-green/35 bg-accent-green/10 font-medium text-accent-green',

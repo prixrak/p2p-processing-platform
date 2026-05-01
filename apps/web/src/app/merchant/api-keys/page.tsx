@@ -90,7 +90,7 @@ export default function ApiKeysPage() {
           {[1, 2].map((i) => (
             <div
               key={i}
-              className="bg-bg-card border border-border-primary rounded-xl p-6 animate-pulse-soft"
+              className="bg-bg-card border border-border-primary rounded-xl p-6"
             >
               <div className="h-5 w-32 bg-bg-tertiary rounded mb-4" />
               <div className="h-4 w-full bg-bg-tertiary rounded mb-2" />

@@ -12,6 +12,7 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { usePayinTraderRealtime, usePayOutTraderRealtime } from '@/lib/payin-realtime';
 import { formatCurrency } from '@/lib/utils';
+import { statCardToneAt } from '@/lib/surface-ring';
 import { TraderDashboardWalletListSection } from '@/features/trader-dashboard/wallet-list-section';
 
 interface DashboardStats {
@@ -61,24 +62,28 @@ export default function TraderDashboard() {
           value={statsLoading ? '...' : formatCurrency(stats?.total_volume ?? 0, stats?.currency)}
           icon={TrendingUp}
           href="/trader/statistics"
+          tone={statCardToneAt(0)}
         />
         <StatCard
           title="Orders Today"
           value={statsLoading ? '...' : (stats?.orders_today ?? 0)}
           icon={ShoppingCart}
           href="/trader/payin"
+          tone={statCardToneAt(1)}
         />
         <StatCard
           title="Success Rate"
           value={statsLoading ? '...' : `${(stats?.success_rate ?? 0).toFixed(1)}%`}
           icon={CheckCircle2}
           href="/trader/statistics"
+          tone={statCardToneAt(2)}
         />
         <StatCard
           title="Active Requisites"
           value={statsLoading ? '...' : (stats?.active_requisites ?? 0)}
           icon={CreditCard}
           href="/trader/requisites"
+          tone={statCardToneAt(3)}
         />
       </div>
 

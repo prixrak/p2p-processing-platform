@@ -1,6 +1,11 @@
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import type { LucideIcon } from 'lucide-react';
+import {
+  type SurfaceRingTone,
+  surfaceIconWrapClass,
+  surfaceRingClass,
+} from '@/lib/surface-ring';
 
 interface StatCardProps {
   label: string;
@@ -9,12 +14,14 @@ interface StatCardProps {
   change?: { value: number; positive: boolean };
   href?: string;
   className?: string;
+  tone?: SurfaceRingTone;
 }
 
-export function StatCard({ label, value, icon: Icon, change, href, className }: StatCardProps) {
+export function StatCard({ label, value, icon: Icon, change, href, className, tone = 'neutral' }: StatCardProps) {
   const cardClass = clsx(
-    'rounded-xl border border-border-primary bg-surface-secondary p-5 transition-colors hover:border-border-secondary',
-    href && 'cursor-pointer',
+    'rounded-xl p-5 transition-colors',
+    surfaceRingClass(tone),
+    href && 'cursor-pointer hover:ring-border-secondary/55 hover:border-border-secondary',
     className,
   );
 
@@ -26,8 +33,8 @@ export function StatCard({ label, value, icon: Icon, change, href, className }: 
           <p className="text-2xl font-bold text-text-primary">{value}</p>
         </div>
         {Icon && (
-          <div className="rounded-lg bg-accent-muted p-2.5">
-            <Icon className="h-5 w-5 text-accent" />
+          <div className={clsx('rounded-lg p-2.5', surfaceIconWrapClass(tone))}>
+            <Icon className="h-5 w-5" />
           </div>
         )}
       </div>

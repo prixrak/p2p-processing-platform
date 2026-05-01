@@ -13,6 +13,8 @@ import {
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { StatCard } from '@/components/ui/stat-card';
+import { statCardToneAt, surfaceRingClass } from '@/lib/surface-ring';
+import { cn } from '@/lib/utils';
 
 interface AdminStats {
   totalVolume: number;
@@ -52,18 +54,21 @@ export default function AdminDashboard() {
           }
           icon={TrendingUp}
           href="/admin/statistics"
+          tone={statCardToneAt(0)}
         />
         <StatCard
           label="Active Traders"
           value={isLoading ? '...' : String(stats?.activeTraders ?? 0)}
           icon={Users}
           href="/admin/traders"
+          tone={statCardToneAt(1)}
         />
         <StatCard
           label="Orders Today"
           value={isLoading ? '...' : String(stats?.ordersToday ?? 0)}
           icon={ArrowLeftRight}
           href="/admin/orders"
+          tone={statCardToneAt(2)}
         />
         <StatCard
           label="Conversion Rate"
@@ -74,6 +79,7 @@ export default function AdminDashboard() {
           }
           icon={Percent}
           href="/admin/statistics"
+          tone={statCardToneAt(3)}
         />
         <StatCard
           label="Total Commissions"
@@ -84,17 +90,22 @@ export default function AdminDashboard() {
           }
           icon={DollarSign}
           href="/admin/statistics"
+          tone={statCardToneAt(4)}
         />
       </div>
 
       <div>
         <h2 className="text-lg font-semibold text-text-primary mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {quickLinks.map((link) => (
+          {quickLinks.map((link, i) => (
             <Link
               key={link.href}
               href={link.href}
-              className="group flex items-center justify-between p-4 bg-bg-card border border-border-primary rounded-xl hover:border-border-secondary transition-colors"
+              className={cn(
+                'group flex items-center justify-between rounded-xl p-4 transition-colors',
+                surfaceRingClass(statCardToneAt(i)),
+                'hover:ring-border-secondary/55 hover:border-border-secondary',
+              )}
             >
               <div>
                 <p className="text-sm font-medium text-text-primary group-hover:text-accent-blue transition-colors">

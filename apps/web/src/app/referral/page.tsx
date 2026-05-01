@@ -66,6 +66,7 @@ export default function ReferralDashboard() {
           label="Referral %"
           value={`${profile?.referralPercent ?? 0}%`}
           loading={isLoading}
+          accent="blue"
         />
         <StatCard
           icon={<UserCheck className="h-5 w-5 text-accent-purple" />}
@@ -73,12 +74,14 @@ export default function ReferralDashboard() {
           value={String(profile?.referrals.length ?? 0)}
           sub={`${activeCount} active`}
           loading={isLoading}
+          accent="purple"
         />
         <StatCard
           icon={<TrendingUp className="h-5 w-5 text-accent-orange" />}
           label="Traders / Merchants"
           value={`${traderCount} / ${merchantCount}`}
           loading={isLoading}
+          accent="orange"
         />
       </div>
 
@@ -155,15 +158,15 @@ function StatCard({
   accent?: 'green' | 'blue' | 'purple' | 'orange';
 }) {
   const accentMap: Record<string, string> = {
-    green: 'border-accent-green/20 bg-accent-green/5',
-    blue: 'border-accent-blue/20 bg-accent-blue/5',
-    purple: 'border-accent-purple/20 bg-accent-purple/5',
-    orange: 'border-accent-orange/20 bg-accent-orange/5',
+    green: 'border-accent-green/22 bg-accent-green/5 ring-1 ring-accent-green/18',
+    blue: 'border-accent-blue/22 bg-accent-blue/5 ring-1 ring-accent-blue/18',
+    purple: 'border-accent-purple/22 bg-accent-purple/5 ring-1 ring-accent-purple/18',
+    orange: 'border-accent-orange/22 bg-accent-orange/5 ring-1 ring-accent-orange/18',
   };
 
   return (
     <div
-      className={`rounded-xl border p-4 ${accent ? accentMap[accent] : 'border-border-primary bg-bg-secondary'}`}
+      className={`rounded-xl border p-4 ${accent ? accentMap[accent] : 'border-border-primary bg-bg-secondary ring-1 ring-border-secondary/45'}`}
     >
       <div className="flex items-center gap-2 mb-2">
         {icon}

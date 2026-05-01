@@ -41,9 +41,9 @@ const urgencyClass: Record<CountdownUrgency, string> = {
     'border-accent-yellow/40 bg-accent-yellow/10 text-accent-yellow shadow-[0_0_0_1px_rgba(245,158,11,0.12)]',
   low: 'border-orange-400/45 bg-orange-400/12 text-orange-300 shadow-[0_0_0_1px_rgba(251,146,60,0.15)]',
   critical:
-    'border-accent-red/55 bg-accent-red/15 text-accent-red animate-countdown-urgent-pulse shadow-[0_0_0_1px_rgba(239,68,68,0.2)]',
+    'border-accent-red/55 bg-accent-red/15 text-accent-red shadow-[0_0_0_1px_rgba(239,68,68,0.2)]',
   expired:
-    'border-accent-red/50 bg-accent-red/12 text-accent-red animate-countdown-urgent-pulse shadow-[0_0_0_1px_rgba(239,68,68,0.25)]',
+    'border-accent-red/50 bg-accent-red/12 text-accent-red shadow-[0_0_0_1px_rgba(239,68,68,0.25)]',
 };
 
 export function CountdownTimer({

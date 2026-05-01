@@ -219,7 +219,7 @@ export default function MerchantBalancesPage() {
           Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
-              className="bg-bg-card border border-border-primary rounded-xl p-5 animate-pulse-soft"
+              className="bg-bg-card border border-border-primary rounded-xl p-5"
             >
               <div className="h-4 w-16 bg-bg-tertiary rounded mb-3" />
               <div className="h-7 w-24 bg-bg-tertiary rounded mb-2" />

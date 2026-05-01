@@ -84,7 +84,7 @@ export function CountdownTimer({
         'inline-flex items-center gap-1 rounded-lg px-3 py-1.5 font-mono text-sm font-semibold tabular-nums',
         'border transition-colors',
         expired
-          ? 'animate-pulse-soft border-accent-red/40 bg-accent-red/10 text-accent-red'
+          ? 'border-accent-red/40 bg-accent-red/10 text-accent-red'
           : isUrgent
             ? 'border-accent-yellow/40 bg-accent-yellow/10 text-accent-yellow'
             : 'border-accent-green/40 bg-accent-green/10 text-accent-green',

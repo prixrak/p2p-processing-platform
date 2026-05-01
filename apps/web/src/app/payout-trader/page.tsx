@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils';
+import { statCardToneAt } from '@/lib/surface-ring';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { usePayoutCabinetRealtime } from '@/lib/payin-realtime';
@@ -47,7 +48,7 @@ export default function PayoutTraderDashboardPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="p-6">
+        <Card className="p-6" tone={statCardToneAt(0)}>
           <p className="text-sm font-medium text-text-muted">USDT balance</p>
           <p className="mt-2 text-3xl font-semibold text-text-primary">
             {isLoading ? '…' : (data?.balance_usdt ?? 0).toFixed(2)} USDT
@@ -57,7 +58,7 @@ export default function PayoutTraderDashboardPage() {
             them after transfer.
           </p>
         </Card>
-        <Card className="p-6">
+        <Card className="p-6" tone={statCardToneAt(1)}>
           <p className="text-sm font-medium text-text-muted">Your rate</p>
           <p className="mt-2 text-3xl font-semibold text-text-primary">
             {isLoading ? '…' : `${((data?.payout_rate ?? 0) * 100).toFixed(2)}%`}
@@ -66,7 +67,7 @@ export default function PayoutTraderDashboardPage() {
             Applied to completed pay-outs (same formula as standard traders).
           </p>
         </Card>
-        <Card className="p-6">
+        <Card className="p-6" tone={statCardToneAt(2)}>
           <p className="text-sm font-medium text-text-muted">Completed today (UTC)</p>
           <p className="mt-2 text-2xl font-semibold text-text-primary">
             {isLoading
@@ -78,7 +79,7 @@ export default function PayoutTraderDashboardPage() {
           </p>
           <p className="mt-1 text-xs text-text-muted">Closed orders with end time in the current UTC day.</p>
         </Card>
-        <Card className="p-6">
+        <Card className="p-6" tone={statCardToneAt(3)}>
           <p className="text-sm font-medium text-text-muted">Queue (UTC geo)</p>
           <p className="mt-2 text-2xl font-semibold text-text-primary">
             {isLoading
@@ -89,7 +90,7 @@ export default function PayoutTraderDashboardPage() {
         </Card>
       </div>
 
-      <Card className="p-6 flex flex-wrap items-center justify-between gap-4">
+      <Card className="p-6 flex flex-wrap items-center justify-between gap-4" tone={statCardToneAt(4)}>
         <div>
           <p className="font-medium text-text-primary">Working queue</p>
           <p className="text-sm text-text-muted">Take orders from your pool, then confirm or fail in Pay-Out.</p>

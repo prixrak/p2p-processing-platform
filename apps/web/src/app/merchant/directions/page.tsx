@@ -64,7 +64,7 @@ export default function MerchantDirectionsPage() {
           {[1, 2].map((i) => (
             <div
               key={i}
-              className="h-40 rounded-xl border border-border-primary bg-bg-card animate-pulse-soft"
+              className="h-40 rounded-xl border border-border-primary bg-bg-card"
             />
           ))}
         </div>

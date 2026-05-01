@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Plus, ReceiptText, Wallet } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { WALLET_HIGHLIGHT_PRESETS } from '@/lib/surface-ring';
 import { cn, formatCurrency } from '@/lib/utils';
 
 /** GET /api/traders/me/balances — Prisma `TraderBalance` rows */
@@ -87,7 +88,7 @@ export function TraderDashboardWalletListSection() {
   }, [balances, usdtWallet]);
 
   return (
-    <section className="rounded-xl border border-border-primary bg-bg-secondary/60 p-4 sm:p-5">
+    <section className="rounded-xl border border-border-primary bg-bg-secondary/60 p-4 ring-1 ring-accent-blue/12 sm:p-5">
       <div className="mb-4 flex items-center gap-2">
         <Wallet className="h-5 w-5 text-accent-blue" />
         <h2 className="text-lg font-semibold text-text-primary">Wallet list</h2>
@@ -106,15 +107,17 @@ export function TraderDashboardWalletListSection() {
         <p className="text-sm text-text-muted">No currency balances on file yet.</p>
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-1 scroll-smooth">
-          {wallets.map((w) => (
-            <article
-              key={w.currency}
-              className={cn(
-                'relative min-w-[min(100%,300px)] shrink-0 overflow-hidden rounded-2xl p-4 text-white shadow-lg',
-                'bg-gradient-to-br from-sky-500 via-blue-600 to-blue-950',
-                'ring-1 ring-white/10',
-              )}
-            >
+          {wallets.map((w, idx) => {
+            const preset = WALLET_HIGHLIGHT_PRESETS[idx % WALLET_HIGHLIGHT_PRESETS.length]!;
+            return (
+              <article
+                key={w.currency}
+                className={cn(
+                  'relative min-w-[min(100%,300px)] shrink-0 overflow-hidden rounded-2xl p-4 text-white shadow-lg',
+                  preset.gradient,
+                  preset.ring,
+                )}
+              >
               <div
                 className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-white/10 blur-2xl"
                 aria-hidden
@@ -174,8 +177,9 @@ export function TraderDashboardWalletListSection() {
                   Transactions
                 </Link>
               </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
       )}
     </section>

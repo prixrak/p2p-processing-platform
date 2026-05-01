@@ -11,6 +11,8 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { StatCard } from '@/components/ui/stat-card';
 import { useAuth } from '@/hooks/use-auth';
+import { statCardToneAt, surfaceRingClass } from '@/lib/surface-ring';
+import { cn } from '@/lib/utils';
 
 interface MerchantBalance {
   currency: string;
@@ -56,17 +58,20 @@ export default function MerchantDashboard() {
             Array.from({ length: 3 }).map((_, i) => (
               <div
                 key={i}
-                className="bg-bg-card border border-border-primary rounded-xl p-5 animate-pulse-soft"
+                className={cn(
+                  'rounded-xl p-5',
+                  surfaceRingClass(statCardToneAt(i)),
+                )}
               >
                 <div className="h-4 w-16 bg-bg-tertiary rounded mb-2" />
                 <div className="h-7 w-24 bg-bg-tertiary rounded" />
               </div>
             ))
           ) : balances.length > 0 ? (
-            balances.map((b) => (
+            balances.map((b, i) => (
               <div
                 key={b.currency}
-                className="bg-bg-card border border-border-primary rounded-xl p-5"
+                className={cn('rounded-xl p-5', surfaceRingClass(statCardToneAt(i)))}
               >
                 <p className="text-sm text-text-muted mb-1">{b.currency}</p>
                 <p className="text-2xl font-bold text-text-primary font-mono">
@@ -80,7 +85,12 @@ export default function MerchantDashboard() {
               </div>
             ))
           ) : (
-            <div className="col-span-full bg-bg-card border border-border-primary rounded-xl p-8 text-center text-text-muted text-sm">
+            <div
+              className={cn(
+                'col-span-full rounded-xl p-8 text-center text-text-muted text-sm',
+                surfaceRingClass('neutral'),
+              )}
+            >
               No balances available
             </div>
           )}
@@ -97,6 +107,7 @@ export default function MerchantDashboard() {
             value={statsLoading ? '...' : String(stats?.ordersToday ?? 0)}
             icon={ArrowLeftRight}
             href="/merchant/orders"
+            tone={statCardToneAt(0)}
           />
           <StatCard
             label="Success Rate"
@@ -105,6 +116,7 @@ export default function MerchantDashboard() {
             }
             icon={CheckCircle}
             href="/merchant/analytics"
+            tone={statCardToneAt(1)}
           />
           <StatCard
             label="Total Volume"
@@ -115,6 +127,7 @@ export default function MerchantDashboard() {
             }
             icon={TrendingUp}
             href="/merchant/analytics"
+            tone={statCardToneAt(2)}
           />
         </div>
       </div>
