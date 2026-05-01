@@ -43,7 +43,6 @@ export class DirectionsService {
         toCurrencyId,
         minAmount: dto.minAmount ?? 0,
         maxAmount: dto.maxAmount ?? 0,
-        rate: dto.rate ?? 1,
         percentFee: dto.percentFee ?? 0,
         isOnline: dto.isOnline ?? true,
       },

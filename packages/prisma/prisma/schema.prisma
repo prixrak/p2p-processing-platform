@@ -185,7 +185,6 @@ model Direction {
   toCurrencyId   String        @map("to_currency_id") @db.Uuid
   minAmount      Decimal       @default(0) @map("min_amount") @db.Decimal(18, 4)
   maxAmount      Decimal       @default(0) @map("max_amount") @db.Decimal(18, 4)
-  rate           Decimal       @default(1) @db.Decimal(18, 8)
   percentFee     Decimal       @default(0) @map("percent_fee") @db.Decimal(8, 4)
   isOnline       Boolean       @default(true) @map("is_online")
   createdAt      DateTime      @default(now()) @map("created_at")

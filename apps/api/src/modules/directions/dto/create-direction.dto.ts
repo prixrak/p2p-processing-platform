@@ -43,12 +43,6 @@ export class CreateDirectionDto {
   @IsOptional()
   maxAmount?: number;
 
-  @ApiPropertyOptional({ description: 'Exchange rate' })
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  rate?: number;
-
   @ApiPropertyOptional({ description: 'Fee percentage' })
   @IsNumber()
   @Min(0)

@@ -291,7 +291,6 @@ async function main() {
       toCurrencyId: usdtRow.id,
       minAmount: 100,
       maxAmount: 50000,
-      rate: 0.024,
       percentFee: 5,
     },
     {
@@ -301,7 +300,6 @@ async function main() {
       toCurrencyId: uahRow.id,
       minAmount: 10,
       maxAmount: 5000,
-      rate: 41.5,
       percentFee: 3,
     },
   ];
@@ -323,7 +321,6 @@ async function main() {
           toCurrencyId: d.toCurrencyId,
           minAmount: d.minAmount,
           maxAmount: d.maxAmount,
-          rate: d.rate,
           percentFee: d.percentFee,
           isOnline: true,
         },

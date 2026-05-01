@@ -22,7 +22,6 @@ interface Direction {
   type: 'PAYIN' | 'PAYOUT';
   fromCurrency: string;
   toCurrency: string;
-  rate: number;
   fee: number;
   minAmount: number;
   maxAmount: number;
@@ -35,7 +34,6 @@ interface DirectionApiRow {
   type: DirectionType;
   fromCurrency: string;
   toCurrency: string;
-  rate: unknown;
   percentFee: unknown;
   minAmount: unknown;
   maxAmount: unknown;
@@ -54,7 +52,6 @@ function mapDirection(d: DirectionApiRow): Direction {
     type: d.type as 'PAYIN' | 'PAYOUT',
     fromCurrency: d.fromCurrency,
     toCurrency: d.toCurrency,
-    rate: Number(d.rate),
     fee: Number(d.percentFee),
     minAmount: Number(d.minAmount),
     maxAmount: Number(d.maxAmount),
@@ -73,7 +70,6 @@ const emptyForm: {
   type: 'PAYIN' | 'PAYOUT';
   fromCurrency: string;
   toCurrency: string;
-  rate: number;
   fee: number;
   minAmount: number;
   maxAmount: number;
@@ -82,7 +78,6 @@ const emptyForm: {
   type: 'PAYIN',
   fromCurrency: '',
   toCurrency: '',
-  rate: 1,
   fee: 0,
   minAmount: 0,
   maxAmount: 0,
@@ -148,7 +143,6 @@ export default function DirectionsPage() {
         toCurrency: payload.toCurrency.trim().toUpperCase(),
         minAmount: payload.minAmount,
         maxAmount: payload.maxAmount,
-        rate: payload.rate,
         percentFee: payload.fee,
       }),
     onSuccess: (raw) => {
@@ -171,7 +165,6 @@ export default function DirectionsPage() {
         toCurrency: args.form.toCurrency.trim().toUpperCase(),
         minAmount: args.form.minAmount,
         maxAmount: args.form.maxAmount,
-        rate: args.form.rate,
         percentFee: args.form.fee,
       }),
     onSuccess: (raw) => {
@@ -209,7 +202,6 @@ export default function DirectionsPage() {
       type: d.type,
       fromCurrency: d.fromCurrency,
       toCurrency: d.toCurrency,
-      rate: d.rate,
       fee: d.fee,
       minAmount: d.minAmount,
       maxAmount: d.maxAmount,
@@ -235,14 +227,6 @@ export default function DirectionsPage() {
       className: 'text-center',
       render: (d: Direction) => (
         <Badge color={d.type === 'PAYIN' ? 'green' : 'blue'}>{d.type}</Badge>
-      ),
-    },
-    {
-      key: 'rate',
-      header: 'Rate',
-      className: 'text-end tabular-nums font-mono',
-      render: (d: Direction) => (
-        <span className="font-mono text-sm text-text-primary">{d.rate.toFixed(4)}</span>
       ),
     },
     {
@@ -347,23 +331,14 @@ export default function DirectionsPage() {
           No active currencies. Add and activate currencies under Currencies first.
         </p>
       )}
-      <div className="grid grid-cols-2 gap-3">
-        <NumberInput
-          label="Rate"
-          variant="rate"
-          value={form.rate}
-          onChange={(e) => setForm({ ...form, rate: parseFloat(e.target.value) || 0 })}
-          required
-        />
-        <NumberInput
-          label="Fee"
-          variant="percent"
-          suffix="%"
-          value={form.fee}
-          onChange={(e) => setForm({ ...form, fee: parseFloat(e.target.value) || 0 })}
-          required
-        />
-      </div>
+      <NumberInput
+        label="Fee"
+        variant="percent"
+        suffix="%"
+        value={form.fee}
+        onChange={(e) => setForm({ ...form, fee: parseFloat(e.target.value) || 0 })}
+        required
+      />
       <div className="grid grid-cols-2 gap-3">
         <NumberInput
           label="Min Amount"
@@ -387,7 +362,7 @@ export default function DirectionsPage() {
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Directions</h1>
           <p className="mt-1 text-sm text-text-muted">
-            Manage payment directions, rates and fees
+            Manage payment directions and fees
           </p>
         </div>
         <Button

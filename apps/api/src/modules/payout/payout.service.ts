@@ -292,7 +292,7 @@ export class PayoutService {
             detailsNumber: dto.details.number,
             detailsOwner: dto.details.owner,
             detailsCode: dto.details.code,
-            rate: Number(direction.rate),
+            rate: 1,
             partnerAmount,
             commissionAmount: feeLocal ?? (dto.amount * merchantPct) / 100,
             percentFee: merchantPct,
@@ -383,7 +383,7 @@ export class PayoutService {
             direction_name: direction.name,
             min_amount: Number(direction.minAmount),
             max_amount: Number(direction.maxAmount),
-            rate: Number(direction.rate),
+            rate: 1,
             percent: Number(direction.percentFee),
             online: direction.isOnline,
           }
