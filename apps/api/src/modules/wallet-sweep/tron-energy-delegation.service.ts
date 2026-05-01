@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import TronWeb from 'tronweb';
+import { TronWeb } from 'tronweb';
 import { config } from '@p2p/config';
 import { HashicorpVaultService } from '../trader-wallets/hashicorp-vault.service';
 
@@ -104,7 +104,7 @@ export class TronEnergyDelegationService {
 
 function createDelegatorTw(): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return new (TronWeb as any)({
+  return new TronWeb({
     fullHost: config.tron.baseUrl,
     headers: config.tron.apiKey ? { 'TRON-PRO-API-KEY': config.tron.apiKey } : {},
   });

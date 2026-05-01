@@ -10,7 +10,7 @@ registerProcessHandlers(() => workerContext);
 
 async function bootstrapWorker(): Promise<void> {
   const app = await NestFactory.createApplicationContext(WorkerModule, {
-    bufferLogs: true,
+    bufferLogs: false,
   });
   workerContext = app;
   app.enableShutdownHooks(['SIGTERM', 'SIGINT']);

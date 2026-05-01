@@ -1,7 +1,6 @@
 /** Minimal shims for packages without bundled TypeScript types. */
 declare module 'tronweb' {
-  const TronWeb: any;
-  export default TronWeb;
+  export const TronWeb: any;
 }
 
 declare module 'hdkey' {

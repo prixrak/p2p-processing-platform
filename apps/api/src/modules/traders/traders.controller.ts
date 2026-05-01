@@ -19,7 +19,13 @@ import {
   ApiOkResponse,
 } from '@nestjs/swagger';
 import { TradersService } from './traders.service';
-import { GetStatisticsDto, SetPayoutLimitsDto, TraderStatisticsResponseDto } from './dto';
+import {
+  GetStatisticsDto,
+  SetPayoutLimitsDto,
+  TraderCabinetAnalyticsQueryDto,
+  TraderCabinetAnalyticsResponseDto,
+  TraderStatisticsResponseDto,
+} from './dto';
 import { UpdateTraderAcceptingOrdersDto } from './dto/update-trader-accepting-orders.dto';
 import { UpdateTraderBalanceModelDto } from './dto/update-trader-balance-model.dto';
 import { UpdateTraderCascadeDto } from './dto/update-trader-cascade.dto';
@@ -64,6 +70,28 @@ export class TradersController {
   ) {
     const profile = await this.tradersService.getProfileByUserId(userId);
     return this.tradersService.getStatistics(profile.id, dto);
+  }
+
+  @Get('me/analytics')
+  @Roles(UserRole.TRADER)
+  @ApiOperation({
+    summary: 'Cabinet analytics (profit + Pay-In/Pay-Out/dispute buckets)',
+    description:
+      'Grouped series for the selected period. `granularity` only changes buckets; filters stay fixed.',
+  })
+  @ApiQuery({ name: 'period', required: false, enum: ['24h', '7d', '30d', '90d'] })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo', required: false })
+  @ApiQuery({ name: 'currency', required: false })
+  @ApiQuery({ name: 'granularity', required: false, enum: ['hour', 'day', 'week', 'month'] })
+  @ApiQuery({ name: 'dateBasis', required: false, enum: ['created', 'completed'] })
+  @ApiOkResponse({ type: TraderCabinetAnalyticsResponseDto })
+  async getMyAnalytics(
+    @CurrentUser('id') userId: string,
+    @Query() dto: TraderCabinetAnalyticsQueryDto,
+  ) {
+    const profile = await this.tradersService.getProfileByUserId(userId);
+    return this.tradersService.getCabinetAnalytics(profile.id, dto);
   }
 
   @Patch('me/accepting-orders')

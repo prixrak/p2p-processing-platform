@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Prisma, WalletSweepStatus } from '@prisma/client';
-import TronWeb from 'tronweb';
+import { TronWeb } from 'tronweb';
 import Redis from 'ioredis';
 import { config } from '@p2p/config';
 import { PrismaService } from '../../config/prisma.service';
@@ -226,9 +226,8 @@ export class WalletSweepService implements OnModuleInit, OnModuleDestroy {
       } else {
         const pk = await this.vault.readTraderWalletPrivateKeyHex(traderId);
 
-        // TronWeb constructor options vary by minor version; single fullHost object is supported in v5.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const tw: any = new (TronWeb as any)({
+        const tw: any = new TronWeb({
           fullHost: config.tron.baseUrl,
           headers: config.tron.apiKey ? { 'TRON-PRO-API-KEY': config.tron.apiKey } : {},
         });

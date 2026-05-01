@@ -32,6 +32,10 @@ export const internalPaths = {
   trader: (id: string) => `/api/traders/${id}`,
   /** Trader cabinet: own statistics (JWT). Query: period | dateFrom & dateTo */
   traderMeStatistics: '/api/traders/me/statistics',
+  /** Trader cabinet: own balances list (JWT) */
+  traderMeBalances: '/api/traders/me/balances',
+  /** Trader cabinet: analytics (profit, bucketed volumes). Query: filters + granularity + dateBasis */
+  traderMeAnalytics: '/api/traders/me/analytics',
   /** Trader: USDT balance, overdraft, TRC-20 deposit address (GET) */
   traderUsdtWallet: '/api/trader/dashboard/usdt-wallet',
   /** Trader: PATCH body `{ usdt_trc20_deposit_address?, clear_trc20_deposit_address? }` */

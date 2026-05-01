@@ -22,6 +22,12 @@ import {
   CASCADE_TRAFFIC_PERCENT_POLICY_TEXT,
   type TrafficPercentPolicySummary,
 } from './cascade-traffic-percent-policy';
+import type { TraderCabinetAnalyticsQueryDto } from './dto/trader-cabinet-analytics-query.dto';
+import {
+  alignBucketStartUtc,
+  enumerateBucketStartsUtc,
+  type TraderCabinetAnalyticsGranularity,
+} from './trader-cabinet-analytics.util';
 
 function enumerateDaysUTC(from: Date, to: Date): string[] {
   const out: string[] = [];
@@ -305,6 +311,248 @@ export class TradersService {
         payIn: statusRecordToLowercase(payinGroup),
         payout: statusRecordToLowercase(payoutGroup),
       },
+    };
+  }
+
+  /** UTC wall-time truncation (PostgreSQL DATE_TRUNC semantics for timestamptz). */
+  private dateTruncUtc(bucket: TraderCabinetAnalyticsGranularity, tsExpr: Prisma.Sql): Prisma.Sql {
+    const unit =
+      bucket === 'hour'
+        ? Prisma.sql`'hour'`
+        : bucket === 'day'
+          ? Prisma.sql`'day'`
+          : bucket === 'week'
+            ? Prisma.sql`'week'`
+            : Prisma.sql`'month'`;
+    return Prisma.sql`DATE_TRUNC(${unit}, (${tsExpr}) AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
+  }
+
+  /**
+   * Cabinet analytics for Pay-In / Pay-Out / disputes with bucketed series.
+   *
+   * Risk note: `dateBasis=completed` uses completion proxies when timestamps are absent
+   * (Pay-In: `completed_at ?? updated_at`, Pay-Out: `end_at ?? updated_at`; disputes resolved use `updated_at`).
+   */
+  async getCabinetAnalytics(traderId: string, query: TraderCabinetAnalyticsQueryDto) {
+    const trader = await this.prisma.traderProfile.findUnique({
+      where: { id: traderId },
+      select: { id: true },
+    });
+    if (!trader) {
+      throw new NotFoundException(`Trader ${traderId} not found`);
+    }
+
+    const window = resolveStatisticsWindow(query);
+    const granularity: TraderCabinetAnalyticsGranularity = query.granularity ?? 'day';
+    const dateBasis = query.dateBasis ?? 'created';
+
+    const rawCur = query.currency?.trim().toUpperCase();
+    const currency =
+      rawCur && rawCur.length >= 3 ? rawCur : await this.pickDisplayCurrency(traderId);
+
+    const payinTs =
+      dateBasis === 'created'
+        ? Prisma.sql`po.created_at`
+        : Prisma.sql`COALESCE(po.completed_at, po.updated_at)`;
+
+    const payoutTs =
+      dateBasis === 'created'
+        ? Prisma.sql`po.created_at`
+        : Prisma.sql`COALESCE(po.end_at, po.updated_at)`;
+
+    const bucketExpr = this.dateTruncUtc(granularity, payinTs);
+    const payoutBucketExpr = this.dateTruncUtc(granularity, payoutTs);
+
+    const appealTs =
+      dateBasis === 'created'
+        ? Prisma.sql`a.created_at`
+        : Prisma.sql`a.updated_at`;
+    const appealBucketExpr = this.dateTruncUtc(granularity, appealTs);
+
+    const appealExtraWhere =
+      dateBasis === 'completed'
+        ? Prisma.sql`AND a.status IN ('RESOLVED', 'REJECTED')`
+        : Prisma.empty;
+
+    const [
+      profitRow,
+      payinBuckets,
+      payoutBuckets,
+      appealBuckets,
+    ] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ payinProfit: unknown; payoutProfit: unknown }>>(
+        Prisma.sql`
+          SELECT
+            COALESCE((SELECT SUM(po.commission)::float
+              FROM payin_orders po
+              WHERE po.trader_id = ${traderId}::uuid
+                AND po.currency = ${currency}
+                AND po.status = 'PAID'
+                AND ${payinTs} >= ${window.from}
+                AND ${payinTs} <= ${window.to}), 0) AS "payinProfit",
+            COALESCE((SELECT SUM(po.commission_amount)::float
+              FROM payout_orders po
+              WHERE po.trader_id = ${traderId}::uuid
+                AND po.currency = ${currency}
+                AND po.status = 'COMPLETED'
+                AND ${payoutTs} >= ${window.from}
+                AND ${payoutTs} <= ${window.to}), 0) AS "payoutProfit"
+        `,
+      ),
+      this.prisma.$queryRaw<
+        Array<{
+          bucket_ts: Date;
+          cnt: number;
+          amt: unknown;
+          profit: unknown;
+        }>
+      >(
+        Prisma.sql`
+          SELECT ${bucketExpr} AS bucket_ts,
+                 COUNT(*)::int AS cnt,
+                 COALESCE(SUM(po.amount), 0)::float AS amt,
+                 COALESCE(SUM(po.commission), 0)::float AS profit
+          FROM payin_orders po
+          WHERE po.trader_id = ${traderId}::uuid
+            AND po.currency = ${currency}
+            AND po.status = 'PAID'
+            AND ${payinTs} >= ${window.from}
+            AND ${payinTs} <= ${window.to}
+          GROUP BY 1
+          ORDER BY 1
+        `,
+      ),
+      this.prisma.$queryRaw<
+        Array<{
+          bucket_ts: Date;
+          cnt: number;
+          amt: unknown;
+          profit: unknown;
+        }>
+      >(
+        Prisma.sql`
+          SELECT ${payoutBucketExpr} AS bucket_ts,
+                 COUNT(*)::int AS cnt,
+                 COALESCE(SUM(po.amount), 0)::float AS amt,
+                 COALESCE(SUM(po.commission_amount), 0)::float AS profit
+          FROM payout_orders po
+          WHERE po.trader_id = ${traderId}::uuid
+            AND po.currency = ${currency}
+            AND po.status = 'COMPLETED'
+            AND ${payoutTs} >= ${window.from}
+            AND ${payoutTs} <= ${window.to}
+          GROUP BY 1
+          ORDER BY 1
+        `,
+      ),
+      this.prisma.$queryRaw<Array<{ bucket_ts: Date; cnt: number; amt: unknown }>>(
+        Prisma.sql`
+          SELECT ${appealBucketExpr} AS bucket_ts,
+                 COUNT(*)::int AS cnt,
+                 COALESCE(SUM(a.paid_amount), 0)::float AS amt
+          FROM appeals a
+          INNER JOIN payin_orders po ON po.id = a.payin_order_id
+          WHERE po.trader_id = ${traderId}::uuid
+            AND po.currency = ${currency}
+            AND ${appealTs} >= ${window.from}
+            AND ${appealTs} <= ${window.to}
+            ${appealExtraWhere}
+          GROUP BY 1
+          ORDER BY 1
+        `,
+      ),
+    ]);
+
+    const pRow = profitRow[0];
+    const cabinetProfitTotal =
+      Number(pRow?.payinProfit ?? 0) + Number(pRow?.payoutProfit ?? 0);
+
+    type Cell = {
+      payInCount: number;
+      payInAmount: number;
+      payInProfit: number;
+      payoutCount: number;
+      payoutAmount: number;
+      payoutProfit: number;
+      disputeCount: number;
+      disputeAmount: number;
+    };
+
+    const emptyCell = (): Cell => ({
+      payInCount: 0,
+      payInAmount: 0,
+      payInProfit: 0,
+      payoutCount: 0,
+      payoutAmount: 0,
+      payoutProfit: 0,
+      disputeCount: 0,
+      disputeAmount: 0,
+    });
+
+    const byBucket = new Map<number, Cell>();
+
+    const normalizeKey = (d: Date) =>
+      alignBucketStartUtc(d, granularity).getTime();
+
+    const touch = (key: number) => {
+      let cell = byBucket.get(key);
+      if (!cell) {
+        cell = emptyCell();
+        byBucket.set(key, cell);
+      }
+      return cell;
+    };
+
+    for (const r of payinBuckets) {
+      const k = normalizeKey(r.bucket_ts);
+      const c = touch(k);
+      c.payInCount += r.cnt;
+      c.payInAmount += Number(r.amt ?? 0);
+      c.payInProfit += Number(r.profit ?? 0);
+    }
+
+    for (const r of payoutBuckets) {
+      const k = normalizeKey(r.bucket_ts);
+      const c = touch(k);
+      c.payoutCount += r.cnt;
+      c.payoutAmount += Number(r.amt ?? 0);
+      c.payoutProfit += Number(r.profit ?? 0);
+    }
+
+    for (const r of appealBuckets) {
+      const k = normalizeKey(r.bucket_ts);
+      const c = touch(k);
+      c.disputeCount += r.cnt;
+      c.disputeAmount += Number(r.amt ?? 0);
+    }
+
+    const enumerated = enumerateBucketStartsUtc(window.from, window.to, granularity);
+    const series = enumerated.map((b) => {
+      const ms = b.getTime();
+      const cell = byBucket.get(ms) ?? emptyCell();
+      const profitAmount = cell.payInProfit + cell.payoutProfit;
+      return {
+        periodStart: b.toISOString(),
+        payInCount: cell.payInCount,
+        payInAmount: cell.payInAmount,
+        payoutCount: cell.payoutCount,
+        payoutAmount: cell.payoutAmount,
+        disputeCount: cell.disputeCount,
+        disputeAmount: cell.disputeAmount,
+        profitAmount,
+      };
+    });
+
+    return {
+      traderId,
+      currency,
+      granularity,
+      dateBasis,
+      period: window.period,
+      dateFrom: window.dateFrom,
+      dateTo: window.dateTo,
+      cabinetProfitTotal,
+      series,
     };
   }
 
