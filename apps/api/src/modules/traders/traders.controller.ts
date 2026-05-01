@@ -127,7 +127,8 @@ export class TradersController {
   @Patch(':id/balance-model')
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({
-    summary: 'Update trader USDT overdraft and Pay-In/Pay-Out rate fractions (Block 5)',
+    summary:
+      'Update trader USDT balance model: overdraft, Pay-In/Pay-Out rate fractions, monitored TRC-20/ERC-20 deposit addresses (Block 5)',
   })
   updateBalanceModel(
     @Param('id', ParseUUIDPipe) id: string,

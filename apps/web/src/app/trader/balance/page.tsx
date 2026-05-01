@@ -1,13 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowDownCircle, ArrowUpCircle, DollarSign, MinusCircle } from 'lucide-react';
-import { api } from '@/lib/api';
+import { ApiError, api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { DataTable } from '@/components/ui/data-table';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { Select } from '@/components/ui/select';
@@ -83,50 +82,20 @@ const isCredit = (type: string) =>
 const isNeutralTx = (type: string) => type === 'OVERDRAFT_SET';
 
 export default function BalanceHistoryPage() {
-  const queryClient = useQueryClient();
   const [currency, setCurrency] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
-  const [addrInput, setAddrInput] = useState('');
-  const [clearAddr, setClearAddr] = useState(false);
-  const [ercAddrInput, setErcAddrInput] = useState('');
-  const [ercClear, setErcClear] = useState(false);
   const [txType, setTxType] = useState<string>('');
 
-  const { data: wallet, isLoading: walletLoading } = useQuery({
+  const {
+    data: wallet,
+    isLoading: walletLoading,
+    isError: walletError,
+    error: walletErrorDetail,
+  } = useQuery({
     queryKey: ['trader', 'usdt-wallet'],
     queryFn: () => api.get<UsdtWallet>(internalPaths.traderUsdtWallet),
-  });
-
-  const depositMut = useMutation({
-    mutationFn: () =>
-      api.patch(internalPaths.traderTrc20Deposit, {
-        ...(clearAddr ? { clear_trc20_deposit_address: true } : {}),
-        ...(!clearAddr && addrInput.trim()
-          ? { usdt_trc20_deposit_address: addrInput.trim() }
-          : {}),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['trader', 'usdt-wallet'] });
-      setAddrInput('');
-      setClearAddr(false);
-    },
-  });
-
-  const ercDepositMut = useMutation({
-    mutationFn: () =>
-      api.patch(internalPaths.traderErc20Deposit, {
-        ...(ercClear ? { clear_erc20_deposit_address: true } : {}),
-        ...(!ercClear && ercAddrInput.trim()
-          ? { usdt_erc20_deposit_address: ercAddrInput.trim() }
-          : {}),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['trader', 'usdt-wallet'] });
-      setErcAddrInput('');
-      setErcClear(false);
-    },
   });
 
   const { data, isLoading } = useQuery({
@@ -286,7 +255,23 @@ export default function BalanceHistoryPage() {
         className="rounded-xl border border-border-subtle bg-bg-secondary p-4 space-y-4 scroll-mt-24"
       >
         <h2 className="text-sm font-semibold text-text-primary">USDT wallet (cabinet)</h2>
-        {walletLoading || !wallet ? (
+        {walletError ? (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-950 dark:text-red-100 space-y-1">
+            <p className="font-medium">Could not load USDT wallet</p>
+            <p className="text-xs opacity-90 font-mono">
+              {walletErrorDetail instanceof ApiError
+                ? `${walletErrorDetail.status} ${walletErrorDetail.message}`
+                : String(walletErrorDetail)}
+            </p>
+            <p className="text-xs opacity-85">
+              If this is unexpected, check that{' '}
+              <code className="bg-bg-primary/70 px-1 rounded">NEXT_PUBLIC_API_URL</code> in{' '}
+              <code className="bg-bg-primary/70 px-1 rounded">apps/web/.env.local</code> points to your
+              API (e.g. <code className="bg-bg-primary/70 px-1 rounded">http://localhost:3001</code>),
+              restart the Next dev server, and ensure you are logged in as TRADER.
+            </p>
+          </div>
+        ) : walletLoading || !wallet ? (
           <p className="text-sm text-text-muted">Loading…</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
@@ -326,47 +311,16 @@ export default function BalanceHistoryPage() {
             USDT TRC-20 deposit address
           </h3>
           <p className="text-xs text-text-muted">
-            Send USDT (TRC-20) to this Tron address to top up. Credits after confirmations (worker).
+            Operators assign monitored Tron deposit addresses for top-ups. Credits apply after confirmations (worker).
+            Contact operations if no address appears or if it must be updated.
           </p>
           {wallet?.usdt_trc20_deposit_address ? (
             <p className="font-mono text-xs break-all text-text-secondary bg-bg-primary/50 rounded-lg p-2">
               {wallet.usdt_trc20_deposit_address}
             </p>
           ) : (
-            <p className="text-xs text-text-muted">No address registered yet.</p>
+            <p className="text-xs text-text-muted">No deposit address configured yet.</p>
           )}
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
-            <div className="flex-1">
-              <Input
-                label="Tron address (T…)"
-                value={addrInput}
-                onChange={(e) => {
-                  setAddrInput(e.target.value);
-                  setClearAddr(false);
-                }}
-                placeholder="T…"
-              />
-            </div>
-            <label className="flex items-center gap-2 text-xs text-text-muted cursor-pointer pb-2">
-              <input
-                type="checkbox"
-                checked={clearAddr}
-                onChange={(e) => {
-                  setClearAddr(e.target.checked);
-                  if (e.target.checked) setAddrInput('');
-                }}
-              />
-              Clear address
-            </label>
-            <Button
-              onClick={() => depositMut.mutate()}
-              disabled={
-                depositMut.isPending || (!clearAddr && !addrInput.trim()) || (clearAddr && !wallet?.usdt_trc20_deposit_address)
-              }
-            >
-              Save
-            </Button>
-          </div>
         </div>
 
         <div className="border-t border-border-subtle pt-4 space-y-2">
@@ -374,49 +328,16 @@ export default function BalanceHistoryPage() {
             USDT ERC-20 deposit address (Ethereum)
           </h3>
           <p className="text-xs text-text-muted">
-            Send USDT (ERC-20 on Ethereum mainnet) to this address to top up when ETH_RPC_URL is enabled on the worker.
+            Operators assign Ethereum mainnet ERC-20 USDT deposit addresses where on-chain polling is enabled. Contact
+            operations if you need a change.
           </p>
           {wallet?.usdt_erc20_deposit_address ? (
             <p className="font-mono text-xs break-all text-text-secondary bg-bg-primary/50 rounded-lg p-2">
               {wallet.usdt_erc20_deposit_address}
             </p>
           ) : (
-            <p className="text-xs text-text-muted">No address registered yet.</p>
+            <p className="text-xs text-text-muted">No deposit address configured yet.</p>
           )}
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
-            <div className="flex-1">
-              <Input
-                label="Ethereum address (0x…)"
-                value={ercAddrInput}
-                onChange={(e) => {
-                  setErcAddrInput(e.target.value);
-                  setErcClear(false);
-                }}
-                placeholder="0x…"
-              />
-            </div>
-            <label className="flex items-center gap-2 text-xs text-text-muted cursor-pointer pb-2">
-              <input
-                type="checkbox"
-                checked={ercClear}
-                onChange={(e) => {
-                  setErcClear(e.target.checked);
-                  if (e.target.checked) setErcAddrInput('');
-                }}
-              />
-              Clear address
-            </label>
-            <Button
-              onClick={() => ercDepositMut.mutate()}
-              disabled={
-                ercDepositMut.isPending ||
-                (!ercClear && !ercAddrInput.trim()) ||
-                (ercClear && !wallet?.usdt_erc20_deposit_address)
-              }
-            >
-              Save
-            </Button>
-          </div>
         </div>
       </section>
 

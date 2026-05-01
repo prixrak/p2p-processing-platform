@@ -36,12 +36,8 @@ export const internalPaths = {
   traderMeBalances: '/api/traders/me/balances',
   /** Trader cabinet: analytics (profit, bucketed volumes). Query: filters + granularity + dateBasis */
   traderMeAnalytics: '/api/traders/me/analytics',
-  /** Trader: USDT balance, overdraft, TRC-20 deposit address (GET) */
+  /** Trader: USDT balance, overdraft, operator-assigned monitored deposit addresses (GET) */
   traderUsdtWallet: '/api/trader/dashboard/usdt-wallet',
-  /** Trader: PATCH body `{ usdt_trc20_deposit_address?, clear_trc20_deposit_address? }` */
-  traderTrc20Deposit: '/api/trader/dashboard/trc20-deposit',
-  /** Trader: PATCH body `{ usdt_erc20_deposit_address?, clear_erc20_deposit_address? }` */
-  traderErc20Deposit: '/api/trader/dashboard/erc20-deposit',
   /** Trader: SSE — TRC-20 deposit credits (wallet top-ups). */
   traderWalletEventsStream: '/api/trader/dashboard/wallet-events/stream',
   traderBalances: (id: string) => `/api/traders/${id}/balances`,

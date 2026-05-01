@@ -12,8 +12,6 @@ import { BalanceTransactionsService } from '../balance-transactions/balance-tran
 import type { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
 import type { UpdateTraderBalanceModelDto } from './dto/update-trader-balance-model.dto';
-import type { TraderSelfTrc20Dto } from './dto/trader-self-trc20.dto';
-import type { TraderSelfErc20Dto } from './dto/trader-self-erc20.dto';
 import type { UpdateTraderCascadeDto } from './dto/update-trader-cascade.dto';
 import { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
 import { PlatformSettingsService, PLATFORM_SETTING_TRADER_PAYIN_LOW_CAPACITY_ALERT_THRESHOLD_USDT } from '../platform-settings/platform-settings.service';
@@ -895,92 +893,6 @@ export class TradersService {
       usdt_trc20_deposit_address: profile.usdtTrc20DepositAddress,
       usdt_erc20_deposit_address: profile.usdtErc20DepositAddress,
     };
-  }
-
-  async updateSelfTrc20Deposit(userId: string, dto: TraderSelfTrc20Dto) {
-    const has =
-      dto.usdt_trc20_deposit_address !== undefined || dto.clear_trc20_deposit_address === true;
-    if (!has) {
-      throw new BadRequestException('No fields to update');
-    }
-
-    const profile = await this.prisma.traderProfile.findUnique({
-      where: { userId },
-      select: { id: true },
-    });
-    if (!profile) {
-      throw new NotFoundException('Trader profile not found');
-    }
-
-    if (dto.clear_trc20_deposit_address) {
-      return this.prisma.traderProfile.update({
-        where: { id: profile.id },
-        data: { usdtTrc20DepositAddress: null },
-        select: { id: true, usdtTrc20DepositAddress: true },
-      });
-    }
-
-    const addr = dto.usdt_trc20_deposit_address!.trim();
-    if (!isValidTronTrc20Address(addr)) {
-      throw new BadRequestException('Invalid USDT TRC-20 (Tron) address');
-    }
-
-    const taken = await this.prisma.traderProfile.findFirst({
-      where: { usdtTrc20DepositAddress: addr, NOT: { id: profile.id } },
-      select: { id: true },
-    });
-    if (taken) {
-      throw new ConflictException('This deposit address is already assigned to another trader');
-    }
-
-    return this.prisma.traderProfile.update({
-      where: { id: profile.id },
-      data: { usdtTrc20DepositAddress: addr },
-      select: { id: true, usdtTrc20DepositAddress: true },
-    });
-  }
-
-  async updateSelfErc20Deposit(userId: string, dto: TraderSelfErc20Dto) {
-    const has =
-      dto.usdt_erc20_deposit_address !== undefined || dto.clear_erc20_deposit_address === true;
-    if (!has) {
-      throw new BadRequestException('No fields to update');
-    }
-
-    const profile = await this.prisma.traderProfile.findUnique({
-      where: { userId },
-      select: { id: true },
-    });
-    if (!profile) {
-      throw new NotFoundException('Trader profile not found');
-    }
-
-    if (dto.clear_erc20_deposit_address) {
-      return this.prisma.traderProfile.update({
-        where: { id: profile.id },
-        data: { usdtErc20DepositAddress: null },
-        select: { id: true, usdtErc20DepositAddress: true },
-      });
-    }
-
-    const addr = dto.usdt_erc20_deposit_address!.trim();
-    if (!isValidEthereumUsdtDepositAddress(addr)) {
-      throw new BadRequestException('Invalid USDT ERC-20 (Ethereum) address');
-    }
-
-    const taken = await this.prisma.traderProfile.findFirst({
-      where: { usdtErc20DepositAddress: addr.toLowerCase(), NOT: { id: profile.id } },
-      select: { id: true },
-    });
-    if (taken) {
-      throw new ConflictException('This ERC-20 deposit address is already assigned to another trader');
-    }
-
-    return this.prisma.traderProfile.update({
-      where: { id: profile.id },
-      data: { usdtErc20DepositAddress: addr.toLowerCase() },
-      select: { id: true, usdtErc20DepositAddress: true },
-    });
   }
 
   /**
