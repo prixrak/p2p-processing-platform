@@ -6,6 +6,10 @@ import { PrismaService } from '../../config/prisma.service';
 import { comparePassword } from '../../common/utils/password';
 import { JwtPayload } from './jwt.strategy';
 
+/** Returned when credentials are valid but the user cannot sign in because the account is inactive. */
+export const LOGIN_ACCOUNT_DEACTIVATED_MESSAGE =
+  'This account has been deactivated. Please contact support.';
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -18,7 +22,7 @@ export class AuthService {
   async validateUser(email: string, password: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
 
-    if (!user || !user.isActive) {
+    if (!user) {
       return null;
     }
 
@@ -31,6 +35,10 @@ export class AuthService {
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException(LOGIN_ACCOUNT_DEACTIVATED_MESSAGE);
     }
 
     if (user.twoFaSecret) {
@@ -61,8 +69,12 @@ export class AuthService {
       select: { id: true, email: true, role: true, isActive: true, twoFaSecret: true },
     });
 
-    if (!user || !user.isActive || !user.twoFaSecret) {
+    if (!user || !user.twoFaSecret) {
       throw new UnauthorizedException('Invalid state');
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException(LOGIN_ACCOUNT_DEACTIVATED_MESSAGE);
     }
 
     const isValid = authenticator.verify({ token: code, secret: user.twoFaSecret });
@@ -111,8 +123,12 @@ export class AuthService {
         select: { id: true, email: true, role: true, isActive: true },
       });
 
-      if (!user || !user.isActive) {
-        throw new UnauthorizedException('User not found or deactivated');
+      if (!user) {
+        throw new UnauthorizedException('Invalid or expired refresh token');
+      }
+
+      if (!user.isActive) {
+        throw new UnauthorizedException(LOGIN_ACCOUNT_DEACTIVATED_MESSAGE);
       }
 
       return this.generateTokens(user);
