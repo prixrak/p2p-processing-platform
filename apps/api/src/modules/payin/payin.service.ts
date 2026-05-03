@@ -5,7 +5,7 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, DirectionType as PrismaDirectionType } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { RequisitesService } from '../requisites/requisites.service';
 import { BanksService } from '../banks/banks.service';
@@ -46,6 +46,7 @@ import {
 } from '@p2p/shared';
 import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
 import { validateCallbackUrl } from '../../common/utils/url-validator';
+import { assertAmountWithinDirectionMinMax } from '../../common/utils/direction-amount-limits.util';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
 import {
   PlatformSettingsService,
@@ -123,6 +124,21 @@ export class PayinService {
     }
     const fiatCurrencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.currency);
     const direction = await this.findActiveDirection(dto.currency, DirectionType.PAYIN);
+
+    assertAmountWithinDirectionMinMax(
+      dto.amount,
+      dto.currency,
+      direction.minAmount,
+      direction.maxAmount,
+      'platform Pay-In direction',
+    );
+
+    await this.merchantDirectionsService.assertOrderAmountWithinActiveMerchantDirection(
+      merchantId,
+      PrismaDirectionType.PAYIN,
+      dto.currency,
+      dto.amount,
+    );
 
     const merchantCommissionPct =
       await this.merchantDirectionsService.getEffectiveCommissionPercent(
@@ -242,13 +258,7 @@ export class PayinService {
           include: ORDER_INCLUDE,
         });
 
-        await tx.requisite.update({
-          where: { id: requisite.id },
-          data: {
-            usedAmount: { increment: dto.amount },
-            usedOps: { increment: 1 },
-          },
-        });
+        await this.requisitesService.incrementUsageInTransaction(tx, requisite.id, dto.amount);
 
         await tx.trafficDistributionLog.create({
           data: {
@@ -482,6 +492,21 @@ export class PayinService {
     const fiatCurrencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.currency);
     const direction = await this.findActiveDirection(dto.currency, DirectionType.PAYIN);
 
+    assertAmountWithinDirectionMinMax(
+      dto.amount,
+      dto.currency,
+      direction.minAmount,
+      direction.maxAmount,
+      'platform Pay-In direction',
+    );
+
+    await this.merchantDirectionsService.assertOrderAmountWithinActiveMerchantDirection(
+      merchantId,
+      PrismaDirectionType.PAYIN,
+      dto.currency,
+      dto.amount,
+    );
+
     const merchantCommissionPct =
       await this.merchantDirectionsService.getEffectiveCommissionPercent(
         merchantId,
@@ -602,13 +627,7 @@ export class PayinService {
           include: ORDER_INCLUDE,
         });
 
-        await tx.requisite.update({
-          where: { id: requisite.id },
-          data: {
-            usedAmount: { increment: dto.amount },
-            usedOps: { increment: 1 },
-          },
-        });
+        await this.requisitesService.incrementUsageInTransaction(tx, requisite.id, dto.amount);
 
         await tx.trafficDistributionLog.create({
           data: {

@@ -36,6 +36,7 @@ import {
   PayoutTraderBalanceTxType,
 } from '@prisma/client';
 import { validateCallbackUrl } from '../../common/utils/url-validator';
+import { assertAmountWithinDirectionMinMax } from '../../common/utils/direction-amount-limits.util';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
 import { MerchantDirectionsService } from '../merchant-directions/merchant-directions.service';
 import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
@@ -217,6 +218,21 @@ export class PayoutService {
     if (!direction) {
       throw new BadRequestException(`No active PAYOUT direction for ${dto.currency}`);
     }
+
+    assertAmountWithinDirectionMinMax(
+      dto.amount,
+      dto.currency,
+      direction.minAmount,
+      direction.maxAmount,
+      'platform Pay-Out direction',
+    );
+
+    await this.merchantDirections.assertOrderAmountWithinActiveMerchantDirection(
+      merchantId,
+      PrismaDirectionType.PAYOUT,
+      dto.currency,
+      dto.amount,
+    );
 
     const merchantPct =
       (await this.merchantDirections.getEffectiveCommissionPercent(

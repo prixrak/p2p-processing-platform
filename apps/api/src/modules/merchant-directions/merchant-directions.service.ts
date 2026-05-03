@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../../config/prisma.service';
 import { DirectionType } from '@prisma/client';
 import { CurrenciesService } from '../currencies/currencies.service';
+import { assertAmountWithinDirectionMinMax } from '../../common/utils/direction-amount-limits.util';
 import {
   CreateMerchantDirectionDto,
   UpdateMerchantDirectionDto,
@@ -159,6 +160,37 @@ export class MerchantDirectionsService {
   }
 
   // ── Commission Lookup (used by payin/payout services) ──────────────────────
+
+  /**
+   * Enforces {@link MerchantDirection.minAmount} / {@link MerchantDirection.maxAmount} for external order creation.
+   * When there is no row or the direction is inactive, limits are not applied (commission fallback behaves the same).
+   * Max amount 0 means no upper cap (same convention as admin UI defaults).
+   *
+   * RISK NOTE: Changing this gates merchant API volume; keep messages stable for client integrations.
+   */
+  async assertOrderAmountWithinActiveMerchantDirection(
+    merchantId: string,
+    directionType: DirectionType,
+    currency: string,
+    amount: number,
+  ): Promise<void> {
+    const currencyId = await this.currencies.requireActiveCurrencyIdByCode(currency);
+    const row = await this.prisma.merchantDirection.findUnique({
+      where: {
+        merchantId_directionType_currencyId: { merchantId, directionType, currencyId },
+      },
+    });
+
+    if (!row || !row.isActive) return;
+
+    assertAmountWithinDirectionMinMax(
+      amount,
+      currency,
+      row.minAmount,
+      row.maxAmount,
+      'merchant direction',
+    );
+  }
 
   /**
    * Returns the effective commission % for a given merchant + directionType + amount.

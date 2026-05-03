@@ -84,6 +84,8 @@ export const merchantKeys = {
   analytics: (period: unknown) => [...merchantRoot, 'analytics', period] as const,
   analyticsScope: [...merchantRoot, 'analytics'] as const,
   directions: () => [...merchantRoot, 'directions'] as const,
+  /** Platform `Direction` rows when the merchant has no custom `MerchantDirection` terms */
+  directionsPlatformDefaults: () => [...merchantRoot, 'directions', 'platform'] as const,
   apiKeys: () => [...merchantRoot, 'api-keys'] as const,
   webhooks: (filters: unknown) => [...merchantRoot, 'webhooks', filters] as const,
   webhooksScope: [...merchantRoot, 'webhooks'] as const,

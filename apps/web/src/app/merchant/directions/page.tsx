@@ -28,6 +28,19 @@ interface MerchantDirectionRow {
   paymentMethod: { id: string; name: string; displayName?: string } | null;
 }
 
+/** Platform-wide direction (fallback when merchant has no custom MerchantDirection rows). */
+interface PlatformDirectionRow {
+  id: string;
+  name: string;
+  type: string;
+  fromCurrency: string;
+  toCurrency: string;
+  percentFee: unknown;
+  minAmount: unknown;
+  maxAmount: unknown;
+  isOnline: boolean;
+}
+
 function num(v: unknown): number {
   if (typeof v === 'number') return v;
   if (typeof v === 'string') return Number(v);
@@ -35,10 +48,25 @@ function num(v: unknown): number {
 }
 
 export default function MerchantDirectionsPage() {
-  const { data: directions = [], isLoading } = useQuery({
+  const { data: customDirections = [], isLoading: customLoading } = useQuery({
     queryKey: merchantKeys.directions(),
     queryFn: () => api.get<MerchantDirectionRow[]>(internalPaths.merchantDirectionsSelf),
   });
+
+  const usePlatformFallback = !customLoading && customDirections.length === 0;
+
+  const {
+    data: platformDirections = [],
+    isLoading: platformLoading,
+    isError: platformError,
+  } = useQuery({
+    queryKey: merchantKeys.directionsPlatformDefaults(),
+    queryFn: () => api.get<PlatformDirectionRow[]>(internalPaths.directions),
+    enabled: usePlatformFallback,
+  });
+
+  const showCustom = customDirections.length > 0;
+  const loading = customLoading || (!showCustom && platformLoading);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -60,7 +88,24 @@ export default function MerchantDirectionsPage() {
         </p>
       </div>
 
-      {isLoading && (
+      {showCustom && (
+        <div className="rounded-lg border border-border-primary/60 bg-bg-secondary/30 px-3 py-2 text-xs text-text-muted">
+          Showing <span className="text-text-secondary font-medium">custom terms</span> configured
+          for your account.
+        </div>
+      )}
+
+      {!showCustom &&
+        !loading &&
+        !platformError &&
+        platformDirections.length > 0 && (
+          <div className="rounded-lg border border-border-primary/60 bg-bg-secondary/30 px-3 py-2 text-xs text-text-muted">
+            You have no merchant-specific terms. The list below reflects{' '}
+            <span className="text-text-secondary font-medium">platform default directions</span>.
+          </div>
+        )}
+
+      {loading && (
         <div className="grid gap-4">
           {[1, 2].map((i) => (
             <div
@@ -71,15 +116,8 @@ export default function MerchantDirectionsPage() {
         </div>
       )}
 
-      {!isLoading && directions.length === 0 && (
-        <div className="rounded-xl border border-border-primary bg-bg-card p-8 text-center text-sm text-text-muted">
-          No directions configured for your account — global defaults may apply. Contact support if
-          you expect custom terms.
-        </div>
-      )}
-
-      {!isLoading &&
-        directions.map((dir) => (
+      {!loading && showCustom &&
+        customDirections.map((dir) => (
           <div
             key={dir.id}
             className="rounded-xl border border-border-primary bg-bg-card p-5 space-y-4"
@@ -143,6 +181,63 @@ export default function MerchantDirectionsPage() {
                 </div>
               </div>
             )}
+          </div>
+        ))}
+
+      {!loading &&
+        !showCustom &&
+        platformError && (
+          <div className="rounded-xl border border-border-primary bg-bg-card p-8 text-center text-sm text-text-muted">
+            Could not load platform default directions. Try again later or contact support.
+          </div>
+        )}
+
+      {!loading && !showCustom && !platformError && platformDirections.length === 0 && (
+        <div className="rounded-xl border border-border-primary bg-bg-card p-8 text-center text-sm text-text-muted">
+          No directions are configured on the platform yet. Contact support.
+        </div>
+      )}
+
+      {!loading &&
+        !showCustom &&
+        !platformError &&
+        platformDirections.map((dir) => (
+          <div
+            key={dir.id}
+            className="rounded-xl border border-border-primary bg-bg-card p-5 space-y-4"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge color={dir.type === 'PAYIN' ? 'blue' : 'yellow'}>
+                  {DIR_LABELS[dir.type] ?? dir.type}
+                </Badge>
+                <span className="font-semibold text-text-primary">{dir.name}</span>
+                <span className="font-mono text-sm text-text-secondary">
+                  {dir.fromCurrency} → {dir.toCurrency}
+                </span>
+                <Badge color={dir.isOnline ? 'green' : 'red'}>
+                  {dir.isOnline ? 'online' : 'offline'}
+                </Badge>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 text-sm">
+              <div>
+                <p className="text-text-muted text-xs mb-1">Amount range</p>
+                <p className="text-text-primary font-mono">
+                  {num(dir.minAmount).toLocaleString()} — {num(dir.maxAmount).toLocaleString()}{' '}
+                  {dir.fromCurrency}
+                </p>
+              </div>
+              <div>
+                <p className="text-text-muted text-xs mb-1">Commission</p>
+                <p className="text-text-primary font-mono">{num(dir.percentFee).toFixed(2)}%</p>
+              </div>
+              <div>
+                <p className="text-text-muted text-xs mb-1">Pricing tiers</p>
+                <p className="text-text-primary">—</p>
+              </div>
+            </div>
           </div>
         ))}
     </div>
