@@ -120,10 +120,6 @@ function directoryExcludedRolesForUi(prefix: StaffRolePrefix): Set<UserRole> {
   return new Set(excluded);
 }
 
-function canUpdateRole(role: UserRole): boolean {
-  return roleOptions.some((o) => o.value === role);
-}
-
 async function fetchMerchantProfileForUser(userId: string): Promise<{ id: string; name: string } | null> {
   try {
     return await api.get<{ id: string; name: string }>(internalPaths.merchantByUserId(userId));
@@ -221,14 +217,6 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
   });
   const [createFieldErrors, setCreateFieldErrors] = useState<Record<string, string>>({});
   const [confirmCreateOpen, setConfirmCreateOpen] = useState(false);
-  const [pendingRoleChange, setPendingRoleChange] = useState<{
-    id: string;
-    email: string;
-    from: UserRole;
-    to: UserRole;
-    hasMerchant: boolean;
-  } | null>(null);
-  const [roleChangeMerchantName, setRoleChangeMerchantName] = useState('');
   const [pendingStatusToggle, setPendingStatusToggle] = useState<{
     id: string;
     email: string;
@@ -330,26 +318,6 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       api.patch<UsersApiRow>(internalPaths.user(id), { isActive }),
     onSuccess: () => invalidateDirectory(),
-  });
-
-  const updateRole = useMutation({
-    mutationFn: async (payload: { id: string; role: UserRole; merchantName?: string }) => {
-      const body: Record<string, unknown> = { role: payload.role };
-      if (payload.merchantName?.trim()) body.merchantName = payload.merchantName.trim();
-      await api.patch<UsersApiRow>(internalPaths.user(payload.id), body);
-      const merchantProfile =
-        payload.role === UserRole.MERCHANT ? await fetchMerchantProfileForUser(payload.id) : null;
-      return { merchantProfile };
-    },
-    onSuccess: (result) => {
-      invalidateDirectory();
-      if (result.merchantProfile) {
-        setDirectionsMerchant({
-          id: result.merchantProfile.id,
-          name: result.merchantProfile.name,
-        });
-      }
-    },
   });
 
   const traderToggle = useMutation({
@@ -550,33 +518,6 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
               </IconButton>
             </>
           ) : null}
-          {!canUpdateRole(u.role) ? (
-            <Badge
-              color={roleColors[u.role] ?? 'default'}
-              className="min-w-[5rem] shrink-0 justify-center"
-            >
-              {roleLabel[u.role]}
-            </Badge>
-          ) : (
-            <Select
-              options={assignableStaffRoles}
-              rootClassName="w-[7rem] shrink-0 gap-1"
-              value={pendingRoleChange?.id === u.id ? pendingRoleChange.from : u.role}
-              onChange={(e) => {
-                const nextRole = e.target.value as UserRole;
-                if (nextRole === u.role) return;
-                setPendingRoleChange({
-                  id: u.id,
-                  email: u.email,
-                  from: u.role,
-                  to: nextRole,
-                  hasMerchant: !!u.merchant,
-                });
-                setRoleChangeMerchantName('');
-              }}
-              className="!h-9 !min-h-9 !py-1 !px-2 !text-xs"
-            />
-          )}
           <IconButton
             label={
               u.role === UserRole.OWNER && u.isActive
@@ -601,9 +542,6 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
       ),
     },
   ];
-
-  const needMerchantNameForRoleChange =
-    pendingRoleChange?.to === UserRole.MERCHANT && !pendingRoleChange.hasMerchant;
 
   return (
     <div className="space-y-4">
@@ -642,72 +580,6 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         cancelLabel="Back"
         loading={createUser.isPending}
         onConfirm={() => createUser.mutate(form)}
-      />
-
-      <ConfirmDialog
-        open={!!pendingRoleChange}
-        onOpenChange={(next) => {
-          if (!next) {
-            setPendingRoleChange(null);
-            setRoleChangeMerchantName('');
-          }
-        }}
-        tone="danger"
-        title="Change user role?"
-        description={
-          pendingRoleChange ? (
-            <>
-              Update <span className="font-medium text-text-primary">{pendingRoleChange.email}</span> from{' '}
-              <strong>{roleLabel[pendingRoleChange.from]}</strong> to{' '}
-              <strong>{roleLabel[pendingRoleChange.to]}</strong>?
-              {needMerchantNameForRoleChange ? (
-                <div className="mt-3 space-y-1 text-left">
-                  <label className="text-xs text-text-muted block">
-                    Merchant display name (required for new merchant profile)
-                  </label>
-                  <Input
-                    value={roleChangeMerchantName}
-                    onChange={(e) => setRoleChangeMerchantName(e.target.value)}
-                    placeholder="Acme Corp"
-                    className="!py-2"
-                  />
-                </div>
-              ) : null}
-              {pendingRoleChange.to === UserRole.MERCHANT ? (
-                <span className="block mt-2 text-text-muted">
-                  After confirming, a directions & commissions editor opens for this merchant.
-                </span>
-              ) : null}
-            </>
-          ) : null
-        }
-        confirmLabel="Change role"
-        loading={updateRole.isPending}
-        confirmDisabled={
-          !!(
-            pendingRoleChange &&
-            pendingRoleChange.to === UserRole.MERCHANT &&
-            !pendingRoleChange.hasMerchant &&
-            !roleChangeMerchantName.trim()
-          )
-        }
-        onConfirm={() => {
-          if (!pendingRoleChange) return;
-          if (needMerchantNameForRoleChange && !roleChangeMerchantName.trim()) return;
-          updateRole.mutate(
-            {
-              id: pendingRoleChange.id,
-              role: pendingRoleChange.to,
-              merchantName: needMerchantNameForRoleChange ? roleChangeMerchantName : undefined,
-            },
-            {
-              onSettled: () => {
-                setPendingRoleChange(null);
-                setRoleChangeMerchantName('');
-              },
-            },
-          );
-        }}
       />
 
       <ConfirmDialog

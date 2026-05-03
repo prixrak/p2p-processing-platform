@@ -66,7 +66,10 @@ export class UsersController {
 
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.OWNER)
-  @ApiOperation({ summary: 'Update user (admin/owner)' })
+  @ApiOperation({
+    summary: 'Update user (admin/owner)',
+    description: 'Email, active flag, and merchant display name (for MERCHANT users). Role cannot be changed.',
+  })
   @Audited(AuditAction.UPDATE_USER, AuditEntityType.User)
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -74,7 +77,6 @@ export class UsersController {
   ) {
     return this.usersService.update(id, {
       email: data.email,
-      role: data.role,
       isActive: data.isActive,
       merchantName: data.merchantName,
     });

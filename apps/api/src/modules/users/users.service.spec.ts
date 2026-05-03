@@ -193,13 +193,14 @@ describe('UsersService', () => {
       expect(prisma.user.update).toHaveBeenCalled();
     });
 
-    it('ensures referral profile when role becomes REFERRAL', async () => {
+    it('keeps referral profile hook when user is already REFERRAL and email changes', async () => {
       const { service, prisma } = createService();
+      const referralUser = { ...adminRow, role: UserRole.REFERRAL };
+      prisma.user.findUnique.mockResolvedValue(referralUser);
+      prisma.user.update.mockResolvedValue({ ...referralUser, email: 'new@example.com' });
       prisma.referralProfile.upsert.mockResolvedValue({});
-      prisma.user.findUnique.mockResolvedValue(adminRow);
-      prisma.user.update.mockResolvedValue({ ...adminRow, role: UserRole.REFERRAL });
 
-      await service.update(userId, { role: UserRole.REFERRAL });
+      await service.update(userId, { email: 'new@example.com' });
 
       expect(prisma.referralProfile.upsert).toHaveBeenCalledWith({
         where: { userId },

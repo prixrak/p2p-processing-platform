@@ -289,25 +289,15 @@ export class UsersService {
 
   async update(
     id: string,
-    data: { email?: string; role?: UserRole; isActive?: boolean; merchantName?: string },
+    data: { email?: string; isActive?: boolean; merchantName?: string },
   ) {
     const existing = await this.findById(id);
     if (data.isActive === false && existing.role === UserRole.OWNER) {
       throw new ForbiddenException('Owner accounts cannot be deactivated');
     }
 
-    if (data.role === UserRole.MERCHANT) {
-      const hasMerchant = await this.prisma.merchant.findUnique({ where: { userId: id } });
-      if (!hasMerchant && !data.merchantName?.trim()) {
-        throw new BadRequestException(
-          'merchantName is required when assigning role MERCHANT without an existing merchant profile',
-        );
-      }
-    }
-
     const updateData: Record<string, unknown> = {};
     if (data.email !== undefined) updateData.email = data.email;
-    if (data.role !== undefined) updateData.role = data.role;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
 
     const updated = await this.prisma.user.update({
