@@ -425,10 +425,11 @@ export class PayoutService {
 
     const trader = await this.prisma.traderProfile.findUnique({
       where: { id: traderId },
+      include: { user: { select: { isActive: true } } },
     });
-    if (!trader) throw new NotFoundException('Trader profile not found');
+    if (!trader?.user) throw new NotFoundException('Trader profile not found');
 
-    if (!trader.isActive || !trader.acceptingOrders) {
+    if (!trader.user.isActive || !trader.isActive || !trader.acceptingOrders) {
       return {
         orders: [],
         total: 0,
@@ -481,10 +482,14 @@ export class PayoutService {
 
     const profile = await this.prisma.payoutTraderProfile.findUnique({
       where: { id: payoutTraderId },
-      include: { country: { include: { currency: true } } },
+      include: {
+        country: { include: { currency: true } },
+        user: { select: { isActive: true } },
+      },
     });
     if (!profile) throw new NotFoundException('Pay-Out specialist profile not found');
-    if (!profile.isActive) {
+    if (!profile.user) throw new NotFoundException('Pay-Out specialist profile not found');
+    if (!profile.isActive || !profile.user.isActive) {
       return { orders: [], total: 0, page, limit };
     }
 
@@ -524,8 +529,15 @@ export class PayoutService {
   async traderTakeFromPool(traderId: string, orderId: string): Promise<PayOutOrderApiDto> {
     const trader = await this.prisma.traderProfile.findUnique({
       where: { id: traderId },
+      include: { user: { select: { isActive: true } } },
     });
-    if (!trader) throw new NotFoundException('Trader profile not found');
+    if (!trader?.user) throw new NotFoundException('Trader profile not found');
+
+    if (!trader.user.isActive) {
+      throw new ForbiddenException(
+        'This account has been deactivated. Please contact support.',
+      );
+    }
 
     if (!trader.isActive || !trader.acceptingOrders) {
       throw new ForbiddenException(
@@ -593,9 +605,20 @@ export class PayoutService {
   ): Promise<PayOutOrderApiDto> {
     const profile = await this.prisma.payoutTraderProfile.findUnique({
       where: { id: payoutTraderId },
-      include: { country: { include: { currency: true } } },
+      include: {
+        country: { include: { currency: true } },
+        user: { select: { isActive: true } },
+      },
     });
-    if (!profile) throw new NotFoundException('Pay-Out specialist profile not found');
+    if (!profile?.user) {
+      throw new NotFoundException('Pay-Out specialist profile not found');
+    }
+
+    if (!profile.user.isActive) {
+      throw new ForbiddenException(
+        'This account has been deactivated. Please contact support.',
+      );
+    }
 
     if (!profile.isActive) {
       throw new ForbiddenException('Your specialist account is inactive.');
@@ -668,9 +691,15 @@ export class PayoutService {
     if (dto.traderId) {
       const targetTrader = await this.prisma.traderProfile.findUnique({
         where: { id: dto.traderId },
+        include: { user: { select: { isActive: true } } },
       });
-      if (!targetTrader) {
+      if (!targetTrader?.user) {
         throw new NotFoundException('Trader profile not found');
+      }
+      if (!targetTrader.user.isActive) {
+        throw new BadRequestException(
+          'This trader cannot receive assignments (user account deactivated)',
+        );
       }
       if (!targetTrader.isActive || !targetTrader.acceptingOrders) {
         throw new BadRequestException(
@@ -681,9 +710,15 @@ export class PayoutService {
     } else if (dto.payoutTraderId) {
       const spec = await this.prisma.payoutTraderProfile.findUnique({
         where: { id: dto.payoutTraderId },
+        include: { user: { select: { isActive: true } } },
       });
-      if (!spec) {
+      if (!spec?.user) {
         throw new NotFoundException('Pay-Out specialist profile not found');
+      }
+      if (!spec.user.isActive) {
+        throw new BadRequestException(
+          'This Pay-Out specialist cannot receive assignments (user account deactivated)',
+        );
       }
       if (!spec.isActive) {
         throw new BadRequestException('This Pay-Out specialist account is inactive');
@@ -1447,6 +1482,62 @@ export class PayoutService {
     this.emitPayoutOrderRealtime(updated, false);
 
     return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+  }
+
+  /**
+   * Return standard-pool Pay-Out orders assigned to this trader to the unassigned PENDING queue.
+   *
+   * **Risk:** Emits PENDING webhooks; merchant debit from order creation is unchanged.
+   */
+  async releaseStandardTraderAssignmentsForDeactivatedProfile(
+    traderProfileId: string,
+  ): Promise<number> {
+    const orders = await this.prisma.payoutOrder.findMany({
+      where: {
+        traderId: traderProfileId,
+        poolType: PayoutPoolType.STANDARD,
+        status: { in: [PayoutStatus.NEW, PayoutStatus.PROCESSING] },
+      },
+    });
+
+    let released = 0;
+    for (const order of orders) {
+      if (
+        !isValidPayOutTransition(order.status as PayOutOrderStatus, PayOutOrderStatus.PENDING)
+      ) {
+        this.logger.warn(
+          `Pay-Out ${order.id}: skip return-to-pool on trader deactivation (${order.status} -> PENDING)`,
+        );
+        continue;
+      }
+
+      const updated = await this.prisma.$transaction(async (tx) => {
+        const result = await tx.payoutOrder.update({
+          where: { id: order.id },
+          data: {
+            status: 'PENDING',
+            traderId: null,
+            startAt: null,
+            endAt: null,
+            poolAssignedAt: new Date(),
+          },
+        });
+
+        await this.createPayoutWebhookEntry(tx, result);
+        return result;
+      });
+
+      this.emitPayoutOrderRealtime(updated, true);
+      released += 1;
+    }
+
+    if (released > 0) {
+      this.logger.log(
+        `Pay-Out: returned ${released} standard-pool order(s) to PENDING for deactivated trader ${traderProfileId}`,
+      );
+    }
+
+    return released;
   }
 
   async specialistStartProcessing(

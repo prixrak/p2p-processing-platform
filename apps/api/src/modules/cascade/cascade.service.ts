@@ -163,6 +163,8 @@ export class CascadeService {
       INNER JOIN trader_profiles tp ON tp.id = r.trader_id
         AND tp.is_active = true
         AND tp.accepting_orders = true
+      INNER JOIN users u ON u.id = tp.user_id
+        AND u.is_active = true
       INNER JOIN currencies rc ON rc.id = r.currency_id AND rc.code = ${currency}
       WHERE r.is_active = true
         AND r.used_ops < r.limit_total_ops
@@ -262,6 +264,8 @@ export class CascadeService {
       INNER JOIN trader_profiles tp ON tp.id = r.trader_id
         AND tp.is_active = true
         AND tp.accepting_orders = true
+      INNER JOIN users u ON u.id = tp.user_id
+        AND u.is_active = true
       INNER JOIN currencies rc ON rc.id = r.currency_id AND rc.code = ${currency}
       WHERE r.is_active = true
         AND r.used_ops < r.limit_total_ops
@@ -622,6 +626,8 @@ export class CascadeService {
         INNER JOIN trader_profiles tp ON tp.id = r.trader_id
           AND tp.is_active = true
           AND tp.accepting_orders = true
+        INNER JOIN users u ON u.id = tp.user_id
+          AND u.is_active = true
         INNER JOIN currencies rc ON rc.id = r.currency_id AND rc.code = ${currency}
         WHERE r.is_active = true
           AND r.used_ops < r.limit_total_ops

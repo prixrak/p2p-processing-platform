@@ -13,6 +13,7 @@ import { hashPassword } from '../../common/utils/password';
 import { TraderWalletsService } from '../trader-wallets/trader-wallets.service';
 import type { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { CurrenciesService } from '../currencies/currencies.service';
+import { TradersService } from '../traders/traders.service';
 
 const USER_SELECT = {
   id: true,
@@ -55,6 +56,7 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly traderWallets: TraderWalletsService,
     private readonly currencies: CurrenciesService,
+    private readonly tradersService: TradersService,
   ) {}
 
   /** Roles hidden from the directory for the viewer (hierarchy / peer isolation). */
@@ -423,6 +425,16 @@ export class UsersService {
       data: { isActive: false },
       select: USER_SELECT,
     });
+
+    if (user.role === UserRole.TRADER) {
+      const profile = await this.prisma.traderProfile.findUnique({
+        where: { userId: id },
+        select: { id: true, isActive: true },
+      });
+      if (profile?.isActive) {
+        await this.tradersService.deactivate(profile.id);
+      }
+    }
 
     this.logger.log(`User ${id} deactivated`);
     return user;

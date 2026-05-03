@@ -8,6 +8,8 @@ import { WalletDepositsModule } from '../wallet-deposits/wallet-deposits.module'
 import { CascadeModule } from '../cascade/cascade.module';
 import { PlatformSettingsModule } from '../platform-settings/platform-settings.module';
 import { CurrenciesModule } from '../currencies/currencies.module';
+import { PayinModule } from '../payin/payin.module';
+import { PayoutModule } from '../payout/payout.module';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { CurrenciesModule } from '../currencies/currencies.module';
     CascadeModule,
     PlatformSettingsModule,
     CurrenciesModule,
+    PayinModule,
+    PayoutModule,
   ],
   controllers: [TradersController, TraderDashboardController],
   providers: [TradersService],

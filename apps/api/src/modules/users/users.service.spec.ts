@@ -53,8 +53,14 @@ describe('UsersService', () => {
         .fn()
         .mockResolvedValue('00000000-0000-0000-0000-00000000c001'),
     };
-    const service = new UsersService(prisma as any, traderWallets as any, currencies as any);
-    return { service, prisma, traderWallets, currencies };
+    const tradersService = { deactivate: jest.fn().mockResolvedValue({}) };
+    const service = new UsersService(
+      prisma as any,
+      traderWallets as any,
+      currencies as any,
+      tradersService as any,
+    );
+    return { service, prisma, traderWallets, currencies, tradersService };
   }
 
   describe('findAll', () => {
@@ -169,6 +175,44 @@ describe('UsersService', () => {
         data: { isActive: false },
         select: expect.any(Object),
       });
+    });
+
+    it('deactivates trader profile when trader user is deactivated and profile still active', async () => {
+      const { service, prisma, tradersService } = createService();
+      const traderUser = {
+        id: userId,
+        email: 'trader@example.com',
+        role: UserRole.TRADER,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      prisma.user.findUnique.mockResolvedValue(traderUser);
+      prisma.user.update.mockResolvedValue({ ...traderUser, isActive: false });
+      prisma.traderProfile.findUnique.mockResolvedValue({ id: 'tp-1', isActive: true });
+
+      await service.deactivate(userId);
+
+      expect(tradersService.deactivate).toHaveBeenCalledWith('tp-1');
+    });
+
+    it('does not call traders deactivate when trader profile is already inactive', async () => {
+      const { service, prisma, tradersService } = createService();
+      const traderUser = {
+        id: userId,
+        email: 'trader@example.com',
+        role: UserRole.TRADER,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      prisma.user.findUnique.mockResolvedValue(traderUser);
+      prisma.user.update.mockResolvedValue({ ...traderUser, isActive: false });
+      prisma.traderProfile.findUnique.mockResolvedValue({ id: 'tp-1', isActive: false });
+
+      await service.deactivate(userId);
+
+      expect(tradersService.deactivate).not.toHaveBeenCalled();
     });
   });
 

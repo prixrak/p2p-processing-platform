@@ -1053,6 +1053,67 @@ export class PayinService {
   }
 
   /**
+   * Cancel Pay-In assignments that still reference a disabled trader profile.
+   * Mirrors trader cancel: requisite usage is released and merchant webhooks carry CANCELED.
+   *
+   * **Risk:** Cancels merchant-visible orders currently in trader current buckets (PENDING/NEW/VERIFIED).
+   */
+  async cancelOpenAssignmentsForDeactivatedTrader(traderProfileId: string): Promise<number> {
+    const statuses: PayInOrderStatus[] = [
+      PayInOrderStatus.PENDING,
+      PayInOrderStatus.NEW,
+      PayInOrderStatus.VERIFIED,
+    ];
+    const orders = await this.prisma.payinOrder.findMany({
+      where: { traderId: traderProfileId, status: { in: statuses } },
+      include: ORDER_INCLUDE,
+    });
+    if (orders.length === 0) return 0;
+
+    const canceled: OrderWithRelations[] = [];
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const order of orders) {
+        if (!isValidPayInTransition(order.status as PayInOrderStatus, PayInOrderStatus.CANCELED)) {
+          this.logger.warn(
+            `Pay-In ${order.id}: skip cancel on trader deactivation (invalid transition ${order.status} -> CANCELED)`,
+          );
+          continue;
+        }
+
+        const result = await tx.payinOrder.update({
+          where: { id: order.id },
+          data: { status: 'CANCELED' },
+          include: ORDER_INCLUDE,
+        });
+
+        await this.createPayinWebhookEntry(tx, result);
+        canceled.push(result);
+      }
+    });
+
+    const canceledIds = new Set(canceled.map((o) => o.id));
+    for (const snapshot of orders) {
+      if (!canceledIds.has(snapshot.id)) continue;
+      if (snapshot.requisiteId) {
+        await this.requisitesService.releaseUsage(snapshot.requisiteId, Number(snapshot.amount));
+      }
+      const row = canceled.find((c) => c.id === snapshot.id)!;
+      this.emitPayinOrderRealtime({
+        id: row.id,
+        traderId: row.traderId,
+        merchantId: row.merchantId,
+        status: row.status as PayInOrderStatus,
+      });
+    }
+
+    this.logger.log(
+      `Pay-In: canceled ${canceled.length} open order(s) for deactivated trader profile ${traderProfileId}`,
+    );
+    return canceled.length;
+  }
+
+  /**
    * Pay-In creation transaction timing (includes cascade assignment + inserts). Use `event`:
    * `payin_create_order_tx_ms`, `payin_order_no_requisite`.
    */

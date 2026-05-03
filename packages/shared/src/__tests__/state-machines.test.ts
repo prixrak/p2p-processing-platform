@@ -158,6 +158,7 @@ describe('isValidPayOutTransition', () => {
     expect(isValidPayOutTransition(PayOutOrderStatus.NEW, PayOutOrderStatus.PROCESSING)).toBe(
       true,
     );
+    expect(isValidPayOutTransition(PayOutOrderStatus.NEW, PayOutOrderStatus.PENDING)).toBe(true);
     expect(
       isValidPayOutTransition(PayOutOrderStatus.PROCESSING, PayOutOrderStatus.COMPLETED),
     ).toBe(true);

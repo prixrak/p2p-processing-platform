@@ -30,7 +30,8 @@ export const PAYOUT_TRANSITIONS: Record<PayOutOrderStatus, PayOutOrderStatus[]> 
     PayOutOrderStatus.UPLOAD_FAILED,
     PayOutOrderStatus.PROCESSING,
   ],
-  [PayOutOrderStatus.NEW]: [PayOutOrderStatus.PROCESSING],
+  // NEW → PENDING: system returns an assigned pool-A order to the shared queue (e.g. trader profile disabled).
+  [PayOutOrderStatus.NEW]: [PayOutOrderStatus.PROCESSING, PayOutOrderStatus.PENDING],
   // PENDING: specialist “fail” can return a pool B order to the shared queue (config-driven).
   [PayOutOrderStatus.PROCESSING]: [
     PayOutOrderStatus.COMPLETED,

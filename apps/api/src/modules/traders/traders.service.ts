@@ -16,6 +16,8 @@ import type { UpdateTraderCascadeDto } from './dto/update-trader-cascade.dto';
 import { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
 import { PlatformSettingsService, PLATFORM_SETTING_TRADER_PAYIN_LOW_CAPACITY_ALERT_THRESHOLD_USDT } from '../platform-settings/platform-settings.service';
 import { CurrenciesService } from '../currencies/currencies.service';
+import { PayinService } from '../payin/payin.service';
+import { PayoutService } from '../payout/payout.service';
 import {
   CASCADE_TRAFFIC_PERCENT_ASSIGNMENT_NOTE,
   CASCADE_TRAFFIC_PERCENT_POLICY_TEXT,
@@ -86,6 +88,8 @@ export class TradersService {
     private readonly cascadeCoverageCache: CascadeRedisStateService,
     private readonly platformSettings: PlatformSettingsService,
     private readonly currencies: CurrenciesService,
+    private readonly payinService: PayinService,
+    private readonly payoutService: PayoutService,
   ) {}
 
   /**
@@ -667,6 +671,15 @@ export class TradersService {
         });
       }
     });
+
+    const payinCanceled = await this.payinService.cancelOpenAssignmentsForDeactivatedTrader(traderId);
+    const payoutReleased =
+      await this.payoutService.releaseStandardTraderAssignmentsForDeactivatedProfile(traderId);
+    if (payinCanceled > 0 || payoutReleased > 0) {
+      this.logger.warn(
+        `Trader ${traderId} deactivation: canceled ${payinCanceled} pay-in(s), returned ${payoutReleased} payout(s) to pool`,
+      );
+    }
 
     await this.cascadeCoverageCache.invalidateAll();
 
