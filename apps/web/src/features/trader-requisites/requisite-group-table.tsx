@@ -66,9 +66,12 @@ export function TraderRequisitesGroupTable({
           amountRemaining: Math.max(0, num(r.limitTotalAmount) - num(r.usedAmount)),
         };
         const lim = num(r.limitTotalAmount);
+        const usedRaw = Math.max(0, num(r.usedAmount));
+        const usedAmt =
+          Number.isFinite(lim) && lim > 0 ? Math.min(usedRaw, lim) : usedRaw;
         return (
           <div className="space-y-1 text-[11px] leading-tight">
-            <ProgressBar label="" value={num(r.usedAmount)} max={lim || 1} />
+            <ProgressBar label="" value={usedAmt} max={lim || 1} />
             <div className="text-text-muted">
               Processing:{' '}
               <span className="tabular-nums text-text-secondary">{compactAmount(v.amountInProcessing)}</span>
@@ -125,9 +128,11 @@ export function TraderRequisitesGroupTable({
       key: 'ops',
       header: 'Operation limit',
       className: 'min-w-[100px]',
-      render: (r: RequisiteApiRow) => (
-        <ProgressBar label="" value={r.usedOps} max={r.limitTotalOps || 1} />
-      ),
+      render: (r: RequisiteApiRow) => {
+        const limOps = Math.max(1, r.limitTotalOps);
+        const usedOps = Math.max(0, Math.min(r.usedOps, limOps));
+        return <ProgressBar label="" value={usedOps} max={limOps} />;
+      },
     },
     {
       key: 'active',

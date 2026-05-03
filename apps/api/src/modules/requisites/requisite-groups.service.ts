@@ -10,6 +10,24 @@ import { CreateRequisiteGroupDto } from './dto/create-requisite-group.dto';
 import { UpdateRequisiteGroupDto } from './dto/update-requisite-group.dto';
 import { CurrenciesService } from '../currencies/currencies.service';
 
+/** Clamp stored totals for API/UI so negative duplicates never leak downstream. */
+function clampUsedTotals(
+  usedAmountRaw: unknown,
+  limitAmountRaw: unknown,
+  usedOpsRaw: number,
+  limitOpsRaw: number,
+): { usedAmount: number; usedOps: number } {
+  const limitAmt = Number(limitAmountRaw);
+  const usedAmt = Math.max(0, Number(usedAmountRaw));
+  const usedOps = Math.max(0, Number(usedOpsRaw));
+  const limitOps = Number(limitOpsRaw);
+  const usedAmount =
+    Number.isFinite(limitAmt) && limitAmt > 0 ? Math.min(usedAmt, limitAmt) : usedAmt;
+  const clampedOps =
+    Number.isFinite(limitOps) && limitOps > 0 ? Math.min(usedOps, limitOps) : usedOps;
+  return { usedAmount, usedOps: clampedOps };
+}
+
 @Injectable()
 export class RequisiteGroupsService {
   constructor(
@@ -69,17 +87,27 @@ export class RequisiteGroupsService {
 
     return groups.map((g) => ({
       ...g,
-      requisites: g.requisites.map((r) => ({
-        ...r,
-        volume: volumeMap.get(r.id) ?? {
-          amountInProcessing: 0,
-          amountCompleted: 0,
-          amountRemaining: Math.max(
-            0,
-            Number(r.limitTotalAmount) - Number(r.usedAmount),
-          ),
-        },
-      })),
+      requisites: g.requisites.map((r) => {
+        const { usedAmount, usedOps } = clampUsedTotals(
+          r.usedAmount,
+          r.limitTotalAmount,
+          r.usedOps,
+          r.limitTotalOps,
+        );
+        return {
+          ...r,
+          usedAmount,
+          usedOps,
+          volume: volumeMap.get(r.id) ?? {
+            amountInProcessing: 0,
+            amountCompleted: 0,
+            amountRemaining: Math.max(
+              0,
+              Number(r.limitTotalAmount) - usedAmount,
+            ),
+          },
+        };
+      }),
     }));
   }
 
@@ -108,14 +136,28 @@ export class RequisiteGroupsService {
 
     const requisites = await this.prisma.requisite.findMany({
       where: { id: { in: requisiteIds } },
-      select: { id: true, limitTotalAmount: true, usedAmount: true },
+      select: {
+        id: true,
+        limitTotalAmount: true,
+        usedAmount: true,
+        limitTotalOps: true,
+        usedOps: true,
+      },
     });
 
     const limitById = new Map(
       requisites.map((r) => [r.id, Number(r.limitTotalAmount)] as const),
     );
     const usedById = new Map(
-      requisites.map((r) => [r.id, Number(r.usedAmount)] as const),
+      requisites.map((r) => {
+        const { usedAmount } = clampUsedTotals(
+          r.usedAmount,
+          r.limitTotalAmount,
+          r.usedOps,
+          r.limitTotalOps,
+        );
+        return [r.id, usedAmount] as const;
+      }),
     );
 
     const [inFlight, paid] = await Promise.all([

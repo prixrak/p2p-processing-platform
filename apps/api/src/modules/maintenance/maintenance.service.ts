@@ -2,12 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../config/prisma.service';
 import { WebhookMethod } from '@p2p/shared';
+import { RequisitesService } from '../requisites/requisites.service';
 
 @Injectable()
 export class MaintenanceService {
   private readonly logger = new Logger(MaintenanceService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly requisites: RequisitesService,
+  ) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
   async handleExpiredOrders() {
@@ -26,7 +30,7 @@ export class MaintenanceService {
     await this.prisma.$transaction(async (tx) => {
       await tx.payinOrder.updateMany({
         where: { id: { in: expiredOrders.map((o) => o.id) } },
-        data: { status: 'CANCELED' },
+        data: { status: 'CANCELED', completedAt: now },
       });
 
       const webhookEntries = expiredOrders
@@ -49,16 +53,14 @@ export class MaintenanceService {
         }
       }
 
-      // Release requisite usage for canceled orders
+      // Release requisite usage for canceled orders (clamped; see RequisitesService)
       for (const o of expiredOrders) {
         if (o.requisiteId) {
-          await tx.requisite.update({
-            where: { id: o.requisiteId },
-            data: {
-              usedAmount: { decrement: Number(o.amount) },
-              usedOps: { decrement: 1 },
-            },
-          });
+          await this.requisites.releaseUsageInTransaction(
+            tx,
+            o.requisiteId,
+            Number(o.amount),
+          );
         }
       }
     });

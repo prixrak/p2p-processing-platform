@@ -112,6 +112,12 @@ export default function TraderAnalyticsPage() {
   const busy = isLoading || isFetching;
   const displayCurrency = data?.currency ?? currency;
 
+  const seriesNewestFirst = useMemo(() => {
+    const s = data?.series;
+    if (!s?.length) return s ?? [];
+    return [...s].sort((a, b) => b.periodStart.localeCompare(a.periodStart));
+  }, [data]);
+
   const granularityButtons: { id: AnalyticsGranularity; label: string }[] = [
     { id: 'hour', label: 'Hour' },
     { id: 'day', label: 'Day' },
@@ -261,7 +267,7 @@ export default function TraderAnalyticsPage() {
                   </td>
                 </tr>
               ) : (
-                data.series.map((row) => (
+                seriesNewestFirst.map((row) => (
                   <tr key={row.periodStart} className="border-b border-border-primary/60">
                     <td className="py-2 pr-3 text-text-primary whitespace-nowrap">
                       {formatUtcBucketLabel(row.periodStart, data.granularity)}

@@ -534,7 +534,7 @@ export class TradersService {
     }
 
     const enumerated = enumerateBucketStartsUtc(window.from, window.to, granularity);
-    const series = enumerated.map((b) => {
+    const series = [...enumerated].reverse().map((b) => {
       const ms = b.getTime();
       const cell = byBucket.get(ms) ?? emptyCell();
       const profitAmount = cell.payInProfit + cell.payoutProfit;

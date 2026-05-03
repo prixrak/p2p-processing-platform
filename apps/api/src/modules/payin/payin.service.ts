@@ -74,6 +74,7 @@ import {
   type OrderWithRelations,
   payinOrderToOrderDto,
 } from './payin-order.mapper';
+import { payinCompletedAtForHistoryStatus } from './payin-history-completion';
 
 @Injectable()
 export class PayinService {
@@ -197,6 +198,7 @@ export class PayinService {
               rateTraderIn: undefined,
               rateAdminIn: raInNr ?? undefined,
               status: 'NO_REQUISITE',
+              ...payinCompletedAtForHistoryStatus(PayInOrderStatus.NO_REQUISITE),
               userFullName: dto.user_full_name,
               userIdExternal: dto.user_id,
               callbackUrl: dto.callback_url,
@@ -319,18 +321,19 @@ export class PayinService {
   async updateOrder(merchantId: string, dto: UpdateOrderDto): Promise<OrderDto> {
     const order = await this.resolveOrder(merchantId, dto.id, dto.request_id);
 
-    if (!dto.status) {
+    const nextStatus = dto.status;
+    if (!nextStatus) {
       throw new BadRequestException('Status is required');
     }
 
     const allowedMerchantStatuses = [PayInOrderStatus.VERIFIED, PayInOrderStatus.CANCELED];
-    if (!allowedMerchantStatuses.includes(dto.status)) {
+    if (!allowedMerchantStatuses.includes(nextStatus)) {
       throw new BadRequestException(`Merchants can only set VERIFIED or CANCELED`);
     }
 
-    if (!isValidPayInTransition(order.status as PayInOrderStatus, dto.status)) {
+    if (!isValidPayInTransition(order.status as PayInOrderStatus, nextStatus)) {
       throw new BadRequestException(
-        `Invalid status transition: ${order.status} -> ${dto.status}`,
+        `Invalid status transition: ${order.status} -> ${nextStatus}`,
       );
     }
 
@@ -338,8 +341,9 @@ export class PayinService {
       const result = await tx.payinOrder.update({
         where: { id: order.id },
         data: {
-          status: dto.status,
-          ...(dto.status === PayInOrderStatus.VERIFIED ? { confirmedAt: new Date() } : {}),
+          status: nextStatus,
+          ...(nextStatus === PayInOrderStatus.VERIFIED ? { confirmedAt: new Date() } : {}),
+          ...payinCompletedAtForHistoryStatus(nextStatus),
         },
         include: ORDER_INCLUDE,
       });
@@ -349,7 +353,7 @@ export class PayinService {
       return result;
     });
 
-    if (dto.status === PayInOrderStatus.CANCELED && order.requisiteId) {
+    if (nextStatus === PayInOrderStatus.CANCELED && order.requisiteId) {
       await this.requisitesService.releaseUsage(order.requisiteId, Number(order.amount));
     }
 
@@ -392,6 +396,7 @@ export class PayinService {
         data: {
           status,
           ...(status === PayInOrderStatus.VERIFIED ? { confirmedAt: new Date() } : {}),
+          ...payinCompletedAtForHistoryStatus(status),
         },
         include: ORDER_INCLUDE,
       });
@@ -564,6 +569,7 @@ export class PayinService {
               rateTraderIn: undefined,
               rateAdminIn: raInNr ?? undefined,
               status: 'NO_REQUISITE',
+              ...payinCompletedAtForHistoryStatus(PayInOrderStatus.NO_REQUISITE),
               userFullName: dto.user_full_name,
               userIdExternal: dto.user_id,
               callbackUrl: dto.callback_url,
@@ -734,7 +740,10 @@ export class PayinService {
 
       const result = await tx.payinOrder.update({
         where: { id: order.id },
-        data: { status: 'APPEAL' },
+        data: {
+          status: 'APPEAL',
+          ...payinCompletedAtForHistoryStatus(PayInOrderStatus.APPEAL),
+        },
         include: ORDER_INCLUDE,
       });
 
@@ -895,7 +904,10 @@ export class PayinService {
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.payinOrder.update({
         where: { id: order.id },
-        data: { status: targetStatus },
+        data: {
+          status: targetStatus,
+          ...payinCompletedAtForHistoryStatus(targetStatus),
+        },
         include: ORDER_INCLUDE,
       });
 
@@ -961,7 +973,10 @@ export class PayinService {
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.payinOrder.update({
         where: { id: order.id },
-        data: { status: targetStatus as never },
+        data: {
+          status: targetStatus as never,
+          ...payinCompletedAtForHistoryStatus(targetStatus),
+        },
       });
 
       if (
@@ -1029,7 +1044,10 @@ export class PayinService {
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.payinOrder.update({
         where: { id: order.id },
-        data: { status: 'CANCELED' },
+        data: {
+          status: 'CANCELED',
+          ...payinCompletedAtForHistoryStatus(PayInOrderStatus.CANCELED),
+        },
         include: ORDER_INCLUDE,
       });
 
@@ -1083,7 +1101,10 @@ export class PayinService {
 
         const result = await tx.payinOrder.update({
           where: { id: order.id },
-          data: { status: 'CANCELED' },
+          data: {
+            status: 'CANCELED',
+            ...payinCompletedAtForHistoryStatus(PayInOrderStatus.CANCELED),
+          },
           include: ORDER_INCLUDE,
         });
 

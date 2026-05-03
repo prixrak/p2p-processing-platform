@@ -106,17 +106,50 @@ export class RequisitesService {
   /**
    * Reverse the usage counters when an order is canceled.
    * Ensures the requisite capacity is freed for future orders.
+   * Values are clamped at zero — duplicate releases must not flip counters negative.
    */
   async releaseUsage(requisiteId: string, amount: number): Promise<void> {
-    const updated = await this.prisma.requisite.update({
+    await this.prisma.$transaction(async (tx) => {
+      await this.releaseUsageInTransaction(tx, requisiteId, amount);
+    });
+  }
+
+  /**
+   * Mirror of {@link releaseUsage} inside an existing transaction (e.g. maintenance jobs).
+   */
+  async releaseUsageInTransaction(
+    tx: Prisma.TransactionClient,
+    requisiteId: string,
+    amount: number,
+  ): Promise<void> {
+    const requisite = await tx.requisite.findUnique({
       where: { id: requisiteId },
-      data: {
-        usedAmount: { decrement: amount },
-        usedOps: { decrement: 1 },
-      },
       include: { currency: { select: { code: true } } },
     });
-    void this.cascadeCoverageCache.invalidateCurrency(updated.currency.code);
+    if (!requisite) {
+      throw new NotFoundException(`Requisite ${requisiteId} not found`);
+    }
+
+    const rawNextOps = requisite.usedOps - 1;
+    const rawNextAmt = Number(requisite.usedAmount) - amount;
+    const nextOps = Math.max(0, rawNextOps);
+    const nextAmt = Math.max(0, rawNextAmt);
+
+    if (nextOps !== rawNextOps || nextAmt !== rawNextAmt) {
+      this.logger.warn(
+        `Requisite ${requisiteId}: usage release clamped at zero (usedOps=${requisite.usedOps}→${nextOps}, usedAmount=${requisite.usedAmount}→${nextAmt}, releaseAmount=${amount})`,
+      );
+    }
+
+    await tx.requisite.update({
+      where: { id: requisiteId },
+      data: {
+        usedOps: nextOps,
+        usedAmount: nextAmt,
+      },
+    });
+
+    void this.cascadeCoverageCache.invalidateCurrency(requisite.currency.code);
     this.logger.log(
       `Requisite ${requisiteId} usage released: amount=${amount}, ops=1`,
     );

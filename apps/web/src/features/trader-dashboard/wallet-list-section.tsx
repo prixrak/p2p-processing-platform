@@ -10,12 +10,19 @@ import { traderKeys } from '@/lib/query-keys';
 import { WALLET_HIGHLIGHT_PRESETS } from '@/lib/surface-ring';
 import { cn, formatCurrency } from '@/lib/utils';
 
-/** GET /api/traders/me/balances — Prisma `TraderBalance` rows */
+/** GET /api/traders/me/balances — Prisma `TraderBalance` rows (nested currency from include) */
 interface TraderMeBalanceRow {
   id: string;
   traderId: string;
-  currency: string;
+  currency: string | { code: string };
   amount: string | number;
+}
+
+function balanceCurrencyCode(row: TraderMeBalanceRow): string {
+  const c = row.currency;
+  if (typeof c === 'string') return c.trim();
+  if (c && typeof c === 'object' && typeof c.code === 'string') return c.code.trim();
+  return '';
 }
 
 interface UsdtWalletSummary {
@@ -60,7 +67,9 @@ export function TraderDashboardWalletListSection() {
 
   const wallets = useMemo(() => {
     const rows = [...(balances ?? [])];
-    const upperCodes = new Set(rows.map((r) => r.currency.toUpperCase()));
+    const upperCodes = new Set(
+      rows.map((r) => balanceCurrencyCode(r).toUpperCase()).filter(Boolean),
+    );
     if (usdtWallet && !upperCodes.has('USDT')) {
       rows.push({
         id: 'synthetic-usdt',
@@ -71,17 +80,18 @@ export function TraderDashboardWalletListSection() {
     }
     return rows
       .map((row) => {
-        const currency = row.currency.toUpperCase();
+        const currency = balanceCurrencyCode(row).toUpperCase();
         const amount =
           currency === 'USDT' && usdtWallet ? usdtWallet.balance_usdt : parseAmount(row.amount);
         return {
           currency,
           amount,
-          isCrypto: isCryptoCurrency(currency),
+          isCrypto: currency.length > 0 && isCryptoCurrency(currency),
           overdraftUsd:
             currency === 'USDT' && usdtWallet ? usdtWallet.overdraft_limit_usdt : undefined,
         };
       })
+      .filter((w) => w.currency.length > 0)
       .sort((a, b) => {
         if (a.isCrypto !== b.isCrypto) return a.isCrypto ? 1 : -1;
         return a.currency.localeCompare(b.currency);

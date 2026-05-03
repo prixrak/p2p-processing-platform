@@ -13,6 +13,8 @@ describe('payinOrderToOrderDto', () => {
       requestId: 'req-1',
       createdAt: baseDate,
       confirmedAt: null,
+      completedAt: null,
+      updatedAt: baseDate,
       autocloseAt: baseDate,
       currency: 'UAH',
       amount: 100 as any,
@@ -72,5 +74,35 @@ describe('payinOrderToOrderDto', () => {
     const dto = payinOrderToOrderDto(minimalOrder({ requisite: null as any }));
     expect(dto.payment_detail).toBeNull();
     expect(dto.requisite_number).toBe('');
+  });
+
+  it('maps completed_at from completedAt when present', () => {
+    const done = new Date('2026-01-15T14:30:00.000Z');
+    const dto = payinOrderToOrderDto(
+      minimalOrder({
+        status: PayInOrderStatus.PAID,
+        completedAt: done,
+      }),
+    );
+    expect(dto.completed_at).toBe(Math.floor(done.getTime() / 1000));
+  });
+
+  it('falls back completed_at to updatedAt for legacy history rows without completedAt', () => {
+    const upd = new Date('2026-01-15T15:00:00.000Z');
+    const dto = payinOrderToOrderDto(
+      minimalOrder({
+        status: PayInOrderStatus.CANCELED,
+        completedAt: null,
+        updatedAt: upd,
+      }),
+    );
+    expect(dto.completed_at).toBe(Math.floor(upd.getTime() / 1000));
+  });
+
+  it('sets completed_at null for in-progress statuses without completedAt', () => {
+    const dto = payinOrderToOrderDto(
+      minimalOrder({ status: PayInOrderStatus.NEW, completedAt: null }),
+    );
+    expect(dto.completed_at).toBeNull();
   });
 });

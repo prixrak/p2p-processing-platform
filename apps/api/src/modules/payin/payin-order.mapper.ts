@@ -1,6 +1,19 @@
 import { Prisma } from '@prisma/client';
 import type { AppealDto, OrderDto, PayInOrderStatus } from '@p2p/shared';
-import { AppealStatus } from '@p2p/shared';
+import { AppealStatus, PAYIN_TRADER_HISTORY_STATUSES } from '@p2p/shared';
+
+const PAYIN_HISTORY_STATUS_SET = new Set<PayInOrderStatus>(PAYIN_TRADER_HISTORY_STATUSES);
+
+function payinCompletionUnixSeconds(order: OrderWithRelations): number | null {
+  if (order.completedAt) {
+    return Math.floor(order.completedAt.getTime() / 1000);
+  }
+  const st = order.status as PayInOrderStatus;
+  if (PAYIN_HISTORY_STATUS_SET.has(st)) {
+    return Math.floor(order.updatedAt.getTime() / 1000);
+  }
+  return null;
+}
 
 /** Prisma include shape reused for pay-in order reads that map to `OrderDto`. */
 export const ORDER_INCLUDE = {
@@ -21,6 +34,7 @@ export function payinOrderToOrderDto(order: OrderWithRelations): OrderDto {
     confirmed_at: order.confirmedAt
       ? Math.floor(order.confirmedAt.getTime() / 1000)
       : null,
+    completed_at: payinCompletionUnixSeconds(order),
     autoclose_at: order.autocloseAt
       ? Math.floor(order.autocloseAt.getTime() / 1000)
       : null,

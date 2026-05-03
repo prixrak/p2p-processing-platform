@@ -57,6 +57,8 @@ export interface OrderDto {
   request_id: string;
   created_at: number;
   confirmed_at: number | null;
+  /** Unix seconds when the order reached its current history outcome; legacy rows fall back to last update. */
+  completed_at: number | null;
   autoclose_at: number | null;
   /** ISO currency code (e.g. UAH), matches the order in DB */
   currency: string;

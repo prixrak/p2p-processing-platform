@@ -170,6 +170,26 @@ export function TraderPayInPage() {
     label: payinStatusLabel(s),
   }));
 
+  const timerOrCompletionColumn =
+    listTab === 'history'
+      ? {
+          key: 'completed_at',
+          header: 'Completion time',
+          render: (row: OrderDto) => (
+            <span className="text-text-muted text-sm whitespace-nowrap">
+              {row.completed_at != null ? formatDateFull(row.completed_at) : '—'}
+            </span>
+          ),
+        }
+      : {
+          key: 'timer',
+          header: 'Time to complete',
+          className: 'text-end font-mono tabular-nums',
+          render: (row: OrderDto) => (
+            <CountdownTimer autocloseAt={row.autoclose_at} createdAt={row.created_at} />
+          ),
+        };
+
   const columns = [
       {
         key: 'id',
@@ -186,14 +206,7 @@ export function TraderPayInPage() {
           </span>
         ),
       },
-      {
-        key: 'timer',
-        header: 'Time to complete',
-        className: 'text-end font-mono tabular-nums',
-        render: (row: OrderDto) => (
-          <CountdownTimer autocloseAt={row.autoclose_at} createdAt={row.created_at} />
-        ),
-      },
+      timerOrCompletionColumn,
       {
         key: 'direction',
         header: 'Direction',
