@@ -13,14 +13,11 @@ import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
 import { upsertSortedArrayCache } from '@/lib/query-cache-merge';
+import { CountrySelectWithCreate } from '@/features/countries/country-select-with-create';
+import { fetchCountryList, type CountryListItem } from '@/lib/country-queries';
 
-interface Country {
-  id: string;
-  name: string;
-  code: string;
-  currency: string;
-  _count?: { paymentMethods: number };
-}
+type PaymentMethodCountry = CountryListItem;
+
 interface PaymentMethod {
   id: string;
   name: string;
@@ -29,7 +26,7 @@ interface PaymentMethod {
   requisiteType: string;
   availability: string;
   isActive: boolean;
-  country: Country;
+  country: PaymentMethodCountry;
 }
 
 const FLOW_LABELS: Record<string, string> = { P2P: 'P2P', P2C: 'P2C', CRYPTO: 'Crypto' };
@@ -55,14 +52,15 @@ export default function PaymentMethodsPage() {
 
   const { data: countries } = useQuery({
     queryKey: ['owner', 'countries'],
-    queryFn: () => api.get<Country[]>(internalPaths.countries),
+    queryFn: () => fetchCountryList(),
+    enabled: showCreate,
   });
 
   const create = useMutation({
     mutationFn: (body: typeof form) =>
       api.post<PaymentMethod>(internalPaths.adminPaymentMethods, body),
     onSuccess: (row) => {
-      qc.setQueryData<Array<Country>>(['owner', 'countries'], (countryRows) =>
+      qc.setQueryData<Array<PaymentMethodCountry>>(['owner', 'countries'], (countryRows) =>
         countryRows?.map((c) =>
           c.id === row.country.id
             ? {
@@ -202,7 +200,7 @@ export default function PaymentMethodsPage() {
             create.mutate(form);
           }}
         >
-          <Select
+          <CountrySelectWithCreate
             label="Country"
             placeholder="Select country…"
             required

@@ -29,17 +29,21 @@ export function Table<T>({
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border-primary bg-bg-secondary">
-            {columns.map((col) => (
-              <th
-                key={col.key}
-                className={cn(
-                  'align-middle px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted',
-                  col.className,
-                )}
-              >
-                {col.header}
-              </th>
-            ))}
+            {columns.map((col) => {
+              const actionsColumn = col.key === 'actions';
+              return (
+                <th
+                  key={col.key}
+                  className={cn(
+                    'align-middle px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted',
+                    actionsColumn && 'text-end',
+                    col.className,
+                  )}
+                >
+                  {col.header}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody className="divide-y divide-border-primary">
@@ -68,13 +72,24 @@ export function Table<T>({
                   onRowClick && 'cursor-pointer hover:bg-bg-hover',
                 )}
               >
-                {columns.map((col) => (
-                  <td key={col.key} className={cn('align-middle px-4 py-3 text-text-primary', col.className)}>
-                    {col.render
-                      ? col.render(row)
-                      : String((row as Record<string, unknown>)[col.key] ?? '')}
-                  </td>
-                ))}
+                {columns.map((col) => {
+                  const actionsColumn = col.key === 'actions';
+                  return (
+                    <td
+                      key={col.key}
+                      className={cn(
+                        'align-middle px-4 py-3 text-text-primary',
+                        actionsColumn &&
+                          'text-end [&>*]:flex [&>*]:flex-wrap [&>*]:justify-end',
+                        col.className,
+                      )}
+                    >
+                      {col.render
+                        ? col.render(row)
+                        : String((row as Record<string, unknown>)[col.key] ?? '')}
+                    </td>
+                  );
+                })}
               </tr>
             ))
           )}

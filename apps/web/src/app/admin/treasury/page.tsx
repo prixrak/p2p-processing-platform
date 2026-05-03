@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { parseDecimalInput } from '@/lib/decimal-input';
 
 type ExchangeStatus = {
   primaryPairParserFiatPerUsdt: number | null;
@@ -127,7 +128,7 @@ export default function AdminTreasuryPage() {
   const withdrawalMut = useMutation({
     mutationFn: () =>
       api.post(internalPaths.adminPlatformWithdrawalsPost, {
-        amount_usdt: parseFloat(wAmount),
+        amount_usdt: parseDecimalInput(wAmount),
         cold_wallet_address: wAddress,
         network: wNetwork,
         tx_hash: wTx || undefined,
@@ -148,7 +149,7 @@ export default function AdminTreasuryPage() {
         trader_id: dTrader,
         tx_hash: dTx,
         network: dNetwork,
-        amount_usdt: parseFloat(dAmount),
+        amount_usdt: parseDecimalInput(dAmount),
         confirmations: parseInt(dConf, 10) || 0,
       }),
     onSuccess: () => {
@@ -350,6 +351,7 @@ export default function AdminTreasuryPage() {
             value={wAmount}
             onChange={(e) => setWAmount(e.target.value)}
             placeholder="0"
+            inputMode="decimal"
           />
           <Input
             label="Cold wallet address"
@@ -394,7 +396,7 @@ export default function AdminTreasuryPage() {
             onChange={(e) => setDTrader(e.target.value)}
           />
           <Input label="Tx hash" value={dTx} onChange={(e) => setDTx(e.target.value)} />
-          <Input label="Amount USDT" value={dAmount} onChange={(e) => setDAmount(e.target.value)} />
+          <Input label="Amount USDT" value={dAmount} onChange={(e) => setDAmount(e.target.value)} inputMode="decimal" />
           <Input label="Confirmations" value={dConf} onChange={(e) => setDConf(e.target.value)} />
           <div>
             <label className="text-xs text-text-muted block mb-1">Network</label>

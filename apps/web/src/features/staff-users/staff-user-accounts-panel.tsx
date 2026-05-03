@@ -20,6 +20,7 @@ import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Select } from '@/components/ui/select';
 import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +31,9 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { FormAlert } from '@/components/ui/form-alert';
 import { errorMessageFromUnknown } from '@/lib/error-message';
 import { fetchCurrencyList } from '@/lib/currency-queries';
+import { fetchCountryList } from '@/lib/country-queries';
+import { CountrySelectWithCreate } from '@/features/countries/country-select-with-create';
+import { parseDecimalInput } from '@/lib/decimal-input';
 import { ownerCreateUserFormSchema } from '@/lib/validation/schemas';
 import { fieldErrorsFromZod } from '@/lib/validation/zod-field-errors';
 import type { StaffRolePrefix } from '@/features/traders';
@@ -113,6 +117,14 @@ function directoryExcludedRolesForUi(prefix: StaffRolePrefix): Set<UserRole> {
 
 function canUpdateRole(role: UserRole): boolean {
   return roleOptions.some((o) => o.value === role);
+}
+
+async function fetchMerchantProfileForUser(userId: string): Promise<{ id: string; name: string } | null> {
+  try {
+    return await api.get<{ id: string; name: string }>(internalPaths.merchantByUserId(userId));
+  } catch {
+    return null;
+  }
 }
 
 function usersDirectoryUrl(
@@ -235,10 +247,8 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
 
   const { data: countries } = useQuery({
     queryKey: ['countries', 'active'],
-    queryFn: () =>
-      api.get<Array<{ id: string; name: string; code: string; currency: string }>>(
-        internalPaths.countriesQuery('activeOnly=true'),
-      ),
+    queryFn: () => fetchCountryList({ activeOnly: true }),
+    enabled: showCreate,
   });
 
   const { data: staffCurrencies = [] } = useQuery({
@@ -264,7 +274,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
   };
 
   const createUser = useMutation({
-    mutationFn: (payload: typeof form) => {
+    mutationFn: async (payload: typeof form) => {
       const body: Record<string, unknown> = {
         email: payload.email,
         password: payload.password,
@@ -281,9 +291,12 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
       if (payload.role === UserRole.MERCHANT) {
         body.merchantName = payload.merchantName.trim();
       }
-      return api.post<UsersApiRow>(internalPaths.users, body);
+      const row = await api.post<UsersApiRow>(internalPaths.users, body);
+      const merchantProfile =
+        payload.role === UserRole.MERCHANT ? await fetchMerchantProfileForUser(row.id) : null;
+      return { merchantProfile };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       invalidateDirectory();
       setShowCreate(false);
       setConfirmCreateOpen(false);
@@ -299,6 +312,12 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         referralCurrency: 'UAH',
         merchantName: '',
       });
+      if (result.merchantProfile) {
+        setDirectionsMerchant({
+          id: result.merchantProfile.id,
+          name: result.merchantProfile.name,
+        });
+      }
     },
   });
 
@@ -309,12 +328,23 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
   });
 
   const updateRole = useMutation({
-    mutationFn: (payload: { id: string; role: UserRole; merchantName?: string }) => {
+    mutationFn: async (payload: { id: string; role: UserRole; merchantName?: string }) => {
       const body: Record<string, unknown> = { role: payload.role };
       if (payload.merchantName?.trim()) body.merchantName = payload.merchantName.trim();
-      return api.patch<UsersApiRow>(internalPaths.user(payload.id), body);
+      await api.patch<UsersApiRow>(internalPaths.user(payload.id), body);
+      const merchantProfile =
+        payload.role === UserRole.MERCHANT ? await fetchMerchantProfileForUser(payload.id) : null;
+      return { merchantProfile };
     },
-    onSuccess: () => invalidateDirectory(),
+    onSuccess: (result) => {
+      invalidateDirectory();
+      if (result.merchantProfile) {
+        setDirectionsMerchant({
+          id: result.merchantProfile.id,
+          name: result.merchantProfile.name,
+        });
+      }
+    },
   });
 
   const traderToggle = useMutation({
@@ -336,11 +366,15 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
 
   const createLegacyMerchant = useMutation({
     mutationFn: (payload: { userId: string; name: string }) =>
-      api.post(internalPaths.merchants, { userId: payload.userId, name: payload.name.trim() }),
-    onSuccess: () => {
+      api.post<{ id: string; name: string }>(internalPaths.merchants, {
+        userId: payload.userId,
+        name: payload.name.trim(),
+      }),
+    onSuccess: (merchant) => {
       invalidateDirectory();
       setLegacyMerchantModal(null);
       setLegacyMerchantName('');
+      setDirectionsMerchant({ id: merchant.id, name: merchant.name });
     },
   });
 
@@ -593,7 +627,8 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
             ) : null}
             {form.role === UserRole.MERCHANT ? (
               <span className="block mt-2 text-text-muted">
-                Merchant profile «{form.merchantName.trim()}» will be created automatically.
+                Merchant profile «{form.merchantName.trim()}» will be created automatically. You can set Pay-In /
+                Pay-Out directions and commissions next.
               </span>
             ) : null}
           </>
@@ -632,6 +667,11 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                     className="!py-2"
                   />
                 </div>
+              ) : null}
+              {pendingRoleChange.to === UserRole.MERCHANT ? (
+                <span className="block mt-2 text-text-muted">
+                  After confirming, a directions & commissions editor opens for this merchant.
+                </span>
               ) : null}
             </>
           ) : null
@@ -813,12 +853,12 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
           )}
           {form.role === UserRole.PAYOUT_TRADER && (
             <>
-              <Select
+              <CountrySelectWithCreate
                 label="Geo / country"
                 options={
                   countries?.map((c) => ({
                     value: c.id,
-                    label: `${c.name} (${c.currency})`,
+                    label: `${c.name} (${c.code}) — ${c.currency}`,
                   })) ?? []
                 }
                 value={form.countryId}
@@ -826,28 +866,29 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                 placeholder="Select country"
                 error={createFieldErrors.countryId}
               />
-              <Input
+              <NumberInput
                 label="Payout rate (fraction, e.g. 0.01 = 1%)"
-                type="number"
-                step="0.0001"
+                variant="rate"
                 min={0}
-                value={String(form.payoutRate)}
-                onChange={(e) => setForm({ ...form, payoutRate: parseFloat(e.target.value) || 0 })}
+                value={form.payoutRate}
+                onChange={(e) =>
+                  setForm({ ...form, payoutRate: parseDecimalInput(e.target.value) || 0 })
+                }
                 error={createFieldErrors.payoutRate}
               />
             </>
           )}
           {form.role === UserRole.REFERRAL && (
             <>
-              <Input
+              <NumberInput
                 label="Referral commission (percent, 0–100)"
-                type="number"
-                step="0.01"
+                variant="percent"
+                suffix="%"
                 min={0}
                 max={100}
-                value={String(form.referralPercent)}
+                value={form.referralPercent}
                 onChange={(e) =>
-                  setForm({ ...form, referralPercent: parseFloat(e.target.value) || 0 })
+                  setForm({ ...form, referralPercent: parseDecimalInput(e.target.value) || 0 })
                 }
                 error={createFieldErrors.referralPercent}
               />
@@ -904,7 +945,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
             }}
           >
             <p className="text-sm text-text-muted">
-              Link a payment profile to <strong>{legacyMerchantModal.email}</strong>.
+              Link a payment profile to <strong>{legacyMerchantModal.email}</strong>. Directions & commissions can be set right after creation.
             </p>
             <Input
               label="Merchant display name"

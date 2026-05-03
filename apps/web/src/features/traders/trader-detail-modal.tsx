@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import type { StaffRolePrefix } from './query-keys';
 import { staffTraderKeys } from './query-keys';
+import { parseDecimalInput } from '@/lib/decimal-input';
 
 interface TraderDetail {
   id: string;
@@ -146,9 +147,9 @@ export function TraderDetailModal({
   const balanceModelMutation = useMutation({
     mutationFn: () =>
       api.patch(internalPaths.traderBalanceModel(traderId!), {
-        overdraft_limit_usdt: parseFloat(bmOverdraft) || 0,
-        payin_rate: parseFloat(bmPayin) || 0,
-        payout_rate: parseFloat(bmPayout) || 0,
+        overdraft_limit_usdt: parseDecimalInput(bmOverdraft) || 0,
+        payin_rate: parseDecimalInput(bmPayin) || 0,
+        payout_rate: parseDecimalInput(bmPayout) || 0,
         ...(bmClearTron ? { clear_trc20_deposit_address: true } : {}),
         ...(!bmClearTron && bmTron.trim()
           ? { usdt_trc20_deposit_address: bmTron.trim() }
@@ -212,16 +213,19 @@ export function TraderDetailModal({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input
                   label="Overdraft limit (USDT)"
+                  inputMode="decimal"
                   value={bmOverdraft}
                   onChange={(e) => setBmOverdraft(e.target.value)}
                 />
                 <Input
                   label="Pay-In rate (fraction)"
+                  inputMode="decimal"
                   value={bmPayin}
                   onChange={(e) => setBmPayin(e.target.value)}
                 />
                 <Input
                   label="Pay-Out rate (fraction)"
+                  inputMode="decimal"
                   value={bmPayout}
                   onChange={(e) => setBmPayout(e.target.value)}
                 />

@@ -39,7 +39,8 @@ export function CascadeNominalGridSection({
         <div className="mt-4 flex flex-wrap items-end gap-2">
           <Input
             placeholder="Amount"
-            type="number"
+            type="text"
+            inputMode="decimal"
             className="w-32"
             value={newAmount}
             onChange={(e) => setNewAmount(e.target.value)}
@@ -70,7 +71,11 @@ export function CascadeNominalGridSection({
               <th className="py-2 pr-4">Amount</th>
               <th className="py-2 pr-4">Sort</th>
               <th className="py-2 pr-4">Active</th>
-              {!readOnly && <th className="py-2">Actions</th>}
+              {!readOnly && (
+                <th className="py-2 text-end align-middle text-xs font-medium uppercase tracking-wider text-text-muted">
+                  Actions
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -80,8 +85,8 @@ export function CascadeNominalGridSection({
                 <td className="py-2 pr-4">{row.sort_order}</td>
                 <td className="py-2 pr-4">{row.is_active ? 'Yes' : 'No'}</td>
                 {!readOnly && (
-                  <td className="py-2">
-                    <div className="flex flex-wrap gap-2">
+                  <td className="py-2 text-end align-middle">
+                    <div className="flex flex-wrap justify-end gap-2">
                       <Button
                         type="button"
                         variant="secondary"

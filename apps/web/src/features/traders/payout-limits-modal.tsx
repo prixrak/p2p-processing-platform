@@ -7,6 +7,7 @@ import { internalPaths } from '@/lib/internal-api';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
+import { parseDecimalInput } from '@/lib/decimal-input';
 import { staffTraderKeys, type StaffRolePrefix } from './query-keys';
 import type { StaffTraderRow } from './staff-trader-types';
 
@@ -99,8 +100,8 @@ export function PayoutLimitsModal({
               trader &&
               setLimitsMutation.mutate({
                 id: trader.id,
-                min: parseFloat(minLimit) || 0,
-                max: parseFloat(maxLimit) || 0,
+                min: parseDecimalInput(minLimit) || 0,
+                max: parseDecimalInput(maxLimit) || 0,
               })
             }
           >

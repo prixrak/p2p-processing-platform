@@ -80,10 +80,8 @@ export function CascadeGlobalSettingsSection({
               />
               <Input
                 label="Fork autolimit threshold (0–1)"
-                type="number"
-                step="0.01"
-                min={0}
-                max={1}
+                type="text"
+                inputMode="decimal"
                 value={draftThreshold}
                 onChange={(e) => setDraftThreshold(e.target.value)}
               />

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GitFork } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { parseDecimalInput } from '@/lib/decimal-input';
 import type { CascadeSettings, NominalRow, TrafficPercentPolicy } from './cascade-types';
 import { CascadeCoverageSection } from './cascade-coverage-section';
 import { CascadeGlobalSettingsSection } from './cascade-global-settings-section';
@@ -74,7 +75,7 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
   const createNominal = useMutation({
     mutationFn: () =>
       api.post(internalPaths.adminCascadeNominals, {
-        amount: Number(newAmount),
+        amount: parseDecimalInput(newAmount),
         ...(newSort.trim() !== '' ? { sort_order: Number(newSort) } : {}),
       }),
     onSuccess: () => {
@@ -102,7 +103,7 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
 
   const submitSettings = () => {
     const sliding_window_hours = parseInt(draftHours, 10);
-    const autolimit_threshold = parseFloat(draftThreshold);
+    const autolimit_threshold = parseDecimalInput(draftThreshold);
     const card_rating_weight = parseInt(draftCardW, 10);
     const fork_rating_weight = parseInt(draftForkW, 10);
     if (

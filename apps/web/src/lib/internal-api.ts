@@ -100,6 +100,7 @@ export const internalPaths = {
 
   merchants: '/api/merchants',
   merchant: (id: string) => `/api/merchants/${id}`,
+  merchantByUserId: (userId: string) => `/api/merchants/by-user/${userId}`,
   /** Merchant cabinet (JWT) — query: period | dateFrom & dateTo */
   merchantAnalytics: '/api/merchant/analytics',
   /** Merchant ledger — query: page, limit, type?, dateFrom?, dateTo? */

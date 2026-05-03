@@ -1,17 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Lock, Unlock, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
+import { parseDecimalInput } from '@/lib/decimal-input';
+import { fetchCurrencyList } from '@/lib/currency-queries';
+import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
 import type { StaffRolePrefix } from '@/features/traders';
 
 interface MerchantDirection {
@@ -70,6 +72,24 @@ export function MerchantDirectionsModal({
     queryFn: () => api.get<MerchantDirection[]>(internalPaths.merchantDirections(merchantId!)),
     enabled: open && !!merchantId,
   });
+
+  const { data: currencies = [] } = useQuery({
+    queryKey: ['currencies'],
+    queryFn: fetchCurrencyList,
+    enabled: open,
+  });
+
+  const directionCurrencyOptions = useMemo(() => {
+    const active = currencies
+      .filter((c) => c.isActive)
+      .map((c) => ({ value: c.code.toUpperCase(), label: c.code.toUpperCase() }));
+    const v = dirForm.currency.trim().toUpperCase();
+    if (v && !active.some((o) => o.value === v)) {
+      active.push({ value: v, label: `${v} (inactive)` });
+    }
+    active.sort((a, b) => a.value.localeCompare(b.value));
+    return active;
+  }, [currencies, dirForm.currency]);
 
   const createDirection = useMutation({
     mutationFn: (body: typeof dirForm) =>
@@ -245,11 +265,12 @@ export function MerchantDirectionsModal({
                   setDirForm({ ...dirForm, directionType: e.target.value as 'PAYIN' | 'PAYOUT' })
                 }
               />
-              <Input
+              <CurrencySelectWithCreate
                 label="Currency"
+                placeholder="Select currency"
+                options={directionCurrencyOptions}
                 value={dirForm.currency}
                 onChange={(e) => setDirForm({ ...dirForm, currency: e.target.value.toUpperCase() })}
-                placeholder="UAH"
               />
             </div>
             <div className="grid grid-cols-3 gap-3">
@@ -258,14 +279,14 @@ export function MerchantDirectionsModal({
                 variant="amount"
                 min={0}
                 value={dirForm.minAmount}
-                onChange={(e) => setDirForm({ ...dirForm, minAmount: Number(e.target.value) })}
+                onChange={(e) => setDirForm({ ...dirForm, minAmount: parseDecimalInput(e.target.value) || 0 })}
               />
               <NumberInput
                 label="Max amount"
                 variant="amount"
                 min={0}
                 value={dirForm.maxAmount}
-                onChange={(e) => setDirForm({ ...dirForm, maxAmount: Number(e.target.value) })}
+                onChange={(e) => setDirForm({ ...dirForm, maxAmount: parseDecimalInput(e.target.value) || 0 })}
               />
               <NumberInput
                 label="Commission"
@@ -274,7 +295,7 @@ export function MerchantDirectionsModal({
                 min={0}
                 value={dirForm.defaultCommissionPercent}
                 onChange={(e) =>
-                  setDirForm({ ...dirForm, defaultCommissionPercent: Number(e.target.value) })
+                  setDirForm({ ...dirForm, defaultCommissionPercent: parseDecimalInput(e.target.value) || 0 })
                 }
               />
             </div>

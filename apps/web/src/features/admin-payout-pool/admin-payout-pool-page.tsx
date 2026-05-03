@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { parseDecimalInput } from '@/lib/decimal-input';
 
 interface GlobalSettings {
   pool_b_global_percent: number;
@@ -83,7 +84,7 @@ export function AdminPayoutPoolPage() {
               e.preventDefault();
               const form = e.currentTarget;
               const fd = new FormData(form);
-              const pct = parseFloat(String(fd.get('pool_b_global_percent') ?? '0'));
+              const pct = parseDecimalInput(String(fd.get('pool_b_global_percent') ?? '0'));
               const hoursRaw = String(fd.get('pool_timeout_hours') ?? '').trim();
               const hours = hoursRaw === '' ? NaN : parseInt(hoursRaw, 10);
               const enabled =
@@ -104,10 +105,8 @@ export function AdminPayoutPoolPage() {
             <Input
               name="pool_b_global_percent"
               label="Pool B global percent (0–100)"
-              type="number"
-              step="0.01"
-              min={0}
-              max={100}
+              type="text"
+              inputMode="decimal"
               defaultValue={g.pool_b_global_percent}
             />
             <div className="flex flex-col gap-2">
@@ -166,7 +165,7 @@ export function AdminPayoutPoolPage() {
             const form = e.currentTarget;
             const fd = new FormData(form);
             const merchantId = String(fd.get('merchant_id') ?? '').trim();
-            const pct = parseFloat(String(fd.get('pool_b_percent') ?? '0'));
+            const pct = parseDecimalInput(String(fd.get('pool_b_percent') ?? '0'));
             const active =
               (form.elements.namedItem('is_active') as HTMLInputElement | null)?.checked ?? true;
             if (!merchantId) return;
@@ -181,10 +180,8 @@ export function AdminPayoutPoolPage() {
           <Input
             name="pool_b_percent"
             label="Pool B percent"
-            type="number"
-            step="0.01"
-            min={0}
-            max={100}
+            type="text"
+            inputMode="decimal"
             className="w-36"
           />
           <label className="flex items-center gap-2 text-sm text-text-secondary pb-2">

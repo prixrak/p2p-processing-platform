@@ -28,6 +28,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { errorMessageFromUnknown } from '@/lib/error-message';
 import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
 import { fetchCurrencyList } from '@/lib/currency-queries';
+import { parseDecimalInput } from '@/lib/decimal-input';
 
 type SettlementTab = 'trader' | 'payout' | 'merchant';
 
@@ -167,7 +168,7 @@ export function SettlementCreateModal({
           traderId,
           type:
             traderSettlementType === 'credit' ? SettlementType.CREDIT : SettlementType.DEBIT,
-          amount: parseFloat(traderAmount),
+          amount: parseDecimalInput(traderAmount),
           currency: traderCurrency,
           note: traderNote,
         });
@@ -176,7 +177,7 @@ export function SettlementCreateModal({
         return api.post<SettlementListRow>(internalPaths.settlements, {
           payoutTraderId: payoutSpecialistId,
           type: payoutType === 'credit' ? SettlementType.CREDIT : SettlementType.DEBIT,
-          amount: parseFloat(payoutAmount),
+          amount: parseDecimalInput(payoutAmount),
           currency: 'USDT',
           note: payoutNote,
           usdtAddress: payoutUsdtAddress.trim() || undefined,
@@ -185,10 +186,10 @@ export function SettlementCreateModal({
       return api.post<SettlementListRow>(internalPaths.settlements, {
         merchantId,
         type: SettlementType.DEBIT,
-        amount: parseFloat(merchantDebitAmount),
+        amount: parseDecimalInput(merchantDebitAmount),
         currency: merchantCurrency,
-        manualRate: parseFloat(manualRate),
-        usdtEquivalent: parseFloat(usdtEquivalent),
+        manualRate: parseDecimalInput(manualRate),
+        usdtEquivalent: parseDecimalInput(usdtEquivalent),
         usdtAddress: merchantUsdtAddress.trim(),
         note: merchantNote,
       });
@@ -411,7 +412,7 @@ export function SettlementCreateModal({
                       {(
                         currentTraderBalance.available +
                         (traderSettlementType === 'credit' ? 1 : -1) *
-                          (parseFloat(traderAmount) || 0)
+                          (parseDecimalInput(traderAmount) || 0)
                       ).toLocaleString()}{' '}
                       {traderCurrency}
                     </p>

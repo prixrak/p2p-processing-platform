@@ -19,6 +19,7 @@ import {
 } from '@/lib/validation/schemas';
 import { fieldErrorsFromZod } from '@/lib/validation/zod-field-errors';
 import { errorMessageFromUnknown } from '@/lib/error-message';
+import { parseDecimalInput } from '@/lib/decimal-input';
 
 export function TraderAddGroupModal({
   open,
@@ -266,14 +267,14 @@ export function TraderAddRequisiteModal({
             label="Min amount"
             variant="amount"
             value={form.min_amount}
-            onChange={(e) => setForm({ ...form, min_amount: Number(e.target.value) })}
+            onChange={(e) => setForm({ ...form, min_amount: parseDecimalInput(e.target.value) || 0 })}
             error={errors.min_amount}
           />
           <NumberInput
             label="Max amount"
             variant="amount"
             value={form.max_amount}
-            onChange={(e) => setForm({ ...form, max_amount: Number(e.target.value) })}
+            onChange={(e) => setForm({ ...form, max_amount: parseDecimalInput(e.target.value) || 0 })}
             error={errors.max_amount}
           />
         </div>
@@ -282,7 +283,7 @@ export function TraderAddRequisiteModal({
             label="Volume limit"
             variant="amount"
             value={form.limit_amount}
-            onChange={(e) => setForm({ ...form, limit_amount: Number(e.target.value) })}
+            onChange={(e) => setForm({ ...form, limit_amount: parseDecimalInput(e.target.value) || 0 })}
             error={errors.limit_amount}
           />
           <NumberInput
@@ -385,14 +386,14 @@ export function TraderEditRequisiteLimitsModal({
               label="Min amount"
               variant="amount"
               value={form.min_amount}
-              onChange={(e) => setForm({ ...form, min_amount: Number(e.target.value) })}
+              onChange={(e) => setForm({ ...form, min_amount: parseDecimalInput(e.target.value) || 0 })}
               error={errors.min_amount}
             />
             <NumberInput
               label="Max amount"
               variant="amount"
               value={form.max_amount}
-              onChange={(e) => setForm({ ...form, max_amount: Number(e.target.value) })}
+              onChange={(e) => setForm({ ...form, max_amount: parseDecimalInput(e.target.value) || 0 })}
               error={errors.max_amount}
             />
           </div>
@@ -401,7 +402,7 @@ export function TraderEditRequisiteLimitsModal({
               label="Volume limit"
               variant="amount"
               value={form.limit_amount}
-              onChange={(e) => setForm({ ...form, limit_amount: Number(e.target.value) })}
+              onChange={(e) => setForm({ ...form, limit_amount: parseDecimalInput(e.target.value) || 0 })}
               error={errors.limit_amount}
             />
             <NumberInput

@@ -25,6 +25,7 @@ import { PAYOUT_TRADER_HISTORY_STATUSES } from '@p2p/shared';
 import type { PayOutOrderApiDto } from '@p2p/shared';
 import { buildPayoutOrdersColumns, buildPayoutPoolColumns, type PayoutCompleteVars } from './trader-payout-columns';
 import { TraderPayoutOrderDetailModal } from './trader-payout-order-detail-modal';
+import { normalizeDecimalSeparators } from '@/lib/decimal-input';
 
 interface PayOutListResponse {
   orders: PayOutOrderApiDto[];
@@ -98,8 +99,8 @@ export function TraderPayoutPage({
   if (statusFilter) historyListParams.status = statusFilter;
   if (dateFrom) historyListParams.date_from = dateFrom;
   if (dateTo) historyListParams.date_to = dateTo;
-  if (minAmount.trim()) historyListParams.min_amount = minAmount.trim();
-  if (maxAmount.trim()) historyListParams.max_amount = maxAmount.trim();
+  if (minAmount.trim()) historyListParams.min_amount = normalizeDecimalSeparators(minAmount.trim());
+  if (maxAmount.trim()) historyListParams.max_amount = normalizeDecimalSeparators(maxAmount.trim());
 
   const { data: historyData, isLoading: historyLoading } = useQuery({
     queryKey: [qk, 'payout-orders', historyListParams],
@@ -371,18 +372,16 @@ export function TraderPayoutPage({
                 />
                 <Input
                   label="Min amount"
-                  type="number"
-                  min={0}
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   value={minAmount}
                   onChange={(e) => setMinAmount(e.target.value)}
                   placeholder="Optional"
                 />
                 <Input
                   label="Max amount"
-                  type="number"
-                  min={0}
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   value={maxAmount}
                   onChange={(e) => setMaxAmount(e.target.value)}
                   placeholder="Optional"

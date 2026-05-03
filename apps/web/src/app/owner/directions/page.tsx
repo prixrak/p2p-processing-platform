@@ -15,6 +15,7 @@ import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
+import { parseDecimalInput } from '@/lib/decimal-input';
 
 interface Direction {
   id: string;
@@ -336,7 +337,7 @@ export default function DirectionsPage() {
         variant="percent"
         suffix="%"
         value={form.fee}
-        onChange={(e) => setForm({ ...form, fee: parseFloat(e.target.value) || 0 })}
+        onChange={(e) => setForm({ ...form, fee: parseDecimalInput(e.target.value) || 0 })}
         required
       />
       <div className="grid grid-cols-2 gap-3">
@@ -344,13 +345,13 @@ export default function DirectionsPage() {
           label="Min Amount"
           variant="amount"
           value={form.minAmount}
-          onChange={(e) => setForm({ ...form, minAmount: parseFloat(e.target.value) || 0 })}
+          onChange={(e) => setForm({ ...form, minAmount: parseDecimalInput(e.target.value) || 0 })}
         />
         <NumberInput
           label="Max Amount"
           variant="amount"
           value={form.maxAmount}
-          onChange={(e) => setForm({ ...form, maxAmount: parseFloat(e.target.value) || 0 })}
+          onChange={(e) => setForm({ ...form, maxAmount: parseDecimalInput(e.target.value) || 0 })}
         />
       </div>
     </>
