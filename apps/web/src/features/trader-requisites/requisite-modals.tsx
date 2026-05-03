@@ -1,6 +1,14 @@
 'use client';
 
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import { Hash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -20,6 +28,12 @@ import {
 import { fieldErrorsFromZod } from '@/lib/validation/zod-field-errors';
 import { errorMessageFromUnknown } from '@/lib/error-message';
 import { parseDecimalInput } from '@/lib/decimal-input';
+import {
+  formatCardNumberInput,
+  formatIbanInput,
+  requisiteCaretAfterSignificant,
+  requisiteSignificantBeforeCaret,
+} from './utils';
 
 export function TraderAddGroupModal({
   open,
@@ -198,10 +212,32 @@ export function TraderAddRequisiteModal({
   onSubmit: (groupId: string) => void;
 }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const requisiteNumberInputRef = useRef<HTMLInputElement>(null);
+  const requisiteNumberCaretRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!addRequisiteGroupId) setErrors({});
   }, [addRequisiteGroupId]);
+
+  useLayoutEffect(() => {
+    const el = requisiteNumberInputRef.current;
+    const pos = requisiteNumberCaretRef.current;
+    if (el && pos != null) {
+      const clamped = Math.min(pos, el.value.length);
+      el.setSelectionRange(clamped, clamped);
+      requisiteNumberCaretRef.current = null;
+    }
+  }, [form.number]);
+
+  function handleRequisiteNumberChange(e: ChangeEvent<HTMLInputElement>) {
+    const el = e.target;
+    const mode = form.type === RequisiteType.CARD ? 'card' : 'iban';
+    const sig = requisiteSignificantBeforeCaret(el.value, el.selectionStart, mode);
+    const next =
+      mode === 'card' ? formatCardNumberInput(el.value) : formatIbanInput(el.value);
+    requisiteNumberCaretRef.current = requisiteCaretAfterSignificant(next, sig, mode);
+    setForm({ ...form, number: next });
+  }
 
   return (
     <Modal open={!!addRequisiteGroupId} onClose={onClose} title="Add requisite" size="md">
@@ -226,18 +262,38 @@ export function TraderAddRequisiteModal({
             { value: RequisiteType.IBAN, label: 'IBAN' },
           ]}
           value={form.type}
-          onChange={(e) => setForm({ ...form, type: e.target.value as RequisiteType })}
+          onChange={(e) => {
+            const newType = e.target.value as RequisiteType;
+            setForm((prev) => ({
+              ...prev,
+              type: newType,
+              number:
+                newType === RequisiteType.CARD
+                  ? formatCardNumberInput(prev.number)
+                  : formatIbanInput(prev.number),
+            }));
+            setErrors((prev) => {
+              const next = { ...prev };
+              delete next.number;
+              return next;
+            });
+          }}
           error={errors.type}
         />
         <Input
+          ref={requisiteNumberInputRef}
           label={form.type === RequisiteType.CARD ? 'Card number' : 'IBAN'}
           placeholder={
             form.type === RequisiteType.CARD
               ? '0000 0000 0000 0000'
-              : 'UA000000000000000000000000000'
+              : 'UA00 0000 0000 0000 0000 0000 00000'
           }
+          className="font-mono tabular-nums tracking-wide"
+          inputMode={form.type === RequisiteType.CARD ? 'numeric' : 'text'}
+          autoComplete="off"
+          spellCheck={false}
           value={form.number}
-          onChange={(e) => setForm({ ...form, number: e.target.value })}
+          onChange={handleRequisiteNumberChange}
           error={errors.number}
         />
         <Input

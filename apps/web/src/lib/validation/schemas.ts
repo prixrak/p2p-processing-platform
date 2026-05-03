@@ -1,5 +1,10 @@
 import { z } from 'zod';
 import { RequisiteType, UserRole } from '@p2p/shared';
+import {
+  IBAN_GLOBAL_MAX,
+  IBAN_GLOBAL_MIN,
+  ibanExpectedLengthForCountry,
+} from './iban-registry';
 
 /** Positive decimal entered as a string (allows commas stripped by caller via Number). */
 export const positiveAmountString = z
@@ -152,10 +157,101 @@ function finiteNonNegative(n: number, path: string, ctx: z.RefinementCtx) {
   }
 }
 
+/** PAN digits only (spaces allowed in raw input). */
+function paymentCardDigitsCompact(raw: string): string {
+  return raw.replace(/\D/g, '');
+}
+
+function normalizeIban(raw: string): string {
+  return raw.replace(/\s+/g, '').toUpperCase();
+}
+
+function ibanMod97(iban: string): number {
+  const rearranged = iban.slice(4) + iban.slice(0, 4);
+  const expanded = rearranged.replace(/[A-Z]/g, (ch) =>
+    (ch.charCodeAt(0) - 55).toString(),
+  );
+  let remainder = 0;
+  for (let i = 0; i < expanded.length; i++) {
+    remainder = (remainder * 10 + (expanded.charCodeAt(i) - 48)) % 97;
+  }
+  return remainder;
+}
+
+function validateRequisiteNumber(type: RequisiteType, raw: string, ctx: z.RefinementCtx) {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['number'],
+      message: type === RequisiteType.CARD ? 'Enter card number' : 'Enter IBAN',
+    });
+    return;
+  }
+  if (type === RequisiteType.CARD) {
+    if (/[^\d\s-]/.test(trimmed)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['number'],
+        message: 'Card number may only contain digits, spaces, or hyphens',
+      });
+      return;
+    }
+    const compact = paymentCardDigitsCompact(trimmed);
+    if (compact.length < 13 || compact.length > 16) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['number'],
+        message: 'Card number must be 13–16 digits',
+      });
+      return;
+    }
+    return;
+  }
+  if (type === RequisiteType.IBAN) {
+    const iban = normalizeIban(trimmed);
+    if (!/^[A-Z]{2}\d{2}[A-Z0-9]+$/.test(iban)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['number'],
+        message:
+          'Invalid IBAN: use two letters (country), two digits (check), then the account reference',
+      });
+      return;
+    }
+    const cc = iban.slice(0, 2);
+    const expectedLen = ibanExpectedLengthForCountry(cc);
+    if (expectedLen !== undefined) {
+      if (iban.length !== expectedLen) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['number'],
+          message: `IBAN for ${cc} must be exactly ${expectedLen} characters`,
+        });
+        return;
+      }
+    } else if (iban.length < IBAN_GLOBAL_MIN || iban.length > IBAN_GLOBAL_MAX) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['number'],
+        message: `IBAN length must be between ${IBAN_GLOBAL_MIN} and ${IBAN_GLOBAL_MAX} characters`,
+      });
+      return;
+    }
+    if (ibanMod97(iban) !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['number'],
+        message: 'Invalid IBAN (checksum)',
+      });
+    }
+  }
+}
+
 export const requisiteCreateSchema = z
   .object({
     type: z.nativeEnum(RequisiteType),
-    number: z.string().trim().min(8, 'Enter a valid account number'),
+    number: z.string(),
     owner: z.string().trim().min(2, 'Enter the account owner name'),
     bank_id: z.string(),
     accepts_other_banks: z.boolean(),
@@ -165,6 +261,7 @@ export const requisiteCreateSchema = z
     limit_operations: z.number(),
   })
   .superRefine((data, ctx) => {
+    validateRequisiteNumber(data.type, data.number, ctx);
     finiteNonNegative(data.min_amount, 'min_amount', ctx);
     finiteNonNegative(data.max_amount, 'max_amount', ctx);
     finiteNonNegative(data.limit_amount, 'limit_amount', ctx);
