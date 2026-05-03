@@ -29,7 +29,7 @@ import type {
   RequisiteFormData,
   RequisiteGroupApi,
 } from './types';
-import { defaultRequisiteForm, num } from './utils';
+import { defaultRequisiteForm, num, requisiteGroupCurrencyCode } from './utils';
 import { TraderRequisitesGroupTable } from './requisite-group-table';
 import {
   TraderAddGroupModal,
@@ -126,7 +126,10 @@ export function TraderRequisitesPage() {
     const q = search.trim().toLowerCase();
     if (!q) return groups;
     return groups.filter((g) => {
-      if (g.name.toLowerCase().includes(q) || g.currency.toLowerCase().includes(q)) {
+      if (
+        g.name.toLowerCase().includes(q) ||
+        requisiteGroupCurrencyCode(g.currency).toLowerCase().includes(q)
+      ) {
         return true;
       }
       return g.requisites.some(
@@ -415,7 +418,9 @@ export function TraderRequisitesPage() {
                     </div>
                     <div>
                       <p className="text-[10px] uppercase tracking-wide text-text-muted">Currency</p>
-                      <p className="text-sm font-medium text-text-primary">{g.currency}</p>
+                      <p className="text-sm font-medium text-text-primary">
+                        {requisiteGroupCurrencyCode(g.currency)}
+                      </p>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">

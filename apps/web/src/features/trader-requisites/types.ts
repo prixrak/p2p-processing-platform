@@ -27,7 +27,7 @@ export interface RequisiteApiRow {
 export interface RequisiteGroupApi {
   id: string;
   name: string;
-  currency: string;
+  currency: string | { code: string };
   isActive: boolean;
   archivedAt: string | null;
   createdAt: string;

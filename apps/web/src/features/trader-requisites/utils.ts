@@ -1,6 +1,13 @@
 import { RequisiteType } from '@p2p/shared';
 import type { RequisiteFormData } from './types';
 
+/** API returns `currency.code` when the group includes the currency relation */
+export function requisiteGroupCurrencyCode(
+  currency: string | { code: string },
+): string {
+  return typeof currency === 'string' ? currency : currency.code;
+}
+
 export function num(v: unknown): number {
   if (typeof v === 'number') return v;
   if (typeof v === 'string') return Number(v);
