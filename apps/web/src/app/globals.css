@@ -66,3 +66,45 @@ body {
     animation: none;
   }
 }
+
+/* Top navigation progress strip — high contrast vs dark shells, still lightweight */
+.nav-progress-track {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-accent) 55%, transparent),
+    color-mix(in srgb, var(--color-accent-hover) 70%, transparent),
+    color-mix(in srgb, var(--color-accent) 55%, transparent)
+  );
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--color-text-primary) 18%, transparent),
+    0 0 14px color-mix(in srgb, var(--color-accent-hover) 45%, transparent);
+}
+
+@keyframes nav-progress-slide {
+  0% {
+    transform: translateX(-130%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.nav-progress-highlight {
+  border-radius: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-text-primary) 85%, white),
+    transparent
+  );
+  opacity: 0.85;
+  animation: nav-progress-slide 1.05s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-progress-highlight {
+    animation: none;
+    transform: translateX(0);
+    opacity: 0.75;
+  }
+}

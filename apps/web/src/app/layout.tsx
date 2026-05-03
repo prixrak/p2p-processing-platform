@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { NavigationProgress } from '@/components/navigation-progress';
 import { QueryProvider } from '@/lib/query-provider';
 import './globals.css';
 
@@ -15,7 +16,10 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-[#0a0a0f] text-gray-100 antialiased">
-        <QueryProvider>{children}</QueryProvider>
+        <QueryProvider>
+          <NavigationProgress />
+          {children}
+        </QueryProvider>
       </body>
     </html>
   );

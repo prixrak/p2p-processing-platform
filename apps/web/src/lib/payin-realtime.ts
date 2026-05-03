@@ -19,6 +19,26 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 const RECONNECT_MS = 5000;
 
+/** Debounce realtime bursts so idle queries share one refresh instead of starving the network queue. */
+const INVALIDATE_DEBOUNCE_MS = 200;
+
+function createDebouncer(ms: number) {
+  let id: ReturnType<typeof setTimeout> | null = null;
+  return {
+    schedule(fn: () => void) {
+      if (id !== null) clearTimeout(id);
+      id = setTimeout(() => {
+        id = null;
+        fn();
+      }, ms);
+    },
+    dispose() {
+      if (id !== null) clearTimeout(id);
+      id = null;
+    },
+  };
+}
+
 /**
  * Reads an SSE response until the stream closes or `signal` aborts.
  * Parses `data:` lines (single-line JSON payloads).
@@ -98,6 +118,8 @@ export function usePayinTraderRealtime(queryClient: QueryClient): void {
     const ac = new AbortController();
     let cancelled = false;
 
+    const invalidateDebouncer = createDebouncer(INVALIDATE_DEBOUNCE_MS);
+
     const run = async () => {
       while (!cancelled) {
         const token = getToken();
@@ -111,10 +133,12 @@ export function usePayinTraderRealtime(queryClient: QueryClient): void {
               try {
                 const evt = JSON.parse(raw) as PayinOrderRealtimeEvent;
                 if (evt.type === PAYIN_ORDER_REALTIME_EVENT_TYPE) {
-                  queryClient.invalidateQueries({ queryKey: traderKeys.payinOrdersScope });
-                  queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
-                  queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
-                  queryClient.invalidateQueries({ queryKey: traderKeys.dashboardStats() });
+                  invalidateDebouncer.schedule(() => {
+                    queryClient.invalidateQueries({ queryKey: traderKeys.payinOrdersScope });
+                    queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
+                    queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
+                    queryClient.invalidateQueries({ queryKey: traderKeys.dashboardStats() });
+                  });
                 }
               } catch {
                 /* malformed line */
@@ -137,6 +161,7 @@ export function usePayinTraderRealtime(queryClient: QueryClient): void {
     void run();
     return () => {
       cancelled = true;
+      invalidateDebouncer.dispose();
       ac.abort();
     };
   }, [queryClient]);
@@ -156,6 +181,8 @@ export function usePayoutCabinetRealtime(
       variant === 'specialist' ? internalPaths.payoutSpecialistStream : internalPaths.traderPayoutStream;
     const qk: PayoutCabinetScope = variant === 'specialist' ? 'payout-trader' : 'trader';
 
+    const invalidateDebouncer = createDebouncer(INVALIDATE_DEBOUNCE_MS);
+
     const run = async () => {
       while (!cancelled) {
         const token = getToken();
@@ -169,24 +196,22 @@ export function usePayoutCabinetRealtime(
               try {
                 const evt = JSON.parse(raw) as PayOutOrderRealtimeEvent;
                 if (evt.type === PAYOUT_ORDER_REALTIME_EVENT_TYPE) {
-                  void queryClient.invalidateQueries({
-                    queryKey: payoutCabinetKeys.payoutOrdersScope(qk),
-                  });
-                  void queryClient.invalidateQueries({
-                    queryKey: payoutCabinetKeys.payoutPool(qk),
-                  });
-                  if (variant === 'specialist') {
-                    void queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.specialistSummary() });
-                  } else {
-                    void queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
-                    void queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
-                    void queryClient.invalidateQueries({ queryKey: traderKeys.dashboardStats() });
-                  }
-                  void queryClient.refetchQueries({
-                    queryKey: payoutCabinetKeys.payoutOrdersScope(qk),
-                  });
-                  void queryClient.refetchQueries({
-                    queryKey: payoutCabinetKeys.payoutPool(qk),
+                  invalidateDebouncer.schedule(() => {
+                    void queryClient.invalidateQueries({
+                      queryKey: payoutCabinetKeys.payoutOrdersScope(qk),
+                    });
+                    void queryClient.invalidateQueries({
+                      queryKey: payoutCabinetKeys.payoutPool(qk),
+                    });
+                    if (variant === 'specialist') {
+                      void queryClient.invalidateQueries({
+                        queryKey: payoutCabinetKeys.specialistSummary(),
+                      });
+                    } else {
+                      void queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
+                      void queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
+                      void queryClient.invalidateQueries({ queryKey: traderKeys.dashboardStats() });
+                    }
                   });
                 }
               } catch {
@@ -210,6 +235,7 @@ export function usePayoutCabinetRealtime(
     void run();
     return () => {
       cancelled = true;
+      invalidateDebouncer.dispose();
       ac.abort();
     };
   }, [queryClient, variant]);
@@ -231,6 +257,8 @@ export function useTraderWalletDepositRealtime(queryClient: QueryClient): void {
     const ac = new AbortController();
     let cancelled = false;
 
+    const invalidateDebouncer = createDebouncer(INVALIDATE_DEBOUNCE_MS);
+
     const run = async () => {
       while (!cancelled) {
         const token = getToken();
@@ -244,9 +272,11 @@ export function useTraderWalletDepositRealtime(queryClient: QueryClient): void {
               try {
                 const parsed = JSON.parse(raw) as { type?: string };
                 if (parsed?.type === 'deposit') {
-                  void queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
-                  void queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
-                  void queryClient.invalidateQueries({ queryKey: traderKeys.balanceTransactionsScope });
+                  invalidateDebouncer.schedule(() => {
+                    void queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
+                    void queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
+                    void queryClient.invalidateQueries({ queryKey: traderKeys.balanceTransactionsScope });
+                  });
                 }
               } catch {
                 /* malformed line */
@@ -269,6 +299,7 @@ export function useTraderWalletDepositRealtime(queryClient: QueryClient): void {
     void run();
     return () => {
       cancelled = true;
+      invalidateDebouncer.dispose();
       ac.abort();
     };
   }, [queryClient]);
@@ -281,6 +312,8 @@ export function useMerchantOrdersRealtime(queryClient: QueryClient): void {
   useEffect(() => {
     const ac = new AbortController();
     let cancelled = false;
+
+    const invalidateDebouncer = createDebouncer(INVALIDATE_DEBOUNCE_MS);
 
     const run = async () => {
       while (!cancelled) {
@@ -298,10 +331,12 @@ export function useMerchantOrdersRealtime(queryClient: QueryClient): void {
                   parsed.type === PAYIN_ORDER_REALTIME_EVENT_TYPE ||
                   parsed.type === PAYOUT_ORDER_REALTIME_EVENT_TYPE
                 ) {
-                  void queryClient.invalidateQueries({ queryKey: merchantKeys.ordersScope });
-                  void queryClient.invalidateQueries({ queryKey: merchantKeys.stats() });
-                  void queryClient.invalidateQueries({ queryKey: merchantKeys.balances() });
-                  void queryClient.invalidateQueries({ queryKey: merchantKeys.analyticsScope });
+                  invalidateDebouncer.schedule(() => {
+                    void queryClient.invalidateQueries({ queryKey: merchantKeys.ordersScope });
+                    void queryClient.invalidateQueries({ queryKey: merchantKeys.stats() });
+                    void queryClient.invalidateQueries({ queryKey: merchantKeys.balances() });
+                    void queryClient.invalidateQueries({ queryKey: merchantKeys.analyticsScope });
+                  });
                 }
               } catch {
                 /* malformed line */
@@ -324,6 +359,7 @@ export function useMerchantOrdersRealtime(queryClient: QueryClient): void {
     void run();
     return () => {
       cancelled = true;
+      invalidateDebouncer.dispose();
       ac.abort();
     };
   }, [queryClient]);
