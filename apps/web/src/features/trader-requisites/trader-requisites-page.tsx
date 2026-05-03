@@ -510,6 +510,7 @@ export function TraderRequisitesPage() {
                     ) : (
                       <TraderRequisitesGroupTable
                         groupId={g.id}
+                        groupIsActive={g.isActive}
                         data={g.requisites}
                         assignRangeByReqId={assignRangeByReqId}
                         toggleMutation={toggleMutation}

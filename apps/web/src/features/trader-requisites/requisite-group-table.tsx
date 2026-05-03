@@ -11,6 +11,7 @@ import { compactAmount, num } from './utils';
 
 export function TraderRequisitesGroupTable({
   groupId,
+  groupIsActive,
   data,
   assignRangeByReqId,
   toggleMutation,
@@ -18,6 +19,8 @@ export function TraderRequisitesGroupTable({
   onHistory,
 }: {
   groupId: string;
+  /** Master switch: when false, requisites show inactive and cannot be toggled until the group is on. */
+  groupIsActive: boolean;
   data: RequisiteApiRow[];
   assignRangeByReqId: Map<string, PayinAssignRangeRow>;
   toggleMutation: UseMutationResult<unknown, unknown, { id: string; makeActive: boolean }>;
@@ -129,20 +132,30 @@ export function TraderRequisitesGroupTable({
     {
       key: 'active',
       header: 'Active',
-      render: (r: RequisiteApiRow) => (
-        <input
-          type="checkbox"
-          role="switch"
-          className="accent-accent-blue"
-          checked={r.isActive}
-          onChange={(e) =>
-            toggleMutation.mutate({
-              id: r.id,
-              makeActive: e.target.checked,
-            })
-          }
-        />
-      ),
+      render: (r: RequisiteApiRow) => {
+        const effectiveActive = groupIsActive && r.isActive;
+        return (
+          <input
+            type="checkbox"
+            role="switch"
+            className="accent-accent-blue"
+            checked={effectiveActive}
+            disabled={!groupIsActive}
+            title={
+              groupIsActive
+                ? undefined
+                : 'Turn the payment group on to change requisite activity'
+            }
+            onChange={(e) => {
+              if (!groupIsActive) return;
+              toggleMutation.mutate({
+                id: r.id,
+                makeActive: e.target.checked,
+              });
+            }}
+          />
+        );
+      },
     },
     {
       key: 'actions',
