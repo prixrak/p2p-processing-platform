@@ -24,7 +24,7 @@ export function Tabs({ tabs, active, onChange, className }: TabsProps) {
           className={clsx(
             'px-4 py-2 text-sm font-medium rounded-md transition-colors',
             active === tab.key
-              ? 'bg-bg-card text-text-primary shadow-sm'
+              ? 'bg-bg-card text-text-primary shadow-[0_1px_3px_rgba(0,0,0,0.45)]'
               : 'text-text-muted hover:text-text-secondary',
           )}
         >

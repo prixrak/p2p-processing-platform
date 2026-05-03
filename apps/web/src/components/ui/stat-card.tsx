@@ -21,7 +21,7 @@ export function StatCard({ label, value, icon: Icon, change, href, className, to
   const cardClass = clsx(
     'rounded-xl p-5 transition-colors',
     surfaceRingClass(tone),
-    href && 'cursor-pointer hover:ring-border-secondary/55 hover:border-border-secondary',
+    href && 'cursor-pointer hover:border-border-secondary',
     className,
   );
 

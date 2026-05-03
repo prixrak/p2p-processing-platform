@@ -59,7 +59,7 @@ export function DataTable<T>({
 
   if (isLoading) {
     return (
-      <div className={cn('bg-bg-card border border-border-primary rounded-xl overflow-hidden ring-1 ring-border-secondary/40', className)}>
+      <div className={cn('bg-bg-card border border-border-primary rounded-xl overflow-hidden', className)}>
         <div className="p-12 text-center">
           <div className="inline-block w-6 h-6 border-2 border-accent-blue border-t-transparent rounded-full animate-spin" />
           <p className="mt-3 text-sm text-text-muted">Loading...</p>
@@ -70,7 +70,7 @@ export function DataTable<T>({
 
   return (
     <div className={cn('space-y-4', className)}>
-      <div className="bg-bg-card border border-border-primary rounded-xl overflow-x-auto ring-1 ring-border-secondary/40">
+      <div className="bg-bg-card border border-border-primary rounded-xl overflow-x-auto">
         <div className="min-w-0">
           <table className="w-full text-sm">
             <thead>

@@ -93,9 +93,9 @@ function TraderHeaderOrderStatus() {
       className={clsx(
         'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors',
         disabled && 'cursor-not-allowed opacity-60',
-        accountSuspended && 'bg-surface-tertiary text-text-muted ring-1 ring-border-secondary',
+        accountSuspended && 'bg-surface-tertiary text-text-muted border border-border-primary',
         !accountSuspended && accepting && 'bg-emerald-950/75 text-emerald-400 ring-1 ring-emerald-500/35',
-        !accountSuspended && !accepting && 'bg-surface-tertiary text-text-secondary ring-1 ring-border-secondary',
+        !accountSuspended && !accepting && 'bg-surface-tertiary text-text-secondary border border-border-primary',
       )}
       aria-pressed={accepting && !accountSuspended}
       aria-label={

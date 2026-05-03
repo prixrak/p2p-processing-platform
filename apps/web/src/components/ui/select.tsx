@@ -164,7 +164,7 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(function Select(
           onClick={() => !disabled && setOpen((o) => !o)}
           className={clsx(
             'flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-lg border px-3 text-left text-sm',
-            'bg-surface-primary text-text-primary shadow-sm',
+            'bg-surface-primary text-text-primary shadow-none',
             'transition-[border-color,box-shadow] duration-150',
             error
               ? 'border-danger focus:border-danger focus:outline-none focus:ring-1 focus:ring-danger'
@@ -206,7 +206,6 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(function Select(
               }}
               className={clsx(
                 'max-h-60 overflow-auto rounded-lg border border-border-primary bg-surface-secondary py-1 shadow-2xl',
-                'ring-1 ring-black/20',
               )}
             >
               {options.map((opt) => {

@@ -159,15 +159,15 @@ function StatCard({
   accent?: 'green' | 'blue' | 'purple' | 'orange';
 }) {
   const accentMap: Record<string, string> = {
-    green: 'border-accent-green/22 bg-accent-green/5 ring-1 ring-accent-green/18',
-    blue: 'border-accent-blue/22 bg-accent-blue/5 ring-1 ring-accent-blue/18',
-    purple: 'border-accent-purple/22 bg-accent-purple/5 ring-1 ring-accent-purple/18',
-    orange: 'border-accent-orange/22 bg-accent-orange/5 ring-1 ring-accent-orange/18',
+    green: 'border-accent-green/22 bg-accent-green/5',
+    blue: 'border-accent-blue/22 bg-accent-blue/5',
+    purple: 'border-accent-purple/22 bg-accent-purple/5',
+    orange: 'border-accent-orange/22 bg-accent-orange/5',
   };
 
   return (
     <div
-      className={`rounded-xl border p-4 ${accent ? accentMap[accent] : 'border-border-primary bg-bg-secondary ring-1 ring-border-secondary/45'}`}
+      className={`rounded-xl border p-4 ${accent ? accentMap[accent] : 'border-border-primary bg-bg-secondary'}`}
     >
       <div className="flex items-center gap-2 mb-2">
         {icon}

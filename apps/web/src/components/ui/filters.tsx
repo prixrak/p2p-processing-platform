@@ -16,7 +16,7 @@ export function FilterBar({ children, className, dense }: FilterBarProps) {
   return (
     <div
       className={cn(
-        'flex flex-wrap items-end gap-3 p-4 bg-bg-card border border-border-primary rounded-xl ring-1 ring-accent-blue/10',
+        'flex flex-wrap items-end gap-3 p-4 bg-bg-card border border-border-primary rounded-xl',
         dense &&
           'flex-nowrap items-end gap-2 overflow-x-auto py-1 rounded-none border-0 bg-transparent p-0 shadow-none ring-0',
         className,

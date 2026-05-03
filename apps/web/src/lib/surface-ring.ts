@@ -1,6 +1,5 @@
 /**
- * Subtle border + ring combinations for panels and stat cards.
- * Keeps contrast on dark UI without heavy outlines.
+ * Subtle single borders for panels and stat cards (no stacked ring glow).
  */
 export type SurfaceRingTone =
   | 'neutral'
@@ -14,19 +13,19 @@ export type SurfaceRingTone =
 export function surfaceRingClass(tone: SurfaceRingTone = 'neutral'): string {
   switch (tone) {
     case 'blue':
-      return 'border border-accent-blue/22 ring-1 ring-accent-blue/18 bg-accent-blue/[0.05]';
+      return 'border border-accent-blue/22 bg-accent-blue/[0.05]';
     case 'green':
-      return 'border border-accent-green/22 ring-1 ring-accent-green/18 bg-accent-green/[0.05]';
+      return 'border border-accent-green/22 bg-accent-green/[0.05]';
     case 'purple':
-      return 'border border-accent-purple/22 ring-1 ring-accent-purple/18 bg-accent-purple/[0.05]';
+      return 'border border-accent-purple/22 bg-accent-purple/[0.05]';
     case 'orange':
-      return 'border border-accent-orange/22 ring-1 ring-accent-orange/18 bg-accent-orange/[0.05]';
+      return 'border border-accent-orange/22 bg-accent-orange/[0.05]';
     case 'amber':
-      return 'border border-amber-500/28 ring-1 ring-amber-400/18 bg-amber-500/[0.06]';
+      return 'border border-amber-500/28 bg-amber-500/[0.06]';
     case 'rose':
-      return 'border border-rose-500/26 ring-1 ring-rose-400/16 bg-rose-500/[0.05]';
+      return 'border border-rose-500/26 bg-rose-500/[0.05]';
     default:
-      return 'border border-border-primary ring-1 ring-border-secondary/45 bg-surface-secondary';
+      return 'border border-border-primary bg-surface-secondary';
   }
 }
 
@@ -48,19 +47,15 @@ export function statCardToneAt(index: number): SurfaceRingTone {
 export const WALLET_HIGHLIGHT_PRESETS = [
   {
     gradient: 'bg-gradient-to-br from-sky-500 via-blue-600 to-blue-950',
-    ring: 'ring-1 ring-white/10',
   },
   {
     gradient: 'bg-gradient-to-br from-violet-500 via-indigo-600 to-slate-950',
-    ring: 'ring-1 ring-violet-200/12',
   },
   {
     gradient: 'bg-gradient-to-br from-emerald-500 via-teal-600 to-slate-950',
-    ring: 'ring-1 ring-emerald-200/12',
   },
   {
     gradient: 'bg-gradient-to-br from-amber-500 via-orange-600 to-stone-950',
-    ring: 'ring-1 ring-amber-200/14',
   },
 ] as const;
 

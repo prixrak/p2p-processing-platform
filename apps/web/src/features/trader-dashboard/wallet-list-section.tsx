@@ -89,7 +89,7 @@ export function TraderDashboardWalletListSection() {
   }, [balances, usdtWallet]);
 
   return (
-    <section className="rounded-xl border border-border-primary bg-bg-secondary/60 p-4 ring-1 ring-accent-blue/12 sm:p-5">
+    <section className="rounded-xl border border-border-primary bg-bg-secondary/60 p-4 sm:p-5">
       <div className="mb-4 flex items-center gap-2">
         <Wallet className="h-5 w-5 text-accent-blue" />
         <h2 className="text-lg font-semibold text-text-primary">Wallet list</h2>
@@ -116,7 +116,6 @@ export function TraderDashboardWalletListSection() {
                 className={cn(
                   'relative min-w-[min(100%,300px)] shrink-0 overflow-hidden rounded-2xl p-4 text-white shadow-lg',
                   preset.gradient,
-                  preset.ring,
                 )}
               >
               <div

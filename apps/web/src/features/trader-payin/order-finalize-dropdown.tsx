@@ -77,7 +77,7 @@ export function OrderFinalizeDropdown({
     <div
       data-trader-payin-finalize-dropdown
       className={cn(
-        'flex min-w-[12.5rem] flex-col gap-1 rounded-lg border border-border-primary bg-surface-secondary p-1.5 shadow-2xl ring-1 ring-black/20',
+        'flex min-w-[12.5rem] flex-col gap-1 rounded-lg border border-border-primary bg-surface-secondary p-1.5 shadow-2xl',
       )}
       style={{
         position: 'fixed',

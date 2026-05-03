@@ -5,7 +5,7 @@ export default function NotFound() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-[#0a0a0f] px-4">
       <div className="mx-auto max-w-md text-center">
-        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5 ring-1 ring-white/10">
+        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-border-primary bg-white/5">
           <FileQuestion className="h-8 w-8 text-text-muted" aria-hidden />
         </div>
         <p className="text-sm font-medium text-text-muted">404</p>

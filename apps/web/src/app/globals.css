@@ -6,8 +6,18 @@
   --color-surface-tertiary: #1a1a26;
   --color-surface-elevated: #222232;
 
-  --color-border-primary: #2a2a3d;
-  --color-border-secondary: #363650;
+  /* Hairline edges only: old #363650 read as a light "frame" on near-black shells */
+  --color-border-primary: #181824;
+  --color-border-secondary: #1e1e2c;
+  --color-border-subtle: #14141d;
+  --color-border-focus: #6366f1;
+
+  --color-bg-primary: #0a0a0f;
+  --color-bg-secondary: #12121a;
+  --color-bg-tertiary: #1a1a26;
+  --color-bg-card: #12121a;
+  --color-bg-input: #0a0a0f;
+  --color-bg-hover: #1a1a26;
 
   --color-accent: #6366f1;
   --color-accent-hover: #818cf8;

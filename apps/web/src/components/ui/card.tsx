@@ -15,7 +15,7 @@ interface StatCardProps {
   trend?: { value: number; positive: boolean };
   href?: string;
   className?: string;
-  /** Accent border + ring; defaults to neutral. */
+  /** Accent border; defaults to neutral. */
   tone?: SurfaceRingTone;
 }
 
@@ -23,7 +23,7 @@ export function StatCard({ title, value, subtitle, icon: Icon, trend, href, clas
   const cardClass = clsx(
     'rounded-xl p-5 transition-colors',
     surfaceRingClass(tone),
-    href && 'cursor-pointer hover:ring-border-secondary/55 hover:border-border-secondary',
+    href && 'cursor-pointer hover:border-border-secondary',
     className,
   );
 
