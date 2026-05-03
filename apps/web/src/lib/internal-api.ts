@@ -170,7 +170,7 @@ export const internalPaths = {
   merchantDirection: (merchantId: string, id: string) => `/api/merchants/${merchantId}/directions/${id}`,
   merchantDirectionTiers: (merchantId: string, id: string) => `/api/merchants/${merchantId}/directions/${id}/tiers`,
 
-  // Referral management (admin) and cabinet
+  // Referral management (staff: admin & owner) and REFERRAL cabinet
   referrals: '/api/referrals',
   referral: (id: string) => `/api/referrals/${id}`,
   referralLinkUser: (id: string) => `/api/referrals/${id}/link-user`,

@@ -34,6 +34,15 @@ const USER_LIST_INCLUDE = {
     },
   },
   payoutTraderProfile: { select: { id: true } },
+  referralProfile: {
+    select: {
+      id: true,
+      referralPercent: true,
+      balance: true,
+      currency: { select: { code: true } },
+      _count: { select: { referrals: true } },
+    },
+  },
 } as const;
 
 type UserListWithInclude = Prisma.UserGetPayload<{ include: typeof USER_LIST_INCLUDE }>;
@@ -91,6 +100,59 @@ export class UsersService {
     return { base, list };
   }
 
+  /**
+   * Referral-role users must have a ReferralProfile row. Legacy or inconsistent data can omit it;
+   * repair on directory read so staff UI always sees commission, balance, and link actions.
+   */
+  private async backfillMissingReferralProfiles(rows: UserListWithInclude[]): Promise<UserListWithInclude[]> {
+    const missing = rows.filter((u) => u.role === UserRole.REFERRAL && !u.referralProfile);
+    if (missing.length === 0) return rows;
+
+    this.logger.warn(
+      `Referral users without profile on directory read (repairing): ${missing.map((u) => u.id).join(', ')}`,
+    );
+    const uahId = await this.currencies.requireActiveCurrencyIdByCode('UAH');
+    await Promise.all(
+      missing.map((u) =>
+        this.prisma.referralProfile.upsert({
+          where: { userId: u.id },
+          create: { userId: u.id, referralPercent: 0, currencyId: uahId },
+          update: {},
+        }),
+      ),
+    );
+
+    const profiles = await this.prisma.referralProfile.findMany({
+      where: { userId: { in: missing.map((m) => m.id) } },
+      select: {
+        userId: true,
+        id: true,
+        referralPercent: true,
+        balance: true,
+        currency: { select: { code: true } },
+        _count: { select: { referrals: true } },
+      },
+    });
+
+    const profileByUserId = new Map(profiles.map((p) => [p.userId, p]));
+
+    return rows.map((u) => {
+      if (u.role !== UserRole.REFERRAL || u.referralProfile) return u;
+      const p = profileByUserId.get(u.id);
+      if (!p) return u;
+      return {
+        ...u,
+        referralProfile: {
+          id: p.id,
+          referralPercent: p.referralPercent,
+          balance: p.balance,
+          currency: p.currency,
+          _count: p._count,
+        },
+      };
+    });
+  }
+
   private mapDirectoryUserRow(u: UserListWithInclude) {
     return {
       id: u.id,
@@ -109,6 +171,15 @@ export class UsersService {
           }
         : null,
       payoutTraderProfile: u.payoutTraderProfile,
+      referralProfile: u.referralProfile
+        ? {
+            id: u.referralProfile.id,
+            referralPercent: Number(u.referralProfile.referralPercent),
+            balance: Number(u.referralProfile.balance),
+            currencyCode: u.referralProfile.currency.code,
+            linkedCount: u.referralProfile._count.referrals,
+          }
+        : null,
     };
   }
 
@@ -138,6 +209,8 @@ export class UsersService {
       this.prisma.user.groupBy({ by: ['role'], where, _count: { _all: true } }),
     ]);
 
+    const rowsWithReferralProfiles = await this.backfillMissingReferralProfiles(rows);
+
     let activeCount: number;
     let inactiveCount: number;
     if (query.isActive === undefined) {
@@ -165,7 +238,7 @@ export class UsersService {
     }
 
     return {
-      data: rows.map((u) => this.mapDirectoryUserRow(u)),
+      data: rowsWithReferralProfiles.map((u) => this.mapDirectoryUserRow(u)),
       total,
       page,
       limit,

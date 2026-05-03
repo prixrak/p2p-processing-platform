@@ -242,15 +242,20 @@ export const cascadeKeys = {
   coverage: (currency: string) => [...cascadeRoot, 'coverage', currency] as const,
 };
 
-const treasuryRoot = [...adminRoot, 'treasury'] as const;
-
 export const treasuryKeys = {
-  exchangeRate: () => [...treasuryRoot, 'exchange-rate'] as const,
-  incomeSummary: () => [...treasuryRoot, 'income-summary'] as const,
-  incomeRecent: () => [...treasuryRoot, 'income-recent'] as const,
-  withdrawals: () => [...treasuryRoot, 'withdrawals'] as const,
-  deposits: () => [...treasuryRoot, 'deposits'] as const,
-  operations: (opFrom: string, opTo: string) => [...treasuryRoot, 'operations', opFrom, opTo] as const,
+  scope: (staffPrefix: StaffRolePrefix) => [staffPrefix, 'treasury'] as const,
+  exchangeRate: (staffPrefix: StaffRolePrefix) =>
+    [...treasuryKeys.scope(staffPrefix), 'exchange-rate'] as const,
+  incomeSummary: (staffPrefix: StaffRolePrefix) =>
+    [...treasuryKeys.scope(staffPrefix), 'income-summary'] as const,
+  incomeRecent: (staffPrefix: StaffRolePrefix) =>
+    [...treasuryKeys.scope(staffPrefix), 'income-recent'] as const,
+  withdrawals: (staffPrefix: StaffRolePrefix) =>
+    [...treasuryKeys.scope(staffPrefix), 'withdrawals'] as const,
+  deposits: (staffPrefix: StaffRolePrefix) =>
+    [...treasuryKeys.scope(staffPrefix), 'deposits'] as const,
+  operations: (staffPrefix: StaffRolePrefix, opFrom: string, opTo: string) =>
+    [...treasuryKeys.scope(staffPrefix), 'operations', opFrom, opTo] as const,
 };
 
 export const adminPayoutPoolKeys = {

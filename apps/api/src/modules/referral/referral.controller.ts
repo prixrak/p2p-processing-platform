@@ -27,9 +27,9 @@ import { ReferralService } from './referral.service';
 import { CreateReferralDto, UpdateReferralDto, LinkUserDto } from './dto';
 
 /**
- * Admin endpoints for managing referral agents and linking referred users.
+ * Staff endpoints for managing referral agents and referred-user links (admin and owner).
  */
-@ApiTags('Referrals (Admin)')
+@ApiTags('Referrals (Staff)')
 @ApiBearerAuth()
 @Controller('referrals')
 @UseGuards(JwtAuthGuard, RolesGuard)

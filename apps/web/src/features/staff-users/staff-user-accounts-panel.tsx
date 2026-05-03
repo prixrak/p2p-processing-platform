@@ -2,18 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Plus,
-  Users,
-  ShieldCheck,
-  ShieldOff,
-  Percent,
-  Lock,
-  Unlock,
-  SlidersHorizontal,
-  ToggleLeft,
-  ToggleRight,
-} from 'lucide-react';
+import { Plus, Users, ShieldCheck, ShieldOff, Percent, Lock, Unlock, SlidersHorizontal, ToggleLeft, ToggleRight, UserPlus } from 'lucide-react';
 import { UserRole } from '@p2p/shared';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -42,10 +31,9 @@ import { parseDecimalInput } from '@/lib/decimal-input';
 import { ownerCreateUserFormSchema } from '@/lib/validation/schemas';
 import { fieldErrorsFromZod } from '@/lib/validation/zod-field-errors';
 import type { StaffRolePrefix } from '@/features/traders';
-import { staffTraderKeys } from '@/features/traders';
-import { PayoutLimitsModal, type PayoutLimitsTrader } from '@/features/traders';
-import { TraderDetailModal } from '@/features/traders';
+import { staffTraderKeys, PayoutLimitsModal, type PayoutLimitsTrader } from '@/features/traders';
 import { MerchantDirectionsModal } from './merchant-directions-modal';
+import { ReferralAgentManageModal } from './referral-agent-manage-modal';
 
 export interface DirectoryUser {
   id: string;
@@ -62,6 +50,13 @@ export interface DirectoryUser {
     payoutMaxLimit: number;
   } | null;
   payoutTraderProfile: { id: string } | null;
+  referralProfile: {
+    id: string;
+    referralPercent: number;
+    balance: number;
+    currencyCode: string;
+    linkedCount: number;
+  } | null;
 }
 
 interface UsersDirectoryResponse {
@@ -232,11 +227,12 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
     userId: string;
     email: string;
   } | null>(null);
+  const [referralManage, setReferralManage] = useState<{
+    profileId: string;
+    email: string;
+  } | null>(null);
   const [legacyMerchantName, setLegacyMerchantName] = useState('');
-
   const [limitsTrader, setLimitsTrader] = useState<PayoutLimitsTrader | null>(null);
-  const [detailTraderId, setDetailTraderId] = useState<string | null>(null);
-  const [detailTraderName, setDetailTraderName] = useState('');
 
   const { data: countries } = useQuery({
     queryKey: countryKeys.active,
@@ -419,6 +415,26 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         if (u.role === UserRole.PAYOUT_TRADER && u.payoutTraderProfile) {
           return <span className="text-xs text-text-muted">Pay-Out specialist assigned</span>;
         }
+        if (u.role === UserRole.REFERRAL && u.referralProfile) {
+          const p = u.referralProfile;
+          return (
+            <div className="text-xs text-text-secondary space-y-0.5">
+              <span>
+                {p.referralPercent}% · {p.currencyCode}
+              </span>
+              <span className="block font-mono text-text-muted">
+                Balance {p.balance.toFixed(4)} · Linked {p.linkedCount}
+              </span>
+            </div>
+          );
+        }
+        if (u.role === UserRole.REFERRAL && !u.referralProfile) {
+          return (
+            <span className="text-xs text-amber-500">
+              Profile missing — use the refer icon in Actions to refresh, or reload the page.
+            </span>
+          );
+        }
         return <span className="text-text-muted">—</span>;
       },
     },
@@ -506,17 +522,29 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                   <ToggleLeft className="h-3.5 w-3.5" />
                 )}
               </IconButton>
-              <IconButton
-                label="Trader details"
-                variant="ghost"
-                onClick={() => {
-                  setDetailTraderId(u.traderProfile!.id);
-                  setDetailTraderName(u.email.split('@')[0] ?? 'Trader');
-                }}
-              >
-                <span className="text-xs font-medium">⋯</span>
-              </IconButton>
             </>
+          ) : null}
+          {u.role === UserRole.REFERRAL ? (
+            <IconButton
+              label={
+                u.referralProfile
+                  ? 'Referral agent: linked users & commission'
+                  : 'Refresh list — missing referral profile will be created automatically'
+              }
+              variant="ghost"
+              onClick={() => {
+                if (u.referralProfile) {
+                  setReferralManage({
+                    profileId: u.referralProfile.id,
+                    email: u.email,
+                  });
+                } else {
+                  invalidateDirectory();
+                }
+              }}
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+            </IconButton>
           ) : null}
           <IconButton
             label={
@@ -858,12 +886,13 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         queryPrefix={queryKeyPrefix}
       />
 
-      <TraderDetailModal
-        open={!!detailTraderId}
-        onClose={() => setDetailTraderId(null)}
-        traderId={detailTraderId}
-        traderName={detailTraderName}
-        queryPrefix={queryKeyPrefix}
+      <ReferralAgentManageModal
+        queryKeyPrefix={queryKeyPrefix}
+        open={!!referralManage}
+        profileId={referralManage?.profileId ?? null}
+        agentEmail={referralManage?.email ?? ''}
+        onClose={() => setReferralManage(null)}
+        onChanged={invalidateDirectory}
       />
     </div>
   );
