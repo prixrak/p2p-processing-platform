@@ -12,6 +12,7 @@ import {
 import { PayInOrderStatus } from '@p2p/shared';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { adminKeys } from '@/lib/query-keys';
 import { StatCard } from '@/components/ui/stat-card';
 import { payinStatusLabel } from '@/lib/order-status-ui';
 
@@ -26,7 +27,7 @@ interface PlatformStats {
 
 export default function StatisticsPage() {
   const { data: stats, isLoading } = useQuery<PlatformStats>({
-    queryKey: ['admin', 'statistics'],
+    queryKey: adminKeys.statistics(),
     queryFn: () =>
       api.get(internalPaths.adminStatistics),
   });

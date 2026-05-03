@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { ownerKeys } from '@/lib/query-keys';
 import { StatCard } from '@/components/ui/card';
 import { statCardToneAt } from '@/lib/surface-ring';
 
@@ -29,7 +30,7 @@ interface PlatformStats {
 
 export default function OwnerDashboard() {
   const { data: stats } = useQuery({
-    queryKey: ['owner', 'stats'],
+    queryKey: ownerKeys.stats(),
     queryFn: () => api.get<PlatformStats>(internalPaths.adminStats),
   });
 

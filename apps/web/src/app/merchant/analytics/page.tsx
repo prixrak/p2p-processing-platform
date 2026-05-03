@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { merchantKeys } from '@/lib/query-keys';
 import { StatCard } from '@/components/ui/stat-card';
 import { Select } from '@/components/ui/select';
 
@@ -39,7 +40,7 @@ export default function AnalyticsPage() {
   const [period, setPeriod] = useState('7d');
 
   const { data: analytics, isLoading } = useQuery<MerchantAnalytics>({
-    queryKey: ['merchant', 'analytics', period],
+    queryKey: merchantKeys.analytics(period),
     queryFn: () =>
       api.get<MerchantAnalytics>(internalPaths.merchantAnalytics, { period }),
   });

@@ -30,8 +30,13 @@ import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { FormAlert } from '@/components/ui/form-alert';
 import { errorMessageFromUnknown } from '@/lib/error-message';
-import { fetchCurrencyList } from '@/lib/currency-queries';
-import { fetchCountryList } from '@/lib/country-queries';
+import {
+  countryKeys,
+  currencyKeys,
+  fetchCountryList,
+  fetchCurrencyList,
+  staffKeys,
+} from '@/lib/query-keys';
 import { CountrySelectWithCreate } from '@/features/countries/country-select-with-create';
 import { parseDecimalInput } from '@/lib/decimal-input';
 import { ownerCreateUserFormSchema } from '@/lib/validation/schemas';
@@ -151,7 +156,7 @@ export interface StaffUserAccountsPanelProps {
 
 export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPanelProps) {
   const queryClient = useQueryClient();
-  const directoryKey = [queryKeyPrefix, 'users', 'directory'] as const;
+  const directoryKey = staffKeys.usersDirectory(queryKeyPrefix);
 
   const excludedDirectoryRoles = useMemo(
     () => directoryExcludedRolesForUi(queryKeyPrefix),
@@ -246,13 +251,13 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
   const [detailTraderName, setDetailTraderName] = useState('');
 
   const { data: countries } = useQuery({
-    queryKey: ['countries', 'active'],
+    queryKey: countryKeys.active,
     queryFn: () => fetchCountryList({ activeOnly: true }),
     enabled: showCreate,
   });
 
   const { data: staffCurrencies = [] } = useQuery({
-    queryKey: ['currencies'],
+    queryKey: currencyKeys.list(),
     queryFn: fetchCurrencyList,
     enabled: showCreate,
   });

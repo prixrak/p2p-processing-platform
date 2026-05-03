@@ -11,8 +11,13 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs } from '@/components/ui/tabs';
-import type { StaffRolePrefix } from '@/features/traders/query-keys';
-import { staffTraderKeys } from '@/features/traders/query-keys';
+import type { StaffRolePrefix } from '@/lib/query-keys';
+import {
+  currencyKeys,
+  fetchCurrencyList,
+  settlementKeys,
+  staffTraderKeys,
+} from '@/lib/query-keys';
 import {
   mergeSettlementIntoListCaches,
   type SettlementListRow,
@@ -27,7 +32,6 @@ import { FormAlert } from '@/components/ui/form-alert';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { errorMessageFromUnknown } from '@/lib/error-message';
 import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
-import { fetchCurrencyList } from '@/lib/currency-queries';
 import { parseDecimalInput } from '@/lib/decimal-input';
 
 type SettlementTab = 'trader' | 'payout' | 'merchant';
@@ -109,14 +113,14 @@ export function SettlementCreateModal({
   });
 
   const { data: payoutOptionsResp } = useQuery<{ data: PayoutSpecialistOption[] }>({
-    queryKey: ['settlements', 'payout-specialist-options'],
+    queryKey: settlementKeys.payoutSpecialistOptions,
     queryFn: () => api.get(internalPaths.settlementsPayoutSpecialistOptions),
     enabled: open && tab === 'payout',
   });
   const payoutOptions = payoutOptionsResp?.data ?? [];
 
   const { data: merchants = [] } = useQuery<MerchantBrief[]>({
-    queryKey: ['merchants', 'brief-options'],
+    queryKey: settlementKeys.merchantsBriefOptions,
     queryFn: async () => {
       const res = await api.get<{
         data: Array<{ id: string; name: string }>;
@@ -127,7 +131,7 @@ export function SettlementCreateModal({
   });
 
   const { data: merchantDetail } = useQuery<MerchantDetail>({
-    queryKey: ['merchants', merchantId, 'balances'],
+    queryKey: settlementKeys.merchantBalances(merchantId),
     queryFn: () => api.get(internalPaths.merchant(merchantId)),
     enabled: open && tab === 'merchant' && Boolean(merchantId),
   });
@@ -149,13 +153,13 @@ export function SettlementCreateModal({
   }, [merchantBalances, merchantCurrency]);
 
   const { data: traderBalances } = useQuery<TraderBalance[]>({
-    queryKey: [queryPrefix, 'traders', traderId, 'balances'],
+    queryKey: settlementKeys.staffTraderBalances(queryPrefix, traderId),
     queryFn: () => api.get(internalPaths.traderBalances(traderId)),
     enabled: open && tab === 'trader' && !!traderId,
   });
 
   const { data: currencyOptionsRaw = [] } = useQuery({
-    queryKey: ['currencies'],
+    queryKey: currencyKeys.list(),
     queryFn: fetchCurrencyList,
     enabled: open,
   });

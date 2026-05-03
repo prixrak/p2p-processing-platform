@@ -17,12 +17,12 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { banksKeys, currencyKeys, fetchCurrencyList, paymentMethodsKeys, requisiteKeys, traderKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 import { getUserFromToken } from '@/lib/auth';
 import type {
   AuditItem,
   BankOption,
-  CurrencyRow,
   PaymentMethodRow,
   PayinAssignRangeRow,
   RequisiteApiRow,
@@ -73,22 +73,22 @@ export function TraderRequisitesPage() {
   const [deleteGroupId, setDeleteGroupId] = useState<string | null>(null);
 
   const { data: banks = [] } = useQuery({
-    queryKey: ['banks', 'list'],
+    queryKey: banksKeys.list,
     queryFn: () => api.get<BankOption[]>(internalPaths.banks),
   });
 
   const { data: currencies = [] } = useQuery({
-    queryKey: ['currencies', 'list'],
-    queryFn: () => api.get<CurrencyRow[]>(internalPaths.currencies),
+    queryKey: currencyKeys.list(),
+    queryFn: fetchCurrencyList,
   });
 
   const { data: paymentMethods = [] } = useQuery({
-    queryKey: ['payment-methods', 'list'],
+    queryKey: paymentMethodsKeys.list,
     queryFn: () =>
       api.get<PaymentMethodRow[]>(internalPaths.paymentMethodsQuery('activeOnly=true')),
   });
 
-  const groupsQueryKey = ['trader', 'requisite-groups', archivedTab] as const;
+  const groupsQueryKey = traderKeys.requisiteGroups(archivedTab);
 
   const { data: groups = [], isLoading } = useQuery({
     queryKey: groupsQueryKey,
@@ -99,7 +99,7 @@ export function TraderRequisitesPage() {
   });
 
   const { data: assignRangesData } = useQuery({
-    queryKey: ['trader', 'payin-assign-ranges'],
+    queryKey: traderKeys.payinAssignRanges,
     queryFn: () =>
       api.get<{ requisites: PayinAssignRangeRow[] }>(internalPaths.traderDashboardPayinAssignRanges),
   });
@@ -113,7 +113,7 @@ export function TraderRequisitesPage() {
   }, [assignRangesData]);
 
   const { data: historyData, isLoading: historyLoading } = useQuery({
-    queryKey: ['requisite', 'history', historyRequisiteId],
+    queryKey: requisiteKeys.history(historyRequisiteId),
     queryFn: () =>
       api.get<{ items: AuditItem[]; total: number; page: number; limit: number }>(
         internalPaths.requisiteHistory(historyRequisiteId!),
@@ -139,8 +139,8 @@ export function TraderRequisitesPage() {
   }, [groups, search]);
 
   const invalidateGroups = () => {
-    queryClient.invalidateQueries({ queryKey: ['trader', 'requisite-groups'] });
-    queryClient.invalidateQueries({ queryKey: ['trader', 'payin-assign-ranges'] });
+    queryClient.invalidateQueries({ queryKey: traderKeys.requisiteGroupsScope });
+    queryClient.invalidateQueries({ queryKey: traderKeys.payinAssignRanges });
   };
 
   const createGroupMutation = useMutation({

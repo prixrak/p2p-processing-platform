@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { merchantKeys } from '@/lib/query-keys';
 import { StatCard } from '@/components/ui/stat-card';
 import { useAuth } from '@/hooks/use-auth';
 import { statCardToneAt, surfaceRingClass } from '@/lib/surface-ring';
@@ -30,12 +31,12 @@ export default function MerchantDashboard() {
   const { user } = useAuth();
 
   const { data: balances = [], isLoading: balancesLoading } = useQuery<MerchantBalance[]>({
-    queryKey: ['merchant', 'balances'],
+    queryKey: merchantKeys.balances(),
     queryFn: () => api.get(internalPaths.merchantBalances),
   });
 
   const { data: stats, isLoading: statsLoading } = useQuery<MerchantStats>({
-    queryKey: ['merchant', 'stats'],
+    queryKey: merchantKeys.stats(),
     queryFn: () => api.get(internalPaths.merchantStats),
   });
 

@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { specialistCabinetKeys } from '@/lib/query-keys';
 
 interface SpecialistStats {
   payout_trader_id: string;
@@ -20,7 +21,7 @@ interface SpecialistStats {
 
 export default function PayoutTraderStatisticsPage() {
   const { data, isLoading } = useQuery({
-    queryKey: ['payout-trader', 'statistics', { period: '30d' }] as const,
+    queryKey: specialistCabinetKeys.statistics({ period: '30d' }),
     queryFn: () =>
       api.get<SpecialistStats>(internalPaths.payoutSpecialistStatistics, { period: '30d' }),
   });

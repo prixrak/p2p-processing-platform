@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
-import { staffTraderKeys, type StaffRolePrefix } from './query-keys';
+import { staffTraderKeys, type StaffRolePrefix } from '@/lib/query-keys';
 import type { StaffTraderRow } from './staff-trader-types';
 
 export function useStaffTraders(staffRole: StaffRolePrefix) {

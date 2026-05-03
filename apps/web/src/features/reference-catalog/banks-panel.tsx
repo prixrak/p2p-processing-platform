@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
 import { upsertSortedArrayCache } from '@/lib/query-cache-merge';
+import { ownerReferenceKeys } from '@/lib/query-keys';
 
 interface Bank {
   id: string;
@@ -29,7 +30,7 @@ export function BanksPanel() {
   const [logo, setLogo] = useState<File | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['owner', 'banks'],
+    queryKey: ownerReferenceKeys.banks,
     queryFn: () => api.get<Bank[]>(internalPaths.banksAdmin),
   });
 
@@ -48,7 +49,7 @@ export function BanksPanel() {
       });
     },
     onSuccess: (row) => {
-      upsertSortedArrayCache(queryClient, ['owner', 'banks'], row, {
+      upsertSortedArrayCache(queryClient, ownerReferenceKeys.banks, row, {
         idOf: (b: Bank) => b.id,
         sort: (a: Bank, b: Bank) => a.name.localeCompare(b.name),
       });
@@ -74,7 +75,7 @@ export function BanksPanel() {
       });
     },
     onSuccess: (row) => {
-      upsertSortedArrayCache(queryClient, ['owner', 'banks'], row, {
+      upsertSortedArrayCache(queryClient, ownerReferenceKeys.banks, row, {
         idOf: (b: Bank) => b.id,
         sort: (a: Bank, b: Bank) => a.name.localeCompare(b.name),
       });
@@ -88,7 +89,7 @@ export function BanksPanel() {
         ? api.patch<Bank>(internalPaths.bankDeactivate(id))
         : api.patch<Bank>(internalPaths.bankActivate(id)),
     onSuccess: (row) =>
-      upsertSortedArrayCache(queryClient, ['owner', 'banks'], row, {
+      upsertSortedArrayCache(queryClient, ownerReferenceKeys.banks, row, {
         idOf: (b: Bank) => b.id,
         sort: (a: Bank, b: Bank) => a.name.localeCompare(b.name),
       }),

@@ -10,6 +10,7 @@ import {
 import { StatCard } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { traderKeys } from '@/lib/query-keys';
 import { usePayinTraderRealtime, usePayOutTraderRealtime } from '@/lib/payin-realtime';
 import { formatCurrency } from '@/lib/utils';
 import { statCardToneAt } from '@/lib/surface-ring';
@@ -30,7 +31,7 @@ export default function TraderDashboard() {
   usePayinTraderRealtime(queryClient);
   usePayOutTraderRealtime(queryClient);
   const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['trader', 'dashboard-stats'],
+    queryKey: traderKeys.dashboardStats(),
     queryFn: () => api.get<DashboardStats>(internalPaths.traderDashboardStats),
   });
 

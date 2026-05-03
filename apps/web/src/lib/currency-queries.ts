@@ -2,6 +2,13 @@ import type { QueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 
+/** React Query key roots — use factories below so currency list caches stay consistent. */
+export const currencyKeys = {
+  all: ['currencies'] as const,
+  /** Normalized rows from GET /api/currencies (shared across dropdowns and catalog). */
+  list: () => [...currencyKeys.all, 'list'] as const,
+} as const;
+
 export interface CurrencyListItem {
   id: string;
   code: string;
@@ -32,12 +39,5 @@ export async function fetchCurrencyList(): Promise<CurrencyListItem[]> {
 
 /** Invalidates TanStack caches used for currency dropdowns across staff cabinets. */
 export function invalidateCurrencyListQueries(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({
-    predicate: (q) => {
-      const k = q.queryKey;
-      if (!Array.isArray(k) || k.length === 0) return false;
-      if (k[0] === 'currencies') return true;
-      return k[0] === 'owner' && k[1] === 'currencies';
-    },
-  });
+  void queryClient.invalidateQueries({ queryKey: currencyKeys.all });
 }

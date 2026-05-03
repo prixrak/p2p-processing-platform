@@ -14,7 +14,12 @@ import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
 import { upsertSortedArrayCache } from '@/lib/query-cache-merge';
 import { CountrySelectWithCreate } from '@/features/countries/country-select-with-create';
-import { fetchCountryList, type CountryListItem } from '@/lib/country-queries';
+import {
+  countryKeys,
+  fetchCountryList,
+  ownerReferenceKeys,
+  type CountryListItem,
+} from '@/lib/query-keys';
 
 type PaymentMethodCountry = CountryListItem;
 
@@ -46,12 +51,12 @@ export default function PaymentMethodsPage() {
   });
 
   const { data: methods, isLoading } = useQuery({
-    queryKey: ['owner', 'payment-methods'],
+    queryKey: ownerReferenceKeys.paymentMethods,
     queryFn: () => api.get<PaymentMethod[]>(internalPaths.paymentMethods),
   });
 
   const { data: countries } = useQuery({
-    queryKey: ['owner', 'countries'],
+    queryKey: countryKeys.ownerList,
     queryFn: () => fetchCountryList(),
     enabled: showCreate,
   });
@@ -60,7 +65,7 @@ export default function PaymentMethodsPage() {
     mutationFn: (body: typeof form) =>
       api.post<PaymentMethod>(internalPaths.adminPaymentMethods, body),
     onSuccess: (row) => {
-      qc.setQueryData<Array<PaymentMethodCountry>>(['owner', 'countries'], (countryRows) =>
+      qc.setQueryData<Array<PaymentMethodCountry>>(countryKeys.ownerList, (countryRows) =>
         countryRows?.map((c) =>
           c.id === row.country.id
             ? {
@@ -72,7 +77,7 @@ export default function PaymentMethodsPage() {
             : c,
         ),
       );
-      upsertSortedArrayCache(qc, ['owner', 'payment-methods'], row, {
+      upsertSortedArrayCache(qc, ownerReferenceKeys.paymentMethods, row, {
         idOf: (m) => m.id,
         sort: (a, b) =>
           a.country.code.localeCompare(b.country.code) || a.name.localeCompare(b.name),
@@ -93,7 +98,7 @@ export default function PaymentMethodsPage() {
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       api.patch<PaymentMethod>(internalPaths.adminPaymentMethod(id), { isActive: !isActive }),
     onSuccess: (row) =>
-      upsertSortedArrayCache(qc, ['owner', 'payment-methods'], row, {
+      upsertSortedArrayCache(qc, ownerReferenceKeys.paymentMethods, row, {
         idOf: (m) => m.id,
         sort: (a, b) =>
           a.country.code.localeCompare(b.country.code) || a.name.localeCompare(b.name),

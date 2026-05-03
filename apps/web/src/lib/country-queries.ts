@@ -2,6 +2,12 @@ import type { QueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 
+/** React Query keys for country list caches (owner geo + staff dropdowns). */
+export const countryKeys = {
+  ownerList: ['owner', 'countries'] as const,
+  active: ['countries', 'active'] as const,
+} as const;
+
 export interface CountryListItem {
   id: string;
   name: string;
@@ -84,13 +90,6 @@ export function mergeCreatedCountry(
 
 /** Invalidates caches used when rendering country selects (owner geo + payout filters). */
 export function invalidateCountryListQueries(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({
-    predicate: (q) => {
-      const k = q.queryKey;
-      return (
-        Array.isArray(k) &&
-        (k[0] === 'countries' || (k[0] === 'owner' && k[1] === 'countries'))
-      );
-    },
-  });
+  void queryClient.invalidateQueries({ queryKey: countryKeys.ownerList });
+  void queryClient.invalidateQueries({ queryKey: countryKeys.active });
 }

@@ -1,4 +1,5 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query';
+import { settlementKeys } from '@/lib/query-keys';
 
 /** Shared shape for paginated list queries in the web app. */
 export type PaginatedListCache<T = unknown> = {
@@ -299,7 +300,7 @@ export function mergeSettlementIntoListCaches(
   const row = normalizeSettlementListRow(rawRow);
   if (queryPrefix === 'admin') {
     mergeCreatedIntoPaginatedQueries(queryClient, {
-      queryKeyPrefix: ['admin', 'settlements'],
+      queryKeyPrefix: settlementKeys.admin.scope,
       row,
       matchesQueryKey: (key) => adminSettlementListRowMatchesKey(row, key),
       getPageNumber: getAdminSettlementPage,
@@ -307,7 +308,7 @@ export function mergeSettlementIntoListCaches(
     });
   } else {
     mergeCreatedIntoPaginatedQueries(queryClient, {
-      queryKeyPrefix: ['owner', 'settlements'],
+      queryKeyPrefix: settlementKeys.owner.scope,
       row,
       matchesQueryKey: (key) => ownerSettlementListRowMatchesKey(row, key),
       getPageNumber: getOwnerSettlementPage,

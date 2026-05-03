@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { ownerKeys } from '@/lib/query-keys';
 import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
@@ -54,7 +55,7 @@ export default function AuditPage() {
   const [dateTo, setDateTo] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['owner', 'audit', page, search, actionFilter, entityFilter, dateFrom, dateTo],
+    queryKey: ownerKeys.audit(page, search, actionFilter, entityFilter, dateFrom, dateTo),
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),

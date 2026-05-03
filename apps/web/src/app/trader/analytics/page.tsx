@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { traderKeys } from '@/lib/query-keys';
 import { formatCurrency } from '@/lib/utils';
 import { formatErrorMessage } from '@/lib/format-error';
 
@@ -83,7 +84,7 @@ export default function TraderAnalyticsPage() {
   const [currency, setCurrency] = useState('UAH');
 
   const { data: balances } = useQuery({
-    queryKey: ['trader', 'balances', 'me'],
+    queryKey: traderKeys.balancesMe(),
     queryFn: () =>
       api.get<Array<{ currency: string; amount: unknown }>>(internalPaths.traderMeBalances),
   });
@@ -104,7 +105,7 @@ export default function TraderAnalyticsPage() {
   }, [currency, customDates.from, customDates.to, dateBasis, granularity, presetPeriod, rangeMode]);
 
   const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: ['trader', 'analytics', queryParams],
+    queryKey: traderKeys.analytics(queryParams),
     queryFn: () => api.get<TraderCabinetAnalytics>(internalPaths.traderMeAnalytics, queryParams),
   });
 

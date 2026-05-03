@@ -15,6 +15,7 @@ import { StatCard, Card } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { traderKeys } from '@/lib/query-keys';
 import { formatCurrency } from '@/lib/utils';
 import {
   TraderVolumeChart,
@@ -56,7 +57,7 @@ export default function StatisticsPage() {
   const [period, setPeriod] = useState('7d');
 
   const { data: stats, isLoading } = useQuery({
-    queryKey: ['trader', 'statistics', period],
+    queryKey: traderKeys.statistics(period),
     queryFn: () =>
       api.get<TraderStatistics>(internalPaths.traderMeStatistics, { period }),
   });

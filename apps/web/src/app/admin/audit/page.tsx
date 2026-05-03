@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ScrollText } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { adminKeys } from '@/lib/query-keys';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { FilterBar, FilterSelect, FilterInput } from '@/components/ui/filters';
@@ -47,7 +48,7 @@ export default function AuditLogPage() {
   const [dateTo, setDateTo] = useState('');
 
   const { data: entries = [], isLoading } = useQuery<AuditEntry[]>({
-    queryKey: ['admin', 'audit', { actorFilter, actionFilter, entityFilter, dateFrom, dateTo }],
+    queryKey: adminKeys.audit({ actorFilter, actionFilter, entityFilter, dateFrom, dateTo }),
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set('page', '1');

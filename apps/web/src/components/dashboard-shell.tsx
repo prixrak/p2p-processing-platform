@@ -9,6 +9,7 @@ import { LogOut, Menu, Power, PowerOff, X, type LucideIcon } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { traderKeys } from '@/lib/query-keys';
 import { Tooltip } from '@/components/ui/tooltip';
 
 export interface NavItem {
@@ -38,7 +39,7 @@ interface TraderDashboardStatsToggleFields {
 function TraderHeaderOrderStatus() {
   const queryClient = useQueryClient();
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['trader', 'dashboard-stats'],
+    queryKey: traderKeys.dashboardStats(),
     queryFn: () =>
       api.get<TraderDashboardStatsToggleFields>(internalPaths.traderDashboardStats),
     select: (s) => ({
@@ -53,7 +54,7 @@ function TraderHeaderOrderStatus() {
         accepting_orders,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['trader', 'dashboard-stats'] });
+      void queryClient.invalidateQueries({ queryKey: traderKeys.dashboardStats() });
     },
   });
 

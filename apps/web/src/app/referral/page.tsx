@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { referralKeys } from '@/lib/query-keys';
 import { UserRole } from '@p2p/shared';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
@@ -34,7 +35,7 @@ interface ReferralProfile {
 
 export default function ReferralDashboard() {
   const { data: profile, isLoading } = useQuery({
-    queryKey: ['referral', 'me'],
+    queryKey: referralKeys.me(),
     queryFn: () => api.get<ReferralProfile>(internalPaths.referralMe),
   });
 

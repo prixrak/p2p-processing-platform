@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
 import { parseDecimalInput } from '@/lib/decimal-input';
+import { currencyKeys, fetchCurrencyList, ownerKeys } from '@/lib/query-keys';
 
 interface Direction {
   id: string;
@@ -84,12 +85,6 @@ const emptyForm: {
   maxAmount: 0,
 };
 
-interface CurrencyRow {
-  id: string;
-  code: string;
-  isActive: boolean;
-}
-
 export default function DirectionsPage() {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
@@ -97,8 +92,8 @@ export default function DirectionsPage() {
   const [form, setForm] = useState(emptyForm);
 
   const { data: currencies, isLoading: currenciesLoading } = useQuery({
-    queryKey: ['owner', 'currencies'],
-    queryFn: () => api.get<CurrencyRow[]>(internalPaths.currencies),
+    queryKey: currencyKeys.list(),
+    queryFn: fetchCurrencyList,
   });
 
   const currencySelectOptions = useMemo(() => {
@@ -124,7 +119,7 @@ export default function DirectionsPage() {
   );
 
   const { data, isLoading } = useQuery({
-    queryKey: ['owner', 'directions'],
+    queryKey: ownerKeys.directions(),
     queryFn: async () => {
       const rows = await api.get<DirectionApiRow[]>(internalPaths.directions);
       const mapped = rows.map(mapDirection);
@@ -148,7 +143,7 @@ export default function DirectionsPage() {
       }),
     onSuccess: (raw) => {
       const mapped = mapDirection(raw);
-      queryClient.setQueryData<DirectionsTableData>(['owner', 'directions'], (old) => {
+      queryClient.setQueryData<DirectionsTableData>(ownerKeys.directions(), (old) => {
         if (!old) return { data: [mapped], totalPages: 1 };
         if (old.data.some((d) => d.id === mapped.id)) return old;
         return { ...old, data: sortDirections([...old.data, mapped]) };
@@ -170,7 +165,7 @@ export default function DirectionsPage() {
       }),
     onSuccess: (raw) => {
       const mapped = mapDirection(raw);
-      queryClient.setQueryData<DirectionsTableData>(['owner', 'directions'], (old) => {
+      queryClient.setQueryData<DirectionsTableData>(ownerKeys.directions(), (old) => {
         if (!old) return old;
         return {
           ...old,
@@ -186,7 +181,7 @@ export default function DirectionsPage() {
       api.patch<DirectionApiRow>(internalPaths.directionToggle(id)),
     onSuccess: (raw) => {
       const mapped = mapDirection(raw);
-      queryClient.setQueryData<DirectionsTableData>(['owner', 'directions'], (old) => {
+      queryClient.setQueryData<DirectionsTableData>(ownerKeys.directions(), (old) => {
         if (!old) return old;
         return {
           ...old,

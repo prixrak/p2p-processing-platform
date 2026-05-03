@@ -5,6 +5,7 @@ import { Wallet } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { specialistCabinetKeys } from '@/lib/query-keys';
 import { DataTable } from '@/components/ui/data-table';
 
 interface SpecialistSummary {
@@ -27,12 +28,12 @@ interface SettlementItem {
 
 export default function PayoutTraderBalancePage() {
   const { data, isLoading } = useQuery({
-    queryKey: ['payout-trader', 'summary'] as const,
+    queryKey: specialistCabinetKeys.summary(),
     queryFn: () => api.get<SpecialistSummary>(internalPaths.payoutSpecialistSummary),
   });
 
   const { data: settlementPage, isLoading: settlementsLoading } = useQuery({
-    queryKey: ['payout-trader', 'settlements', 1] as const,
+    queryKey: specialistCabinetKeys.settlements(1),
     queryFn: () =>
       api.get<{ items: SettlementItem[]; total: number }>(
         internalPaths.payoutSpecialistSettlements('page=1&limit=30'),

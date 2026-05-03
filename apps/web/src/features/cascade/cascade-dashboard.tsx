@@ -6,6 +6,7 @@ import { GitFork } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { parseDecimalInput } from '@/lib/decimal-input';
+import { cascadeKeys } from '@/lib/query-keys';
 import type { CascadeSettings, NominalRow, TrafficPercentPolicy } from './cascade-types';
 import { CascadeCoverageSection } from './cascade-coverage-section';
 import { CascadeGlobalSettingsSection } from './cascade-global-settings-section';
@@ -31,12 +32,12 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
   const [draftForkW, setDraftForkW] = useState('');
 
   const settingsQ = useQuery({
-    queryKey: ['admin', 'cascade', 'settings'],
+    queryKey: cascadeKeys.settings(),
     queryFn: () => api.get<CascadeSettings>(internalPaths.adminCascadeSettings),
   });
 
   const trafficPolicyQ = useQuery({
-    queryKey: ['admin', 'cascade', 'traffic-policy'],
+    queryKey: cascadeKeys.trafficPolicy(),
     queryFn: () => api.get<TrafficPercentPolicy>(internalPaths.adminCascadeTrafficPolicy),
   });
 
@@ -51,7 +52,7 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
   }, [settingsQ.data]);
 
   const nominalsQ = useQuery({
-    queryKey: ['admin', 'cascade', 'nominals'],
+    queryKey: cascadeKeys.nominals(),
     queryFn: async () => {
       const res = await api.get<{ nominals: NominalRow[] }>(internalPaths.adminCascadeNominals);
       return res.nominals;
@@ -59,7 +60,7 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
   });
 
   const coverageQ = useQuery({
-    queryKey: ['admin', 'cascade', 'coverage', currency],
+    queryKey: cascadeKeys.coverage(currency),
     queryFn: () =>
       api.get<{ nominals: { nominal: number; count: number }[] }>(
         internalPaths.adminCascadeCoverage(currency),
@@ -69,7 +70,7 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
   const patchSettings = useMutation({
     mutationFn: (body: Partial<CascadeSettings>) =>
       api.patch<CascadeSettings>(internalPaths.adminCascadeSettings, body),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin', 'cascade'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: cascadeKeys.scope }),
   });
 
   const createNominal = useMutation({
@@ -81,7 +82,7 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
     onSuccess: () => {
       setNewAmount('');
       setNewSort('');
-      void qc.invalidateQueries({ queryKey: ['admin', 'cascade'] });
+      void qc.invalidateQueries({ queryKey: cascadeKeys.scope });
     },
   });
 
@@ -91,12 +92,12 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
         ...(vars.is_active !== undefined ? { is_active: vars.is_active } : {}),
         ...(vars.sort_order !== undefined ? { sort_order: vars.sort_order } : {}),
       }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin', 'cascade'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: cascadeKeys.scope }),
   });
 
   const deleteNominal = useMutation({
     mutationFn: (id: string) => api.delete(internalPaths.adminCascadeNominal(id)),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin', 'cascade'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: cascadeKeys.scope }),
   });
 
   const s = settingsQ.data;

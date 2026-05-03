@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Plus, ReceiptText, Wallet } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { traderKeys } from '@/lib/query-keys';
 import { WALLET_HIGHLIGHT_PRESETS } from '@/lib/surface-ring';
 import { cn, formatCurrency } from '@/lib/utils';
 
@@ -46,12 +47,12 @@ function parseAmount(raw: string | number): number {
 
 export function TraderDashboardWalletListSection() {
   const { data: balances, isLoading: balancesLoading } = useQuery({
-    queryKey: ['trader', 'balances', 'me'],
+    queryKey: traderKeys.balancesMe(),
     queryFn: () => api.get<TraderMeBalanceRow[]>(internalPaths.traderMeBalances),
   });
 
   const { data: usdtWallet, isLoading: usdtLoading } = useQuery({
-    queryKey: ['trader', 'usdt-wallet'],
+    queryKey: traderKeys.usdtWallet(),
     queryFn: () => api.get<UsdtWalletSummary>(internalPaths.traderUsdtWallet),
   });
 

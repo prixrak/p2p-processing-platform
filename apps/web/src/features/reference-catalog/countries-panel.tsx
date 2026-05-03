@@ -13,13 +13,15 @@ import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
 import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
 import { upsertSortedArrayCache } from '@/lib/query-cache-merge';
-import { fetchCurrencyList } from '@/lib/currency-queries';
 import {
+  countryKeys,
+  currencyKeys,
   fetchCountryList,
+  fetchCurrencyList,
   mergeCreatedCountry,
   normalizeCountryListRow,
   type CountryListItem,
-} from '@/lib/country-queries';
+} from '@/lib/query-keys';
 
 export function CountriesPanel() {
   const qc = useQueryClient();
@@ -27,12 +29,12 @@ export function CountriesPanel() {
   const [form, setForm] = useState({ name: '', code: '', currency: '' });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['owner', 'countries'],
+    queryKey: countryKeys.ownerList,
     queryFn: () => fetchCountryList(),
   });
 
   const { data: currencyCatalog = [] } = useQuery({
-    queryKey: ['currencies'],
+    queryKey: currencyKeys.list(),
     queryFn: fetchCurrencyList,
     enabled: showCreate,
   });

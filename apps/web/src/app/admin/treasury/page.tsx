@@ -8,6 +8,7 @@ import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { parseDecimalInput } from '@/lib/decimal-input';
+import { treasuryKeys } from '@/lib/query-keys';
 
 type ExchangeStatus = {
   primaryPairParserFiatPerUsdt: number | null;
@@ -93,35 +94,35 @@ export default function AdminTreasuryPage() {
       : '';
 
   const { data: xr, isLoading: xrLoading } = useQuery({
-    queryKey: ['admin', 'treasury', 'exchange-rate'],
+    queryKey: treasuryKeys.exchangeRate(),
     queryFn: () => api.get<ExchangeStatus>(internalPaths.adminPlatformExchangeRate),
   });
 
   const { data: summary, isLoading: sumLoading } = useQuery({
-    queryKey: ['admin', 'treasury', 'income-summary'],
+    queryKey: treasuryKeys.incomeSummary(),
     queryFn: () => api.get<IncomeSummary>(internalPaths.adminPlatformIncomeSummary()),
   });
 
   const { data: recent } = useQuery({
-    queryKey: ['admin', 'treasury', 'income-recent'],
+    queryKey: treasuryKeys.incomeRecent(),
     queryFn: () =>
       api.get<{ data: unknown[] }>(internalPaths.adminPlatformIncomeRecent('page=1&limit=15')),
   });
 
   const { data: withdrawals } = useQuery({
-    queryKey: ['admin', 'treasury', 'withdrawals'],
+    queryKey: treasuryKeys.withdrawals(),
     queryFn: () =>
       api.get<{ data: unknown[] }>(internalPaths.adminPlatformWithdrawals('page=1&limit=20')),
   });
 
   const { data: deposits } = useQuery({
-    queryKey: ['admin', 'treasury', 'deposits'],
+    queryKey: treasuryKeys.deposits(),
     queryFn: () =>
       api.get<{ data: unknown[] }>(internalPaths.adminPlatformWalletDeposits('page=1&limit=20')),
   });
 
   const { data: ops, isLoading: opsLoading } = useQuery({
-    queryKey: ['admin', 'treasury', 'operations', opFrom, opTo],
+    queryKey: treasuryKeys.operations(opFrom, opTo),
     queryFn: () => api.get<OperationsSummary>(internalPaths.adminPlatformOperationsSummary(opQs)),
   });
 
@@ -135,7 +136,7 @@ export default function AdminTreasuryPage() {
         note: wNote || undefined,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'treasury', 'withdrawals'] });
+      queryClient.invalidateQueries({ queryKey: treasuryKeys.withdrawals() });
       setWAmount('');
       setWAddress('');
       setWTx('');
@@ -153,7 +154,7 @@ export default function AdminTreasuryPage() {
         confirmations: parseInt(dConf, 10) || 0,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'treasury', 'deposits'] });
+      queryClient.invalidateQueries({ queryKey: treasuryKeys.deposits() });
       setDTrader('');
       setDTx('');
       setDAmount('');

@@ -14,6 +14,7 @@ import { Table } from '@/components/ui/table';
 import { Modal } from '@/components/ui/modal';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { traderKeys } from '@/lib/query-keys';
 import { AuthorizedFilePreview } from '@/components/files/authorized-file-preview';
 import { formatCurrency, formatDate, formatDateFull, shortId, cn } from '@/lib/utils';
 import { AppealStatus } from '@p2p/shared';
@@ -38,7 +39,7 @@ export default function AppealsPage() {
   const [viewingProof, setViewingProof] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['trader', 'appeals'],
+    queryKey: traderKeys.appeals(),
     queryFn: () => api.get<AppealsListResponse>(internalPaths.appeals),
   });
 
@@ -46,7 +47,7 @@ export default function AppealsPage() {
     mutationFn: ({ id, decision }: { id: string; decision: AppealStatus }) =>
       api.patch<AppealDto>(internalPaths.appealResolve(id), { decision }),
     onSuccess: (updated) => {
-      void queryClient.invalidateQueries({ queryKey: ['trader', 'appeals'] });
+      void queryClient.invalidateQueries({ queryKey: traderKeys.appeals() });
       setSelectedAppeal((prev) => (prev?.id === updated.id ? updated : prev));
     },
   });

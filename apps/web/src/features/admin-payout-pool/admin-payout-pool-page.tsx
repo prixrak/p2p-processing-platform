@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { parseDecimalInput } from '@/lib/decimal-input';
+import { adminPayoutPoolKeys } from '@/lib/query-keys';
 
 interface GlobalSettings {
   pool_b_global_percent: number;
@@ -27,12 +28,12 @@ interface MerchantRow {
 export function AdminPayoutPoolPage() {
   const qc = useQueryClient();
   const globalQ = useQuery({
-    queryKey: ['admin', 'payout-pool', 'global'],
+    queryKey: adminPayoutPoolKeys.global(),
     queryFn: () => api.get<GlobalSettings | null>(internalPaths.adminPayoutPoolGlobal),
   });
 
   const listQ = useQuery({
-    queryKey: ['admin', 'payout-pool', 'merchants'],
+    queryKey: adminPayoutPoolKeys.merchants(),
     queryFn: () =>
       api.get<{ items: MerchantRow[]; total: number }>(internalPaths.adminPayoutPoolMerchants),
   });
@@ -44,7 +45,7 @@ export function AdminPayoutPoolPage() {
       pool_timeout_hours?: number | null;
       specialist_fail_returns_to_pool?: boolean;
     }) => api.patch<GlobalSettings>(internalPaths.adminPayoutPoolGlobal, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'payout-pool'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: adminPayoutPoolKeys.scope }),
   });
 
   const upsertMerchant = useMutation({
@@ -53,7 +54,7 @@ export function AdminPayoutPoolPage() {
         pool_b_percent: body.pool_b_percent,
         is_active: body.is_active,
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'payout-pool', 'merchants'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: adminPayoutPoolKeys.merchants() }),
   });
 
   const g = globalQ.data;

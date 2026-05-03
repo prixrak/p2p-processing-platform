@@ -9,6 +9,7 @@ import { formatCurrency } from '@/lib/utils';
 import { statCardToneAt } from '@/lib/surface-ring';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { specialistCabinetKeys } from '@/lib/query-keys';
 import { usePayoutCabinetRealtime } from '@/lib/payin-realtime';
 
 interface SpecialistSummary {
@@ -31,7 +32,7 @@ export default function PayoutTraderDashboardPage() {
   usePayoutCabinetRealtime(queryClient, 'specialist');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['payout-trader', 'summary'] as const,
+    queryKey: specialistCabinetKeys.summary(),
     queryFn: () => api.get<SpecialistSummary>(internalPaths.payoutSpecialistSummary),
   });
 

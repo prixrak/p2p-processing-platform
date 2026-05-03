@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeftRight } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { merchantKeys } from '@/lib/query-keys';
 import { DataTable } from '@/components/ui/data-table';
 import { StatusBadge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
@@ -51,7 +52,13 @@ export default function MerchantOrdersPage() {
   );
 
   const { data: orders = [], isLoading } = useQuery<MerchantOrder[]>({
-    queryKey: ['merchant', 'orders', { direction, statusFilter, debouncedSearch, dateFrom, dateTo }],
+    queryKey: merchantKeys.orders({
+      direction,
+      statusFilter,
+      debouncedSearch,
+      dateFrom,
+      dateTo,
+    }),
     queryFn: () => {
       const params = new URLSearchParams({ direction });
       if (statusFilter) params.set('status', statusFilter);

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { adminKeys } from '@/lib/query-keys';
 import { StatCard } from '@/components/ui/stat-card';
 import { statCardToneAt, surfaceRingClass } from '@/lib/surface-ring';
 import { cn } from '@/lib/utils';
@@ -37,7 +38,7 @@ const quickLinks = [
 
 export default function AdminDashboard() {
   const { data: stats, isLoading } = useQuery<AdminStats>({
-    queryKey: ['admin', 'stats'],
+    queryKey: adminKeys.stats(),
     queryFn: () => api.get(internalPaths.adminStats),
   });
 

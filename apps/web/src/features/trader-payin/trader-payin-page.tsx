@@ -20,6 +20,7 @@ import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/toast';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { traderKeys } from '@/lib/query-keys';
 import { formatErrorMessage } from '@/lib/format-error';
 import { formatCurrency, formatDateFull } from '@/lib/utils';
 import { usePayinTraderRealtime } from '@/lib/payin-realtime';
@@ -80,7 +81,7 @@ export function TraderPayInPage() {
   if (debouncedSearch) queryParams.search = debouncedSearch;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['trader', 'payin-orders', queryParams],
+    queryKey: traderKeys.payinOrders(queryParams),
     queryFn: async () => {
       const res = await api.get<PayInListApiResponse>(internalPaths.traderPayinOrders, queryParams);
       return { orders: res.items, total: res.total };
@@ -114,7 +115,7 @@ export function TraderPayInPage() {
         ...(vars.actualAmount !== undefined ? { actualAmount: vars.actualAmount } : {}),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['trader', 'payin-orders'] });
+      queryClient.invalidateQueries({ queryKey: traderKeys.payinOrdersScope });
       setSelectedOrder(null);
       setFinalizeDialog(null);
     },
@@ -126,7 +127,7 @@ export function TraderPayInPage() {
   const cancelMutation = useMutation({
     mutationFn: (orderId: string) => api.post(internalPaths.traderPayinOrderCancel(orderId)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['trader', 'payin-orders'] });
+      queryClient.invalidateQueries({ queryKey: traderKeys.payinOrdersScope });
       setSelectedOrder(null);
       setFinalizeDialog(null);
     },

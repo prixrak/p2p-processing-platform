@@ -12,7 +12,7 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { parseDecimalInput } from '@/lib/decimal-input';
-import { fetchCurrencyList } from '@/lib/currency-queries';
+import { currencyKeys, fetchCurrencyList, staffKeys } from '@/lib/query-keys';
 import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
 import type { StaffRolePrefix } from '@/features/traders';
 
@@ -68,13 +68,13 @@ export function MerchantDirectionsModal({
   });
 
   const { data: merchantDirections, isLoading: dirsLoading } = useQuery({
-    queryKey: [queryKeyPrefix, 'merchant-directions', merchantId],
+    queryKey: staffKeys.merchantDirections(queryKeyPrefix, merchantId),
     queryFn: () => api.get<MerchantDirection[]>(internalPaths.merchantDirections(merchantId!)),
     enabled: open && !!merchantId,
   });
 
   const { data: currencies = [] } = useQuery({
-    queryKey: ['currencies'],
+    queryKey: currencyKeys.list(),
     queryFn: fetchCurrencyList,
     enabled: open,
   });
@@ -98,7 +98,7 @@ export function MerchantDirectionsModal({
       const mid = merchantId;
       if (!mid) return;
       queryClient.setQueryData<MerchantDirection[]>(
-        [queryKeyPrefix, 'merchant-directions', mid],
+        staffKeys.merchantDirections(queryKeyPrefix, mid),
         (old) => {
           if (!old) return [row];
           const next = [...old.filter((d) => d.id !== row.id), row];
@@ -128,7 +128,7 @@ export function MerchantDirectionsModal({
       const mid = merchantId;
       if (!mid) return;
       queryClient.setQueryData<MerchantDirection[]>(
-        [queryKeyPrefix, 'merchant-directions', mid],
+        staffKeys.merchantDirections(queryKeyPrefix, mid),
         (old) => old?.filter((d) => d.id !== variables.dirId) ?? [],
       );
       onChanged?.();
@@ -144,7 +144,7 @@ export function MerchantDirectionsModal({
       const mid = merchantId;
       if (!mid) return;
       queryClient.setQueryData<MerchantDirection[]>(
-        [queryKeyPrefix, 'merchant-directions', mid],
+        staffKeys.merchantDirections(queryKeyPrefix, mid),
         (old) => old?.map((d) => (d.id === variables.dirId ? updated : d)) ?? [],
       );
       onChanged?.();

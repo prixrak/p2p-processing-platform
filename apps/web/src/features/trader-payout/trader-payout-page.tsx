@@ -26,6 +26,10 @@ import type { PayOutOrderApiDto } from '@p2p/shared';
 import { buildPayoutOrdersColumns, buildPayoutPoolColumns, type PayoutCompleteVars } from './trader-payout-columns';
 import { TraderPayoutOrderDetailModal } from './trader-payout-order-detail-modal';
 import { normalizeDecimalSeparators } from '@/lib/decimal-input';
+import {
+  payoutCabinetKeys,
+  type PayoutCabinetScope,
+} from '@/lib/query-keys';
 
 interface PayOutListResponse {
   orders: PayOutOrderApiDto[];
@@ -49,7 +53,7 @@ export function TraderPayoutPage({
   const searchParams = useSearchParams();
   const isSpecialist = variant === 'specialist';
   const apiBase = isSpecialist ? internalPaths.payoutCabinetSpecialist : internalPaths.payoutCabinetTrader;
-  const qk = isSpecialist ? 'payout-trader' : 'trader';
+  const qk: PayoutCabinetScope = isSpecialist ? 'payout-trader' : 'trader';
   const apiPublicBase = process.env.NEXT_PUBLIC_API_URL ?? '';
 
   usePayoutCabinetRealtime(queryClient, isSpecialist ? 'specialist' : 'standard');
@@ -90,7 +94,7 @@ export function TraderPayoutPage({
 
   const { data: inProgressData, isLoading: inProgressLoading } =
     useQuery({
-      queryKey: [qk, 'payout-orders', { queue: 'in_progress' }],
+      queryKey: payoutCabinetKeys.payoutOrders(qk, { queue: 'in_progress' }),
       queryFn: () =>
         api.get<PayOutListResponse>(`${apiBase}/orders`, { queue: 'in_progress' }),
     });
@@ -103,12 +107,12 @@ export function TraderPayoutPage({
   if (maxAmount.trim()) historyListParams.max_amount = normalizeDecimalSeparators(maxAmount.trim());
 
   const { data: historyData, isLoading: historyLoading } = useQuery({
-    queryKey: [qk, 'payout-orders', historyListParams],
+    queryKey: payoutCabinetKeys.payoutOrders(qk, historyListParams),
     queryFn: () => api.get<PayOutListResponse>(`${apiBase}/orders`, historyListParams),
   });
 
   const { data: poolData, isLoading: poolLoading } = useQuery({
-    queryKey: [qk, 'payout-pool'],
+    queryKey: payoutCabinetKeys.payoutPool(qk),
     queryFn: () => api.get<PayOutListResponse>(`${apiBase}/pool`),
   });
 
@@ -124,15 +128,15 @@ export function TraderPayoutPage({
   const takeFromPoolMutation = useMutation({
     mutationFn: (orderId: string) => api.post(`${apiBase}/orders/${orderId}/take`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [qk, 'payout-pool'] });
-      queryClient.invalidateQueries({ queryKey: [qk, 'payout-orders'] });
+      queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutPool(qk) });
+      queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
     },
   });
 
   const processMutation = useMutation({
     mutationFn: (orderId: string) => api.post(`${apiBase}/orders/${orderId}/process`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [qk, 'payout-orders'] });
+      queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
     },
   });
 
@@ -147,7 +151,7 @@ export function TraderPayoutPage({
       return api.post(`${apiBase}/orders/${payload.orderId}/complete`, body);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [qk, 'payout-orders'] });
+      queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
       setSelectedOrder(null);
     },
   });
@@ -159,9 +163,9 @@ export function TraderPayoutPage({
         reason: 'Marked as failed by trader',
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [qk, 'payout-orders'] });
+      queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
       if (isSpecialist) {
-        queryClient.invalidateQueries({ queryKey: [qk, 'payout-pool'] });
+        queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutPool(qk) });
       }
       setSelectedOrder(null);
     },

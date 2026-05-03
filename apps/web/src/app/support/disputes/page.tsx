@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Eye, FileImage, MessageSquare } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { supportKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
@@ -65,7 +66,7 @@ export default function DisputesPage() {
   const [note, setNote] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['support', 'disputes', tab, page, search],
+    queryKey: supportKeys.disputes(tab, page, search),
     queryFn: () => {
       const params = new URLSearchParams({
         status: tab,
@@ -78,7 +79,7 @@ export default function DisputesPage() {
   });
 
   const { data: details } = useQuery({
-    queryKey: ['support', 'dispute-details', detailId],
+    queryKey: supportKeys.disputeDetails(detailId),
     queryFn: () => api.get<DisputeDetails>(internalPaths.supportDispute(detailId!)),
     enabled: !!detailId,
   });
@@ -87,7 +88,7 @@ export default function DisputesPage() {
     mutationFn: ({ id, content }: { id: string; content: string }) =>
       api.post(internalPaths.supportDisputeNotes(id), { content }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['support', 'dispute-details', detailId] });
+      queryClient.invalidateQueries({ queryKey: supportKeys.disputeDetails(detailId) });
       setNote('');
     },
   });
@@ -96,8 +97,8 @@ export default function DisputesPage() {
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.patch(internalPaths.supportDispute(id), { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['support', 'disputes'] });
-      queryClient.invalidateQueries({ queryKey: ['support', 'dispute-details', detailId] });
+      queryClient.invalidateQueries({ queryKey: supportKeys.disputesScope });
+      queryClient.invalidateQueries({ queryKey: supportKeys.disputeDetails(detailId) });
     },
   });
 

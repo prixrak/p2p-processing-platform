@@ -5,7 +5,7 @@ import { Users } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table';
 import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { buildStaffTradersColumns } from './staff-traders-columns';
-import type { StaffRolePrefix } from './query-keys';
+import type { StaffRolePrefix } from '@/lib/query-keys';
 import { PayoutLimitsModal, type PayoutLimitsTrader } from './payout-limits-modal';
 import { TraderDetailModal } from './trader-detail-modal';
 import { useStaffTraders } from './use-staff-traders';

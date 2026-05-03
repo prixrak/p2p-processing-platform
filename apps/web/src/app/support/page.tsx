@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { AlertTriangle, FileText, Clock, MessageSquare } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { supportKeys } from '@/lib/query-keys';
 import { StatCard, Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { statCardToneAt } from '@/lib/surface-ring';
@@ -42,7 +43,7 @@ const statusColor: Record<string, 'green' | 'yellow' | 'red' | 'blue' | 'default
 export default function SupportDashboard() {
   const router = useRouter();
   const { data: stats } = useQuery({
-    queryKey: ['support', 'stats'],
+    queryKey: supportKeys.stats(),
     queryFn: () => api.get<SupportStats>(internalPaths.supportStats),
   });
 

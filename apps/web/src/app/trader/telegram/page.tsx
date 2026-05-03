@@ -21,6 +21,7 @@ import { Card } from '@/components/ui/card';
 import { Toggle } from '@/components/ui/toggle';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { traderKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 
 /** Matches Prisma / GET /api/telegram/settings response. */
@@ -41,7 +42,7 @@ export default function TelegramPage() {
   const queryClient = useQueryClient();
 
   const { data: settings, isLoading } = useQuery({
-    queryKey: ['trader', 'telegram'],
+    queryKey: traderKeys.telegram(),
     queryFn: () => api.get<TelegramSettingsApi>(internalPaths.telegramSettings),
   });
 
@@ -57,7 +58,7 @@ export default function TelegramPage() {
           'Connect token copied. Open your Telegram bot and send /start with this token if your deployment uses a custom linking flow.',
         );
       }
-      queryClient.invalidateQueries({ queryKey: ['trader', 'telegram'] });
+      queryClient.invalidateQueries({ queryKey: traderKeys.telegram() });
     },
   });
 
@@ -67,7 +68,7 @@ export default function TelegramPage() {
         isActive: false,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['trader', 'telegram'] });
+      queryClient.invalidateQueries({ queryKey: traderKeys.telegram() });
     },
   });
 
@@ -86,7 +87,7 @@ export default function TelegramPage() {
       >,
     ) => api.patch(internalPaths.telegramSettings, update),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['trader', 'telegram'] });
+      queryClient.invalidateQueries({ queryKey: traderKeys.telegram() });
     },
   });
 

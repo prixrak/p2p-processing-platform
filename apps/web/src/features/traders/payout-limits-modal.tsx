@@ -8,7 +8,11 @@ import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
 import { parseDecimalInput } from '@/lib/decimal-input';
-import { staffTraderKeys, type StaffRolePrefix } from './query-keys';
+import {
+  staffKeys,
+  staffTraderKeys,
+  type StaffRolePrefix,
+} from '@/lib/query-keys';
 import type { StaffTraderRow } from './staff-trader-types';
 
 export interface PayoutLimitsTrader {
@@ -55,7 +59,7 @@ export function PayoutLimitsModal({
                 },
           ),
       );
-      void queryClient.invalidateQueries({ queryKey: [queryPrefix, 'users', 'directory'] });
+      void queryClient.invalidateQueries({ queryKey: staffKeys.usersDirectory(queryPrefix) });
       onClose();
     },
   });

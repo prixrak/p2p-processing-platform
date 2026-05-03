@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Power, PowerOff } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
 import { upsertSortedArrayCache } from '@/lib/query-cache-merge';
+import { currencyKeys, fetchCurrencyList, type CurrencyListItem } from '@/lib/query-keys';
 
 interface Currency {
   id: string;
@@ -26,12 +27,12 @@ interface CurrencyApiRow {
   isActive: boolean;
 }
 
-function mapCurrencyApiRow(r: CurrencyApiRow): Currency {
+function listItemToCurrency(c: CurrencyListItem): Currency {
   return {
-    id: r.id,
-    code: r.code,
-    name: r.code,
-    status: r.isActive ? 'active' : 'inactive',
+    id: c.id,
+    code: c.code,
+    name: c.code,
+    status: c.isActive ? 'active' : 'inactive',
   };
 }
 
@@ -40,26 +41,18 @@ export function CurrenciesPanel() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ code: '', name: '' });
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['owner', 'currencies'],
-    queryFn: async () => {
-      const rows = await api.get<
-        Array<{ id: string; code: string; isActive: boolean }>
-      >(internalPaths.currencies);
-      return rows.map((r) => ({
-        id: r.id,
-        code: r.code,
-        name: r.code,
-        status: r.isActive ? 'active' : 'inactive',
-      }));
-    },
+  const { data: currencyList = [], isLoading } = useQuery({
+    queryKey: currencyKeys.list(),
+    queryFn: fetchCurrencyList,
   });
+
+  const data = useMemo(() => currencyList.map(listItemToCurrency), [currencyList]);
 
   const createCurrency = useMutation({
     mutationFn: (payload: typeof form) =>
       api.post<CurrencyApiRow>(internalPaths.currencies, { code: payload.code.trim() }),
     onSuccess: (row) => {
-      upsertSortedArrayCache(queryClient, ['owner', 'currencies'], mapCurrencyApiRow(row), {
+      upsertSortedArrayCache(queryClient, currencyKeys.list(), row, {
         idOf: (c) => c.id,
         sort: (a, b) => a.code.localeCompare(b.code),
       });
@@ -74,7 +67,7 @@ export function CurrenciesPanel() {
         isActive: status !== 'active',
       }),
     onSuccess: (row) =>
-      upsertSortedArrayCache(queryClient, ['owner', 'currencies'], mapCurrencyApiRow(row), {
+      upsertSortedArrayCache(queryClient, currencyKeys.list(), row, {
         idOf: (c) => c.id,
         sort: (a, b) => a.code.localeCompare(b.code),
       }),

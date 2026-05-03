@@ -10,8 +10,8 @@ import { StatusBadge } from '@/components/ui/badge';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import type { StaffRolePrefix } from './query-keys';
-import { staffTraderKeys } from './query-keys';
+import type { StaffRolePrefix } from '@/lib/query-keys';
+import { staffTraderKeys } from '@/lib/query-keys';
 import { parseDecimalInput } from '@/lib/decimal-input';
 
 interface TraderDetail {

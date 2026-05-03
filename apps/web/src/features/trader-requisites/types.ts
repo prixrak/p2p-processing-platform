@@ -40,11 +40,6 @@ export interface BankOption {
   name: string;
 }
 
-export interface CurrencyRow {
-  code: string;
-  isActive: boolean;
-}
-
 export interface PaymentMethodRow {
   id: string;
   displayName: string;

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { supportKeys } from '@/lib/query-keys';
 import { Tabs } from '@/components/ui/tabs';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
@@ -32,7 +33,7 @@ export default function BalancesPage() {
   const [search, setSearch] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['support', 'balances', tab, page, search],
+    queryKey: supportKeys.balances(tab, page, search),
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
       if (search) params.set('search', search);

@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Webhook, Repeat2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { merchantKeys } from '@/lib/query-keys';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,7 +36,7 @@ export default function WebhooksPage() {
   const [resendingId, setResendingId] = useState<string | null>(null);
 
   const { data: logs = [], isLoading } = useQuery<WebhookLog[]>({
-    queryKey: ['merchant', 'webhooks', { status: statusFilter }],
+    queryKey: merchantKeys.webhooks({ status: statusFilter }),
     queryFn: () => {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
@@ -47,7 +48,7 @@ export default function WebhooksPage() {
     mutationFn: (webhookId: string) =>
       api.post(internalPaths.merchantWebhookResend(webhookId)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['merchant', 'webhooks'] });
+      queryClient.invalidateQueries({ queryKey: merchantKeys.webhooksScope });
       setResendingId(null);
     },
   });

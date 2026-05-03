@@ -12,11 +12,12 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { FormAlert } from '@/components/ui/form-alert';
 import { errorMessageFromUnknown } from '@/lib/error-message';
-import { fetchCurrencyList } from '@/lib/currency-queries';
 import {
+  currencyKeys,
+  fetchCurrencyList,
   invalidateCountryListQueries,
   mergeCreatedCountry,
-} from '@/lib/country-queries';
+} from '@/lib/query-keys';
 
 export type CountrySelectWithCreateProps = Omit<SelectProps, 'renderListFooter'> & {
   /** When true (default), show "Create country" at the bottom of the list (API allows ADMIN / OWNER only). */
@@ -47,7 +48,7 @@ export function CountrySelectWithCreate({
   const [localError, setLocalError] = useState<string | null>(null);
 
   const { data: currencyCatalog = [] } = useQuery({
-    queryKey: ['currencies'],
+    queryKey: currencyKeys.list(),
     queryFn: fetchCurrencyList,
     enabled: createOpen,
   });

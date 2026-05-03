@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Wallet } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { merchantKeys } from '@/lib/query-keys';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
@@ -73,12 +74,12 @@ export default function MerchantBalancesPage() {
       : '';
 
   const { data: balances = [], isLoading: balancesLoading } = useQuery<BalanceRow[]>({
-    queryKey: ['merchant', 'balances'],
+    queryKey: merchantKeys.balances(),
     queryFn: () => api.get(internalPaths.merchantBalances),
   });
 
   const { data: summary, isLoading: sumLoading } = useQuery<BalanceSummary>({
-    queryKey: ['merchant', 'balance-summary', sumFrom, sumTo],
+    queryKey: merchantKeys.balanceSummary(sumFrom, sumTo),
     queryFn: () => api.get(internalPaths.merchantBalanceSummary(summaryQs)),
   });
 
@@ -91,7 +92,7 @@ export default function MerchantBalancesPage() {
   if (txType.trim()) txParams.set('type', txType.trim().toUpperCase());
 
   const { data: txData, isLoading: txLoading } = useQuery({
-    queryKey: ['merchant', 'balance-transactions', txPage, txFrom, txTo, txType],
+    queryKey: merchantKeys.balanceTransactions(txPage, txFrom, txTo, txType),
     queryFn: () =>
       api.get<{ data: MerchantBalanceTx[]; total: number; page: number; limit: number }>(
         internalPaths.merchantBalanceTransactions(txParams.toString()),
@@ -99,7 +100,7 @@ export default function MerchantBalancesPage() {
   });
 
   const { data: settlementResp, isLoading: settlementLoading } = useQuery({
-    queryKey: ['merchant', 'settlements-history'],
+    queryKey: merchantKeys.settlementsHistory(),
     queryFn: () =>
       api.get<{ data: MerchantSettlementRow[]; total: number }>(
         internalPaths.merchantSettlements('page=1&limit=50'),

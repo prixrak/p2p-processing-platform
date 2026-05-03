@@ -5,6 +5,7 @@ import { Bell } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { specialistCabinetKeys } from '@/lib/query-keys';
 
 interface NotificationItem {
   id: string;
@@ -17,7 +18,7 @@ interface NotificationItem {
 
 export default function PayoutTraderNotificationsPage() {
   const { data, isLoading } = useQuery({
-    queryKey: ['payout-trader', 'notifications'],
+    queryKey: specialistCabinetKeys.notifications(),
     queryFn: () => api.get<{ items: NotificationItem[] }>(internalPaths.payoutSpecialistNotifications),
   });
 

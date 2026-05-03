@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Eye } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { ownerKeys } from '@/lib/query-keys';
 import { IconButton } from '@/components/ui/icon-button';
 import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
@@ -73,7 +74,7 @@ export default function OrdersPage() {
   );
 
   const { data, isLoading } = useQuery({
-    queryKey: ['owner', 'orders', tab, page, statusFilter, debouncedSearch],
+    queryKey: ownerKeys.orders(tab, page, statusFilter, debouncedSearch),
     queryFn: () => {
       const params = new URLSearchParams({
         type: tab,
@@ -89,7 +90,7 @@ export default function OrdersPage() {
   });
 
   const { data: details } = useQuery({
-    queryKey: ['owner', 'order-details', detailOrder],
+    queryKey: ownerKeys.orderDetails(detailOrder),
     queryFn: () =>
       api.get<OrderDetails>(internalPaths.adminOrder(detailOrder!)),
     enabled: !!detailOrder,
@@ -99,8 +100,8 @@ export default function OrdersPage() {
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.patch(internalPaths.adminOrderStatus(id), { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['owner', 'orders'] });
-      queryClient.invalidateQueries({ queryKey: ['owner', 'order-details'] });
+      queryClient.invalidateQueries({ queryKey: ownerKeys.ordersScope });
+      queryClient.invalidateQueries({ queryKey: ownerKeys.orderDetailsScope });
     },
   });
 

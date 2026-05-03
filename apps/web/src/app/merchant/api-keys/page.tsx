@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { merchantKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Badge } from '@/components/ui/badge';
@@ -41,7 +42,7 @@ export default function ApiKeysPage() {
   const [copied, setCopied] = useState<string | null>(null);
 
   const { data: keys = [], isLoading } = useQuery<ApiKeyPair[]>({
-    queryKey: ['merchant', 'api-keys'],
+    queryKey: merchantKeys.apiKeys(),
     queryFn: () => api.get(internalPaths.merchantApiKeys),
   });
 
@@ -50,7 +51,7 @@ export default function ApiKeysPage() {
       api.post<NewKeyPairResponse>(internalPaths.merchantApiKeys, { direction }),
     onSuccess: (data) => {
       setNewSecret(data.secretKey);
-      queryClient.invalidateQueries({ queryKey: ['merchant', 'api-keys'] });
+      queryClient.invalidateQueries({ queryKey: merchantKeys.apiKeys() });
     },
   });
 
@@ -60,7 +61,7 @@ export default function ApiKeysPage() {
     onSuccess: (data) => {
       setNewSecret(data.secretKey);
       setRegeneratingId(null);
-      queryClient.invalidateQueries({ queryKey: ['merchant', 'api-keys'] });
+      queryClient.invalidateQueries({ queryKey: merchantKeys.apiKeys() });
     },
   });
 

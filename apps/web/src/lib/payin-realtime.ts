@@ -8,6 +8,12 @@ import {
 } from '@p2p/shared';
 import { getToken } from '@/lib/auth';
 import { internalPaths } from '@/lib/internal-api';
+import {
+  merchantKeys,
+  payoutCabinetKeys,
+  type PayoutCabinetScope,
+  traderKeys,
+} from '@/lib/query-keys';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
 
@@ -105,10 +111,10 @@ export function usePayinTraderRealtime(queryClient: QueryClient): void {
               try {
                 const evt = JSON.parse(raw) as PayinOrderRealtimeEvent;
                 if (evt.type === PAYIN_ORDER_REALTIME_EVENT_TYPE) {
-                  queryClient.invalidateQueries({ queryKey: ['trader', 'payin-orders'] });
-                  queryClient.invalidateQueries({ queryKey: ['trader', 'balances', 'me'] });
-                  queryClient.invalidateQueries({ queryKey: ['trader', 'usdt-wallet'] });
-                  queryClient.invalidateQueries({ queryKey: ['trader', 'dashboard-stats'] });
+                  queryClient.invalidateQueries({ queryKey: traderKeys.payinOrdersScope });
+                  queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
+                  queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
+                  queryClient.invalidateQueries({ queryKey: traderKeys.dashboardStats() });
                 }
               } catch {
                 /* malformed line */
@@ -148,7 +154,7 @@ export function usePayoutCabinetRealtime(
     let cancelled = false;
     const streamPath =
       variant === 'specialist' ? internalPaths.payoutSpecialistStream : internalPaths.traderPayoutStream;
-    const qk = variant === 'specialist' ? 'payout-trader' : 'trader';
+    const qk: PayoutCabinetScope = variant === 'specialist' ? 'payout-trader' : 'trader';
 
     const run = async () => {
       while (!cancelled) {
@@ -163,17 +169,25 @@ export function usePayoutCabinetRealtime(
               try {
                 const evt = JSON.parse(raw) as PayOutOrderRealtimeEvent;
                 if (evt.type === PAYOUT_ORDER_REALTIME_EVENT_TYPE) {
-                  void queryClient.invalidateQueries({ queryKey: [qk, 'payout-orders'] });
-                  void queryClient.invalidateQueries({ queryKey: [qk, 'payout-pool'] });
+                  void queryClient.invalidateQueries({
+                    queryKey: payoutCabinetKeys.payoutOrdersScope(qk),
+                  });
+                  void queryClient.invalidateQueries({
+                    queryKey: payoutCabinetKeys.payoutPool(qk),
+                  });
                   if (variant === 'specialist') {
-                    void queryClient.invalidateQueries({ queryKey: [qk, 'summary'] });
+                    void queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.specialistSummary() });
                   } else {
-                    void queryClient.invalidateQueries({ queryKey: ['trader', 'balances', 'me'] });
-                    void queryClient.invalidateQueries({ queryKey: ['trader', 'usdt-wallet'] });
-                    void queryClient.invalidateQueries({ queryKey: ['trader', 'dashboard-stats'] });
+                    void queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
+                    void queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
+                    void queryClient.invalidateQueries({ queryKey: traderKeys.dashboardStats() });
                   }
-                  void queryClient.refetchQueries({ queryKey: [qk, 'payout-orders'] });
-                  void queryClient.refetchQueries({ queryKey: [qk, 'payout-pool'] });
+                  void queryClient.refetchQueries({
+                    queryKey: payoutCabinetKeys.payoutOrdersScope(qk),
+                  });
+                  void queryClient.refetchQueries({
+                    queryKey: payoutCabinetKeys.payoutPool(qk),
+                  });
                 }
               } catch {
                 /* malformed line */
@@ -230,9 +244,9 @@ export function useTraderWalletDepositRealtime(queryClient: QueryClient): void {
               try {
                 const parsed = JSON.parse(raw) as { type?: string };
                 if (parsed?.type === 'deposit') {
-                  void queryClient.invalidateQueries({ queryKey: ['trader', 'usdt-wallet'] });
-                  void queryClient.invalidateQueries({ queryKey: ['trader', 'balances', 'me'] });
-                  void queryClient.invalidateQueries({ queryKey: ['trader', 'balance-transactions'] });
+                  void queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
+                  void queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
+                  void queryClient.invalidateQueries({ queryKey: traderKeys.balanceTransactionsScope });
                 }
               } catch {
                 /* malformed line */
@@ -284,10 +298,10 @@ export function useMerchantOrdersRealtime(queryClient: QueryClient): void {
                   parsed.type === PAYIN_ORDER_REALTIME_EVENT_TYPE ||
                   parsed.type === PAYOUT_ORDER_REALTIME_EVENT_TYPE
                 ) {
-                  void queryClient.invalidateQueries({ queryKey: ['merchant', 'orders'] });
-                  void queryClient.invalidateQueries({ queryKey: ['merchant', 'stats'] });
-                  void queryClient.invalidateQueries({ queryKey: ['merchant', 'balances'] });
-                  void queryClient.invalidateQueries({ queryKey: ['merchant', 'analytics'] });
+                  void queryClient.invalidateQueries({ queryKey: merchantKeys.ordersScope });
+                  void queryClient.invalidateQueries({ queryKey: merchantKeys.stats() });
+                  void queryClient.invalidateQueries({ queryKey: merchantKeys.balances() });
+                  void queryClient.invalidateQueries({ queryKey: merchantKeys.analyticsScope });
                 }
               } catch {
                 /* malformed line */

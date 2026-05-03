@@ -12,7 +12,11 @@ import { Button } from '@/components/ui/button';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { Select } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { staffTraderKeys } from '@/features/traders/query-keys';
+import {
+  settlementKeys,
+  staffMerchantsOptionsKey,
+  staffTraderKeys,
+} from '@/lib/query-keys';
 
 interface SettlementRow {
   id: string;
@@ -67,7 +71,7 @@ export default function SettlementsPage() {
   });
 
   const { data: merchants = [] } = useQuery<Array<{ id: string; name: string }>>({
-    queryKey: ['admin', 'merchants-options'],
+    queryKey: staffMerchantsOptionsKey('admin'),
     queryFn: async () => {
       const res = await api.get<{ data: Array<{ id: string; name: string }> }>(
         `${internalPaths.merchants}?page=1&limit=300`,
@@ -77,14 +81,12 @@ export default function SettlementsPage() {
   });
 
   const { data: payoutOpts } = useQuery<{ data: Array<{ id: string; email: string }> }>({
-    queryKey: ['settlements', 'payout-specialist-options'],
+    queryKey: settlementKeys.payoutSpecialistOptions,
     queryFn: () => api.get(internalPaths.settlementsPayoutSpecialistOptions),
   });
   const payoutSpecialists = payoutOpts?.data ?? [];
 
-  const queryKey = [
-    'admin',
-    'settlements',
+  const queryKey = settlementKeys.admin.list(
     page,
     participantRole,
     participantId,
@@ -94,7 +96,7 @@ export default function SettlementsPage() {
     dateTo,
     minAmount,
     maxAmount,
-  ] as const;
+  );
 
   const query = useQuery({
     queryKey,

@@ -14,7 +14,7 @@ import { errorMessageFromUnknown } from '@/lib/error-message';
 import {
   invalidateCurrencyListQueries,
   type CurrencyListItem,
-} from '@/lib/currency-queries';
+} from '@/lib/query-keys';
 
 export type CurrencySelectWithCreateProps = Omit<SelectProps, 'renderListFooter'> & {
   /** When true (default), show "Create currency" at the bottom of the list (API allows ADMIN / OWNER only). */

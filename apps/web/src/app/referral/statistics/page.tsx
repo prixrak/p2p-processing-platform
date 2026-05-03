@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { referralKeys } from '@/lib/query-keys';
 import { formatCurrency, cn } from '@/lib/utils';
 
 interface TraderStat {
@@ -50,7 +51,7 @@ interface Statistics {
 
 export default function ReferralStatisticsPage() {
   const { data, isLoading } = useQuery({
-    queryKey: ['referral', 'statistics'],
+    queryKey: referralKeys.statistics(),
     queryFn: () => api.get<Statistics>(internalPaths.referralMeStatistics),
   });
 

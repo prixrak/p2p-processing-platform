@@ -6,6 +6,7 @@ import { ArrowDownCircle, ArrowUpCircle, DollarSign, MinusCircle } from 'lucide-
 import { api } from '@/lib/api';
 import { formatErrorMessage } from '@/lib/format-error';
 import { internalPaths } from '@/lib/internal-api';
+import { traderKeys } from '@/lib/query-keys';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
@@ -95,12 +96,12 @@ export default function BalanceHistoryPage() {
     isError: walletError,
     error: walletErrorDetail,
   } = useQuery({
-    queryKey: ['trader', 'usdt-wallet'],
+    queryKey: traderKeys.usdtWallet(),
     queryFn: () => api.get<UsdtWallet>(internalPaths.traderUsdtWallet),
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['trader', 'balance-transactions', page, currency, dateFrom, dateTo, txType],
+    queryKey: traderKeys.balanceTransactions(page, currency, dateFrom, dateTo, txType),
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: '30' });
       if (currency) params.set('currency', currency);
