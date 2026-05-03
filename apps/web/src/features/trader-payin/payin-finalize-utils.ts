@@ -50,11 +50,11 @@ export function finalizePreviewTone(
 }
 
 export function finalizeOptionsForOrder(order: OrderDto): FinalizeKind[] {
-  if (order.status === PayInOrderStatus.VERIFIED) {
+  if (
+    order.status === PayInOrderStatus.NEW ||
+    order.status === PayInOrderStatus.VERIFIED
+  ) {
     return ['paid', 'adjustment', 'cancel'];
-  }
-  if (order.status === PayInOrderStatus.NEW) {
-    return ['cancel'];
   }
   if (order.status === PayInOrderStatus.CANCELED) {
     return ['paid', 'adjustment'];

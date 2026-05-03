@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsEmail,
   IsIn,
@@ -43,11 +44,74 @@ export class CreateUserDto {
   @IsOptional()
   countryId?: string;
 
-  @ApiPropertyOptional({ description: 'Pay-Out rate fraction for specialist (e.g. 0.01 = 1%)' })
+  @ApiPropertyOptional({
+    description:
+      'Pay-Out rate fraction for Pay-Out specialist (e.g. 0.01 = 1%); ignored for other roles',
+  })
+  @ValidateIf((o) => o.role === UserRole.PAYOUT_TRADER)
+  @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
-  @IsOptional()
+  @Max(1)
   payoutRate?: number;
+
+  @ApiPropertyOptional({
+    description: 'USDT overdraft limit when role is TRADER (0 = none)',
+    example: 0,
+  })
+  @ValidateIf((o) => o.role === UserRole.TRADER)
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(1e12)
+  overdraftLimitUsdt?: number;
+
+  @ApiPropertyOptional({
+    description: 'Trader-only Pay-In rate as fraction (0.01 = +1% on parser divisor)',
+    example: 0,
+  })
+  @ValidateIf((o) => o.role === UserRole.TRADER)
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(0.5)
+  payinRate?: number;
+
+  @ApiPropertyOptional({
+    description: 'Trader-only Pay-Out rate fraction (0.002 = 0.2%)',
+    example: 0,
+  })
+  @ValidateIf((o) => o.role === UserRole.TRADER)
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(0.5)
+  traderPayoutRate?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Trader payout pool min order amount (0 = no min). Must be <= max when max > 0.',
+  })
+  @ValidateIf((o) => o.role === UserRole.TRADER)
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  payoutMinLimit?: number;
+
+  @ApiPropertyOptional({
+    description: 'Trader payout pool max order amount (0 = no max)',
+  })
+  @ValidateIf((o) => o.role === UserRole.TRADER)
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  payoutMaxLimit?: number;
 
   @ApiPropertyOptional({
     description: 'Referral commission percent (0–100) when role is REFERRAL',

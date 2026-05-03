@@ -15,21 +15,33 @@ import type { OrderDto } from '@p2p/shared';
 import { finalizeOptionsForOrder } from './payin-finalize-utils';
 import type { FinalizeKind } from './payin-types';
 
+/** Which UI surface owns the open menu (table row vs detail modal share the same order id). */
+export type OrderFinalizeMenuAnchor = 'table' | 'modal';
+
+export type OrderFinalizeMenuState =
+  | { anchor: OrderFinalizeMenuAnchor; orderId: string }
+  | null;
+
 export function OrderFinalizeDropdown({
   order,
-  menuOpenOrderId,
-  setMenuOpenOrderId,
+  menuState,
+  setMenuState,
+  menuAnchor,
   onPickKind,
 }: {
   order: OrderDto;
-  menuOpenOrderId: string | null;
-  setMenuOpenOrderId: (id: string | null) => void;
+  menuState: OrderFinalizeMenuState;
+  setMenuState: (state: OrderFinalizeMenuState) => void;
+  menuAnchor: OrderFinalizeMenuAnchor;
   onPickKind: (kind: FinalizeKind) => void;
 }) {
   const opts = finalizeOptionsForOrder(order);
   if (opts.length === 0) return null;
 
-  const open = menuOpenOrderId === order.id;
+  const open =
+    menuState !== null &&
+    menuState.anchor === menuAnchor &&
+    menuState.orderId === order.id;
   const triggerRef = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
 
@@ -59,11 +71,11 @@ export function OrderFinalizeDropdown({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMenuOpenOrderId(null);
+      if (e.key === 'Escape') setMenuState(null);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, setMenuOpenOrderId]);
+  }, [open, setMenuState]);
 
   const optionClasses: Record<
     Exclude<FinalizeKind, 'cancel'>,
@@ -97,7 +109,7 @@ export function OrderFinalizeDropdown({
             optionClasses.paid,
           )}
           onClick={() => {
-            setMenuOpenOrderId(null);
+            setMenuState(null);
             onPickKind('paid');
           }}
         >
@@ -113,7 +125,7 @@ export function OrderFinalizeDropdown({
             optionClasses.adjustment,
           )}
           onClick={() => {
-            setMenuOpenOrderId(null);
+            setMenuState(null);
             onPickKind('adjustment');
           }}
         >
@@ -126,7 +138,7 @@ export function OrderFinalizeDropdown({
           role="menuitem"
           className="rounded-md border border-accent-red px-3 py-2 text-left text-xs font-medium text-accent-red transition-colors hover:bg-accent-red/10"
           onClick={() => {
-            setMenuOpenOrderId(null);
+            setMenuState(null);
             onPickKind('cancel');
           }}
         >
@@ -147,7 +159,9 @@ export function OrderFinalizeDropdown({
           size="sm"
           variant="primary"
           className="gap-1"
-          onClick={() => setMenuOpenOrderId(open ? null : order.id)}
+          onClick={() =>
+            setMenuState(open ? null : { anchor: menuAnchor, orderId: order.id })
+          }
           aria-expanded={open}
           aria-haspopup="menu"
         >

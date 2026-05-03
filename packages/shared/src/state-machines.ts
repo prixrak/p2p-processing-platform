@@ -2,7 +2,13 @@ import { PayInOrderStatus, PayOutOrderStatus } from './enums';
 
 export const PAYIN_TRANSITIONS: Record<PayInOrderStatus, PayInOrderStatus[]> = {
   [PayInOrderStatus.PENDING]: [PayInOrderStatus.NEW, PayInOrderStatus.UPLOAD_FAILED],
-  [PayInOrderStatus.NEW]: [PayInOrderStatus.VERIFIED, PayInOrderStatus.CANCELED],
+  [PayInOrderStatus.NEW]: [
+    PayInOrderStatus.VERIFIED,
+    PayInOrderStatus.PAID,
+    PayInOrderStatus.UNDERPAID,
+    PayInOrderStatus.OVERPAID,
+    PayInOrderStatus.CANCELED,
+  ],
   [PayInOrderStatus.VERIFIED]: [
     PayInOrderStatus.PAID,
     PayInOrderStatus.UNDERPAID,

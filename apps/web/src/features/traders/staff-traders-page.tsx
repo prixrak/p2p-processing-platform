@@ -6,7 +6,6 @@ import { DataTable } from '@/components/ui/data-table';
 import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { buildStaffTradersColumns } from './staff-traders-columns';
 import type { StaffRolePrefix } from '@/lib/query-keys';
-import { PayoutLimitsModal, type PayoutLimitsTrader } from './payout-limits-modal';
 import { TraderDetailModal } from './trader-detail-modal';
 import { useStaffTraders } from './use-staff-traders';
 
@@ -17,9 +16,7 @@ export interface StaffTradersPageProps {
 }
 
 export function StaffTradersPage({ staffRole, embedded = false }: StaffTradersPageProps) {
-  const [limitsTrader, setLimitsTrader] = useState<PayoutLimitsTrader | null>(null);
-  const [detailTraderId, setDetailTraderId] = useState<string | null>(null);
-  const [detailTraderName, setDetailTraderName] = useState('');
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const {
     traders,
@@ -35,13 +32,7 @@ export function StaffTradersPage({ staffRole, embedded = false }: StaffTradersPa
     () =>
       buildStaffTradersColumns({
         toggleMutation,
-        onLimitsClick: (row) =>
-          setLimitsTrader({
-            id: row.id,
-            name: row.name,
-            payoutMinLimit: row.payoutMinLimit ?? 0,
-            payoutMaxLimit: row.payoutMaxLimit ?? 0,
-          }),
+        onOpenTraderDetail: (row) => setDetailId(row.id),
       }),
     [toggleMutation],
   );
@@ -87,23 +78,13 @@ export function StaffTradersPage({ staffRole, embedded = false }: StaffTradersPa
         keyExtractor={(t) => t.id}
         isLoading={isLoading}
         emptyMessage="No traders found"
-        onRowClick={(row) => {
-          setDetailTraderId(row.id);
-          setDetailTraderName(row.name);
-        }}
-      />
-
-      <PayoutLimitsModal
-        trader={limitsTrader}
-        onClose={() => setLimitsTrader(null)}
-        queryPrefix={staffRole}
+        onRowClick={(row) => setDetailId(row.id)}
       />
 
       <TraderDetailModal
-        open={!!detailTraderId}
-        onClose={() => setDetailTraderId(null)}
-        traderId={detailTraderId}
-        traderName={detailTraderName}
+        open={!!detailId}
+        onClose={() => setDetailId(null)}
+        traderId={detailId}
         queryPrefix={staffRole}
       />
     </div>

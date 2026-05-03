@@ -10,11 +10,10 @@ import {
   Percent,
   Lock,
   Unlock,
-  SlidersHorizontal,
   ToggleLeft,
   ToggleRight,
   UserPlus,
-  Wallet,
+  Settings,
 } from 'lucide-react';
 import { UserRole } from '@p2p/shared';
 import { api } from '@/lib/api';
@@ -43,8 +42,11 @@ import { CountrySelectWithCreate } from '@/features/countries/country-select-wit
 import { parseDecimalInput } from '@/lib/decimal-input';
 import { ownerCreateUserFormSchema } from '@/lib/validation/schemas';
 import { fieldErrorsFromZod } from '@/lib/validation/zod-field-errors';
-import type { StaffRolePrefix } from '@/features/traders';
-import { staffTraderKeys, PayoutLimitsModal, type PayoutLimitsTrader } from '@/features/traders';
+import {
+  staffTraderKeys,
+  TraderDetailModal,
+  type StaffRolePrefix,
+} from '@/features/traders';
 import { MerchantDirectionsModal } from './merchant-directions-modal';
 import { ReferralAgentManageModal } from './referral-agent-manage-modal';
 
@@ -219,6 +221,11 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
     role: UserRole.TRADER,
     countryId: '',
     payoutRate: 0.01,
+    overdraftLimitUsdt: 0,
+    payinRate: 0,
+    traderPayoutRate: 0,
+    payoutMinLimit: 0,
+    payoutMaxLimit: 0,
     referralPercent: 0,
     referralCurrency: 'UAH',
     merchantName: '',
@@ -245,7 +252,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
     email: string;
   } | null>(null);
   const [legacyMerchantName, setLegacyMerchantName] = useState('');
-  const [limitsTrader, setLimitsTrader] = useState<PayoutLimitsTrader | null>(null);
+  const [traderDetailId, setTraderDetailId] = useState<string | null>(null);
 
   const { data: countries } = useQuery({
     queryKey: countryKeys.active,
@@ -290,8 +297,12 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         body.referralPercent = payload.referralPercent;
         body.referralCurrency = payload.referralCurrency.trim() || 'UAH';
       }
-      if (payload.role === UserRole.MERCHANT) {
-        body.merchantName = payload.merchantName.trim();
+      if (payload.role === UserRole.TRADER) {
+        body.overdraftLimitUsdt = payload.overdraftLimitUsdt;
+        body.payinRate = payload.payinRate;
+        body.traderPayoutRate = payload.traderPayoutRate;
+        body.payoutMinLimit = payload.payoutMinLimit;
+        body.payoutMaxLimit = payload.payoutMaxLimit;
       }
       const row = await api.post<UsersApiRow>(internalPaths.users, body);
       const merchantProfile =
@@ -310,6 +321,11 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         role: UserRole.TRADER,
         countryId: '',
         payoutRate: 0.01,
+        overdraftLimitUsdt: 0,
+        payinRate: 0,
+        traderPayoutRate: 0,
+        payoutMinLimit: 0,
+        payoutMaxLimit: 0,
         referralPercent: 0,
         referralCurrency: 'UAH',
         merchantName: '',
@@ -506,18 +522,13 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
           {u.role === UserRole.TRADER && u.traderProfile ? (
             <>
               <IconButton
-                label="Set payout limits"
+                label="Trader settings (balances, limits, requisites)"
                 variant="ghost"
                 onClick={() =>
-                  setLimitsTrader({
-                    id: u.traderProfile!.id,
-                    name: u.email.split('@')[0] ?? 'Trader',
-                    payoutMinLimit: u.traderProfile!.payoutMinLimit ?? 0,
-                    payoutMaxLimit: u.traderProfile!.payoutMaxLimit ?? 0,
-                  })
+                  setTraderDetailId(u.traderProfile!.id)
                 }
               >
-                <SlidersHorizontal className="h-4 w-4" />
+                <Settings className="h-4 w-4" />
               </IconButton>
               <IconButton
                 label={u.traderProfile.isActive ? 'Pause Pay-In trader' : 'Resume Pay-In trader'}
@@ -602,6 +613,16 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
             {form.role === UserRole.PAYOUT_TRADER ? (
               <span className="block mt-2 text-text-muted">
                 Pay-Out specialist with payout rate {form.payoutRate}. Double-check geo before confirming.
+              </span>
+            ) : null}
+            {form.role === UserRole.TRADER ? (
+              <span className="block mt-2 text-text-muted">
+                Trader: overdraft {form.overdraftLimitUsdt} USDT, pay-in rate {form.payinRate}, pay-out rate{' '}
+                {form.traderPayoutRate}. Pool visible range{' '}
+                {form.payoutMinLimit === 0 && form.payoutMaxLimit === 0
+                  ? 'unlimited'
+                  : `${form.payoutMinLimit} – ${form.payoutMaxLimit}`}
+                .
               </span>
             ) : null}
             {form.role === UserRole.REFERRAL ? (
@@ -760,6 +781,79 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
             onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}
             error={createFieldErrors.role}
           />
+          {form.role === UserRole.TRADER && (
+            <>
+              <div className="rounded-lg border border-border-subtle/70 bg-bg-secondary/20 py-3 space-y-3">
+                <p className="text-xs font-medium text-text-muted">Trader defaults (optional)</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>*]:min-w-0">
+                  <div className="min-w-0 sm:col-span-2">
+                    <NumberInput
+                      label="Overdraft limit (USDT)"
+                      variant="amount"
+                      min={0}
+                      value={form.overdraftLimitUsdt}
+                      onChange={(e) =>
+                        setForm({ ...form, overdraftLimitUsdt: parseDecimalInput(e.target.value) || 0 })
+                      }
+                      error={createFieldErrors.overdraftLimitUsdt}
+                    />
+                  </div>
+                  <NumberInput
+                    label="Pay-In rate (fraction)"
+                    variant="rate"
+                    min={0}
+                    value={form.payinRate}
+                    onChange={(e) =>
+                      setForm({ ...form, payinRate: parseDecimalInput(e.target.value) || 0 })
+                    }
+                    error={createFieldErrors.payinRate}
+                  />
+                  <NumberInput
+                    label="Pay-Out rate (fraction)"
+                    variant="rate"
+                    min={0}
+                    value={form.traderPayoutRate}
+                    onChange={(e) =>
+                      setForm({ ...form, traderPayoutRate: parseDecimalInput(e.target.value) || 0 })
+                    }
+                    error={createFieldErrors.traderPayoutRate}
+                  />
+                </div>
+              </div>
+              <div className="rounded-lg border border-border-subtle/70 bg-bg-secondary/20 py-3 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-text-primary">Payout pool limits</p>
+                  <p className="mt-1 text-xs text-text-muted">
+                    Min and max order amounts visible in the pool. Use 0 for no limit.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>*]:min-w-0">
+                  <NumberInput
+                    label="Min amount (0 = no min)"
+                    variant="amount"
+                    min={0}
+                    value={form.payoutMinLimit}
+                    onChange={(e) =>
+                      setForm({ ...form, payoutMinLimit: parseDecimalInput(e.target.value) || 0 })
+                    }
+                    error={createFieldErrors.payoutMinLimit}
+                    placeholder="0"
+                  />
+                  <NumberInput
+                    label="Max amount (0 = no max)"
+                    variant="amount"
+                    min={0}
+                    value={form.payoutMaxLimit}
+                    onChange={(e) =>
+                      setForm({ ...form, payoutMaxLimit: parseDecimalInput(e.target.value) || 0 })
+                    }
+                    error={createFieldErrors.payoutMaxLimit}
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+            </>
+          )}
           {form.role === UserRole.MERCHANT && (
             <Input
               label="Merchant display name"
@@ -893,9 +987,10 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         onChanged={invalidateDirectory}
       />
 
-      <PayoutLimitsModal
-        trader={limitsTrader}
-        onClose={() => setLimitsTrader(null)}
+      <TraderDetailModal
+        open={!!traderDetailId}
+        onClose={() => setTraderDetailId(null)}
+        traderId={traderDetailId}
         queryPrefix={queryKeyPrefix}
       />
 

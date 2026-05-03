@@ -38,7 +38,10 @@ import {
   parsePositiveAmount,
 } from './payin-finalize-utils';
 import { AppealCell, CopyOrderIdCell, CountdownTimer } from './payin-order-cells';
-import { OrderFinalizeDropdown } from './order-finalize-dropdown';
+import {
+  OrderFinalizeDropdown,
+  type OrderFinalizeMenuState,
+} from './order-finalize-dropdown';
 import {
   PayInProofViewerModal,
   PayInReceiptGalleryModal,
@@ -56,7 +59,7 @@ export function TraderPayInPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [receiptOrder, setReceiptOrder] = useState<OrderDto | null>(null);
   const [viewingProofFileId, setViewingProofFileId] = useState<string | null>(null);
-  const [menuOpenOrderId, setMenuOpenOrderId] = useState<string | null>(null);
+  const [finalizeMenu, setFinalizeMenu] = useState<OrderFinalizeMenuState>(null);
   const [finalizeDialog, setFinalizeDialog] = useState<FinalizeDialogState | null>(null);
 
   useEffect(() => {
@@ -65,16 +68,16 @@ export function TraderPayInPage() {
   }, [searchInput]);
 
   useEffect(() => {
-    if (!menuOpenOrderId) return;
+    if (!finalizeMenu) return;
     const handler = (e: MouseEvent) => {
       const inside = (e.target as HTMLElement | null)?.closest(
         '[data-trader-payin-finalize-dropdown]',
       );
-      if (!inside) setMenuOpenOrderId(null);
+      if (!inside) setFinalizeMenu(null);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [menuOpenOrderId]);
+  }, [finalizeMenu]);
 
   const queryParams: Record<string, string> = { list: listTab };
   if (statusFilter) queryParams.status = statusFilter;
@@ -252,8 +255,9 @@ export function TraderPayInPage() {
           <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
             <OrderFinalizeDropdown
               order={row}
-              menuOpenOrderId={menuOpenOrderId}
-              setMenuOpenOrderId={setMenuOpenOrderId}
+              menuState={finalizeMenu}
+              setMenuState={setFinalizeMenu}
+              menuAnchor="table"
               onPickKind={(kind) => openFinalize(kind, row)}
             />
             <IconButton label="View order details" onClick={() => setSelectedOrder(row)}>
@@ -335,7 +339,10 @@ export function TraderPayInPage() {
         data={data?.orders ?? []}
         keyExtractor={(row) => row.id}
         loading={isLoading}
-        onRowClick={(row) => setSelectedOrder(row)}
+        onRowClick={(row) => {
+          setFinalizeMenu(null);
+          setSelectedOrder(row);
+        }}
         emptyMessage="No pay-in orders found"
       />
 
@@ -352,9 +359,12 @@ export function TraderPayInPage() {
 
       <PayInOrderDetailModal
         selectedOrder={selectedOrder}
-        onClose={() => setSelectedOrder(null)}
-        menuOpenOrderId={menuOpenOrderId}
-        setMenuOpenOrderId={setMenuOpenOrderId}
+        onClose={() => {
+          setFinalizeMenu((m) => (m?.anchor === 'modal' ? null : m));
+          setSelectedOrder(null);
+        }}
+        finalizeMenu={finalizeMenu}
+        setFinalizeMenu={setFinalizeMenu}
         onPickFinalizeKind={(kind, order) => openFinalize(kind, order)}
       />
 

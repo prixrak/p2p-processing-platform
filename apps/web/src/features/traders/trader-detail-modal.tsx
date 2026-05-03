@@ -10,15 +10,17 @@ import { StatusBadge } from '@/components/ui/badge';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { NumberInput } from '@/components/ui/number-input';
 import type { StaffRolePrefix } from '@/lib/query-keys';
-import { staffTraderKeys } from '@/lib/query-keys';
+import { staffKeys, staffTraderKeys } from '@/lib/query-keys';
+import type { StaffTraderRow } from './staff-trader-types';
 import { parseDecimalInput } from '@/lib/decimal-input';
 
 interface TraderDetail {
   id: string;
-  name: string;
   email: string;
-  status: string;
+  payoutMinLimit: number;
+  payoutMaxLimit: number;
   overdraftLimit?: number;
   payinRate?: number;
   payoutRate?: number;
@@ -33,41 +35,38 @@ interface TraderDetail {
     isActive: boolean;
   }>;
   balances: Array<{ currency: string; available: number; frozen: number }>;
-  orders: Array<{
-    id: string;
-    type: string;
-    amount: number;
-    currency: string;
-    status: string;
-    createdAt: string;
-  }>;
 }
+
+const sectionShell =
+  'space-y-4 rounded-xl border border-border-primary bg-bg-card/40 p-5 shadow-sm';
 
 export function TraderDetailModal({
   open,
   onClose,
   traderId,
-  traderName,
   queryPrefix,
 }: {
   open: boolean;
   onClose: () => void;
   traderId: string | null;
-  traderName: string;
   queryPrefix: StaffRolePrefix;
 }) {
   const queryClient = useQueryClient();
+  const canEditStaff = queryPrefix === 'admin' || queryPrefix === 'owner';
   const [bmOverdraft, setBmOverdraft] = useState('');
   const [bmPayin, setBmPayin] = useState('');
   const [bmPayout, setBmPayout] = useState('');
   const [bmTron, setBmTron] = useState('');
-  const [bmClearTron, setBmClearTron] = useState(false);
   const [bmErc20, setBmErc20] = useState('');
-  const [bmClearErc20, setBmClearErc20] = useState(false);
   const balanceFormSeededRef = useRef(false);
+
+  const [minPoolLimit, setMinPoolLimit] = useState('');
+  const [maxPoolLimit, setMaxPoolLimit] = useState('');
+  const payoutLimitsSeededRef = useRef(false);
 
   useEffect(() => {
     balanceFormSeededRef.current = false;
+    payoutLimitsSeededRef.current = false;
   }, [traderId]);
 
   const { data: traderDetail, isLoading: detailLoading } = useQuery<TraderDetail>({
@@ -76,6 +75,8 @@ export function TraderDetailModal({
       const raw = await api.get<{
         id: string;
         isActive: boolean;
+        payoutMinLimit?: unknown;
+        payoutMaxLimit?: unknown;
         user: { email: string };
         overdraftLimit?: unknown;
         payinRate?: unknown;
@@ -94,9 +95,9 @@ export function TraderDetailModal({
       }>(internalPaths.trader(traderId!));
       return {
         id: raw.id,
-        name: raw.user.email.split('@')[0] ?? raw.user.email,
         email: raw.user.email,
-        status: raw.isActive ? 'active' : 'inactive',
+        payoutMinLimit: Number(raw.payoutMinLimit ?? 0),
+        payoutMaxLimit: Number(raw.payoutMaxLimit ?? 0),
         overdraftLimit: Number(raw.overdraftLimit ?? 0),
         payinRate: Number(raw.payinRate ?? 0),
         payoutRate: Number(raw.payoutRate ?? 0),
@@ -115,7 +116,6 @@ export function TraderDetailModal({
           currency: r.currency,
           isActive: r.isActive,
         })),
-        orders: [],
       } satisfies TraderDetail;
     },
     enabled: open && !!traderId,
@@ -124,12 +124,12 @@ export function TraderDetailModal({
   useEffect(() => {
     if (!open) {
       balanceFormSeededRef.current = false;
+      payoutLimitsSeededRef.current = false;
       return;
     }
-    const canEditBalanceModel = queryPrefix === 'admin' || queryPrefix === 'owner';
     if (
       !traderDetail ||
-      !canEditBalanceModel ||
+      !canEditStaff ||
       balanceFormSeededRef.current ||
       traderDetail.id !== traderId
     ) {
@@ -139,11 +139,25 @@ export function TraderDetailModal({
     setBmPayin(String(traderDetail.payinRate ?? 0));
     setBmPayout(String(traderDetail.payoutRate ?? 0));
     setBmTron(traderDetail.usdtTrc20DepositAddress ?? '');
-    setBmClearTron(false);
     setBmErc20(traderDetail.usdtErc20DepositAddress ?? '');
-    setBmClearErc20(false);
     balanceFormSeededRef.current = true;
-  }, [open, traderId, traderDetail, queryPrefix]);
+  }, [open, traderId, traderDetail, canEditStaff]);
+
+  useEffect(() => {
+    if (!open || !traderDetail || traderDetail.id !== traderId) {
+      return;
+    }
+    if (payoutLimitsSeededRef.current) return;
+    setMinPoolLimit(String(traderDetail.payoutMinLimit ?? 0));
+    setMaxPoolLimit(String(traderDetail.payoutMaxLimit ?? 0));
+    payoutLimitsSeededRef.current = true;
+  }, [open, traderId, traderDetail]);
+
+  const invalidateDetail = () => {
+    if (traderId) {
+      void queryClient.invalidateQueries({ queryKey: staffTraderKeys.detail(queryPrefix, traderId) });
+    }
+  };
 
   const balanceModelMutation = useMutation({
     mutationFn: () =>
@@ -151,20 +165,37 @@ export function TraderDetailModal({
         overdraft_limit_usdt: parseDecimalInput(bmOverdraft) || 0,
         payin_rate: parseDecimalInput(bmPayin) || 0,
         payout_rate: parseDecimalInput(bmPayout) || 0,
-        ...(bmClearTron ? { clear_trc20_deposit_address: true } : {}),
-        ...(!bmClearTron && bmTron.trim()
-          ? { usdt_trc20_deposit_address: bmTron.trim() }
-          : {}),
-        ...(bmClearErc20 ? { clear_erc20_deposit_address: true } : {}),
-        ...(!bmClearErc20 && bmErc20.trim()
-          ? { usdt_erc20_deposit_address: bmErc20.trim() }
-          : {}),
+        ...(bmTron.trim() === ''
+          ? { clear_trc20_deposit_address: true }
+          : { usdt_trc20_deposit_address: bmTron.trim() }),
+        ...(bmErc20.trim() === ''
+          ? { clear_erc20_deposit_address: true }
+          : { usdt_erc20_deposit_address: bmErc20.trim() }),
       }),
     onSuccess: () => {
-      if (traderId) {
-        balanceFormSeededRef.current = false;
-        queryClient.invalidateQueries({ queryKey: staffTraderKeys.detail(queryPrefix, traderId) });
-      }
+      balanceFormSeededRef.current = false;
+      invalidateDetail();
+    },
+  });
+
+  const setPayoutLimitsMutation = useMutation({
+    mutationFn: ({ id, min, max }: { id: string; min: number; max: number }) =>
+      api.post(internalPaths.traderPayoutLimits(id), { minLimit: min, maxLimit: max }),
+    onSuccess: (_data, vars) => {
+      queryClient.setQueryData<StaffTraderRow[]>(staffTraderKeys.list(queryPrefix), (old) =>
+        old?.map((row) =>
+          row.id !== vars.id
+            ? row
+            : {
+                ...row,
+                payoutMinLimit: vars.min,
+                payoutMaxLimit: vars.max,
+              },
+        ),
+      );
+      void queryClient.invalidateQueries({ queryKey: staffKeys.usersDirectory(queryPrefix) });
+      payoutLimitsSeededRef.current = false;
+      invalidateDetail();
     },
   });
 
@@ -173,145 +204,166 @@ export function TraderDetailModal({
       makeActive
         ? api.patch(internalPaths.requisiteActivate(id))
         : api.patch(internalPaths.requisiteDeactivate(id)),
-    onSuccess: () => {
-      if (traderId) {
-        queryClient.invalidateQueries({ queryKey: staffTraderKeys.detail(queryPrefix, traderId) });
-      }
-    },
+    onSuccess: () => invalidateDetail(),
   });
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={`Trader: ${traderName}`}
-      className="max-w-2xl"
+      variant="fullscreen"
+      title="Trader settings"
+      subtitle={traderDetail?.email}
     >
       {detailLoading ? (
-        <div className="flex justify-center py-8">
-          <div className="w-6 h-6 border-2 border-accent-blue border-t-transparent rounded-full animate-spin" />
+        <div className="flex justify-center py-16">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-blue border-t-transparent" />
         </div>
       ) : traderDetail ? (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-text-muted">Email</p>
-              <p className="text-text-primary">{traderDetail.email}</p>
-            </div>
-            <div>
-              <p className="text-text-muted">Status</p>
-              <StatusBadge status={traderDetail.status} />
-            </div>
-          </div>
-
-          {(queryPrefix === 'admin' || queryPrefix === 'owner') && traderId && (
-            <div className="rounded-lg border border-border-primary p-3 space-y-3">
-              <h4 className="text-sm font-medium text-text-primary">Balance model (Block 5)</h4>
-              <p className="text-xs text-text-muted">
-                Rates are fractions (e.g. pay-in 0.01 = +1%). Deposit addresses are monitored by
-                workers when set (Tron / Ethereum ERC-20).
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Input
-                  label="Overdraft limit (USDT)"
-                  inputMode="decimal"
-                  value={bmOverdraft}
-                  onChange={(e) => setBmOverdraft(e.target.value)}
-                />
-                <Input
-                  label="Pay-In rate (fraction)"
-                  inputMode="decimal"
-                  value={bmPayin}
-                  onChange={(e) => setBmPayin(e.target.value)}
-                />
-                <Input
-                  label="Pay-Out rate (fraction)"
-                  inputMode="decimal"
-                  value={bmPayout}
-                  onChange={(e) => setBmPayout(e.target.value)}
-                />
-                <Input
-                  label="USDT TRC-20 deposit address"
-                  value={bmTron}
-                  onChange={(e) => setBmTron(e.target.value)}
-                  disabled={bmClearTron}
-                />
-                <Input
-                  label="USDT ERC-20 deposit address (Ethereum)"
-                  value={bmErc20}
-                  onChange={(e) => setBmErc20(e.target.value)}
-                  disabled={bmClearErc20}
-                />
+        <div className="mx-auto max-w-6xl space-y-10">
+          {canEditStaff && traderId ? (
+            <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
+              <div className={sectionShell}>
+                <div>
+                  <h3 className="text-base font-semibold text-text-primary">Balance model</h3>
+                  <p className="mt-1 text-xs text-text-muted">
+                    Block 5: rates as fractions (e.g. pay-in 0.01 = +1%). Deposit addresses are
+                    monitored when set (Tron / ERC-20). Leave an address field empty and save to
+                    remove it.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Input
+                    label="Overdraft limit (USDT)"
+                    inputMode="decimal"
+                    value={bmOverdraft}
+                    onChange={(e) => setBmOverdraft(e.target.value)}
+                  />
+                  <Input
+                    label="Pay-In rate (fraction)"
+                    inputMode="decimal"
+                    value={bmPayin}
+                    onChange={(e) => setBmPayin(e.target.value)}
+                  />
+                  <Input
+                    label="Pay-Out rate (fraction)"
+                    inputMode="decimal"
+                    value={bmPayout}
+                    onChange={(e) => setBmPayout(e.target.value)}
+                  />
+                  <Input
+                    label="USDT TRC-20 deposit address"
+                    value={bmTron}
+                    onChange={(e) => setBmTron(e.target.value)}
+                  />
+                  <Input
+                    className="sm:col-span-2"
+                    label="USDT ERC-20 deposit address (Ethereum)"
+                    value={bmErc20}
+                    onChange={(e) => setBmErc20(e.target.value)}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => balanceModelMutation.mutate()}
+                  loading={balanceModelMutation.isPending}
+                >
+                  Save balance settings
+                </Button>
               </div>
-              <label className="flex items-center gap-2 text-xs text-text-secondary">
-                <input
-                  type="checkbox"
-                  checked={bmClearTron}
-                  onChange={(e) => setBmClearTron(e.target.checked)}
-                />
-                Clear Tron deposit address
-              </label>
-              <label className="flex items-center gap-2 text-xs text-text-secondary">
-                <input
-                  type="checkbox"
-                  checked={bmClearErc20}
-                  onChange={(e) => setBmClearErc20(e.target.checked)}
-                />
-                Clear ERC-20 deposit address
-              </label>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => balanceModelMutation.mutate()}
-                loading={balanceModelMutation.isPending}
-              >
-                Save balance settings
-              </Button>
-            </div>
-          )}
 
-          {traderDetail.balances.length > 0 && (
-            <div>
-              <h4 className="text-sm font-medium text-text-primary mb-2">Balances</h4>
-              <div className="grid grid-cols-3 gap-3">
+              <div className={sectionShell}>
+                <div>
+                  <h3 className="text-base font-semibold text-text-primary">Payout pool limits</h3>
+                  <p className="mt-1 text-xs text-text-muted">
+                    Min and max order amounts visible in the pool. Use <strong>0</strong> for no
+                    limit.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <NumberInput
+                    label="Min amount (0 = no min)"
+                    variant="amount"
+                    min={0}
+                    value={minPoolLimit}
+                    onChange={(e) => setMinPoolLimit(e.target.value)}
+                    placeholder="0"
+                  />
+                  <NumberInput
+                    label="Max amount (0 = no max)"
+                    variant="amount"
+                    min={0}
+                    value={maxPoolLimit}
+                    onChange={(e) => setMaxPoolLimit(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    variant="primary"
+                    loading={setPayoutLimitsMutation.isPending}
+                    onClick={() =>
+                      setPayoutLimitsMutation.mutate({
+                        id: traderId,
+                        min: parseDecimalInput(minPoolLimit) || 0,
+                        max: parseDecimalInput(maxPoolLimit) || 0,
+                      })
+                    }
+                  >
+                    Save pool limits
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <section>
+            <h3 className="mb-3 text-base font-semibold text-text-primary">Balances</h3>
+            {traderDetail.balances.length === 0 ? (
+              <p className="text-sm text-text-muted">No balances for this trader yet.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                 {traderDetail.balances.map((b) => (
                   <div
                     key={b.currency}
-                    className="bg-bg-tertiary rounded-lg p-3 text-sm"
+                    className="rounded-xl border border-border-primary bg-bg-tertiary/80 p-4 text-sm"
                   >
                     <p className="text-text-muted">{b.currency}</p>
-                    <p className="text-text-primary font-mono">
+                    <p className="mt-1 font-mono text-base font-medium text-text-primary">
                       {b.available.toLocaleString()}
                     </p>
                     {b.frozen > 0 && (
-                      <p className="text-xs text-accent-yellow">
+                      <p className="mt-1 text-xs text-accent-yellow">
                         Frozen: {b.frozen.toLocaleString()}
                       </p>
                     )}
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </section>
 
-          {traderDetail.requisites.length > 0 && (
-            <div>
-              <h4 className="text-sm font-medium text-text-primary mb-2">
-                Requisites ({traderDetail.requisites.length})
-              </h4>
-              <div className="space-y-2">
+          <section>
+            <h3 className="mb-3 text-base font-semibold text-text-primary">
+              Requisites ({traderDetail.requisites.length})
+            </h3>
+            {traderDetail.requisites.length === 0 ? (
+              <p className="text-sm text-text-muted">No requisites on file.</p>
+            ) : (
+              <div className="max-h-[min(28rem,45vh)] space-y-2 overflow-y-auto pr-1">
                 {traderDetail.requisites.map((r) => (
                   <div
                     key={r.id}
-                    className="flex items-center justify-between bg-bg-tertiary rounded-lg p-3 text-sm"
+                    className="flex items-center justify-between rounded-xl border border-border-primary bg-bg-tertiary/60 px-4 py-3 text-sm"
                   >
-                    <div>
+                    <div className="min-w-0">
                       <span className="font-mono text-xs text-text-secondary">{r.number}</span>
-                      <span className="text-text-muted ml-2">{r.bank?.name ?? '—'}</span>
-                      <span className="text-text-muted ml-1 text-xs uppercase">{r.type}</span>
-                      <span className="text-text-muted ml-2 text-xs">{r.currency}</span>
+                      <span className="ml-2 text-text-muted">{r.bank?.name ?? '—'}</span>
+                      <span className="ml-1 text-xs uppercase text-text-muted">{r.type}</span>
+                      <span className="ml-2 text-xs text-text-muted">{r.currency}</span>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-2">
                       <StatusBadge status={r.isActive ? 'active' : 'inactive'} />
                       <IconButton
                         label={r.isActive ? 'Deactivate requisite' : 'Activate requisite'}
@@ -331,37 +383,8 @@ export function TraderDetailModal({
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {traderDetail.orders.length > 0 && (
-            <div>
-              <h4 className="text-sm font-medium text-text-primary mb-2">
-                Recent Orders
-              </h4>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {traderDetail.orders.map((o) => (
-                  <div
-                    key={o.id}
-                    className="flex items-center justify-between bg-bg-tertiary rounded-lg p-3 text-sm"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-text-muted text-xs font-mono">
-                        {o.id.slice(0, 8)}
-                      </span>
-                      <span className="text-text-primary">
-                        {o.amount.toLocaleString()} {o.currency}
-                      </span>
-                      <span className="text-text-muted uppercase text-xs">
-                        {o.type}
-                      </span>
-                    </div>
-                    <StatusBadge status={o.status} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+            )}
+          </section>
         </div>
       ) : null}
     </Modal>

@@ -180,7 +180,11 @@ export class PayinInternalController {
 
   @Post('orders/:orderId/confirm')
   @Roles(UserRole.TRADER)
-  @ApiOperation({ summary: 'Trader confirms payment received' })
+  @ApiOperation({
+    summary: 'Trader confirms payment received',
+    description:
+      'Sets PAID, UNDERPAID, or OVERPAID from actualAmount. Allowed when status is NEW or VERIFIED so the trader can confirm from their bank receipt before the payer marks payment sent in the widget.',
+  })
   async traderConfirmPaid(
     @CurrentUser('traderId') traderId: string,
     @Param('orderId', ParseUUIDPipe) orderId: string,

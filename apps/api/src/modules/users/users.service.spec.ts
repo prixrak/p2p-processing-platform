@@ -144,11 +144,54 @@ describe('UsersService', () => {
       });
     });
 
-    it('rejects MERCHANT without merchantName', async () => {
+    it('creates trader profile with optional balance and pool limits', async () => {
+      const { service, prisma, traderWallets } = createService();
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue({
+        id: userId,
+        email: 't@example.com',
+        role: UserRole.TRADER,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prisma.traderProfile.findUnique.mockResolvedValue({ id: 'tp-1' });
+
+      await service.create('t@example.com', 'password12345', UserRole.TRADER, {
+        overdraftLimitUsdt: 100,
+        payinRate: 0.01,
+        traderPayoutRate: 0.002,
+        payoutMinLimit: 10,
+        payoutMaxLimit: 5000,
+      });
+
+      expect(prisma.user.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          email: 't@example.com',
+          role: UserRole.TRADER,
+          traderProfile: {
+            create: {
+              overdraftLimit: 100,
+              payinRate: 0.01,
+              payoutRate: 0.002,
+              payoutMinLimit: 10,
+              payoutMaxLimit: 5000,
+            },
+          },
+        }),
+        select: expect.any(Object),
+      });
+      expect(traderWallets.ensureProvisioned).toHaveBeenCalledWith('tp-1');
+    });
+
+    it('rejects TRADER when pool min exceeds max', async () => {
       const { service, prisma } = createService();
       prisma.user.findUnique.mockResolvedValue(null);
       await expect(
-        service.create('m@example.com', 'password12345', UserRole.MERCHANT, {}),
+        service.create('t@example.com', 'password12345', UserRole.TRADER, {
+          payoutMinLimit: 100,
+          payoutMaxLimit: 50,
+        }),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.user.create).not.toHaveBeenCalled();
     });

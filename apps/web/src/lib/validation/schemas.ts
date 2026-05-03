@@ -53,11 +53,68 @@ export const ownerCreateUserFormSchema = z
     role: z.nativeEnum(UserRole),
     countryId: z.string(),
     payoutRate: z.number(),
+    overdraftLimitUsdt: z.number(),
+    payinRate: z.number(),
+    traderPayoutRate: z.number(),
+    payoutMinLimit: z.number(),
+    payoutMaxLimit: z.number(),
     referralPercent: z.number(),
     referralCurrency: z.string(),
     merchantName: z.string(),
   })
   .superRefine((data, ctx) => {
+    if (data.role === UserRole.TRADER) {
+      if (
+        !Number.isFinite(data.overdraftLimitUsdt) ||
+        data.overdraftLimitUsdt < 0 ||
+        data.overdraftLimitUsdt > 1e12
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['overdraftLimitUsdt'],
+          message: 'Overdraft must be between 0 and 1e12 USDT',
+        });
+      }
+      if (!Number.isFinite(data.payinRate) || data.payinRate < 0 || data.payinRate > 0.5) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['payinRate'],
+          message: 'Pay-In rate must be between 0 and 0.5',
+        });
+      }
+      if (
+        !Number.isFinite(data.traderPayoutRate) ||
+        data.traderPayoutRate < 0 ||
+        data.traderPayoutRate > 0.5
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['traderPayoutRate'],
+          message: 'Pay-Out rate must be between 0 and 0.5',
+        });
+      }
+      if (!Number.isFinite(data.payoutMinLimit) || data.payoutMinLimit < 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['payoutMinLimit'],
+          message: 'Min amount must be zero or greater',
+        });
+      }
+      if (!Number.isFinite(data.payoutMaxLimit) || data.payoutMaxLimit < 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['payoutMaxLimit'],
+          message: 'Max amount must be zero or greater',
+        });
+      }
+      if (data.payoutMaxLimit > 0 && data.payoutMinLimit > data.payoutMaxLimit) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['payoutMinLimit'],
+          message: 'Min cannot exceed max when max is set',
+        });
+      }
+    }
     if (data.role === UserRole.PAYOUT_TRADER) {
       if (!data.countryId.trim()) {
         ctx.addIssue({

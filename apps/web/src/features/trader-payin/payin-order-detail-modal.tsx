@@ -13,7 +13,10 @@ import type { OrderDto } from '@p2p/shared';
 import { formatCurrency, formatDateFull } from '@/lib/utils';
 import { internalPaths } from '@/lib/internal-api';
 import { payinDirectionLabel } from './payin-finalize-utils';
-import { OrderFinalizeDropdown } from './order-finalize-dropdown';
+import {
+  OrderFinalizeDropdown,
+  type OrderFinalizeMenuState,
+} from './order-finalize-dropdown';
 import { PayinDetailRow } from './payin-detail-row';
 import type { FinalizeKind } from './payin-types';
 import { CountdownTimer } from './payin-order-cells';
@@ -21,14 +24,14 @@ import { CountdownTimer } from './payin-order-cells';
 export function PayInOrderDetailModal({
   selectedOrder,
   onClose,
-  menuOpenOrderId,
-  setMenuOpenOrderId,
+  finalizeMenu,
+  setFinalizeMenu,
   onPickFinalizeKind,
 }: {
   selectedOrder: OrderDto | null;
   onClose: () => void;
-  menuOpenOrderId: string | null;
-  setMenuOpenOrderId: (id: string | null) => void;
+  finalizeMenu: OrderFinalizeMenuState;
+  setFinalizeMenu: (state: OrderFinalizeMenuState) => void;
   onPickFinalizeKind: (kind: FinalizeKind, order: OrderDto) => void;
 }) {
   const [proofFileId, setProofFileId] = useState<string | null>(null);
@@ -130,9 +133,10 @@ export function PayInOrderDetailModal({
 
           {selectedOrder.status === PayInOrderStatus.NEW && (
             <p className="rounded-lg border border-border-primary bg-surface-tertiary/50 px-4 py-3 text-xs leading-relaxed text-text-secondary">
-              <span className="font-medium text-text-primary">Waiting for payer:</span> they must
-              confirm they sent the transfer (status becomes Verified). Only then you can confirm you
-              received the funds. You can cancel this order if needed.
+              <span className="font-medium text-text-primary">Bank receipt is authoritative:</span>{' '}
+              when you see the transfer on your account, mark Paid or use an adjustment (underpaid /
+              overpaid) even if the payer has not tapped &quot;I paid&quot; yet (Verified). Cancel
+              here only if needed.
             </p>
           )}
 
@@ -147,8 +151,9 @@ export function PayInOrderDetailModal({
           <div className="flex flex-wrap justify-end gap-2 pt-2">
             <OrderFinalizeDropdown
               order={selectedOrder}
-              menuOpenOrderId={menuOpenOrderId}
-              setMenuOpenOrderId={setMenuOpenOrderId}
+              menuState={finalizeMenu}
+              setMenuState={setFinalizeMenu}
+              menuAnchor="modal"
               onPickKind={(kind) => onPickFinalizeKind(kind, selectedOrder)}
             />
           </div>

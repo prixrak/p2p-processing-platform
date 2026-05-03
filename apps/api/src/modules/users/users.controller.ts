@@ -51,6 +51,11 @@ export class UsersController {
     return this.usersService.create(dto.email, dto.password, dto.role, {
       countryId: dto.countryId,
       payoutRate: dto.payoutRate,
+      overdraftLimitUsdt: dto.overdraftLimitUsdt,
+      payinRate: dto.payinRate,
+      traderPayoutRate: dto.traderPayoutRate,
+      payoutMinLimit: dto.payoutMinLimit,
+      payoutMaxLimit: dto.payoutMaxLimit,
       referralPercent: dto.referralPercent,
       referralCurrency: dto.referralCurrency,
       merchantName: dto.merchantName,

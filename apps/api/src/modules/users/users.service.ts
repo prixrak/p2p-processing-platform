@@ -275,6 +275,11 @@ export class UsersService {
     opts?: {
       countryId?: string;
       payoutRate?: number;
+      overdraftLimitUsdt?: number;
+      payinRate?: number;
+      traderPayoutRate?: number;
+      payoutMinLimit?: number;
+      payoutMaxLimit?: number;
       referralPercent?: number;
       referralCurrency?: string;
       merchantName?: string;
@@ -302,6 +307,17 @@ export class UsersService {
       }
     }
 
+    if (role === UserRole.TRADER) {
+      const minL = opts?.payoutMinLimit ?? 0;
+      const maxL = opts?.payoutMaxLimit ?? 0;
+      if (minL < 0 || maxL < 0) {
+        throw new BadRequestException('Payout pool limits must be non-negative (0 means no limit)');
+      }
+      if (maxL > 0 && minL > maxL) {
+        throw new BadRequestException('payoutMinLimit cannot be greater than payoutMaxLimit');
+      }
+    }
+
     let referralCurrencyId: string | undefined;
     if (role === UserRole.REFERRAL) {
       const code = (opts?.referralCurrency ?? 'UAH').trim() || 'UAH';
@@ -315,7 +331,19 @@ export class UsersService {
         email,
         passwordHash,
         role,
-        ...(role === UserRole.TRADER ? { traderProfile: { create: {} } } : {}),
+        ...(role === UserRole.TRADER
+          ? {
+              traderProfile: {
+                create: {
+                  overdraftLimit: opts?.overdraftLimitUsdt ?? 0,
+                  payinRate: opts?.payinRate ?? 0,
+                  payoutRate: opts?.traderPayoutRate ?? 0,
+                  payoutMinLimit: opts?.payoutMinLimit ?? 0,
+                  payoutMaxLimit: opts?.payoutMaxLimit ?? 0,
+                },
+              },
+            }
+          : {}),
         ...(role === UserRole.PAYOUT_TRADER
           ? {
               payoutTraderProfile: {

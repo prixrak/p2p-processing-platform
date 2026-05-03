@@ -1,4 +1,4 @@
-import { SlidersHorizontal, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Settings, ToggleLeft, ToggleRight } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/badge';
 import { IconButton } from '@/components/ui/icon-button';
 import type { UseMutationResult } from '@tanstack/react-query';
@@ -6,9 +6,9 @@ import type { StaffTraderRow } from './staff-trader-types';
 
 export function buildStaffTradersColumns(opts: {
   toggleMutation: UseMutationResult<unknown, Error, { id: string; enabled: boolean }>;
-  onLimitsClick: (row: StaffTraderRow) => void;
+  onOpenTraderDetail: (row: StaffTraderRow) => void;
 }) {
-  const { toggleMutation, onLimitsClick } = opts;
+  const { toggleMutation, onOpenTraderDetail } = opts;
 
   return [
     {
@@ -64,11 +64,11 @@ export function buildStaffTradersColumns(opts: {
       render: (row: StaffTraderRow) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           <IconButton
-            label="Set payout pool limits"
+            label="Trader settings (balances, limits, requisites)"
             variant="ghost"
-            onClick={() => onLimitsClick(row)}
+            onClick={() => onOpenTraderDetail(row)}
           >
-            <SlidersHorizontal className="h-4 w-4" />
+            <Settings className="h-4 w-4" />
           </IconButton>
           <IconButton
             label={row.status === 'active' ? 'Disable trader' : 'Enable trader'}
