@@ -1,6 +1,7 @@
 'use client';
 
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Power, PowerOff } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { NominalRow } from './cascade-types';
@@ -86,26 +87,27 @@ export function CascadeNominalGridSection({
                 <td className="py-2 pr-4">{row.is_active ? 'Yes' : 'No'}</td>
                 {!readOnly && (
                   <td className="py-2 text-end align-middle">
-                    <div className="flex flex-wrap justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <IconButton
+                        label={row.is_active ? 'Deactivate nominal' : 'Activate nominal'}
+                        variant={row.is_active ? 'danger' : 'success'}
                         onClick={() => onToggleActive(row.id, !row.is_active)}
                       >
-                        {row.is_active ? 'Deactivate' : 'Activate'}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-danger"
+                        {row.is_active ? (
+                          <PowerOff className="h-4 w-4" />
+                        ) : (
+                          <Power className="h-4 w-4" />
+                        )}
+                      </IconButton>
+                      <IconButton
+                        label="Delete nominal"
+                        variant="danger"
                         onClick={() => {
                           if (confirm('Delete this nominal?')) onDelete(row.id);
                         }}
                       >
                         <Trash2 className="h-4 w-4" />
-                      </Button>
+                      </IconButton>
                     </div>
                   </td>
                 )}

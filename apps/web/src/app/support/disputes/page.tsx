@@ -168,7 +168,7 @@ export default function DisputesPage() {
       className: 'w-12 text-center',
       render: (d: Dispute) => (
         <IconButton label="View dispute details" onClick={() => setDetailId(d.id)}>
-          <Eye className="h-3.5 w-3.5" />
+          <Eye className="h-4 w-4" />
         </IconButton>
       ),
     },
@@ -327,7 +327,7 @@ export default function DisputesPage() {
                   loading={addNote.isPending}
                   onClick={() => addNote.mutate({ id: details.id, content: note })}
                 >
-                  <MessageSquare className="h-3.5 w-3.5" /> Add Note
+                  <MessageSquare className="h-4 w-4" /> Add Note
                 </Button>
               </div>
             </div>

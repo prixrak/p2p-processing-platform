@@ -114,7 +114,7 @@ export function CopyOrderIdCell({ id }: { id: string }) {
       className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border-primary bg-surface-tertiary/40 px-2 py-1 text-left transition-colors hover:border-accent-blue hover:bg-surface-tertiary"
     >
       <span className="truncate font-mono text-xs text-text-primary">{shortId(id)}</span>
-      <Copy className={cn('h-3.5 w-3.5 shrink-0 text-text-muted', copied && 'text-accent-green')} />
+      <Copy className={cn('h-4 w-4 shrink-0 text-text-muted', copied && 'text-accent-green')} />
     </button>
   );
 }

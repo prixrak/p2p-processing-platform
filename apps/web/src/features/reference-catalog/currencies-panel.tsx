@@ -108,9 +108,9 @@ export function CurrenciesPanel() {
           onClick={() => toggleStatus.mutate({ id: c.id, status: c.status })}
         >
           {c.status === 'active' ? (
-            <PowerOff className="h-3.5 w-3.5" />
+            <PowerOff className="h-4 w-4" />
           ) : (
-            <Power className="h-3.5 w-3.5" />
+            <Power className="h-4 w-4" />
           )}
         </IconButton>
       ),

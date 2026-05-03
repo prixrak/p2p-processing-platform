@@ -167,7 +167,7 @@ function TraderCard({ trader }: { trader: TraderStat }) {
 
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Metric
-          icon={<Wallet className="h-3.5 w-3.5 text-text-muted" />}
+          icon={<Wallet className="h-4 w-4 text-text-muted" />}
           label={
             primaryFiatBalanceRow?.currency
               ? `Balance (${primaryFiatBalanceRow.currency})`
@@ -176,17 +176,17 @@ function TraderCard({ trader }: { trader: TraderStat }) {
           value={formatCurrency(primaryFiatBalanceRow?.amount ?? 0, primaryFiatBalanceRow?.currency ?? 'UAH')}
         />
         <Metric
-          icon={<Wallet className="h-3.5 w-3.5 text-text-muted" />}
+          icon={<Wallet className="h-4 w-4 text-text-muted" />}
           label="Balance USDT"
           value={formatCurrency(usdtBalance?.amount ?? 0, 'USDT')}
         />
         <Metric
-          icon={<ArrowDownToLine className="h-3.5 w-3.5 text-accent-green" />}
+          icon={<ArrowDownToLine className="h-4 w-4 text-accent-green" />}
           label="Pay-In (completed)"
           value={`${trader.completedPayins} / ${formatCurrency(trader.totalPayinAmount, 'UAH')}`}
         />
         <Metric
-          icon={<ArrowUpFromLine className="h-3.5 w-3.5 text-accent-blue" />}
+          icon={<ArrowUpFromLine className="h-4 w-4 text-accent-blue" />}
           label="Pay-Out (completed)"
           value={`${trader.completedPayouts} / ${formatCurrency(trader.totalPayoutAmount, 'UAH')}`}
         />
@@ -216,7 +216,7 @@ function MerchantCard({ merchant }: { merchant: MerchantStat }) {
       <div className="mt-3 flex flex-wrap gap-3">
         {merchant.balances.map((b) => (
           <div key={b.currency} className="flex items-center gap-1.5 rounded-md bg-bg-tertiary px-2 py-1">
-            <Wallet className="h-3.5 w-3.5 text-text-muted" />
+            <Wallet className="h-4 w-4 text-text-muted" />
             <span className="text-sm font-medium text-text-primary">
               {formatCurrency(b.amount, b.currency)}
             </span>

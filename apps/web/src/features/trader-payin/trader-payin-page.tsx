@@ -236,7 +236,7 @@ export function TraderPayInPage() {
                 if (hasProofs) setReceiptOrder(row);
               }}
             >
-              <FileText className="h-3.5 w-3.5" />
+              <FileText className="h-4 w-4" />
               {hasProofs
                 ? `Receipt${proofIds.length > 1 ? `s (${proofIds.length})` : ''}`
                 : 'No receipt'}
@@ -257,7 +257,7 @@ export function TraderPayInPage() {
               onPickKind={(kind) => openFinalize(kind, row)}
             />
             <IconButton label="View order details" onClick={() => setSelectedOrder(row)}>
-              <Eye className="h-3.5 w-3.5" />
+              <Eye className="h-4 w-4" />
             </IconButton>
           </div>
         ),

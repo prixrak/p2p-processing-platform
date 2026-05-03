@@ -155,7 +155,7 @@ export default function AppealsPage() {
       render: (row: AppealDto) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           <IconButton label="View appeal details" onClick={() => setSelectedAppeal(row)}>
-            <Eye className="h-3.5 w-3.5" />
+            <Eye className="h-4 w-4" />
           </IconButton>
         </div>
       ),

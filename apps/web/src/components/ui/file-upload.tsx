@@ -162,7 +162,7 @@ export function FileUpload({
                 }}
                 className="absolute -right-1.5 -top-1.5 rounded-full bg-bg-secondary p-0.5 text-text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-accent-red"
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="h-4 w-4" />
               </button>
               {f.preview ? (
                 <img

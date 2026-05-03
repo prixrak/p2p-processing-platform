@@ -178,7 +178,7 @@ export function PaymentClient({ order }: PaymentClientProps) {
               className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent transition-colors hover:text-accent-hover"
             >
               Go now
-              <ExternalLink className="h-3.5 w-3.5" />
+              <ExternalLink className="h-4 w-4" />
             </a>
           </div>
         )}
@@ -253,12 +253,12 @@ export function PaymentClient({ order }: PaymentClientProps) {
             >
               {copied ? (
                 <>
-                  <Check className="h-3.5 w-3.5" />
+                  <Check className="h-4 w-4" />
                   Copied
                 </>
               ) : (
                 <>
-                  <Copy className="h-3.5 w-3.5" />
+                  <Copy className="h-4 w-4" />
                   Copy
                 </>
               )}

@@ -150,7 +150,7 @@ export function AdminPayoutPoolPage() {
               </Button>
             </div>
             <p className="sm:col-span-2 text-xs text-text-muted flex items-center gap-1">
-              <Clock className="h-3.5 w-3.5" />
+              <Clock className="h-4 w-4" />
               Last updated: {new Date(g.updated_at).toLocaleString()}
             </p>
           </form>

@@ -149,7 +149,7 @@ export default function SupportOrdersPage() {
       className: 'w-12 text-center',
       render: (o: Order) => (
         <IconButton label="View order details" onClick={() => setDetailOrder(o.id)}>
-          <Eye className="h-3.5 w-3.5" />
+          <Eye className="h-4 w-4" />
         </IconButton>
       ),
     },

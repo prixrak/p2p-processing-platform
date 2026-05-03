@@ -12,6 +12,7 @@ import {
   Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -427,12 +428,24 @@ export function TraderRequisitesPage() {
                     {g.archivedAt ? (
                       <Badge variant="muted">Archived</Badge>
                     ) : (
-                      <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
+                      <label
+                        className={cn(
+                          'flex items-center gap-2 text-xs text-text-secondary',
+                          updateGroupMutation.isPending &&
+                            updateGroupMutation.variables?.id === g.id
+                            ? 'cursor-wait opacity-80'
+                            : 'cursor-pointer',
+                        )}
+                      >
                         <input
                           type="checkbox"
                           role="switch"
-                          className="h-4 w-7 rounded-full accent-accent-blue"
+                          className="h-4 w-7 rounded-full accent-accent-blue disabled:opacity-50"
                           checked={g.isActive}
+                          disabled={
+                            updateGroupMutation.isPending &&
+                            updateGroupMutation.variables?.id === g.id
+                          }
                           onChange={(e) =>
                             updateGroupMutation.mutate({
                               id: g.id,
@@ -444,50 +457,47 @@ export function TraderRequisitesPage() {
                       </label>
                     )}
                     {!g.archivedAt && (
-                      <Button
-                        size="sm"
+                      <IconButton
+                        label="Add requisite"
                         variant="secondary"
-                        className="h-8 w-8 rounded-full p-0"
                         onClick={() => {
                           setForm(defaultRequisiteForm);
                           setAddRequisiteGroupId(g.id);
                         }}
-                        title="Add requisite"
                       >
                         <Plus className="h-4 w-4" />
-                      </Button>
+                      </IconButton>
                     )}
                     {!g.archivedAt && (
-                      <Button
-                        size="sm"
+                      <IconButton
+                        label="Edit group"
                         variant="secondary"
-                        className="h-8 w-8 rounded-full p-0"
                         onClick={() => openEditGroup(g)}
-                        title="Edit group"
                       >
                         <Pencil className="h-4 w-4" />
-                      </Button>
+                      </IconButton>
                     )}
                     {g.archivedAt ? (
                       <Button
                         size="sm"
                         variant="secondary"
                         onClick={() => restoreGroupMutation.mutate(g.id)}
-                        loading={restoreGroupMutation.isPending}
+                        loading={
+                          restoreGroupMutation.isPending &&
+                          restoreGroupMutation.variables === g.id
+                        }
                       >
                         Restore
                       </Button>
                     ) : (
-                      <Button
-                        size="sm"
+                      <IconButton
+                        label="Delete group"
                         variant="danger"
-                        className="h-8 w-8 rounded-full p-0"
                         onClick={() => setDeleteGroupId(g.id)}
-                        title="Delete group"
                         disabled={g.requisites.length > 0}
                       >
                         <Trash2 className="h-4 w-4" />
-                      </Button>
+                      </IconButton>
                     )}
                   </div>
                 </div>

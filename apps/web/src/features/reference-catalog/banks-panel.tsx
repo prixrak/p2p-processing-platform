@@ -147,7 +147,7 @@ export function BanksPanel() {
       render: (b: Bank) => (
         <div className="flex items-center gap-2">
           <IconButton label="Edit bank" onClick={() => openEdit(b)}>
-            <Pencil className="h-3.5 w-3.5" />
+            <Pencil className="h-4 w-4" />
           </IconButton>
           <IconButton
             label={b.status === 'active' ? 'Deactivate bank' : 'Activate bank'}
@@ -155,9 +155,9 @@ export function BanksPanel() {
             onClick={() => toggleStatus.mutate({ id: b.id, status: b.status })}
           >
             {b.status === 'active' ? (
-              <PowerOff className="h-3.5 w-3.5" />
+              <PowerOff className="h-4 w-4" />
             ) : (
-              <Power className="h-3.5 w-3.5" />
+              <Power className="h-4 w-4" />
             )}
           </IconButton>
         </div>

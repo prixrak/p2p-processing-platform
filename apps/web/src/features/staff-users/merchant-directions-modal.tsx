@@ -188,14 +188,14 @@ export function MerchantDirectionsModal({
                   variant="ghost"
                   onClick={() => toggleDirection.mutate({ dirId: dir.id, isActive: dir.isActive })}
                 >
-                  {dir.isActive ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+                  {dir.isActive ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
                 </IconButton>
                 <IconButton
                   label="Delete direction"
                   variant="danger"
                   onClick={() => deleteDirection.mutate({ dirId: dir.id })}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 className="h-4 w-4" />
                 </IconButton>
               </div>
             </div>

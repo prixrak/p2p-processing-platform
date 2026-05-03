@@ -153,7 +153,7 @@ export function OrderFinalizeDropdown({
         >
           Change status
           <ChevronDown
-            className={cn('h-3.5 w-3.5 shrink-0 transition-transform', open && 'rotate-180')}
+            className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')}
           />
         </Button>
       </div>

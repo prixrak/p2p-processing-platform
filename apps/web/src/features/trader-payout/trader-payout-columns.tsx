@@ -8,7 +8,6 @@ import {
   XCircle,
   Copy,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { PayoutOrderStatusBadge } from '@/components/ui/order-status-badge';
 import type { UseMutationResult } from '@tanstack/react-query';
@@ -76,7 +75,7 @@ function CopyOrderIdCell({ id }: { id: string }) {
           void navigator.clipboard.writeText(id);
         }}
       >
-        <Copy className="h-3.5 w-3.5" />
+        <Copy className="h-4 w-4" />
       </IconButton>
     </div>
   );
@@ -172,18 +171,19 @@ export function buildPayoutPoolColumns(opts: {
       header: 'Actions',
       className: 'text-end',
       render: (row: PayOutOrderApiDto) => (
-        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button
-            size="sm"
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <IconButton
+            label="Take order from pool"
             variant="primary"
             onClick={() => takeFromPoolMutation.mutate(row.id)}
-            loading={takeFromPoolMutation.isPending}
+            loading={
+              takeFromPoolMutation.isPending && takeFromPoolMutation.variables === row.id
+            }
           >
-            <Play className="h-3.5 w-3.5" />
-            Take
-          </Button>
+            <Play className="h-4 w-4" />
+          </IconButton>
           <IconButton label="View order details" onClick={() => onView(row)}>
-            <Eye className="h-3.5 w-3.5" />
+            <Eye className="h-4 w-4" />
           </IconButton>
         </div>
       ),
@@ -303,42 +303,44 @@ export function buildPayoutOrdersColumns(opts: {
       header: 'Actions',
       className: 'text-end',
       render: (row: PayOutOrderApiDto) => (
-        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
           {row.status === PayOutOrderStatus.NEW && (
-            <Button
-              size="sm"
+            <IconButton
+              label="Start processing payout"
               variant="primary"
               onClick={() => processMutation.mutate(row.id)}
-              loading={processMutation.isPending}
+              loading={
+                processMutation.isPending && processMutation.variables === row.id
+              }
             >
-              <Play className="h-3.5 w-3.5" />
-              Process
-            </Button>
+              <Play className="h-4 w-4" />
+            </IconButton>
           )}
           {row.status === PayOutOrderStatus.PROCESSING && (
             <>
-              <Button
-                size="sm"
+              <IconButton
+                label="Mark payout complete"
                 variant="success"
                 onClick={() => completeMutation.mutate({ orderId: row.id })}
-                loading={completeMutation.isPending}
+                loading={
+                  completeMutation.isPending &&
+                  completeMutation.variables?.orderId === row.id
+                }
               >
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Done
-              </Button>
-              <Button
-                size="sm"
+                <CheckCircle2 className="h-4 w-4" />
+              </IconButton>
+              <IconButton
+                label="Mark payout failed"
                 variant="danger"
                 onClick={() => failMutation.mutate(row.id)}
-                loading={failMutation.isPending}
+                loading={failMutation.isPending && failMutation.variables === row.id}
               >
-                <XCircle className="h-3.5 w-3.5" />
-                Fail
-              </Button>
+                <XCircle className="h-4 w-4" />
+              </IconButton>
             </>
           )}
           <IconButton label="View order details" onClick={() => onView(row)}>
-            <Eye className="h-3.5 w-3.5" />
+            <Eye className="h-4 w-4" />
           </IconButton>
         </div>
       ),

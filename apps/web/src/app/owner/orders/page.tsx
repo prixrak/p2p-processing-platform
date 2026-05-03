@@ -175,7 +175,7 @@ export default function OrdersPage() {
         return (
           <div className="flex flex-wrap items-center justify-end gap-1">
             <IconButton label="View order details" onClick={() => setDetailOrder(o.id)}>
-              <Eye className="h-3.5 w-3.5" />
+              <Eye className="h-4 w-4" />
             </IconButton>
             {next.map((s) => (
               <Button

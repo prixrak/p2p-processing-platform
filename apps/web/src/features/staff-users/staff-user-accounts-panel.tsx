@@ -2,7 +2,20 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Users, ShieldCheck, ShieldOff, Percent, Lock, Unlock, SlidersHorizontal, ToggleLeft, ToggleRight, UserPlus } from 'lucide-react';
+import {
+  Plus,
+  Users,
+  ShieldCheck,
+  ShieldOff,
+  Percent,
+  Lock,
+  Unlock,
+  SlidersHorizontal,
+  ToggleLeft,
+  ToggleRight,
+  UserPlus,
+  Wallet,
+} from 'lucide-react';
 import { UserRole } from '@p2p/shared';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -463,7 +476,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                 variant="ghost"
                 onClick={() => setDirectionsMerchant({ id: u.merchant!.id, name: u.merchant!.name })}
               >
-                <Percent className="h-3.5 w-3.5" />
+                <Percent className="h-4 w-4" />
               </IconButton>
               <IconButton
                 label={u.merchant.isLock ? 'Unlock merchant account' : 'Lock merchant account'}
@@ -472,7 +485,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                   merchantLockToggle.mutate({ id: u.merchant!.id, isLocked: u.merchant!.isLock })
                 }
               >
-                {u.merchant.isLock ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+                {u.merchant.isLock ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
               </IconButton>
             </>
           ) : null}
@@ -504,7 +517,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                   })
                 }
               >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
+                <SlidersHorizontal className="h-4 w-4" />
               </IconButton>
               <IconButton
                 label={u.traderProfile.isActive ? 'Pause Pay-In trader' : 'Resume Pay-In trader'}
@@ -517,9 +530,9 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                 }
               >
                 {u.traderProfile.isActive ? (
-                  <ToggleRight className="h-3.5 w-3.5" />
+                  <ToggleRight className="h-4 w-4" />
                 ) : (
-                  <ToggleLeft className="h-3.5 w-3.5" />
+                  <ToggleLeft className="h-4 w-4" />
                 )}
               </IconButton>
             </>
@@ -543,7 +556,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                 }
               }}
             >
-              <UserPlus className="h-3.5 w-3.5" />
+              <UserPlus className="h-4 w-4" />
             </IconButton>
           ) : null}
           <IconButton
@@ -564,7 +577,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
               })
             }
           >
-            {u.isActive ? <ShieldOff className="h-3.5 w-3.5" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+            {u.isActive ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
           </IconButton>
         </div>
       ),
@@ -687,7 +700,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
           className="ml-auto h-9 shrink-0 gap-1.5 px-3"
           onClick={() => setShowCreate(true)}
         >
-          <Plus className="h-3.5 w-3.5" /> Create user
+          <Plus className="h-4 w-4" /> Create user
         </Button>
       </FilterBar>
 

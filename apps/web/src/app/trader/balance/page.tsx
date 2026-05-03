@@ -8,7 +8,6 @@ import { formatErrorMessage } from '@/lib/format-error';
 import { internalPaths } from '@/lib/internal-api';
 import { traderKeys } from '@/lib/query-keys';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { Select } from '@/components/ui/select';
@@ -204,27 +203,13 @@ export default function BalanceHistoryPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-            <DollarSign className="h-6 w-6" /> Balance
-          </h1>
-          <p className="mt-1 text-sm text-text-muted">
-            USDT capacity for Pay-In assignment and full ledger history
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="secondary"
-          className="shrink-0 self-start"
-          onClick={() =>
-            document
-              .getElementById('wallet-deposit-instructions')
-              ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          }
-        >
-          Top up
-        </Button>
+      <div>
+        <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+          <DollarSign className="h-6 w-6" /> Balance
+        </h1>
+        <p className="mt-1 text-sm text-text-muted">
+          USDT capacity for Pay-In assignment and full ledger history
+        </p>
       </div>
 
       {showLowCapacityBanner ? (

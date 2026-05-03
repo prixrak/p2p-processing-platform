@@ -136,7 +136,7 @@ export function CountriesPanel() {
           variant={c.isActive ? 'danger' : 'success'}
           onClick={() => toggle.mutate({ id: c.id, isActive: c.isActive })}
         >
-          {c.isActive ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
+          {c.isActive ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
         </IconButton>
       ),
     },

@@ -258,14 +258,14 @@ export default function DirectionsPage() {
       render: (d: Direction) => (
         <div className="flex items-center gap-2">
           <IconButton label="Edit direction" onClick={() => openEdit(d)}>
-            <Pencil className="h-3.5 w-3.5" />
+            <Pencil className="h-4 w-4" />
           </IconButton>
           <IconButton
             label={d.isOnline ? 'Take direction offline' : 'Put direction online'}
             variant={d.isOnline ? 'danger' : 'success'}
             onClick={() => toggleOnline.mutate({ id: d.id })}
           >
-            {d.isOnline ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
+            {d.isOnline ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
           </IconButton>
         </div>
       ),

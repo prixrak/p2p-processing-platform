@@ -173,7 +173,7 @@ export function TraderDashboardWalletListSection() {
                   href="/trader/balance"
                   className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/25"
                 >
-                  <ReceiptText className="h-3.5 w-3.5 shrink-0" />
+                  <ReceiptText className="h-4 w-4 shrink-0" />
                   Transactions
                 </Link>
               </div>

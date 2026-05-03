@@ -170,7 +170,7 @@ export default function PaymentMethodsPage() {
           variant={m.isActive ? 'danger' : 'success'}
           onClick={() => toggle.mutate({ id: m.id, isActive: m.isActive })}
         >
-          {m.isActive ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
+          {m.isActive ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
         </IconButton>
       ),
     },

@@ -15,13 +15,13 @@ const variantStyles: Record<ButtonVariant, string> = {
   primary:
     'bg-accent-blue text-white hover:bg-accent-blue-hover active:bg-accent-blue-hover/90',
   secondary:
-    'bg-bg-tertiary text-text-primary border border-border-primary hover:bg-bg-hover',
+    'bg-bg-tertiary text-text-primary border border-border-primary hover:bg-bg-hover active:bg-bg-secondary active:border-border-secondary',
   danger:
     'bg-accent-red text-white hover:bg-accent-red-hover active:bg-accent-red-hover/90',
   success:
     'bg-accent-green text-white hover:bg-accent-green-hover active:bg-accent-green-hover/90',
   ghost:
-    'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
+    'text-text-secondary hover:text-text-primary hover:bg-bg-hover active:bg-bg-secondary',
 };
 
 const sizeStyles: Record<ButtonSize, string> = {

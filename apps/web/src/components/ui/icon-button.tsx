@@ -38,7 +38,7 @@ export function IconButton({
           loading={loading}
           disabled={disabled}
           aria-label={label}
-          className={clsx('!p-1.5 min-h-8 min-w-8 shrink-0', className)}
+          className={clsx('!p-2 min-h-9 min-w-9 shrink-0', className)}
           {...props}
         >
           {children}

@@ -67,9 +67,8 @@ export function buildStaffTradersColumns(opts: {
             label="Set payout pool limits"
             variant="ghost"
             onClick={() => onLimitsClick(row)}
-            className="!min-h-8 !min-w-8 !p-1"
           >
-            <SlidersHorizontal size={16} />
+            <SlidersHorizontal className="h-4 w-4" />
           </IconButton>
           <IconButton
             label={row.status === 'active' ? 'Disable trader' : 'Enable trader'}
@@ -77,12 +76,11 @@ export function buildStaffTradersColumns(opts: {
             onClick={() =>
               toggleMutation.mutate({ id: row.id, enabled: row.status !== 'active' })
             }
-            className="!min-h-8 !min-w-8 !p-1"
           >
             {row.status === 'active' ? (
-              <ToggleRight size={20} className="text-accent-green" />
+              <ToggleRight className="h-4 w-4 text-accent-green" />
             ) : (
-              <ToggleLeft size={20} />
+              <ToggleLeft className="h-4 w-4" />
             )}
           </IconButton>
         </div>

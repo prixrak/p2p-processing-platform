@@ -1,7 +1,7 @@
 'use client';
 
-import { History } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { History, Pencil } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Table } from '@/components/ui/table';
@@ -148,14 +148,17 @@ export function TraderRequisitesGroupTable({
       key: 'actions',
       header: 'Actions',
       render: (r: RequisiteApiRow) => (
-        <div className="flex flex-wrap gap-1">
-          <Button size="sm" variant="secondary" onClick={() => onEditRequisite(groupId, r)}>
-            Edit
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => onHistory(r.id)}>
-            <History className="h-3.5 w-3.5" />
-            History
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <IconButton
+            label="Edit requisite limits"
+            variant="secondary"
+            onClick={() => onEditRequisite(groupId, r)}
+          >
+            <Pencil className="h-4 w-4" />
+          </IconButton>
+          <IconButton label="View requisite history" variant="ghost" onClick={() => onHistory(r.id)}>
+            <History className="h-4 w-4" />
+          </IconButton>
         </div>
       ),
     },

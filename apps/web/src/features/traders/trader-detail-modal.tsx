@@ -126,9 +126,10 @@ export function TraderDetailModal({
       balanceFormSeededRef.current = false;
       return;
     }
+    const canEditBalanceModel = queryPrefix === 'admin' || queryPrefix === 'owner';
     if (
       !traderDetail ||
-      queryPrefix !== 'admin' ||
+      !canEditBalanceModel ||
       balanceFormSeededRef.current ||
       traderDetail.id !== traderId
     ) {
@@ -203,7 +204,7 @@ export function TraderDetailModal({
             </div>
           </div>
 
-          {queryPrefix === 'admin' && traderId && (
+          {(queryPrefix === 'admin' || queryPrefix === 'owner') && traderId && (
             <div className="rounded-lg border border-border-primary p-3 space-y-3">
               <h4 className="text-sm font-medium text-text-primary">Balance model (Block 5)</h4>
               <p className="text-xs text-text-muted">
@@ -319,12 +320,11 @@ export function TraderDetailModal({
                         onClick={() =>
                           toggleRequisiteMutation.mutate({ id: r.id, makeActive: !r.isActive })
                         }
-                        className="!min-h-8 !min-w-8 !p-1"
                       >
                         {r.isActive ? (
-                          <PowerOff size={15} className="text-accent-red" />
+                          <PowerOff className="h-4 w-4 text-accent-red" />
                         ) : (
-                          <Power size={15} className="text-accent-green" />
+                          <Power className="h-4 w-4 text-accent-green" />
                         )}
                       </IconButton>
                     </div>
