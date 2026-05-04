@@ -110,6 +110,29 @@ export class TradersService {
     };
   }
 
+  /**
+   * Validates traffic_percent when creating a new trader (profile defaults: isActive, acceptingOrders).
+   * Same cohort as PATCH `/traders/:id/cascade-routing`.
+   */
+  async assertTrafficPercentAllowsNewActiveTrader(additionalTrafficPercent: number): Promise<void> {
+    const rows = await this.prisma.traderProfile.findMany({
+      where: { isActive: true, acceptingOrders: true },
+      select: { trafficPercent: true },
+    });
+    const currentSum = rows.reduce((s, r) => s + Number(r.trafficPercent), 0);
+    const nextSum = currentSum + additionalTrafficPercent;
+    if (!isValidCascadeTrafficPercentTotal(nextSum)) {
+      throw new BadRequestException(
+        `traffic_percent for active traders (accepting orders) must sum to 100% or all be 0 after adding this user. Current sum: ${currentSum.toFixed(2)}%, adding ${additionalTrafficPercent} would yield ${nextSum.toFixed(2)}%. See GET /api/admin/cascade/traffic-policy.`,
+      );
+    }
+  }
+
+  /** Invalidates cascade snapshot cache after traffic-related profile fields change. */
+  invalidateCascadeCoverageCaches(): void {
+    void this.cascadeCoverageCache.invalidateAll();
+  }
+
   private async pickDisplayCurrency(traderId: string): Promise<string> {
     const balances = await this.prisma.traderBalance.findMany({
       where: { traderId },

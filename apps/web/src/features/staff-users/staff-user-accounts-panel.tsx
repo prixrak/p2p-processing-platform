@@ -34,6 +34,7 @@ import { errorMessageFromUnknown } from '@/lib/error-message';
 import {
   countryKeys,
   currencyKeys,
+  cascadeKeys,
   fetchCountryList,
   fetchCurrencyList,
   staffKeys,
@@ -49,6 +50,10 @@ import {
 } from '@/features/traders';
 import { MerchantDirectionsModal } from './merchant-directions-modal';
 import { ReferralAgentManageModal } from './referral-agent-manage-modal';
+import type { TrafficPercentPolicy } from '@/features/cascade/cascade-types';
+
+const CASCADE_TRAFFIC_HINT =
+  'For active traders with accepting orders, configured traffic_percent values must sum to 100% or all be 0 (equal split). Invalid saves are rejected.';
 
 export interface DirectoryUser {
   id: string;
@@ -226,6 +231,8 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
     traderPayoutRate: 0,
     payoutMinLimit: 0,
     payoutMaxLimit: 0,
+    processingMethod: 'CARD' as 'CARD' | 'FORK',
+    trafficPercent: 0,
     referralPercent: 0,
     referralCurrency: 'UAH',
     merchantName: '',
@@ -266,6 +273,12 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
     enabled: showCreate,
   });
 
+  const { data: trafficPolicy } = useQuery({
+    queryKey: cascadeKeys.trafficPolicy(),
+    queryFn: () => api.get<TrafficPercentPolicy>(internalPaths.adminCascadeTrafficPolicy),
+    enabled: showCreate && form.role === UserRole.TRADER,
+  });
+
   const referralCurrencySelectOptions = useMemo(() => {
     const active = staffCurrencies
       .filter((c) => c.isActive)
@@ -303,11 +316,13 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         body.traderPayoutRate = payload.traderPayoutRate;
         body.payoutMinLimit = payload.payoutMinLimit;
         body.payoutMaxLimit = payload.payoutMaxLimit;
+        body.processingMethod = payload.processingMethod;
+        body.trafficPercent = payload.trafficPercent;
       }
       const row = await api.post<UsersApiRow>(internalPaths.users, body);
       const merchantProfile =
         payload.role === UserRole.MERCHANT ? await fetchMerchantProfileForUser(row.id) : null;
-      return { merchantProfile };
+      return { merchantProfile, createdRole: payload.role };
     },
     onSuccess: (result) => {
       invalidateDirectory();
@@ -326,6 +341,8 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         traderPayoutRate: 0,
         payoutMinLimit: 0,
         payoutMaxLimit: 0,
+        processingMethod: 'CARD',
+        trafficPercent: 0,
         referralPercent: 0,
         referralCurrency: 'UAH',
         merchantName: '',
@@ -335,6 +352,9 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
           id: result.merchantProfile.id,
           name: result.merchantProfile.name,
         });
+      }
+      if (result.createdRole === UserRole.TRADER) {
+        void queryClient.invalidateQueries({ queryKey: cascadeKeys.trafficPolicy() });
       }
     },
   });
@@ -622,7 +642,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                 {form.payoutMinLimit === 0 && form.payoutMaxLimit === 0
                   ? 'unlimited'
                   : `${form.payoutMinLimit} – ${form.payoutMaxLimit}`}
-                .
+                . Pay-In cascade: method {form.processingMethod}, traffic {form.trafficPercent}%.
               </span>
             ) : null}
             {form.role === UserRole.REFERRAL ? (
@@ -819,6 +839,50 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                     error={createFieldErrors.traderPayoutRate}
                   />
                 </div>
+              </div>
+              <div className="rounded-lg border border-border-subtle/70 bg-bg-secondary/20 py-3 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-text-primary">Pay-In cascade routing</p>
+                  <p className="mt-1 text-xs text-text-muted">
+                    Processing method (CARD vs FORK) controls Fork autolimits and rating weight in the Pay-In
+                    cascade. Traders cannot change this themselves.
+                  </p>
+                </div>
+                <Select
+                  label="Processing method"
+                  options={[
+                    { value: 'CARD', label: 'CARD' },
+                    { value: 'FORK', label: 'FORK' },
+                  ]}
+                  value={form.processingMethod}
+                  onChange={(e) =>
+                    setForm({ ...form, processingMethod: e.target.value as 'CARD' | 'FORK' })
+                  }
+                  error={createFieldErrors.processingMethod}
+                />
+                <NumberInput
+                  label="Traffic percent (0–100)"
+                  variant="amount"
+                  min={0}
+                  max={100}
+                  value={form.trafficPercent}
+                  onChange={(e) =>
+                    setForm({ ...form, trafficPercent: parseDecimalInput(e.target.value) || 0 })
+                  }
+                  error={createFieldErrors.trafficPercent}
+                />
+                {trafficPolicy ? (
+                  <p
+                    className={`text-xs ${trafficPolicy.matches_rule ? 'text-text-muted' : 'text-accent-yellow'}`}
+                  >
+                    Active traders (accepting orders) traffic sum:{' '}
+                    {trafficPolicy.active_traders_sum_percent.toFixed(2)}%.{' '}
+                    {trafficPolicy.matches_rule
+                      ? 'Within policy (before adding this user).'
+                      : 'Does not match policy yet — adjust other traders or use the cascade traffic dashboard.'}
+                  </p>
+                ) : null}
+                <p className="text-xs text-text-muted">{CASCADE_TRAFFIC_HINT}</p>
               </div>
               <div className="rounded-lg border border-border-subtle/70 bg-bg-secondary/20 py-3 space-y-3">
                 <div>

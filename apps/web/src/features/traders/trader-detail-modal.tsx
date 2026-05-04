@@ -47,6 +47,14 @@ interface TraderDetail {
 const sectionShell =
   'space-y-4 rounded-xl border border-border-primary bg-bg-card/40 p-5 shadow-sm';
 
+function currencyDisplayCode(raw: unknown): string {
+  if (typeof raw === 'string' && raw.trim()) return raw.trim().toUpperCase();
+  if (raw && typeof raw === 'object' && 'code' in raw && typeof (raw as { code: unknown }).code === 'string') {
+    return (raw as { code: string }).code.trim().toUpperCase();
+  }
+  return '';
+}
+
 export function TraderDetailModal({
   open,
   onClose,
@@ -103,13 +111,13 @@ export function TraderDetailModal({
         usdtErc20DepositAddress?: string | null;
         processingMethod?: 'CARD' | 'FORK';
         trafficPercent?: unknown;
-        balances: Array<{ currency: string; amount: unknown }>;
+        balances: Array<{ currency: string | { code: string }; amount: unknown }>;
         requisites: Array<{
           id: string;
           type: string;
           number: string;
           bank?: { name: string } | null;
-          currency: string;
+          currency?: string | { code: string };
           isActive: boolean;
         }>;
       }>(internalPaths.trader(traderId!));
@@ -126,7 +134,7 @@ export function TraderDetailModal({
         usdtTrc20DepositAddress: raw.usdtTrc20DepositAddress ?? null,
         usdtErc20DepositAddress: raw.usdtErc20DepositAddress ?? null,
         balances: raw.balances.map((b) => ({
-          currency: b.currency,
+          currency: currencyDisplayCode(b.currency),
           available: Number(b.amount),
           frozen: 0,
         })),
@@ -135,7 +143,7 @@ export function TraderDetailModal({
           type: r.type,
           number: r.number,
           bank: r.bank ?? null,
-          currency: r.currency,
+          currency: currencyDisplayCode(r.currency),
           isActive: r.isActive,
         })),
       } satisfies TraderDetail;

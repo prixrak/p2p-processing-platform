@@ -53,7 +53,11 @@ describe('UsersService', () => {
         .fn()
         .mockResolvedValue('00000000-0000-0000-0000-00000000c001'),
     };
-    const tradersService = { deactivate: jest.fn().mockResolvedValue({}) };
+    const tradersService = {
+      deactivate: jest.fn().mockResolvedValue({}),
+      assertTrafficPercentAllowsNewActiveTrader: jest.fn().mockResolvedValue(undefined),
+      invalidateCascadeCoverageCaches: jest.fn(),
+    };
     const service = new UsersService(
       prisma as any,
       traderWallets as any,
@@ -145,7 +149,7 @@ describe('UsersService', () => {
     });
 
     it('creates trader profile with optional balance and pool limits', async () => {
-      const { service, prisma, traderWallets } = createService();
+      const { service, prisma, traderWallets, tradersService } = createService();
       prisma.user.findUnique.mockResolvedValue(null);
       prisma.user.create.mockResolvedValue({
         id: userId,
@@ -176,12 +180,64 @@ describe('UsersService', () => {
               payoutRate: 0.002,
               payoutMinLimit: 10,
               payoutMaxLimit: 5000,
+              processingMethod: 'CARD',
+              trafficPercent: 0,
             },
           },
         }),
         select: expect.any(Object),
       });
+      expect(tradersService.assertTrafficPercentAllowsNewActiveTrader).toHaveBeenCalledWith(0);
       expect(traderWallets.ensureProvisioned).toHaveBeenCalledWith('tp-1');
+      expect(tradersService.invalidateCascadeCoverageCaches).toHaveBeenCalled();
+    });
+
+    it('creates trader profile with Pay-In cascade fields when provided', async () => {
+      const { service, prisma, tradersService, traderWallets } = createService();
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue({
+        id: userId,
+        email: 't2@example.com',
+        role: UserRole.TRADER,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prisma.traderProfile.findUnique.mockResolvedValue({ id: 'tp-2' });
+
+      await service.create('t2@example.com', 'password12345', UserRole.TRADER, {
+        processingMethod: 'FORK' as any,
+        trafficPercent: 12.5,
+      });
+
+      expect(tradersService.assertTrafficPercentAllowsNewActiveTrader).toHaveBeenCalledWith(12.5);
+      expect(prisma.user.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          traderProfile: {
+            create: expect.objectContaining({
+              processingMethod: 'FORK',
+              trafficPercent: 12.5,
+            }),
+          },
+        }),
+        select: expect.any(Object),
+      });
+      expect(traderWallets.ensureProvisioned).toHaveBeenCalledWith('tp-2');
+      expect(tradersService.invalidateCascadeCoverageCaches).toHaveBeenCalled();
+    });
+
+    it('rejects TRADER when cascade traffic assertion fails', async () => {
+      const { service, prisma, tradersService } = createService();
+      prisma.user.findUnique.mockResolvedValue(null);
+      tradersService.assertTrafficPercentAllowsNewActiveTrader.mockRejectedValueOnce(
+        new BadRequestException('traffic_percent invalid'),
+      );
+
+      await expect(
+        service.create('t@example.com', 'password12345', UserRole.TRADER, { trafficPercent: 50 }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(prisma.user.create).not.toHaveBeenCalled();
     });
 
     it('rejects TRADER when pool min exceeds max', async () => {

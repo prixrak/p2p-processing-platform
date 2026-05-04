@@ -56,6 +56,8 @@ export class UsersController {
       traderPayoutRate: dto.traderPayoutRate,
       payoutMinLimit: dto.payoutMinLimit,
       payoutMaxLimit: dto.payoutMaxLimit,
+      processingMethod: dto.processingMethod,
+      trafficPercent: dto.trafficPercent,
       referralPercent: dto.referralPercent,
       referralCurrency: dto.referralCurrency,
       merchantName: dto.merchantName,

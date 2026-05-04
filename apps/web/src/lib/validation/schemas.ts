@@ -58,6 +58,8 @@ export const ownerCreateUserFormSchema = z
     traderPayoutRate: z.number(),
     payoutMinLimit: z.number(),
     payoutMaxLimit: z.number(),
+    processingMethod: z.enum(['CARD', 'FORK']),
+    trafficPercent: z.number(),
     referralPercent: z.number(),
     referralCurrency: z.string(),
     merchantName: z.string(),
@@ -112,6 +114,17 @@ export const ownerCreateUserFormSchema = z
           code: z.ZodIssueCode.custom,
           path: ['payoutMinLimit'],
           message: 'Min cannot exceed max when max is set',
+        });
+      }
+      if (
+        !Number.isFinite(data.trafficPercent) ||
+        data.trafficPercent < 0 ||
+        data.trafficPercent > 100
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['trafficPercent'],
+          message: 'Traffic percent must be between 0 and 100',
         });
       }
     }

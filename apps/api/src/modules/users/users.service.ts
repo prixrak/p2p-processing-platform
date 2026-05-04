@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { UserRole } from '@p2p/shared';
-import { Prisma } from '@prisma/client';
+import { Prisma, TraderProcessingMethod } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { hashPassword } from '../../common/utils/password';
 import { TraderWalletsService } from '../trader-wallets/trader-wallets.service';
@@ -280,6 +280,8 @@ export class UsersService {
       traderPayoutRate?: number;
       payoutMinLimit?: number;
       payoutMaxLimit?: number;
+      processingMethod?: TraderProcessingMethod;
+      trafficPercent?: number;
       referralPercent?: number;
       referralCurrency?: string;
       merchantName?: string;
@@ -316,6 +318,7 @@ export class UsersService {
       if (maxL > 0 && minL > maxL) {
         throw new BadRequestException('payoutMinLimit cannot be greater than payoutMaxLimit');
       }
+      await this.tradersService.assertTrafficPercentAllowsNewActiveTrader(opts?.trafficPercent ?? 0);
     }
 
     let referralCurrencyId: string | undefined;
@@ -341,6 +344,8 @@ export class UsersService {
                     payoutRate: opts?.traderPayoutRate ?? 0,
                     payoutMinLimit: opts?.payoutMinLimit ?? 0,
                     payoutMaxLimit: opts?.payoutMaxLimit ?? 0,
+                    processingMethod: opts?.processingMethod ?? TraderProcessingMethod.CARD,
+                    trafficPercent: opts?.trafficPercent ?? 0,
                   },
                 },
               }
@@ -386,6 +391,7 @@ export class UsersService {
         if (profile) {
           void this.traderWallets.ensureProvisioned(profile.id);
         }
+        this.tradersService.invalidateCascadeCoverageCaches();
       }
 
       return user;

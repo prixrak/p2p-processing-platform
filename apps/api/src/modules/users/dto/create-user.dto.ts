@@ -11,8 +11,10 @@ import {
   Min,
   Max,
   ValidateIf,
+  IsEnum,
 } from 'class-validator';
 import { UserRole } from '@p2p/shared';
+import { TraderProcessingMethod } from '@prisma/client';
 
 export const CREATABLE_USER_ROLES = [
   UserRole.ADMIN,
@@ -112,6 +114,29 @@ export class CreateUserDto {
   @IsNumber()
   @Min(0)
   payoutMaxLimit?: number;
+
+  @ApiPropertyOptional({
+    enum: TraderProcessingMethod,
+    description:
+      'Pay-In cascade processing method when role is TRADER (CARD vs FORK; affects Fork autolimits and cascade weighting)',
+  })
+  @ValidateIf((o) => o.role === UserRole.TRADER)
+  @IsOptional()
+  @IsEnum(TraderProcessingMethod)
+  processingMethod?: TraderProcessingMethod;
+
+  @ApiPropertyOptional({
+    description:
+      'Pay-In cascade traffic target percent (0–100) when role is TRADER; must keep platform-wide sum valid for active accepting traders',
+    example: 0,
+  })
+  @ValidateIf((o) => o.role === UserRole.TRADER)
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  trafficPercent?: number;
 
   @ApiPropertyOptional({
     description: 'Referral commission percent (0–100) when role is REFERRAL',
