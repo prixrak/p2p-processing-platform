@@ -879,7 +879,27 @@ export function App() {
             gap: '0.5rem',
           }}
         >
-          <h2 style={{ ...sectionTitle, flexShrink: 0 }}>Request body / form</h2>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.75rem',
+              flexShrink: 0,
+              flexWrap: 'wrap',
+            }}
+          >
+            <h2 style={{ ...sectionTitle, flexShrink: 0, margin: 0 }}>Request body / form</h2>
+            {endpoint.kind === 'json' ? (
+              <button type="button" style={btnSecondary} onClick={() => refreshPreviewNonce()}>
+                Refresh nonce
+              </button>
+            ) : endpoint.multipart === 'appeal_send' ? (
+              <button type="button" style={btnSecondary} onClick={() => refreshAppealNonce()}>
+                Refresh nonce
+              </button>
+            ) : null}
+          </div>
           {endpoint.kind === 'json' ? (
             <>
               <textarea
@@ -894,11 +914,6 @@ export function App() {
                 }}
                 spellCheck={false}
               />
-              <div style={btnRow}>
-                <button type="button" style={btnSecondary} onClick={() => refreshPreviewNonce()}>
-                  Refresh nonce
-                </button>
-              </div>
               {bodyJson.trim() && jsonPreviewMerged === null && (
                 <p style={{ ...help, color: '#f88', margin: 0 }}>Invalid JSON</p>
               )}
@@ -1031,11 +1046,6 @@ export function App() {
                   setMultipart((m) => ({ ...m, appealNonce: e.target.value }))
                 }
               />
-              <div style={btnRow}>
-                <button type="button" style={btnSecondary} onClick={() => refreshAppealNonce()}>
-                  Refresh nonce
-                </button>
-              </div>
               <p style={help}>
                 Must match <code>order_id=…;paid_amount=…;nonce=…</code> in the signed form fields.
                 Default is milliseconds (e.g. <code>Date.now()</code>). Use Refresh to get a new value if
