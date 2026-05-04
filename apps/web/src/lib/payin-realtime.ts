@@ -201,7 +201,7 @@ export function usePayoutCabinetRealtime(
                       queryKey: payoutCabinetKeys.payoutOrdersScope(qk),
                     });
                     void queryClient.invalidateQueries({
-                      queryKey: payoutCabinetKeys.payoutPool(qk),
+                      queryKey: [qk, 'payout-pool'],
                     });
                     if (variant === 'specialist') {
                       void queryClient.invalidateQueries({

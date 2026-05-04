@@ -25,6 +25,8 @@ import {
 } from '@p2p/shared';
 import { payinStatusFilterOptions, payoutStatusFilterOptions } from '@/lib/order-status-ui';
 
+const MERCHANT_ORDER_PAGE_SIZE = 50;
+
 interface MerchantOrder {
   id: string;
   externalId: string;
@@ -38,8 +40,17 @@ interface MerchantOrder {
   completedAt: string | null;
 }
 
+interface MerchantOrdersResponse {
+  data: MerchantOrder[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export default function MerchantOrdersPage() {
   const [tab, setTab] = useState<OrderListUiTab>(ORDER_LIST_UI_TAB.PAY_IN);
+  const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -54,29 +65,40 @@ export default function MerchantOrdersPage() {
 
   const direction = orderListUiTabToDirection(tab);
 
+  useEffect(() => {
+    setPage(1);
+  }, [direction, statusFilter, debouncedSearch, dateFrom, dateTo]);
+
   const statusFilterOptions = useMemo(
     () => (tab === ORDER_LIST_UI_TAB.PAY_IN ? payinStatusFilterOptions : payoutStatusFilterOptions),
     [tab],
   );
 
-  const { data: orders = [], isLoading } = useQuery<MerchantOrder[]>({
+  const { data, isLoading } = useQuery<MerchantOrdersResponse>({
     queryKey: merchantKeys.orders({
       direction,
       statusFilter,
       debouncedSearch,
       dateFrom,
       dateTo,
+      page,
     }),
-    queryFn: () => {
-      const params = new URLSearchParams({ direction });
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        direction,
+        page: String(page),
+        limit: String(MERCHANT_ORDER_PAGE_SIZE),
+      });
       if (statusFilter) params.set('status', statusFilter);
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
-      return api.get(internalPaths.merchantOrders(params.toString()));
+      return api.get<MerchantOrdersResponse>(internalPaths.merchantOrders(params.toString()));
     },
   });
 
+  const orders = data?.data ?? [];
+  const totalPages = data?.totalPages ?? 1;
   const columns = [
     {
       key: 'id',
@@ -161,6 +183,7 @@ export default function MerchantOrdersPage() {
               onChange={(k) => {
                 setTab(k as OrderListUiTab);
                 setStatusFilter('');
+                setPage(1);
               }}
             />
             <FiltersToggleButton
@@ -217,6 +240,9 @@ export default function MerchantOrdersPage() {
         keyExtractor={(o) => o.id}
         isLoading={isLoading}
         emptyMessage="No orders found"
+        page={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
       />
     </div>
   );

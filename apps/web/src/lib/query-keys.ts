@@ -45,7 +45,8 @@ export const payoutCabinetKeys = {
   payoutOrders: (scope: PayoutCabinetScope, params: unknown) =>
     [scope, 'payout-orders', params] as const,
   payoutOrdersScope: (scope: PayoutCabinetScope) => [scope, 'payout-orders'] as const,
-  payoutPool: (scope: PayoutCabinetScope) => [scope, 'payout-pool'] as const,
+  payoutPool: (scope: PayoutCabinetScope, params?: unknown) =>
+    [scope, 'payout-pool', params ?? {}] as const,
   specialistSummary: () => [...payoutTraderRoot, 'summary'] as const,
 };
 
@@ -64,7 +65,13 @@ export const traderKeys = {
     txType: string,
   ) => [...traderRoot, 'balance-transactions', page, currency, dateFrom, dateTo, txType] as const,
   balanceTransactionsScope: [...traderRoot, 'balance-transactions'] as const,
-  appeals: () => [...traderRoot, 'appeals'] as const,
+  appealsScope: [...traderRoot, 'appeals'] as const,
+  appealsQuery: (
+    listBucket: 'current' | 'history',
+    page: number,
+    limit: number,
+  ) =>
+    [...traderRoot, 'appeals', 'list', listBucket, page, limit] as const,
   telegram: () => [...traderRoot, 'telegram'] as const,
   statistics: (period: string) => [...traderRoot, 'statistics', period] as const,
   analytics: (queryParams: unknown) => [...traderRoot, 'analytics', queryParams] as const,

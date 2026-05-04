@@ -92,3 +92,43 @@ describe('AppealsService.resolve authorization', () => {
     ).rejects.toThrow(NotFoundException);
   });
 });
+
+describe('AppealsService.findAll', () => {
+  it('scopes listBucket current to OPEN', async () => {
+    const prisma = {
+      appeal: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+
+    const service = new AppealsService(prisma as never);
+    await service.findAll({ listBucket: 'current', page: 1, limit: 10 }, undefined);
+
+    expect(prisma.appeal.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: AppealStatus.OPEN }),
+      }),
+    );
+  });
+
+  it('scopes listBucket history to RESOLVED and REJECTED', async () => {
+    const prisma = {
+      appeal: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+
+    const service = new AppealsService(prisma as never);
+    await service.findAll({ listBucket: 'history', page: 1, limit: 10 }, undefined);
+
+    expect(prisma.appeal.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: [AppealStatus.RESOLVED, AppealStatus.REJECTED] },
+        }),
+      }),
+    );
+  });
+});

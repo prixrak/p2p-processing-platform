@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Webhook, Repeat2 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -30,20 +30,40 @@ const statusVariant: Record<string, 'success' | 'danger' | 'warning'> = {
   dlq: 'danger',
 };
 
+const WEBHOOKS_PAGE_SIZE = 25;
+
+interface MerchantWebhooksResponse {
+  data: WebhookLog[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export default function WebhooksPage() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
   const [resendingId, setResendingId] = useState<string | null>(null);
 
-  const { data: logs = [], isLoading } = useQuery<WebhookLog[]>({
-    queryKey: merchantKeys.webhooks({ status: statusFilter }),
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
+
+  const { data, isLoading } = useQuery<MerchantWebhooksResponse>({
+    queryKey: merchantKeys.webhooks({ status: statusFilter, page }),
     queryFn: () => {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(WEBHOOKS_PAGE_SIZE),
+      });
       if (statusFilter) params.set('status', statusFilter);
-      return api.get(internalPaths.merchantWebhooks(params.toString()));
+      return api.get<MerchantWebhooksResponse>(internalPaths.merchantWebhooks(params.toString()));
     },
   });
 
+  const logs = data?.data ?? [];
+  const totalPages = data?.totalPages ?? 1;
   const resendMutation = useMutation({
     mutationFn: (webhookId: string) =>
       api.post(internalPaths.merchantWebhookResend(webhookId)),
@@ -178,6 +198,9 @@ export default function WebhooksPage() {
         keyExtractor={(l) => l.id}
         isLoading={isLoading}
         emptyMessage="No webhook logs found"
+        page={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
       />
     </div>
   );

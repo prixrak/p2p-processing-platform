@@ -34,7 +34,11 @@ import {
 interface PayOutListResponse {
   orders: PayOutOrderApiDto[];
   total: number;
+  page: number;
+  limit: number;
 }
+
+const PAYOUT_LIST_PAGE_SIZE = 20;
 
 type TabType = 'new' | 'in_progress' | 'history';
 
@@ -92,14 +96,43 @@ export function TraderPayoutPage({
   const [selectedOrder, setSelectedOrder] = useState<PayOutOrderApiDto | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
+  const [poolPage, setPoolPage] = useState(1);
+  const [inProgressPage, setInProgressPage] = useState(1);
+  const [historyPage, setHistoryPage] = useState(1);
+
+  useEffect(() => {
+    if (activeTab === 'new') setPoolPage(1);
+    else if (activeTab === 'in_progress') setInProgressPage(1);
+    else setHistoryPage(1);
+  }, [activeTab]);
+
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [statusFilter, dateFrom, dateTo, minAmount, maxAmount]);
+
+  const inProgressParams: Record<string, string> = {
+    queue: 'in_progress',
+    page: String(inProgressPage),
+    limit: String(PAYOUT_LIST_PAGE_SIZE),
+  };
+
+  const poolParams: Record<string, string> = {
+    page: String(poolPage),
+    limit: String(PAYOUT_LIST_PAGE_SIZE),
+  };
+
   const { data: inProgressData, isLoading: inProgressLoading } =
     useQuery({
-      queryKey: payoutCabinetKeys.payoutOrders(qk, { queue: 'in_progress' }),
+      queryKey: payoutCabinetKeys.payoutOrders(qk, inProgressParams),
       queryFn: () =>
-        api.get<PayOutListResponse>(`${apiBase}/orders`, { queue: 'in_progress' }),
+        api.get<PayOutListResponse>(`${apiBase}/orders`, inProgressParams),
     });
 
-  const historyListParams: Record<string, string> = { queue: 'history' };
+  const historyListParams: Record<string, string> = {
+    queue: 'history',
+    page: String(historyPage),
+    limit: String(PAYOUT_LIST_PAGE_SIZE),
+  };
   if (statusFilter) historyListParams.status = statusFilter;
   if (dateFrom) historyListParams.date_from = dateFrom;
   if (dateTo) historyListParams.date_to = dateTo;
@@ -112,9 +145,31 @@ export function TraderPayoutPage({
   });
 
   const { data: poolData, isLoading: poolLoading } = useQuery({
-    queryKey: payoutCabinetKeys.payoutPool(qk),
-    queryFn: () => api.get<PayOutListResponse>(`${apiBase}/pool`),
+    queryKey: payoutCabinetKeys.payoutPool(qk, poolParams),
+    queryFn: () => api.get<PayOutListResponse>(`${apiBase}/pool`, poolParams),
   });
+
+  const poolLimit = poolData?.limit ?? PAYOUT_LIST_PAGE_SIZE;
+  const poolTotalPages = Math.max(1, Math.ceil((poolData?.total ?? 0) / poolLimit));
+  const inProgressLimit = inProgressData?.limit ?? PAYOUT_LIST_PAGE_SIZE;
+  const inProgressTotalPages = Math.max(
+    1,
+    Math.ceil((inProgressData?.total ?? 0) / inProgressLimit),
+  );
+  const historyLimit = historyData?.limit ?? PAYOUT_LIST_PAGE_SIZE;
+  const historyTotalPages = Math.max(1, Math.ceil((historyData?.total ?? 0) / historyLimit));
+
+  useEffect(() => {
+    if (poolPage > poolTotalPages) setPoolPage(poolTotalPages);
+  }, [poolPage, poolTotalPages]);
+
+  useEffect(() => {
+    if (inProgressPage > inProgressTotalPages) setInProgressPage(inProgressTotalPages);
+  }, [inProgressPage, inProgressTotalPages]);
+
+  useEffect(() => {
+    if (historyPage > historyTotalPages) setHistoryPage(historyTotalPages);
+  }, [historyPage, historyTotalPages]);
 
   useEffect(() => {
     if (!selectedOrder) return;
@@ -128,7 +183,7 @@ export function TraderPayoutPage({
   const takeFromPoolMutation = useMutation({
     mutationFn: (orderId: string) => api.post(`${apiBase}/orders/${orderId}/take`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutPool(qk) });
+      queryClient.invalidateQueries({ queryKey: [qk, 'payout-pool'] });
       queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
     },
   });
@@ -165,7 +220,7 @@ export function TraderPayoutPage({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
       if (isSpecialist) {
-        queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutPool(qk) });
+        queryClient.invalidateQueries({ queryKey: [qk, 'payout-pool'] });
       }
       setSelectedOrder(null);
     },
@@ -381,6 +436,33 @@ export function TraderPayoutPage({
                 : 'No orders in pool matching your limits'
             }
           />
+          {poolTotalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between text-sm text-text-muted">
+              <span>
+                Page {poolPage} of {poolTotalPages} ({poolData?.total ?? 0} orders)
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
+                  onClick={() => setPoolPage((p) => Math.max(1, p - 1))}
+                  disabled={poolPage <= 1}
+                >
+                  ← Previous
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
+                  onClick={() =>
+                    setPoolPage((p) => Math.min(poolTotalPages, p + 1))
+                  }
+                  disabled={poolPage >= poolTotalPages}
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
@@ -401,6 +483,38 @@ export function TraderPayoutPage({
             onRowClick={(row) => setSelectedOrder(row)}
             emptyMessage="No orders in your queue — take one from New"
           />
+          {inProgressTotalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between text-sm text-text-muted">
+              <span>
+                Page {inProgressPage} of {inProgressTotalPages} ({inProgressData?.total ?? 0}{' '}
+                orders)
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
+                  onClick={() =>
+                    setInProgressPage((p) => Math.max(1, p - 1))
+                  }
+                  disabled={inProgressPage <= 1}
+                >
+                  ← Previous
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
+                  onClick={() =>
+                    setInProgressPage((p) =>
+                      Math.min(inProgressTotalPages, p + 1),
+                    )
+                  }
+                  disabled={inProgressPage >= inProgressTotalPages}
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
@@ -420,6 +534,37 @@ export function TraderPayoutPage({
             onRowClick={(row) => setSelectedOrder(row)}
             emptyMessage="No completed pay-out orders yet"
           />
+          {historyTotalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between text-sm text-text-muted">
+              <span>
+                Page {historyPage} of {historyTotalPages} ({historyData?.total ?? 0} orders)
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
+                  onClick={() =>
+                    setHistoryPage((p) => Math.max(1, p - 1))
+                  }
+                  disabled={historyPage <= 1}
+                >
+                  ← Previous
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
+                  onClick={() =>
+                    setHistoryPage((p) =>
+                      Math.min(historyTotalPages, p + 1),
+                    )
+                  }
+                  disabled={historyPage >= historyTotalPages}
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 

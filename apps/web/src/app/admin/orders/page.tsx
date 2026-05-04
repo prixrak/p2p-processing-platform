@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftRight } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -27,6 +27,8 @@ import {
 } from '@p2p/shared';
 import { payinStatusFilterOptions, payoutStatusFilterOptions } from '@/lib/order-status-ui';
 
+const ADMIN_ORDERS_PAGE_SIZE = 20;
+
 interface Order {
   id: string;
   externalId: string;
@@ -49,6 +51,7 @@ interface TraderOption {
 export default function AdminOrdersPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<OrderListUiTab>(ORDER_LIST_UI_TAB.PAY_IN);
+  const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
   const [merchantFilter, setMerchantFilter] = useState('');
   const [traderFilter, setTraderFilter] = useState('');
@@ -59,6 +62,10 @@ export default function AdminOrdersPage() {
   const [selectedTrader, setSelectedTrader] = useState('');
 
   const direction = orderListUiTabToDirection(tab);
+
+  useEffect(() => {
+    setPage(1);
+  }, [direction, statusFilter, merchantFilter, traderFilter, dateFrom, dateTo]);
 
   const statusFilterOptions = useMemo(
     () => (tab === ORDER_LIST_UI_TAB.PAY_IN ? payinStatusFilterOptions : payoutStatusFilterOptions),
@@ -80,9 +87,14 @@ export default function AdminOrdersPage() {
       traderFilter,
       dateFrom,
       dateTo,
+      page,
     }),
     queryFn: () => {
-      const params = new URLSearchParams({ direction });
+      const params = new URLSearchParams({
+        direction,
+        page: String(page),
+        limit: String(ADMIN_ORDERS_PAGE_SIZE),
+      });
       if (statusFilter) params.set('status', statusFilter);
       if (merchantFilter) params.set('merchant', merchantFilter);
       if (traderFilter) params.set('trader', traderFilter);
@@ -92,6 +104,7 @@ export default function AdminOrdersPage() {
     },
   });
   const orders = ordersData?.data ?? [];
+  const totalPages = ordersData?.totalPages ?? 1;
 
   const { data: traders = [] } = useQuery<TraderOption[]>({
     queryKey: adminKeys.tradersOptions(),
@@ -253,6 +266,7 @@ export default function AdminOrdersPage() {
               onChange={(k) => {
                 setTab(k as OrderListUiTab);
                 setStatusFilter('');
+                setPage(1);
               }}
             />
             <FiltersToggleButton
@@ -315,6 +329,9 @@ export default function AdminOrdersPage() {
         keyExtractor={(o) => o.id}
         isLoading={isLoading}
         emptyMessage="No orders found"
+        page={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
       />
     </div>
   );

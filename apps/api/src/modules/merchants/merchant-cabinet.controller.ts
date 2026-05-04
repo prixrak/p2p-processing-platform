@@ -25,6 +25,7 @@ import {
   UserRole,
   ORDER_LIST_DIRECTION,
   directionTypeToOrderListDirection,
+  MAX_PAGE_SIZE,
 } from '@p2p/shared';
 import { MerchantBalanceTransactionType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
@@ -231,8 +232,9 @@ export class MerchantCabinetController {
     const createdAt = Object.keys(dateFilter).length ? dateFilter : undefined;
 
     const isPayout = direction === ORDER_LIST_DIRECTION.PAY_OUT;
-    const take = limit ?? 50;
-    const skip = ((page ?? 1) - 1) * take;
+    const resolvedPage = page ?? 1;
+    const take = Math.min(limit ?? 50, MAX_PAGE_SIZE);
+    const skip = (resolvedPage - 1) * take;
 
     if (isPayout) {
       const where: Record<string, unknown> = { merchantId };
@@ -242,15 +244,18 @@ export class MerchantCabinetController {
         where.OR = buildPayinPayoutOrderSearchOr(search);
       }
 
-      const orders = await this.prisma.payoutOrder.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        take,
-        skip,
-        include: { currency: { select: { code: true } } },
-      });
+      const [orders, total] = await Promise.all([
+        this.prisma.payoutOrder.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          take,
+          skip,
+          include: { currency: { select: { code: true } } },
+        }),
+        this.prisma.payoutOrder.count({ where }),
+      ]);
 
-      return orders.map((o) => ({
+      const data = orders.map((o) => ({
         id: o.id,
         externalId: o.requestId,
         type: ORDER_LIST_DIRECTION.PAY_OUT,
@@ -262,6 +267,14 @@ export class MerchantCabinetController {
         createdAt: o.createdAt.toISOString(),
         completedAt: null,
       }));
+
+      return {
+        data,
+        total,
+        page: resolvedPage,
+        limit: take,
+        totalPages: Math.max(1, Math.ceil(total / take)),
+      };
     }
 
     const where: Record<string, unknown> = { merchantId };
@@ -271,15 +284,18 @@ export class MerchantCabinetController {
       where.OR = buildPayinPayoutOrderSearchOr(search);
     }
 
-    const orders = await this.prisma.payinOrder.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take,
-      skip,
-      include: { currency: { select: { code: true } } },
-    });
+    const [orders, total] = await Promise.all([
+      this.prisma.payinOrder.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+        include: { currency: { select: { code: true } } },
+      }),
+      this.prisma.payinOrder.count({ where }),
+    ]);
 
-    return orders.map((o) => ({
+    const data = orders.map((o) => ({
       id: o.id,
       externalId: o.requestId,
       type: ORDER_LIST_DIRECTION.PAY_IN,
@@ -291,6 +307,14 @@ export class MerchantCabinetController {
       createdAt: o.createdAt.toISOString(),
       completedAt: o.completedAt?.toISOString() ?? null,
     }));
+
+    return {
+      data,
+      total,
+      page: resolvedPage,
+      limit: take,
+      totalPages: Math.max(1, Math.ceil(total / take)),
+    };
   }
 
   @Get('analytics')
@@ -348,11 +372,15 @@ export class MerchantCabinetController {
   }
 
   @Get('webhooks')
-  @ApiOperation({ summary: 'List merchant webhook logs' })
+  @ApiOperation({ summary: 'List merchant webhook logs (paginated)' })
   @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
   async getWebhooks(
     @CurrentUser('merchantId') merchantId: string,
     @Query('status') status?: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
+    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit?: number,
   ) {
     const outboxWhere: Record<string, unknown> = {
       OR: [
@@ -369,16 +397,24 @@ export class MerchantCabinetController {
       outboxWhere.status = statusMap[status] ?? status.toUpperCase();
     }
 
-    const outboxes = await this.prisma.webhookOutbox.findMany({
-      where: outboxWhere,
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      include: {
-        logs: { orderBy: { sentAt: 'desc' }, take: 1 },
-      },
-    });
+    const resolvedPage = page ?? 1;
+    const take = Math.min(limit ?? 25, MAX_PAGE_SIZE);
+    const skip = (resolvedPage - 1) * take;
 
-    return outboxes.map((o) => {
+    const [outboxes, total] = await Promise.all([
+      this.prisma.webhookOutbox.findMany({
+        where: outboxWhere,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+        include: {
+          logs: { orderBy: { sentAt: 'desc' }, take: 1 },
+        },
+      }),
+      this.prisma.webhookOutbox.count({ where: outboxWhere }),
+    ]);
+
+    const data = outboxes.map((o) => {
       const lastLog = o.logs[0];
       return {
         id: o.id,
@@ -392,6 +428,14 @@ export class MerchantCabinetController {
         attempts: o.attempts,
       };
     });
+
+    return {
+      data,
+      total,
+      page: resolvedPage,
+      limit: take,
+      totalPages: Math.max(1, Math.ceil(total / take)),
+    };
   }
 
   @Post('webhooks/:id/resend')

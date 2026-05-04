@@ -41,6 +41,8 @@ import {
 } from './payin-receipt-modals';
 import { PayInOrderDetailModal } from './payin-order-detail-modal';
 
+const PAYIN_LIST_PAGE_SIZE = 20;
+
 export function TraderPayInPage() {
   const queryClient = useQueryClient();
   usePayinTraderRealtime(queryClient);
@@ -53,6 +55,7 @@ export function TraderPayInPage() {
   const [viewingProofFileId, setViewingProofFileId] = useState<string | null>(null);
   const [finalizeMenu, setFinalizeMenu] = useState<OrderFinalizeMenuState>(null);
   const [finalizeDialog, setFinalizeDialog] = useState<FinalizeDialogState | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchInput.trim()), 350);
@@ -71,7 +74,15 @@ export function TraderPayInPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [finalizeMenu]);
 
-  const queryParams: Record<string, string> = { list: listTab };
+  useEffect(() => {
+    setPage(1);
+  }, [listTab, statusFilter, debouncedSearch]);
+
+  const queryParams: Record<string, string> = {
+    list: listTab,
+    page: String(page),
+    limit: String(PAYIN_LIST_PAGE_SIZE),
+  };
   if (statusFilter) queryParams.status = statusFilter;
   if (debouncedSearch) queryParams.search = debouncedSearch;
 
@@ -79,9 +90,22 @@ export function TraderPayInPage() {
     queryKey: traderKeys.payinOrders(queryParams),
     queryFn: async () => {
       const res = await api.get<PayInListApiResponse>(internalPaths.traderPayinOrders, queryParams);
-      return { orders: res.items, total: res.total };
+      const limit = res.limit ?? PAYIN_LIST_PAGE_SIZE;
+      const totalPages = Math.max(1, Math.ceil(res.total / limit));
+      return {
+        orders: res.items,
+        total: res.total,
+        page: res.page,
+        limit,
+        totalPages,
+      };
     },
   });
+
+  useEffect(() => {
+    if (!data?.totalPages) return;
+    if (page > data.totalPages) setPage(data.totalPages);
+  }, [data?.totalPages, page]);
 
   useEffect(() => {
     if (!selectedOrder || !data?.orders) return;
@@ -300,6 +324,7 @@ export function TraderPayInPage() {
             active={listTab}
             onChange={(k) => {
               const next = k as 'current' | 'history';
+              setPage(1);
               setListTab(next);
               const allowed =
                 next === 'current' ? PAYIN_TRADER_CURRENT_STATUSES : PAYIN_TRADER_HISTORY_STATUSES;
@@ -331,6 +356,34 @@ export function TraderPayInPage() {
         }}
         emptyMessage="No pay-in orders found"
       />
+
+      {(data?.totalPages ?? 0) > 1 && (
+        <div className="flex items-center justify-between text-sm text-text-muted">
+          <span>
+            Showing page {page} of {data?.totalPages} ({data?.total ?? 0} orders)
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              ← Previous
+            </button>
+            <button
+              type="button"
+              className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
+              onClick={() =>
+                setPage((p) => Math.min(data?.totalPages ?? 1, p + 1))
+              }
+              disabled={page >= (data?.totalPages ?? 1)}
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+      )}
 
       <PayInReceiptGalleryModal
         receiptOrder={receiptOrder}

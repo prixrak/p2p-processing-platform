@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -34,39 +34,79 @@ const appealStatusVariant: Record<AppealStatus, 'warning' | 'success' | 'danger'
   [AppealStatus.REJECTED]: 'danger',
 };
 
+const APPEALS_PAGE_SIZE = 20;
+
 export default function AppealsPage() {
   const queryClient = useQueryClient();
   const [listTab, setListTab] = useState<'current' | 'history'>('current');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [historyPage, setHistoryPage] = useState(1);
   const [selectedAppeal, setSelectedAppeal] = useState<AppealDto | null>(null);
   const [viewingProof, setViewingProof] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: traderKeys.appeals(),
-    queryFn: () => api.get<AppealsListResponse>(internalPaths.appeals),
+  const { data: currentData, isLoading: currentLoading } = useQuery({
+    queryKey: traderKeys.appealsQuery('current', currentPage, APPEALS_PAGE_SIZE),
+    queryFn: () =>
+      api.get<AppealsListResponse>(internalPaths.appeals, {
+        listBucket: 'current',
+        page: String(currentPage),
+        limit: String(APPEALS_PAGE_SIZE),
+      }),
   });
+
+  const { data: historyData, isLoading: historyLoading } = useQuery({
+    queryKey: traderKeys.appealsQuery('history', historyPage, APPEALS_PAGE_SIZE),
+    queryFn: () =>
+      api.get<AppealsListResponse>(internalPaths.appeals, {
+        listBucket: 'history',
+        page: String(historyPage),
+        limit: String(APPEALS_PAGE_SIZE),
+      }),
+  });
+
+  const activeBucket = listTab === 'current' ? currentData : historyData;
+  const activeLoading = listTab === 'current' ? currentLoading : historyLoading;
+  const activePage = listTab === 'current' ? currentPage : historyPage;
+  const setActivePage = listTab === 'current' ? setCurrentPage : setHistoryPage;
+
+  const activeLimit =
+    activeBucket?.limit && activeBucket.limit > 0 ? activeBucket.limit : APPEALS_PAGE_SIZE;
+  const activeTotalPages = Math.max(1, Math.ceil((activeBucket?.total ?? 0) / activeLimit));
+
+  const currentLimit =
+    currentData?.limit && currentData.limit > 0 ? currentData.limit : APPEALS_PAGE_SIZE;
+  const currentTotalPages = Math.max(1, Math.ceil((currentData?.total ?? 0) / currentLimit));
+
+  const historyLimit =
+    historyData?.limit && historyData.limit > 0 ? historyData.limit : APPEALS_PAGE_SIZE;
+  const historyTotalPages = Math.max(1, Math.ceil((historyData?.total ?? 0) / historyLimit));
+
+  useEffect(() => {
+    if (currentPage > currentTotalPages) setCurrentPage(currentTotalPages);
+  }, [currentPage, currentTotalPages]);
+
+  useEffect(() => {
+    if (historyPage > historyTotalPages) setHistoryPage(historyTotalPages);
+  }, [historyPage, historyTotalPages]);
 
   const resolveAppeal = useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: AppealStatus }) =>
       api.patch<AppealDto>(internalPaths.appealResolve(id), { decision }),
     onSuccess: (updated) => {
-      void queryClient.invalidateQueries({ queryKey: traderKeys.appeals() });
+      void queryClient.invalidateQueries({ queryKey: traderKeys.appealsScope });
       setSelectedAppeal((prev) => (prev?.id === updated.id ? updated : prev));
     },
   });
 
-  const appeals = data?.items ?? [];
+  useEffect(() => {
+    if (!selectedAppeal) return;
+    const rows = [...(currentData?.items ?? []), ...(historyData?.items ?? [])];
+    const fresh = rows.find((a) => a.id === selectedAppeal.id);
+    if (fresh) setSelectedAppeal(fresh);
+  }, [currentData?.items, historyData?.items, selectedAppeal?.id]);
 
-  const { currentAppeals, historyAppeals } = useMemo(() => {
-    const current: AppealDto[] = [];
-    const history: AppealDto[] = [];
-    for (const a of appeals) {
-      if (a.status === AppealStatus.OPEN) current.push(a);
-      else history.push(a);
-    }
-    return { currentAppeals: current, historyAppeals: history };
-  }, [appeals]);
-
-  const listData = listTab === 'current' ? currentAppeals : historyAppeals;
+  const listData =
+    listTab === 'current' ? (currentData?.items ?? []) : (historyData?.items ?? []);
 
   const columns = [
     {
@@ -177,7 +217,12 @@ export default function AppealsPage() {
               {listTab === 'current'
                 ? 'Open appeals on your assigned orders: review payer proof files and resolve or reject. Support and administrators can intervene when needed.'
                 : 'Completed appeals on your orders: accepted (resolved) or rejected (cancelled).'}{' '}
-              <span className="text-text-secondary">({listData.length} in this view)</span>
+              <span className="text-text-secondary">
+                {(activeBucket?.total ?? listData.length) === 1
+                  ? `${activeBucket?.total ?? listData.length} appeal`
+                  : `${activeBucket?.total ?? listData.length} appeals`}{' '}
+                ({listData.length} on this page)
+              </span>
             </p>
           </div>
         </div>
@@ -197,10 +242,38 @@ export default function AppealsPage() {
         columns={columns}
         data={listData}
         keyExtractor={(row) => row.id}
-        loading={isLoading}
+        loading={activeLoading}
         onRowClick={(row) => setSelectedAppeal(row)}
         emptyMessage={listTab === 'current' ? 'No open appeals' : 'No completed appeals yet'}
       />
+
+      {activeTotalPages > 1 && (
+        <div className="flex items-center justify-between text-sm text-text-muted">
+          <span>
+            Page {activePage} of {activeTotalPages} ({activeBucket?.total ?? 0} appeals)
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
+              onClick={() => setActivePage((p) => Math.max(1, p - 1))}
+              disabled={activePage <= 1}
+            >
+              ← Previous
+            </button>
+            <button
+              type="button"
+              className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
+              onClick={() =>
+                setActivePage((p) => Math.min(activeTotalPages, p + 1))
+              }
+              disabled={activePage >= activeTotalPages}
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+      )}
 
       <Modal
         open={!!selectedAppeal}

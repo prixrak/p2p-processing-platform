@@ -53,8 +53,18 @@ export class AppealsService {
     const page = filters.page ?? 1;
     const limit = filters.limit ?? 20;
 
+    let statusClause: Prisma.AppealWhereInput['status'] | undefined;
+
+    if (filters.listBucket === 'current') {
+      statusClause = AppealStatus.OPEN;
+    } else if (filters.listBucket === 'history') {
+      statusClause = { in: [AppealStatus.RESOLVED, AppealStatus.REJECTED] };
+    } else if (filters.status) {
+      statusClause = filters.status;
+    }
+
     const where: Prisma.AppealWhereInput = {
-      ...(filters.status ? { status: filters.status } : {}),
+      ...(statusClause !== undefined ? { status: statusClause } : {}),
       ...(filters.orderId ? { payinOrderId: filters.orderId } : {}),
       ...(traderId ? { payinOrder: { traderId } } : {}),
     };
