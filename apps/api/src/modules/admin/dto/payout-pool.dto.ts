@@ -1,12 +1,15 @@
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
+  IsString,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdatePayoutPoolGlobalDto {
   @ApiPropertyOptional({ description: 'Global share routed to specialist pool B (0–100).' })
@@ -39,8 +42,17 @@ export class UpdatePayoutPoolGlobalDto {
   specialist_fail_returns_to_pool?: boolean;
 }
 
-export class UpsertMerchantPayoutPoolDto {
-  @ApiPropertyOptional({ description: 'Per-merchant pool B share (0–100).' })
+export class UpsertMerchantPayoutPoolAssignmentDto {
+  @ApiProperty({
+    description:
+      'Merchant display name (`merchants.name`); must match exactly (case-sensitive).',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(256)
+  merchant_display_name!: string;
+
+  @ApiProperty({ description: 'Per-merchant pool B share (0–100).' })
   @Type(() => Number)
   @IsNumber()
   @Min(0)

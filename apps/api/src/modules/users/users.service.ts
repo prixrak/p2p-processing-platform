@@ -326,68 +326,79 @@ export class UsersService {
 
     const passwordHash = await hashPassword(password);
 
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        role,
-        ...(role === UserRole.TRADER
-          ? {
-              traderProfile: {
-                create: {
-                  overdraftLimit: opts?.overdraftLimitUsdt ?? 0,
-                  payinRate: opts?.payinRate ?? 0,
-                  payoutRate: opts?.traderPayoutRate ?? 0,
-                  payoutMinLimit: opts?.payoutMinLimit ?? 0,
-                  payoutMaxLimit: opts?.payoutMaxLimit ?? 0,
+    try {
+      const user = await this.prisma.user.create({
+        data: {
+          email,
+          passwordHash,
+          role,
+          ...(role === UserRole.TRADER
+            ? {
+                traderProfile: {
+                  create: {
+                    overdraftLimit: opts?.overdraftLimitUsdt ?? 0,
+                    payinRate: opts?.payinRate ?? 0,
+                    payoutRate: opts?.traderPayoutRate ?? 0,
+                    payoutMinLimit: opts?.payoutMinLimit ?? 0,
+                    payoutMaxLimit: opts?.payoutMaxLimit ?? 0,
+                  },
                 },
-              },
-            }
-          : {}),
-        ...(role === UserRole.PAYOUT_TRADER
-          ? {
-              payoutTraderProfile: {
-                create: {
-                  countryId: opts!.countryId!,
-                  payoutRate: opts?.payoutRate ?? 0,
+              }
+            : {}),
+          ...(role === UserRole.PAYOUT_TRADER
+            ? {
+                payoutTraderProfile: {
+                  create: {
+                    countryId: opts!.countryId!,
+                    payoutRate: opts?.payoutRate ?? 0,
+                  },
                 },
-              },
-            }
-          : {}),
-        ...(role === UserRole.REFERRAL
-          ? {
-              referralProfile: {
-                create: {
-                  referralPercent: opts?.referralPercent ?? 0,
-                  currencyId: referralCurrencyId!,
+              }
+            : {}),
+          ...(role === UserRole.REFERRAL
+            ? {
+                referralProfile: {
+                  create: {
+                    referralPercent: opts?.referralPercent ?? 0,
+                    currencyId: referralCurrencyId!,
+                  },
                 },
-              },
-            }
-          : {}),
-        ...(role === UserRole.MERCHANT
-          ? {
-              merchant: {
-                create: { name: opts!.merchantName!.trim() },
-              },
-            }
-          : {}),
-      },
-      select: USER_SELECT,
-    });
-
-    this.logger.log(`User ${email} created with role ${role}`);
-
-    if (role === UserRole.TRADER) {
-      const profile = await this.prisma.traderProfile.findUnique({
-        where: { userId: user.id },
-        select: { id: true },
+              }
+            : {}),
+          ...(role === UserRole.MERCHANT
+            ? {
+                merchant: {
+                  create: { name: opts!.merchantName!.trim() },
+                },
+              }
+            : {}),
+        },
+        select: USER_SELECT,
       });
-      if (profile) {
-        void this.traderWallets.ensureProvisioned(profile.id);
-      }
-    }
 
-    return user;
+      this.logger.log(`User ${email} created with role ${role}`);
+
+      if (role === UserRole.TRADER) {
+        const profile = await this.prisma.traderProfile.findUnique({
+          where: { userId: user.id },
+          select: { id: true },
+        });
+        if (profile) {
+          void this.traderWallets.ensureProvisioned(profile.id);
+        }
+      }
+
+      return user;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const targets = e.meta?.target;
+        const targetStr = Array.isArray(targets) ? targets.join(',') : String(targets ?? '');
+        if (targetStr.includes('name')) {
+          throw new ConflictException('Merchant display name is already in use');
+        }
+      }
+      throw e;
+    }
   }
 
   async update(
@@ -431,11 +442,18 @@ export class UsersService {
     if (updated.role === UserRole.MERCHANT) {
       const emailLocal = updated.email.split('@')[0] || 'Merchant';
       const merchantName = data.merchantName?.trim() || emailLocal;
-      await this.prisma.merchant.upsert({
-        where: { userId: id },
-        create: { userId: id, name: merchantName },
-        update: data.merchantName?.trim() ? { name: data.merchantName.trim() } : {},
-      });
+      try {
+        await this.prisma.merchant.upsert({
+          where: { userId: id },
+          create: { userId: id, name: merchantName },
+          update: data.merchantName?.trim() ? { name: data.merchantName.trim() } : {},
+        });
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+          throw new ConflictException('Merchant display name is already in use');
+        }
+        throw e;
+      }
     }
 
     this.logger.log(`User ${id} updated`);

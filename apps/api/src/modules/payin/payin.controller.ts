@@ -215,4 +215,39 @@ export class PayinInternalController {
   ) {
     return this.payinService.traderCancelOrder(traderId, orderId);
   }
+
+  @Post('orders/:orderId/fork-verification')
+  @Roles(UserRole.TRADER)
+  @ApiOperation({
+    summary: 'Submit FORK exchange reference and optional chat screenshots',
+    description:
+      'For Pay-In orders assigned on FORK routing. Stores a counterparty or exchange reference and attaches image/PDF proofs (same limits as appeal uploads).',
+  })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FilesInterceptor('files', MAX_MULTIPART_FILES_PER_REQUEST, {
+      limits: { fileSize: MAX_FILE_SIZE_BYTES },
+    }),
+  )
+  async traderForkVerification(
+    @CurrentUser('traderId') traderId: string,
+    @CurrentUser('id') userId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body('exchange_reference') exchangeReference: string,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    const mapped = (files ?? []).map((f) => ({
+      originalname: f.originalname,
+      mimetype: f.mimetype,
+      size: f.size,
+      buffer: f.buffer,
+    }));
+    return this.payinService.traderSubmitForkVerification(
+      traderId,
+      userId,
+      orderId,
+      exchangeReference ?? '',
+      mapped,
+    );
+  }
 }

@@ -11,14 +11,21 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
+import { Select } from '@/components/ui/select';
 import type { StaffRolePrefix } from '@/lib/query-keys';
-import { staffKeys, staffTraderKeys } from '@/lib/query-keys';
+import { cascadeKeys, staffKeys, staffTraderKeys } from '@/lib/query-keys';
+import type { TrafficPercentPolicy } from '@/features/cascade/cascade-types';
 import type { StaffTraderRow } from './staff-trader-types';
 import { parseDecimalInput } from '@/lib/decimal-input';
+
+const CASCADE_TRAFFIC_HINT =
+  'For active traders with accepting orders, configured traffic_percent values must sum to 100% or all be 0 (equal split). Invalid saves are rejected.';
 
 interface TraderDetail {
   id: string;
   email: string;
+  processingMethod: 'CARD' | 'FORK';
+  trafficPercent: number;
   payoutMinLimit: number;
   payoutMaxLimit: number;
   overdraftLimit?: number;
@@ -64,10 +71,21 @@ export function TraderDetailModal({
   const [maxPoolLimit, setMaxPoolLimit] = useState('');
   const payoutLimitsSeededRef = useRef(false);
 
+  const [cascadeMethod, setCascadeMethod] = useState<'CARD' | 'FORK'>('CARD');
+  const [cascadeTraffic, setCascadeTraffic] = useState('');
+  const cascadeFormSeededRef = useRef(false);
+
   useEffect(() => {
     balanceFormSeededRef.current = false;
     payoutLimitsSeededRef.current = false;
+    cascadeFormSeededRef.current = false;
   }, [traderId]);
+
+  const { data: trafficPolicy } = useQuery({
+    queryKey: cascadeKeys.trafficPolicy(),
+    queryFn: () => api.get<TrafficPercentPolicy>(internalPaths.adminCascadeTrafficPolicy),
+    enabled: open && canEditStaff,
+  });
 
   const { data: traderDetail, isLoading: detailLoading } = useQuery<TraderDetail>({
     queryKey: traderId ? staffTraderKeys.detail(queryPrefix, traderId) : ['noop'],
@@ -83,6 +101,8 @@ export function TraderDetailModal({
         payoutRate?: unknown;
         usdtTrc20DepositAddress?: string | null;
         usdtErc20DepositAddress?: string | null;
+        processingMethod?: 'CARD' | 'FORK';
+        trafficPercent?: unknown;
         balances: Array<{ currency: string; amount: unknown }>;
         requisites: Array<{
           id: string;
@@ -96,6 +116,8 @@ export function TraderDetailModal({
       return {
         id: raw.id,
         email: raw.user.email,
+        processingMethod: raw.processingMethod === 'FORK' ? 'FORK' : 'CARD',
+        trafficPercent: Number(raw.trafficPercent ?? 0),
         payoutMinLimit: Number(raw.payoutMinLimit ?? 0),
         payoutMaxLimit: Number(raw.payoutMaxLimit ?? 0),
         overdraftLimit: Number(raw.overdraftLimit ?? 0),
@@ -153,6 +175,21 @@ export function TraderDetailModal({
     payoutLimitsSeededRef.current = true;
   }, [open, traderId, traderDetail]);
 
+  useEffect(() => {
+    if (
+      !open ||
+      !traderDetail ||
+      !canEditStaff ||
+      cascadeFormSeededRef.current ||
+      traderDetail.id !== traderId
+    ) {
+      return;
+    }
+    setCascadeMethod(traderDetail.processingMethod);
+    setCascadeTraffic(String(traderDetail.trafficPercent ?? 0));
+    cascadeFormSeededRef.current = true;
+  }, [open, traderId, traderDetail, canEditStaff]);
+
   const invalidateDetail = () => {
     if (traderId) {
       void queryClient.invalidateQueries({ queryKey: staffTraderKeys.detail(queryPrefix, traderId) });
@@ -205,6 +242,23 @@ export function TraderDetailModal({
         ? api.patch(internalPaths.requisiteActivate(id))
         : api.patch(internalPaths.requisiteDeactivate(id)),
     onSuccess: () => invalidateDetail(),
+  });
+
+  const cascadeRoutingMutation = useMutation({
+    mutationFn: () =>
+      api.patch<{
+        processingMethod: string;
+        trafficPercent: unknown;
+        _meta?: { traffic_percent: TrafficPercentPolicy };
+      }>(internalPaths.traderCascadeRouting(traderId!), {
+        processing_method: cascadeMethod,
+        traffic_percent: parseDecimalInput(cascadeTraffic) || 0,
+      }),
+    onSuccess: () => {
+      cascadeFormSeededRef.current = false;
+      void queryClient.invalidateQueries({ queryKey: cascadeKeys.trafficPolicy() });
+      invalidateDetail();
+    },
   });
 
   return (
@@ -317,6 +371,69 @@ export function TraderDetailModal({
               </div>
             </div>
           ) : null}
+
+          <section className={sectionShell}>
+            <div>
+              <h3 className="text-base font-semibold text-text-primary">Pay-In cascade routing</h3>
+              <p className="mt-1 text-xs text-text-muted">
+                Processing method (CARD vs FORK) controls Fork autolimits and rating weight in the
+                Pay-In cascade. Traders cannot change this themselves.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="min-w-[10rem]">
+                <p className="text-xs text-text-muted">Current method</p>
+                <p className="mt-1 text-sm font-medium text-text-primary">
+                  {traderDetail.processingMethod}
+                </p>
+              </div>
+              <div className="min-w-[10rem]">
+                <p className="text-xs text-text-muted">Traffic target (%)</p>
+                <p className="mt-1 text-sm font-medium text-text-primary">
+                  {traderDetail.trafficPercent}
+                </p>
+              </div>
+            </div>
+            {canEditStaff && traderId ? (
+              <div className="space-y-3 border-t border-border-primary pt-4">
+                <Select
+                  label="Processing method"
+                  options={[
+                    { value: 'CARD', label: 'CARD' },
+                    { value: 'FORK', label: 'FORK' },
+                  ]}
+                  value={cascadeMethod}
+                  onChange={(e) => setCascadeMethod(e.target.value as 'CARD' | 'FORK')}
+                />
+                <NumberInput
+                  label="Traffic percent (0–100)"
+                  variant="amount"
+                  min={0}
+                  max={100}
+                  value={cascadeTraffic}
+                  onChange={(e) => setCascadeTraffic(e.target.value)}
+                />
+                {trafficPolicy ? (
+                  <p
+                    className={`text-xs ${trafficPolicy.matches_rule ? 'text-text-muted' : 'text-accent-yellow'}`}
+                  >
+                    Active traders (accepting orders) traffic sum:{' '}
+                    {trafficPolicy.active_traders_sum_percent.toFixed(2)}%.{' '}
+                    {trafficPolicy.matches_rule ? 'Within policy.' : 'Does not match policy yet — adjust other traders or use CASCADE traffic dashboard.'}
+                  </p>
+                ) : null}
+                <p className="text-xs text-text-muted">{CASCADE_TRAFFIC_HINT}</p>
+                <Button
+                  type="button"
+                  size="sm"
+                  loading={cascadeRoutingMutation.isPending}
+                  onClick={() => cascadeRoutingMutation.mutate()}
+                >
+                  Save cascade routing
+                </Button>
+              </div>
+            ) : null}
+          </section>
 
           <section>
             <h3 className="mb-3 text-base font-semibold text-text-primary">Balances</h3>

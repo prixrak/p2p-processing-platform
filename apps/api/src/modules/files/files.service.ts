@@ -209,6 +209,14 @@ export class FilesService {
       });
       if (appealLinked) return;
 
+      const forkChatLinked = await this.prisma.payinForkChatProof.findFirst({
+        where: {
+          fileId: file.id,
+          payinOrder: { traderId: actor.traderId },
+        },
+      });
+      if (forkChatLinked) return;
+
       const payoutOwned = await this.prisma.payoutOrder.findFirst({
         where: {
           completionProofFileId: file.id,
@@ -231,6 +239,14 @@ export class FilesService {
         },
       });
       if (linked) return;
+
+      const forkMerchantLinked = await this.prisma.payinForkChatProof.findFirst({
+        where: {
+          fileId: file.id,
+          payinOrder: { merchantId: actor.merchantId },
+        },
+      });
+      if (forkMerchantLinked) return;
       throw new ForbiddenException('File access denied');
     }
 

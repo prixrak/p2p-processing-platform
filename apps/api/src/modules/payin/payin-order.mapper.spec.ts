@@ -32,6 +32,7 @@ describe('payinOrderToOrderDto', () => {
         bank: { name: 'Test Bank' },
       },
       appeals: [],
+      forkChatProofs: [],
       ...overrides,
     } as OrderWithRelations;
   }
@@ -97,6 +98,19 @@ describe('payinOrderToOrderDto', () => {
       }),
     );
     expect(dto.completed_at).toBe(Math.floor(upd.getTime() / 1000));
+  });
+
+  it('maps fork verification and trader processing snapshot', () => {
+    const dto = payinOrderToOrderDto(
+      minimalOrder({
+        traderProcessingMethod: 'FORK' as never,
+        forkExchangeReference: 'exchange-ref-1',
+        forkChatProofs: [{ fileId: 'chat-file-1' } as never],
+      }),
+    );
+    expect(dto.trader_processing_method).toBe('FORK');
+    expect(dto.fork_exchange_reference).toBe('exchange-ref-1');
+    expect(dto.fork_chat_proof_file_ids).toEqual(['chat-file-1']);
   });
 
   it('sets completed_at null for in-progress statuses without completedAt', () => {

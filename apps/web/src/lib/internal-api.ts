@@ -29,6 +29,8 @@ export const internalPaths = {
 
   traders: '/api/traders',
   trader: (id: string) => `/api/traders/${id}`,
+  /** Trader cabinet: full profile (includes Pay-In cascade processing_method) */
+  traderMeProfile: '/api/traders/me',
   /** Trader cabinet: own statistics (JWT). Query: period | dateFrom & dateTo */
   traderMeStatistics: '/api/traders/me/statistics',
   /** Trader cabinet: own balances list (JWT) */
@@ -43,6 +45,8 @@ export const internalPaths = {
   traderActivate: (id: string) => `/api/traders/${id}/activate`,
   traderDeactivate: (id: string) => `/api/traders/${id}/deactivate`,
   traderPayoutLimits: (id: string) => `/api/traders/${id}/payout-limits`,
+  /** Admin/Owner: Pay-In cascade CARD/FORK and traffic_percent */
+  traderCascadeRouting: (id: string) => `/api/traders/${id}/cascade-routing`,
   traderBalanceModel: (id: string) => `/api/traders/${id}/balance-model`,
   tradersMeAcceptingOrders: '/api/traders/me/accepting-orders',
 
@@ -54,6 +58,8 @@ export const internalPaths = {
   traderPayinOrders: '/api/trader/payin/orders',
   traderPayinOrderConfirm: (orderId: string) => `/api/trader/payin/orders/${orderId}/confirm`,
   traderPayinOrderCancel: (orderId: string) => `/api/trader/payin/orders/${orderId}/cancel`,
+  traderPayinForkVerification: (orderId: string) =>
+    `/api/trader/payin/orders/${orderId}/fork-verification`,
 
   /** Standard trader Pay-Out cabinet REST prefix (JWT). */
   payoutCabinetTrader: '/api/trader/payout',
@@ -82,8 +88,9 @@ export const internalPaths = {
 
   adminPayoutPoolGlobal: '/api/admin/payout-pool/global',
   adminPayoutPoolMerchants: '/api/admin/payout-pool/merchants',
-  adminPayoutPoolMerchantUpsert: (merchantId: string) =>
-    `/api/admin/payout-pool/merchants/${merchantId}`,
+  adminPayoutPoolMerchantDirectory: (q: string) =>
+    `/api/admin/payout-pool/merchants/directory?q=${encodeURIComponent(q)}`,
+  adminPayoutPoolMerchantAssignment: '/api/admin/payout-pool/merchants/assignment',
 
   // Pay-Out pool (trader cabinet)
   payoutPool: '/api/trader/payout/pool',

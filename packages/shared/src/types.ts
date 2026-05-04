@@ -73,6 +73,12 @@ export interface OrderDto {
   redirect_url: string | null;
   appeals: AppealDto[];
   payment_detail: PaymentDetailsShortDto | null;
+  /** Routing snapshot when a trader requisite was assigned (null for NO_REQUISITE / legacy). */
+  trader_processing_method?: 'CARD' | 'FORK' | null;
+  /** FORK: optional counterparty / exchange reference from the trader. */
+  fork_exchange_reference?: string | null;
+  /** FORK: file IDs for exchange chat screenshots (authorized download like appeal proofs). */
+  fork_chat_proof_file_ids?: string[];
 }
 
 export interface OrderResponseDto {

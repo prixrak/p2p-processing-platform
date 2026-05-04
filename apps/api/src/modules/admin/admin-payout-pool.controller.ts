@@ -5,11 +5,9 @@ import {
   Put,
   Body,
   Query,
-  Param,
   UseGuards,
   DefaultValuePipe,
   ParseIntPipe,
-  ParseUUIDPipe,
   NotFoundException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiQuery } from '@nestjs/swagger';
@@ -19,7 +17,10 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../../config/prisma.service';
-import { UpdatePayoutPoolGlobalDto, UpsertMerchantPayoutPoolDto } from './dto/payout-pool.dto';
+import {
+  UpdatePayoutPoolGlobalDto,
+  UpsertMerchantPayoutPoolAssignmentDto,
+} from './dto/payout-pool.dto';
 
 const PAYOUT_POOL_SETTINGS_ROW_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -90,6 +91,44 @@ export class AdminPayoutPoolController {
     };
   }
 
+  @Get('merchants/directory')
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
+  @ApiOperation({
+    summary:
+      'Merchants for pool B assignment UI: first 50 active (unlocked) when q is empty; otherwise case-insensitive name search (same cap)',
+  })
+  @ApiQuery({ name: 'q', required: false, type: String })
+  async searchMerchantDirectory(
+    @Query('q') q: string,
+  ) {
+    const term = (q ?? '').trim();
+    const baseWhere = {
+      isLock: false,
+      user: { isActive: true },
+    };
+    const where =
+      term.length >= 1
+        ? {
+            ...baseWhere,
+            name: { contains: term, mode: 'insensitive' as const },
+          }
+        : baseWhere;
+
+    const rows = await this.prisma.merchant.findMany({
+      where,
+      select: { id: true, name: true },
+      take: 50,
+      orderBy: { name: 'asc' },
+    });
+
+    return {
+      items: rows.map((m) => ({
+        merchant_id: m.id,
+        display_name: m.name,
+      })),
+    };
+  }
+
   @Get('merchants')
   @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
   @ApiOperation({ summary: 'Merchant-specific pool B assignments' })
@@ -129,18 +168,21 @@ export class AdminPayoutPoolController {
     };
   }
 
-  @Put('merchants/:merchantId')
+  @Put('merchants/assignment')
   @Roles(UserRole.ADMIN, UserRole.OWNER)
-  @ApiOperation({ summary: 'Create or update merchant pool B assignment' })
-  async upsertMerchant(
-    @Param('merchantId', ParseUUIDPipe) merchantId: string,
-    @Body() dto: UpsertMerchantPayoutPoolDto,
+  @ApiOperation({ summary: 'Create or update merchant pool B assignment by display name' })
+  async upsertMerchantAssignment(
+    @Body() dto: UpsertMerchantPayoutPoolAssignmentDto,
     @CurrentUser('id') userId: string,
   ) {
-    const merchant = await this.prisma.merchant.findUnique({ where: { id: merchantId } });
+    const displayName = dto.merchant_display_name.trim();
+    const merchant = await this.prisma.merchant.findUnique({
+      where: { name: displayName },
+    });
     if (!merchant) {
-      throw new NotFoundException(`Merchant ${merchantId} not found`);
+      throw new NotFoundException(`Merchant with display name "${displayName}" not found`);
     }
+    const merchantId = merchant.id;
 
     const row = await this.prisma.merchantPayoutPoolAssignment.upsert({
       where: { merchantId },
@@ -159,6 +201,7 @@ export class AdminPayoutPoolController {
     return {
       id: row.id,
       merchant_id: row.merchantId,
+      merchant_display_name: merchant.name,
       pool_b_percent: Number(row.poolBPercent),
       is_active: row.isActive,
     };

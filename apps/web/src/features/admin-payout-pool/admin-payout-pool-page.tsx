@@ -2,6 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Percent, Clock } from 'lucide-react';
+import { clsx } from 'clsx';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -27,6 +29,27 @@ interface MerchantRow {
 
 export function AdminPayoutPoolPage() {
   const qc = useQueryClient();
+  const [merchantSearch, setMerchantSearch] = useState('');
+  const [debouncedMerchantSearch, setDebouncedMerchantSearch] = useState('');
+  /** Exact `merchants.name` after picking from search; cleared when the input is edited. */
+  const [pickedDisplayName, setPickedDisplayName] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedMerchantSearch(merchantSearch.trim()), 300);
+    return () => clearTimeout(t);
+  }, [merchantSearch]);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!pickerRef.current?.contains(e.target as Node)) setPickerOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [pickerOpen]);
+
   const globalQ = useQuery({
     queryKey: adminPayoutPoolKeys.global(),
     queryFn: () => api.get<GlobalSettings | null>(internalPaths.adminPayoutPoolGlobal),
@@ -36,6 +59,15 @@ export function AdminPayoutPoolPage() {
     queryKey: adminPayoutPoolKeys.merchants(),
     queryFn: () =>
       api.get<{ items: MerchantRow[]; total: number }>(internalPaths.adminPayoutPoolMerchants),
+  });
+
+  const directoryQ = useQuery({
+    queryKey: adminPayoutPoolKeys.merchantDirectory(debouncedMerchantSearch),
+    queryFn: () =>
+      api.get<{ items: { merchant_id: string; display_name: string }[] }>(
+        internalPaths.adminPayoutPoolMerchantDirectory(debouncedMerchantSearch),
+      ),
+    enabled: pickerOpen,
   });
 
   const patchGlobal = useMutation({
@@ -49,12 +81,18 @@ export function AdminPayoutPoolPage() {
   });
 
   const upsertMerchant = useMutation({
-    mutationFn: (body: { merchantId: string; pool_b_percent: number; is_active?: boolean }) =>
-      api.put(internalPaths.adminPayoutPoolMerchantUpsert(body.merchantId), {
-        pool_b_percent: body.pool_b_percent,
-        is_active: body.is_active,
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: adminPayoutPoolKeys.merchants() }),
+    mutationFn: (body: {
+      merchant_display_name: string;
+      pool_b_percent: number;
+      is_active?: boolean;
+    }) => api.put(internalPaths.adminPayoutPoolMerchantAssignment, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminPayoutPoolKeys.merchants() });
+      setMerchantSearch('');
+      setDebouncedMerchantSearch('');
+      setPickedDisplayName(null);
+      setPickerOpen(false);
+    },
   });
 
   const g = globalQ.data;
@@ -160,45 +198,100 @@ export function AdminPayoutPoolPage() {
       <Card className="p-6 space-y-4">
         <h2 className="text-lg font-semibold text-text-primary">Per-merchant pool B</h2>
         <form
-          className="flex flex-wrap items-end gap-3 max-w-3xl"
+          className="flex flex-col gap-3 max-w-3xl"
           onSubmit={(e) => {
             e.preventDefault();
             const form = e.currentTarget;
             const fd = new FormData(form);
-            const merchantId = String(fd.get('merchant_id') ?? '').trim();
+            const displayName = (pickedDisplayName ?? merchantSearch).trim();
             const pct = parseDecimalInput(String(fd.get('pool_b_percent') ?? '0'));
             const active =
               (form.elements.namedItem('is_active') as HTMLInputElement | null)?.checked ?? true;
-            if (!merchantId) return;
+            if (!displayName) return;
             upsertMerchant.mutate({
-              merchantId,
+              merchant_display_name: displayName,
               pool_b_percent: Number.isFinite(pct) ? pct : 0,
               is_active: active,
             });
           }}
         >
-          <Input name="merchant_id" label="Merchant ID" className="min-w-[280px]" />
-          <Input
-            name="pool_b_percent"
-            label="Pool B percent"
-            type="text"
-            inputMode="decimal"
-            className="w-36"
-          />
-          <label className="flex items-center gap-2 text-sm text-text-secondary pb-2">
-            <input type="checkbox" name="is_active" defaultChecked className="rounded" />
-            Active
-          </label>
-          <Button type="submit" loading={upsertMerchant.isPending}>
-            Upsert assignment
-          </Button>
+          <div className="flex flex-wrap items-end gap-3">
+            <div ref={pickerRef} className="relative min-w-[280px] flex-1">
+              <Input
+                id="merchant-display-name"
+                label="Merchant display name"
+                autoComplete="off"
+                value={merchantSearch}
+                onChange={(ev) => {
+                  setMerchantSearch(ev.target.value);
+                  setPickedDisplayName(null);
+                }}
+                onFocus={() => setPickerOpen(true)}
+                placeholder="Search by name…"
+                className="w-full"
+              />
+              {pickerOpen ? (
+                <div
+                  className="absolute z-20 mt-1 max-h-80 w-full overflow-auto rounded-lg border border-border-primary bg-surface-primary py-1 shadow-lg"
+                  role="listbox"
+                >
+                  {directoryQ.isLoading ? (
+                    <div className="px-3 py-2 text-sm text-text-muted">Loading…</div>
+                  ) : (directoryQ.data?.items?.length ?? 0) === 0 ? (
+                    <div className="px-3 py-2 text-sm text-text-muted">
+                      No active merchants found.
+                    </div>
+                  ) : (
+                    directoryQ.data!.items.map((item) => (
+                      <button
+                        key={item.merchant_id}
+                        type="button"
+                        role="option"
+                        className={clsx(
+                          'flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-bg-secondary',
+                          pickedDisplayName === item.display_name && 'bg-bg-secondary',
+                        )}
+                        onMouseDown={(ev) => ev.preventDefault()}
+                        onClick={() => {
+                          setMerchantSearch(item.display_name);
+                          setPickedDisplayName(item.display_name);
+                          setPickerOpen(false);
+                        }}
+                      >
+                        <span className="font-medium text-text-primary">{item.display_name}</span>
+                        <span className="font-mono text-xs text-text-muted">{item.merchant_id}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : null}
+            </div>
+            <Input
+              name="pool_b_percent"
+              label="Pool B percent"
+              type="text"
+              inputMode="decimal"
+              className="w-36"
+            />
+            <label className="flex items-center gap-2 text-sm text-text-secondary pb-2">
+              <input type="checkbox" name="is_active" defaultChecked className="rounded" />
+              Active
+            </label>
+            <Button type="submit" loading={upsertMerchant.isPending}>
+              Upsert assignment
+            </Button>
+          </div>
+          <p className="text-xs text-text-muted">
+            Search and choose a merchant, or type the exact display name. Names are unique and matching is
+            case-sensitive.
+          </p>
         </form>
 
         <div className="overflow-x-auto border border-border-primary rounded-lg">
           <table className="w-full text-sm">
             <thead className="bg-bg-secondary text-text-muted text-left">
               <tr>
-                <th className="p-3">Merchant</th>
+                <th className="p-3">Display name</th>
                 <th className="p-3">Pool B %</th>
                 <th className="p-3">Active</th>
               </tr>

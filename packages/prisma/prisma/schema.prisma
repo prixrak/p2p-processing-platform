@@ -92,7 +92,8 @@ model ReferralProfile {
 model Merchant {
   id        String   @id @default(uuid()) @db.Uuid
   userId    String   @unique @map("user_id") @db.Uuid
-  name      String
+  /// Human-readable label; unique across merchants for admin lookups (e.g. pay-out pool B).
+  name      String   @unique
   isLock    Boolean  @default(false) @map("is_lock")
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -722,6 +723,10 @@ model PayinOrder {
   confirmedAt       DateTime?   @map("confirmed_at")
   completedAt       DateTime?   @map("completed_at")
   isH2h             Boolean     @default(false) @map("is_h2h")
+  /// Snapshot of trader cascade method when requisite is assigned; null for NO_REQUISITE or legacy rows (see traffic_distribution_logs / migration backfill).
+  traderProcessingMethod TraderProcessingMethod? @map("trader_processing_method")
+  /// FORK flow: optional exchange / counterparty reference (set by trader).
+  forkExchangeReference String? @map("fork_exchange_reference") @db.VarChar(512)
   createdAt         DateTime    @default(now()) @map("created_at")
   updatedAt         DateTime    @updatedAt @map("updated_at")
 
@@ -733,6 +738,7 @@ model PayinOrder {
   appeals       Appeal[]
   webhookOutbox WebhookOutbox[]
   trafficDistributionLog TrafficDistributionLog?
+  forkChatProofs PayinForkChatProof[]
 
   @@unique([merchantId, requestId])
   @@index([status])
@@ -849,6 +855,20 @@ model AppealProof {
   @@map("appeal_proofs")
 }
 
+/// Screenshots or exports from exchange chat attached by the trader (FORK Pay-In verification MVP).
+model PayinForkChatProof {
+  id           String   @id @default(uuid()) @db.Uuid
+  payinOrderId String   @map("payin_order_id") @db.Uuid
+  fileId       String   @map("file_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  payinOrder PayinOrder @relation(fields: [payinOrderId], references: [id], onDelete: Cascade)
+  file       File       @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@index([payinOrderId])
+  @@map("payin_fork_chat_proofs")
+}
+
 // ─── Files ───
 
 model File {
@@ -862,6 +882,7 @@ model File {
 
   uploader     User?         @relation(fields: [uploadedBy], references: [id])
   appealProofs AppealProof[]
+  payinForkChatProofs PayinForkChatProof[]
   bankLogos    Bank[]
   payoutOrderCompletionProofs PayoutOrder[] @relation("PayoutOrderCompletionProof")
 

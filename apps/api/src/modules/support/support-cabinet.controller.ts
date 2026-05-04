@@ -145,6 +145,7 @@ export class SupportCabinetController {
           include: { bank: { select: { name: true } } },
         },
         currency: { select: { code: true } },
+        forkChatProofs: { select: { fileId: true } },
       },
     });
 
@@ -159,6 +160,9 @@ export class SupportCabinetController {
         status: payinOrder.status,
         createdAt: payinOrder.createdAt.toISOString(),
         updatedAt: payinOrder.updatedAt.toISOString(),
+        traderProcessingMethod: payinOrder.traderProcessingMethod ?? null,
+        forkExchangeReference: payinOrder.forkExchangeReference ?? null,
+        forkChatProofFileIds: payinOrder.forkChatProofs.map((p) => p.fileId),
         requisites: payinOrder.requisite
           ? {
               bank: payinOrder.requisite.bank?.name ?? '—',

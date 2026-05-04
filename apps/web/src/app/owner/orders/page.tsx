@@ -50,6 +50,9 @@ interface OrderDetails {
   status: string;
   createdAt: string;
   updatedAt: string;
+  traderProcessingMethod?: string | null;
+  forkExchangeReference?: string | null;
+  forkChatProofFileIds?: string[];
   requisites?: { bank: string; cardNumber: string };
   statusHistory: { status: string; timestamp: string; actor: string }[];
 }
@@ -286,6 +289,30 @@ export default function OrdersPage() {
                 <p className="text-xs text-text-muted">Trader</p>
                 <p className="text-sm text-text-primary">{details.traderName || '—'}</p>
               </div>
+              {details.type === 'PAYIN' && details.traderProcessingMethod ? (
+                <div>
+                  <p className="text-xs text-text-muted">Pay-In routing</p>
+                  <p className="text-sm text-text-primary">{details.traderProcessingMethod}</p>
+                </div>
+              ) : null}
+              {details.type === 'PAYIN' && details.forkExchangeReference ? (
+                <div className="col-span-2">
+                  <p className="text-xs text-text-muted">Exchange reference (FORK)</p>
+                  <p className="font-mono text-sm text-text-primary break-all">
+                    {details.forkExchangeReference}
+                  </p>
+                </div>
+              ) : null}
+              {details.type === 'PAYIN' &&
+              details.forkChatProofFileIds &&
+              details.forkChatProofFileIds.length > 0 ? (
+                <div className="col-span-2">
+                  <p className="text-xs text-text-muted">Fork chat proof file IDs</p>
+                  <p className="font-mono text-xs text-text-secondary break-all">
+                    {details.forkChatProofFileIds.join(', ')}
+                  </p>
+                </div>
+              ) : null}
             </div>
 
             {details.requisites && (

@@ -20,6 +20,7 @@ export const ORDER_INCLUDE = {
   requisite: { include: { bank: true } },
   appeals: { include: { proofs: true } },
   currency: { select: { code: true } },
+  forkChatProofs: true,
 } as const;
 
 export type OrderWithRelations = Prisma.PayinOrderGetPayload<{
@@ -71,5 +72,8 @@ export function payinOrderToOrderDto(order: OrderWithRelations): OrderDto {
           bank_name: order.requisite.bank?.name ?? '',
         }
       : null,
+    trader_processing_method: order.traderProcessingMethod ?? null,
+    fork_exchange_reference: order.forkExchangeReference ?? null,
+    fork_chat_proof_file_ids: (order.forkChatProofs ?? []).map((p) => p.fileId),
   };
 }

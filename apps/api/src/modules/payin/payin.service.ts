@@ -21,6 +21,8 @@ import {
   PAYIN_ORDER_REALTIME_EVENT_TYPE,
   PAYIN_TRADER_CURRENT_STATUSES,
   PAYIN_TRADER_HISTORY_STATUSES,
+  ALLOWED_FILE_TYPES,
+  MAX_FILE_SIZE_BYTES,
 } from '@p2p/shared';
 import type {
   OrderDto,
@@ -34,6 +36,7 @@ import {
   BalanceTransactionType,
   MerchantBalanceTransactionType,
   PlatformIncomeOrderType,
+  TraderProcessingMethod,
 } from '@prisma/client';
 import { config } from '@p2p/config';
 import {
@@ -52,6 +55,7 @@ import { BalanceTransactionsService } from '../balance-transactions/balance-tran
 import {
   PlatformSettingsService,
   PLATFORM_SETTING_PAYIN_AUTOCLOSE_MINUTES,
+  PLATFORM_SETTING_PAYIN_AUTOCLOSE_MINUTES_FORK,
 } from '../platform-settings/platform-settings.service';
 import {
   UploadOrderDto,
@@ -112,7 +116,16 @@ export class PayinService {
     });
   }
 
-  private async getAutocloseMs(): Promise<number> {
+  private async getAutocloseMsForProcessingMethod(
+    method: TraderProcessingMethod | null,
+  ): Promise<number> {
+    if (method === TraderProcessingMethod.FORK) {
+      const setting = await this.platformSettings.findOne(
+        PLATFORM_SETTING_PAYIN_AUTOCLOSE_MINUTES_FORK,
+      );
+      const minutes = Math.max(1, parseInt(setting.value, 10) || 10);
+      return minutes * 60 * 1000;
+    }
     const setting = await this.platformSettings.findOne(PLATFORM_SETTING_PAYIN_AUTOCLOSE_MINUTES);
     const minutes = Math.max(1, parseInt(setting.value, 10) || 10);
     return minutes * 60 * 1000;
@@ -152,7 +165,6 @@ export class PayinService {
     const commissionPercent = merchantCommissionPct ?? Number(direction.percentFee);
     const commission = dto.amount * commissionPercent / 100;
     const partnerAmount = dto.amount - commission;
-    const autocloseAt = new Date(Date.now() + await this.getAutocloseMs());
     const payinUsesBinanceParserRate = dto.currency === 'UAH';
     let parserRate: number | undefined;
     if (payinUsesBinanceParserRate) {
@@ -183,6 +195,9 @@ export class PayinService {
               ? rateAdminIn(parserRate, merchantFracNr)
               : null;
 
+          const autocloseMsNr = await this.getAutocloseMsForProcessingMethod(null);
+          const autocloseAtNr = new Date(Date.now() + autocloseMsNr);
+
           const createdNr = await tx.payinOrder.create({
             data: {
               requestId: dto.request_id,
@@ -203,7 +218,8 @@ export class PayinService {
               userFullName: dto.user_full_name,
               userIdExternal: dto.user_id,
               callbackUrl: dto.callback_url,
-              autocloseAt,
+              traderProcessingMethod: null,
+              autocloseAt: autocloseAtNr,
               isH2h: false,
             },
             include: ORDER_INCLUDE,
@@ -236,6 +252,11 @@ export class PayinService {
             ? rateAdminIn(parserRate, merchantFrac)
             : null;
 
+        const autocloseMs = await this.getAutocloseMsForProcessingMethod(
+          requisite.trader.processingMethod,
+        );
+        const autocloseAtAssigned = new Date(Date.now() + autocloseMs);
+
         const created = await tx.payinOrder.create({
           data: {
             requestId: dto.request_id,
@@ -255,7 +276,8 @@ export class PayinService {
             userFullName: dto.user_full_name,
             userIdExternal: dto.user_id,
             callbackUrl: dto.callback_url,
-            autocloseAt,
+            traderProcessingMethod: requisite.trader.processingMethod,
+            autocloseAt: autocloseAtAssigned,
             isH2h: false,
           },
           include: ORDER_INCLUDE,
@@ -529,7 +551,6 @@ export class PayinService {
     const commissionPercent = merchantCommissionPct ?? Number(direction.percentFee);
     const commission = dto.amount * commissionPercent / 100;
     const partnerAmount = dto.amount - commission;
-    const autocloseAt = new Date(Date.now() + await this.getAutocloseMs());
     const payinUsesBinanceParserRate = dto.currency === 'UAH';
     let parserRate: number | undefined;
     if (payinUsesBinanceParserRate) {
@@ -560,6 +581,9 @@ export class PayinService {
               ? rateAdminIn(parserRate, merchantFracNr)
               : null;
 
+          const autocloseMsNr = await this.getAutocloseMsForProcessingMethod(null);
+          const autocloseAtNr = new Date(Date.now() + autocloseMsNr);
+
           const createdNr = await tx.payinOrder.create({
             data: {
               requestId: dto.request_id,
@@ -581,7 +605,8 @@ export class PayinService {
               userIdExternal: dto.user_id,
               callbackUrl: dto.callback_url,
               redirectUrl: dto.redirect_url,
-              autocloseAt,
+              traderProcessingMethod: null,
+              autocloseAt: autocloseAtNr,
               isH2h: true,
             },
             include: ORDER_INCLUDE,
@@ -614,6 +639,11 @@ export class PayinService {
             ? rateAdminIn(parserRate, merchantFrac)
             : null;
 
+        const autocloseMs = await this.getAutocloseMsForProcessingMethod(
+          requisite.trader.processingMethod,
+        );
+        const autocloseAtAssigned = new Date(Date.now() + autocloseMs);
+
         const created = await tx.payinOrder.create({
           data: {
             requestId: dto.request_id,
@@ -634,7 +664,8 @@ export class PayinService {
             userIdExternal: dto.user_id,
             callbackUrl: dto.callback_url,
             redirectUrl: dto.redirect_url,
-            autocloseAt,
+            traderProcessingMethod: requisite.trader.processingMethod,
+            autocloseAt: autocloseAtAssigned,
             isH2h: true,
           },
           include: ORDER_INCLUDE,
@@ -763,6 +794,86 @@ export class PayinService {
       await this.createPayinWebhookEntry(tx, result);
 
       return result;
+    });
+
+    this.emitPayinOrderRealtime({
+      id: updated.id,
+      traderId: updated.traderId,
+      merchantId: updated.merchantId,
+      status: updated.status as PayInOrderStatus,
+    });
+
+    return payinOrderToOrderDto(updated);
+  }
+
+  /**
+   * FORK Pay-In: store exchange/counterparty reference and optional chat screenshots (MVP).
+   */
+  async traderSubmitForkVerification(
+    traderId: string,
+    userId: string,
+    orderId: string,
+    exchangeReferenceRaw: string,
+    files: UploadedFile[],
+  ): Promise<OrderDto> {
+    const exchangeReference = (exchangeReferenceRaw ?? '').trim();
+    if (!exchangeReference) {
+      throw new BadRequestException('exchange_reference is required');
+    }
+    if (exchangeReference.length > 512) {
+      throw new BadRequestException('exchange_reference must be at most 512 characters');
+    }
+
+    const fileList = files ?? [];
+    if (fileList.length > MAX_MULTIPART_FILES_PER_REQUEST) {
+      throw new BadRequestException(`At most ${MAX_MULTIPART_FILES_PER_REQUEST} files`);
+    }
+
+    const orderProbe = await this.prisma.payinOrder.findFirst({
+      where: { id: orderId, traderId },
+      select: { id: true, status: true, traderProcessingMethod: true },
+    });
+    if (!orderProbe) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+    const st = orderProbe.status as PayInOrderStatus;
+    if (!PAYIN_TRADER_CURRENT_STATUSES.includes(st)) {
+      throw new BadRequestException(
+        'Fork verification is only allowed while the order is in an active trader workflow status',
+      );
+    }
+    if (orderProbe.traderProcessingMethod !== TraderProcessingMethod.FORK) {
+      throw new BadRequestException(
+        'Fork verification is only available for orders assigned on FORK routing',
+      );
+    }
+
+    const newFileIds =
+      fileList.length > 0 ? await this.filesService.saveFiles(fileList, userId) : [];
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payinOrder.update({
+        where: { id: orderId },
+        data: { forkExchangeReference: exchangeReference },
+      });
+      if (newFileIds.length > 0) {
+        await tx.payinForkChatProof.createMany({
+          data: newFileIds.map((fileId) => ({ payinOrderId: orderId, fileId })),
+        });
+      }
+    });
+
+    const updated = await this.prisma.payinOrder.findUniqueOrThrow({
+      where: { id: orderId },
+      include: ORDER_INCLUDE,
+    });
+
+    this.logger.log({
+      msg: 'payin.fork_verification_submitted',
+      order_id: orderId,
+      trader_id: traderId,
+      chat_proof_files_added: newFileIds.length,
+      reference_len: exchangeReference.length,
     });
 
     this.emitPayinOrderRealtime({
@@ -1166,6 +1277,7 @@ export class PayinService {
       merchant_id: order.merchantId,
       context,
       has_requisite: order.requisiteId != null,
+      trader_processing_method: order.traderProcessingMethod ?? null,
     });
     if (order.status === 'NO_REQUISITE') {
       this.logger.log({
@@ -1224,6 +1336,9 @@ export class PayinService {
           order_id: order.requestId,
           order_status: order.status,
           amount: Number(order.amount),
+          ...(order.traderProcessingMethod != null
+            ? { trader_processing_method: order.traderProcessingMethod }
+            : {}),
         },
         callbackUrl: order.callbackUrl,
       },

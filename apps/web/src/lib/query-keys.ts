@@ -53,6 +53,8 @@ export const payoutCabinetKeys = {
 export const traderKeys = {
   root: traderRoot,
   dashboardStats: () => [...traderRoot, 'dashboard-stats'] as const,
+  /** GET /api/traders/me — profile including Pay-In cascade processing_method */
+  profile: () => [...traderRoot, 'profile'] as const,
   payinOrders: (params: unknown) => [...traderRoot, 'payin-orders', params] as const,
   payinOrdersScope: [...traderRoot, 'payin-orders'] as const,
   balancesMe: () => [...traderRoot, 'balances', 'me'] as const,
@@ -272,6 +274,7 @@ export const adminPayoutPoolKeys = {
   scope: [...adminRoot, 'payout-pool'] as const,
   global: () => [...adminRoot, 'payout-pool', 'global'] as const,
   merchants: () => [...adminRoot, 'payout-pool', 'merchants'] as const,
+  merchantDirectory: (q: string) => [...adminRoot, 'payout-pool', 'merchants-directory', q] as const,
 };
 
 /** Trader requisite audit history modal (tuple shape must stay stable). */

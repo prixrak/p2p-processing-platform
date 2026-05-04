@@ -3,6 +3,7 @@ import { PrismaService } from '../../config/prisma.service';
 
 export const PLATFORM_SETTING_KEYS = [
   'payin_autoclose_minutes',
+  'payin_autoclose_minutes_fork',
   'default_payin_commission_percent',
   'default_payout_commission_percent',
   'payin_min_amount',
@@ -19,8 +20,13 @@ export type PlatformSettingKey = (typeof PLATFORM_SETTING_KEYS)[number];
 export const PLATFORM_SETTING_PAYIN_AUTOCLOSE_MINUTES =
   'payin_autoclose_minutes' as const satisfies PlatformSettingKey;
 
+/** Pay-In window for FORK-assigned orders (longer than typical CARD flows). */
+export const PLATFORM_SETTING_PAYIN_AUTOCLOSE_MINUTES_FORK =
+  'payin_autoclose_minutes_fork' as const satisfies PlatformSettingKey;
+
 const DEFAULTS: Record<PlatformSettingKey, string> = {
-  payin_autoclose_minutes: '10',
+  payin_autoclose_minutes: '5',
+  payin_autoclose_minutes_fork: '10',
   default_payin_commission_percent: '0',
   default_payout_commission_percent: '0',
   payin_min_amount: '0',

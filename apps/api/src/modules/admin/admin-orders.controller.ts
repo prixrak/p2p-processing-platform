@@ -206,6 +206,7 @@ export class AdminOrdersController {
           trader: { select: { user: { select: { email: true } } } },
           requisite: { include: { bank: { select: { name: true } } } },
           currency: { select: { code: true } },
+          forkChatProofs: { select: { fileId: true } },
         },
       });
 
@@ -243,6 +244,9 @@ export class AdminOrdersController {
         status: order.status,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
+        traderProcessingMethod: order.traderProcessingMethod ?? null,
+        forkExchangeReference: order.forkExchangeReference ?? null,
+        forkChatProofFileIds: order.forkChatProofs.map((p) => p.fileId),
         requisites: order.requisite
           ? {
               bank: order.requisite.bank?.name ?? null,

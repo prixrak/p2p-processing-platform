@@ -7,7 +7,7 @@ import {
 import { PrismaService } from '../../config/prisma.service';
 import { CreateMerchantDto, UpdateMerchantDto } from './dto';
 import { DirectionType } from '@p2p/shared';
-import { ApiKeyDirection } from '@prisma/client';
+import { ApiKeyDirection, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { encryptSecret } from '../../common/utils/crypto';
 
@@ -25,16 +25,23 @@ export class MerchantsService {
       throw new ConflictException('Merchant already exists for this user');
     }
 
-    const merchant = await this.prisma.merchant.create({
-      data: {
-        userId: dto.userId,
-        name: dto.name,
-      },
-      include: { user: { select: { email: true, role: true } } },
-    });
+    try {
+      const merchant = await this.prisma.merchant.create({
+        data: {
+          userId: dto.userId,
+          name: dto.name,
+        },
+        include: { user: { select: { email: true, role: true } } },
+      });
 
-    this.logger.log(`Merchant created: ${merchant.id} for user ${dto.userId}`);
-    return merchant;
+      this.logger.log(`Merchant created: ${merchant.id} for user ${dto.userId}`);
+      return merchant;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('Merchant display name is already in use');
+      }
+      throw e;
+    }
   }
 
   async findById(id: string) {
@@ -93,11 +100,18 @@ export class MerchantsService {
   async update(id: string, dto: UpdateMerchantDto) {
     await this.findById(id);
 
-    return this.prisma.merchant.update({
-      where: { id },
-      data: dto,
-      include: { balances: true },
-    });
+    try {
+      return await this.prisma.merchant.update({
+        where: { id },
+        data: dto,
+        include: { balances: true },
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('Merchant display name is already in use');
+      }
+      throw e;
+    }
   }
 
   async lock(id: string) {
