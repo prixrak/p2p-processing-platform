@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Power, PowerOff, Upload } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -11,8 +11,10 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
+import { SearchStatusRow } from '@/components/ui/list-page-tools';
 import { upsertSortedArrayCache } from '@/lib/query-cache-merge';
 import { ownerReferenceKeys } from '@/lib/query-keys';
+import { CATALOG_STATUS_FILTER_OPTIONS } from './catalog-filter-options';
 
 interface Bank {
   id: string;
@@ -28,11 +30,24 @@ export function BanksPanel() {
   const [editItem, setEditItem] = useState<Bank | null>(null);
   const [form, setForm] = useState({ name: '' });
   const [logo, setLogo] = useState<File | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ownerReferenceKeys.banks,
     queryFn: () => api.get<Bank[]>(internalPaths.banksAdmin),
   });
+
+  const rows = data ?? [];
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((b) => {
+      if (statusFilter && b.status !== statusFilter) return false;
+      if (q && !b.name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [rows, search, statusFilter]);
 
   const createBank = useMutation({
     mutationFn: async () => {
@@ -188,19 +203,28 @@ export function BanksPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-text-primary">Banks</h2>
-          <p className="mt-0.5 text-sm text-text-muted">Manage bank directory</p>
-        </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4" /> Add Bank
-        </Button>
+      <div>
+        <h2 className="text-lg font-semibold text-text-primary">Banks</h2>
+        <p className="mt-0.5 text-sm text-text-muted">Manage bank directory</p>
       </div>
+
+      <SearchStatusRow
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Bank name..."
+        statusValue={statusFilter}
+        onStatusChange={setStatusFilter}
+        statusOptions={CATALOG_STATUS_FILTER_OPTIONS}
+        trailing={
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4" /> Add Bank
+          </Button>
+        }
+      />
 
       <DataTable
         columns={columns}
-        data={data ?? []}
+        data={filtered}
         isLoading={isLoading}
         emptyMessage="No banks added"
       />

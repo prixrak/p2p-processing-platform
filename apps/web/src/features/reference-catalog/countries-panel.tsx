@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
+import { SearchStatusRow } from '@/components/ui/list-page-tools';
 import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
 import { upsertSortedArrayCache } from '@/lib/query-cache-merge';
 import {
@@ -22,16 +23,34 @@ import {
   normalizeCountryListRow,
   type CountryListItem,
 } from '@/lib/query-keys';
+import { CATALOG_STATUS_FILTER_OPTIONS } from './catalog-filter-options';
 
 export function CountriesPanel() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: '', code: '', currency: '' });
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: countryKeys.ownerList,
     queryFn: () => fetchCountryList(),
   });
+
+  const rows = data ?? [];
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((c) => {
+      if (statusFilter === 'active' && !c.isActive) return false;
+      if (statusFilter === 'inactive' && c.isActive) return false;
+      if (q) {
+        const hay = `${c.name} ${c.code} ${c.currency}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [rows, search, statusFilter]);
 
   const { data: currencyCatalog = [] } = useQuery({
     queryKey: currencyKeys.list(),
@@ -144,19 +163,28 @@ export function CountriesPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-text-primary">Countries</h2>
-          <p className="mt-0.5 text-sm text-text-muted">Manage geo markets and currencies</p>
-        </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4" /> Add country
-        </Button>
+      <div>
+        <h2 className="text-lg font-semibold text-text-primary">Countries</h2>
+        <p className="mt-0.5 text-sm text-text-muted">Manage geo markets and currencies</p>
       </div>
+
+      <SearchStatusRow
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Country, code, or currency..."
+        statusValue={statusFilter}
+        onStatusChange={setStatusFilter}
+        statusOptions={CATALOG_STATUS_FILTER_OPTIONS}
+        trailing={
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4" /> Add country
+          </Button>
+        }
+      />
 
       <DataTable
         columns={columns}
-        data={data ?? []}
+        data={filtered}
         isLoading={isLoading}
         emptyMessage="No countries configured"
       />

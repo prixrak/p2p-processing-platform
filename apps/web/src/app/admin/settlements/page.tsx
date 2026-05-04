@@ -8,7 +8,9 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { SettlementCreateModal } from '@/features/settlements/settlement-create-modal';
 import { DataTable } from '@/components/ui/data-table';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { FiltersToggleButton, ListPageHeader } from '@/components/ui/list-page-tools';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { Select } from '@/components/ui/select';
 import { format } from 'date-fns';
@@ -47,6 +49,7 @@ function participantLabel(row: SettlementRow): string {
 
 export default function SettlementsPage() {
   const [showForm, setShowForm] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(1);
   const [participantRole, setParticipantRole] = useState<
     'any' | 'trader' | 'payout' | 'merchant'
@@ -299,29 +302,33 @@ export default function SettlementsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <ListPageHeader
+        title={
           <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
             <Landmark size={24} />
             Settlements
           </h1>
-          <p className="text-sm text-text-muted mt-1">
-            Standard trader top-ups (USDT ledger TOP_UP), Pay-Out specialist payouts, and merchant withdrawals
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            onClick={downloadCsv}
-            disabled={settlements.length === 0}
-            className="inline-flex items-center gap-2"
-          >
-            <Download className="h-4 w-4" />
-            Export CSV
-          </Button>
-          <Button onClick={() => setShowForm(true)}>New settlement</Button>
-        </div>
-      </div>
+        }
+        description="Standard trader top-ups (USDT ledger TOP_UP), Pay-Out specialist payouts, and merchant withdrawals"
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              onClick={downloadCsv}
+              disabled={settlements.length === 0}
+              className="inline-flex items-center gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Export CSV
+            </Button>
+            <FiltersToggleButton
+              expanded={showFilters}
+              onToggle={() => setShowFilters((v) => !v)}
+            />
+            <Button onClick={() => setShowForm(true)}>New settlement</Button>
+          </>
+        }
+      />
 
       <div className="rounded-lg border border-border-subtle bg-bg-secondary/60 px-4 py-3 flex gap-3 text-sm text-text-secondary">
         <Info className="h-5 w-5 shrink-0 text-accent-blue mt-0.5" />
@@ -343,78 +350,79 @@ export default function SettlementsPage() {
         </div>
       </div>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-text-primary">Filters</h2>
-        <FilterBar>
-          <div className="w-full md:max-w-xs">{participantSelect}</div>
-        </FilterBar>
-        {participantPick ? <div className="max-w-md">{participantPick}</div> : null}
-        <FilterBar>
-          <Select
-            label="Direction"
-            options={[
-              { value: 'ALL', label: 'All' },
-              { value: 'CREDIT', label: 'CREDIT' },
-              { value: 'DEBIT', label: 'DEBIT' },
-            ]}
-            value={typeFilter}
-            onChange={(e) => {
-              setTypeFilter(e.target.value as typeof typeFilter);
-              setPage(1);
-            }}
-          />
-          <FilterInput
-            label="Currency"
-            value={currency}
-            onChange={(v) => {
-              setCurrency(v.toUpperCase());
-              setPage(1);
-            }}
-            placeholder="USDT"
-            className="w-28"
-          />
-          <FilterInput
-            type="date"
-            label="From"
-            value={dateFrom}
-            onChange={(v) => {
-              setDateFrom(v);
-              setPage(1);
-            }}
-            className="w-40"
-          />
-          <FilterInput
-            type="date"
-            label="To"
-            value={dateTo}
-            onChange={(v) => {
-              setDateTo(v);
-              setPage(1);
-            }}
-            className="w-40"
-          />
-          <FilterInput
-            label="Min amount"
-            value={minAmount}
-            onChange={(v) => {
-              setMinAmount(v);
-              setPage(1);
-            }}
-            placeholder="0"
-            className="w-28"
-          />
-          <FilterInput
-            label="Max amount"
-            value={maxAmount}
-            onChange={(v) => {
-              setMaxAmount(v);
-              setPage(1);
-            }}
-            placeholder="∞"
-            className="w-28"
-          />
-        </FilterBar>
-      </section>
+      {showFilters && (
+        <Card className="space-y-4 p-4">
+          <FilterBar>
+            <div className="w-full md:max-w-xs">{participantSelect}</div>
+          </FilterBar>
+          {participantPick ? <div className="max-w-md">{participantPick}</div> : null}
+          <FilterBar>
+            <Select
+              label="Direction"
+              options={[
+                { value: 'ALL', label: 'All' },
+                { value: 'CREDIT', label: 'CREDIT' },
+                { value: 'DEBIT', label: 'DEBIT' },
+              ]}
+              value={typeFilter}
+              onChange={(e) => {
+                setTypeFilter(e.target.value as typeof typeFilter);
+                setPage(1);
+              }}
+            />
+            <FilterInput
+              label="Currency"
+              value={currency}
+              onChange={(v) => {
+                setCurrency(v.toUpperCase());
+                setPage(1);
+              }}
+              placeholder="USDT"
+              className="w-28"
+            />
+            <FilterInput
+              type="date"
+              label="From"
+              value={dateFrom}
+              onChange={(v) => {
+                setDateFrom(v);
+                setPage(1);
+              }}
+              className="w-40"
+            />
+            <FilterInput
+              type="date"
+              label="To"
+              value={dateTo}
+              onChange={(v) => {
+                setDateTo(v);
+                setPage(1);
+              }}
+              className="w-40"
+            />
+            <FilterInput
+              label="Min amount"
+              value={minAmount}
+              onChange={(v) => {
+                setMinAmount(v);
+                setPage(1);
+              }}
+              placeholder="0"
+              className="w-28"
+            />
+            <FilterInput
+              label="Max amount"
+              value={maxAmount}
+              onChange={(v) => {
+                setMaxAmount(v);
+                setPage(1);
+              }}
+              placeholder="∞"
+              className="w-28"
+            />
+          </FilterBar>
+        </Card>
+      )}
 
       <DataTable
         columns={columns}

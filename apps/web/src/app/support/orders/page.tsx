@@ -7,7 +7,8 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { supportKeys } from '@/lib/query-keys';
 import { IconButton } from '@/components/ui/icon-button';
-import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
+import { FilterInput, FilterSelect } from '@/components/ui/filters';
+import { FilterFieldsRow, ListPageHeader } from '@/components/ui/list-page-tools';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Tabs } from '@/components/ui/tabs';
@@ -157,48 +158,59 @@ export default function SupportOrdersPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary">Orders</h1>
-        <p className="mt-1 text-sm text-text-muted">Read-only view of all platform orders</p>
-      </div>
-
-      <Tabs
-        tabs={[
-          { key: 'PAYIN', label: 'Pay-In' },
-          { key: 'PAYOUT', label: 'Pay-Out' },
-        ]}
-        active={tab}
-        onChange={(k) => {
-          setTab(k);
-          setPage(1);
-          setStatusFilter('');
-        }}
+      <ListPageHeader
+        title={<h1 className="text-2xl font-bold text-text-primary">Orders</h1>}
+        description="Read-only view of all platform orders"
+        actions={
+          <Tabs
+            tabs={[
+              { key: 'PAYIN', label: 'Pay-In' },
+              { key: 'PAYOUT', label: 'Pay-Out' },
+            ]}
+            active={tab}
+            onChange={(k) => {
+              setTab(k);
+              setPage(1);
+              setStatusFilter('');
+            }}
+          />
+        }
       />
 
-      <FilterBar>
-        <FilterSelect
-          label="Status"
-          value={statusFilter}
-          onChange={(v) => { setStatusFilter(v); setPage(1); }}
-          options={statusFilterOptions}
-          placeholder="Status"
-          className="w-40"
-        />
+      <FilterFieldsRow>
+        <div className="w-full shrink-0 sm:w-44">
+          <FilterSelect
+            label="Status"
+            value={statusFilter}
+            onChange={(v) => {
+              setStatusFilter(v);
+              setPage(1);
+            }}
+            options={statusFilterOptions}
+            placeholder="All statuses"
+          />
+        </div>
         <FilterInput
           label="Merchant"
           value={merchantFilter}
-          onChange={(v) => { setMerchantFilter(v); setPage(1); }}
+          onChange={(v) => {
+            setMerchantFilter(v);
+            setPage(1);
+          }}
           placeholder="Merchant name..."
-          className="w-48 min-w-[10rem]"
+          className="min-w-0 w-full sm:flex-1 sm:basis-[12rem] sm:max-w-xs"
         />
         <FilterInput
           label="Trader"
           value={traderFilter}
-          onChange={(v) => { setTraderFilter(v); setPage(1); }}
+          onChange={(v) => {
+            setTraderFilter(v);
+            setPage(1);
+          }}
           placeholder="Trader name..."
-          className="w-48 min-w-[10rem]"
+          className="min-w-0 w-full sm:flex-1 sm:basis-[12rem] sm:max-w-xs"
         />
-      </FilterBar>
+      </FilterFieldsRow>
 
       <DataTable
         columns={columns}

@@ -224,7 +224,7 @@ export function TraderPayoutPage({
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-3">
           <ArrowUpFromLine className="h-6 w-6 text-accent-blue" />
           <div>
@@ -232,78 +232,132 @@ export function TraderPayoutPage({
             <p className="text-sm text-text-muted">{headerSubtitle}</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+          <Button variant="secondary" size="sm" onClick={() => setShowFilters(!showFilters)}>
+            <Filter className="h-4 w-4" />
+            Filters
+          </Button>
+          <div className="flex flex-wrap gap-1 rounded-lg bg-bg-secondary p-1 w-fit">
+            <button
+              type="button"
+              onClick={() => navigateTab('new')}
+              className={cn(
+                'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+                activeTab === 'new'
+                  ? 'bg-bg-primary text-text-primary shadow-sm'
+                  : 'text-text-muted hover:text-text-primary',
+              )}
+            >
+              <Layers className="h-4 w-4" />
+              New
+              {(poolData?.total ?? 0) > 0 && (
+                <span className="ml-1 rounded-full bg-accent-blue px-2 py-0.5 text-xs text-white">
+                  {poolData?.total}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateTab('in_progress')}
+              className={cn(
+                'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+                activeTab === 'in_progress'
+                  ? 'bg-bg-primary text-text-primary shadow-sm'
+                  : 'text-text-muted hover:text-text-primary',
+              )}
+            >
+              <ListTodo className="h-4 w-4" />
+              In progress
+              {(inProgressData?.total ?? 0) > 0 && (
+                <span className="ml-1 rounded-full bg-bg-tertiary px-2 py-0.5 text-xs text-text-secondary">
+                  {inProgressData?.total}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateTab('history')}
+              className={cn(
+                'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+                activeTab === 'history'
+                  ? 'bg-bg-primary text-text-primary shadow-sm'
+                  : 'text-text-muted hover:text-text-primary',
+              )}
+            >
+              <History className="h-4 w-4" />
+              History
+              {(historyData?.total ?? 0) > 0 && (
+                <span className="ml-1 rounded-full bg-bg-tertiary px-2 py-0.5 text-xs text-text-secondary">
+                  {historyData?.total}
+                </span>
+              )}
+            </button>
+          </div>
           {isSpecialist && activeTab === 'history' && (
             <Button variant="secondary" size="sm" onClick={() => void handleExportCsv()}>
               <Download className="h-4 w-4" />
               CSV
             </Button>
           )}
-          {activeTab === 'history' && (
-            <Button variant="secondary" size="sm" onClick={() => setShowFilters(!showFilters)}>
-              <Filter className="h-4 w-4" />
-              Filters
-            </Button>
-          )}
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1 rounded-lg bg-bg-secondary p-1 w-fit">
-        <button
-          type="button"
-          onClick={() => navigateTab('new')}
-          className={cn(
-            'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
-            activeTab === 'new'
-              ? 'bg-bg-primary text-text-primary shadow-sm'
-              : 'text-text-muted hover:text-text-primary',
-          )}
-        >
-          <Layers className="h-4 w-4" />
-          New
-          {(poolData?.total ?? 0) > 0 && (
-            <span className="ml-1 rounded-full bg-accent-blue px-2 py-0.5 text-xs text-white">
-              {poolData?.total}
-            </span>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={() => navigateTab('in_progress')}
-          className={cn(
-            'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
-            activeTab === 'in_progress'
-              ? 'bg-bg-primary text-text-primary shadow-sm'
-              : 'text-text-muted hover:text-text-primary',
-          )}
-        >
-          <ListTodo className="h-4 w-4" />
-          In progress
-          {(inProgressData?.total ?? 0) > 0 && (
-            <span className="ml-1 rounded-full bg-bg-tertiary px-2 py-0.5 text-xs text-text-secondary">
-              {inProgressData?.total}
-            </span>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={() => navigateTab('history')}
-          className={cn(
-            'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
-            activeTab === 'history'
-              ? 'bg-bg-primary text-text-primary shadow-sm'
-              : 'text-text-muted hover:text-text-primary',
-          )}
-        >
-          <History className="h-4 w-4" />
-          History
-          {(historyData?.total ?? 0) > 0 && (
-            <span className="ml-1 rounded-full bg-bg-tertiary px-2 py-0.5 text-xs text-text-secondary">
-              {historyData?.total}
-            </span>
-          )}
-        </button>
-      </div>
+      {showFilters && (
+        <Card>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Select
+              label="Status"
+              options={historyStatusOptions}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              placeholder="All statuses"
+            />
+            <Input
+              label="Closed from (date)"
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+            <Input
+              label="Closed to (date)"
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+            <Input
+              label="Min amount"
+              type="text"
+              inputMode="decimal"
+              value={minAmount}
+              onChange={(e) => setMinAmount(e.target.value)}
+              placeholder="Optional"
+            />
+            <Input
+              label="Max amount"
+              type="text"
+              inputMode="decimal"
+              value={maxAmount}
+              onChange={(e) => setMaxAmount(e.target.value)}
+              placeholder="Optional"
+            />
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setStatusFilter('');
+                setDateFrom('');
+                setDateTo('');
+                setMinAmount('');
+                setMaxAmount('');
+              }}
+            >
+              Clear
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {activeTab === 'new' && (
         <Card>
@@ -351,81 +405,22 @@ export function TraderPayoutPage({
       )}
 
       {activeTab === 'history' && (
-        <>
-          {showFilters && (
-            <Card>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <Select
-                  label="Status"
-                  options={historyStatusOptions}
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  placeholder="All statuses"
-                />
-                <Input
-                  label="Closed from (date)"
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                />
-                <Input
-                  label="Closed to (date)"
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                />
-                <Input
-                  label="Min amount"
-                  type="text"
-                  inputMode="decimal"
-                  value={minAmount}
-                  onChange={(e) => setMinAmount(e.target.value)}
-                  placeholder="Optional"
-                />
-                <Input
-                  label="Max amount"
-                  type="text"
-                  inputMode="decimal"
-                  value={maxAmount}
-                  onChange={(e) => setMaxAmount(e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setStatusFilter('');
-                    setDateFrom('');
-                    setDateTo('');
-                    setMinAmount('');
-                    setMaxAmount('');
-                  }}
-                >
-                  Clear
-                </Button>
-              </div>
-            </Card>
-          )}
-
-          <Card>
-            <div className="mb-4 flex items-start gap-3 rounded-lg border border-border-primary bg-bg-secondary/40 p-3">
-              <History className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" />
-              <p className="text-sm text-text-secondary">
-                Completed payouts and closed orders (failed or upload error).
-              </p>
-            </div>
-            <Table
-              columns={ordersColumns}
-              data={historyData?.orders ?? []}
-              keyExtractor={(row) => row.id}
-              loading={historyLoading}
-              onRowClick={(row) => setSelectedOrder(row)}
-              emptyMessage="No completed pay-out orders yet"
-            />
-          </Card>
-        </>
+        <Card>
+          <div className="mb-4 flex items-start gap-3 rounded-lg border border-border-primary bg-bg-secondary/40 p-3">
+            <History className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" />
+            <p className="text-sm text-text-secondary">
+              Completed payouts and closed orders (failed or upload error).
+            </p>
+          </div>
+          <Table
+            columns={ordersColumns}
+            data={historyData?.orders ?? []}
+            keyExtractor={(row) => row.id}
+            loading={historyLoading}
+            onRowClick={(row) => setSelectedOrder(row)}
+            emptyMessage="No completed pay-out orders yet"
+          />
+        </Card>
       )}
 
       <TraderPayoutOrderDetailModal

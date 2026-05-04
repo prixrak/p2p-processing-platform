@@ -11,8 +11,10 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { DataTable } from '@/components/ui/data-table';
+import { SearchStatusRow } from '@/components/ui/list-page-tools';
 import { upsertSortedArrayCache } from '@/lib/query-cache-merge';
 import { currencyKeys, fetchCurrencyList, type CurrencyListItem } from '@/lib/query-keys';
+import { CATALOG_STATUS_FILTER_OPTIONS } from './catalog-filter-options';
 
 interface Currency {
   id: string;
@@ -40,6 +42,8 @@ export function CurrenciesPanel() {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ code: '', name: '' });
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   const { data: currencyList = [], isLoading } = useQuery({
     queryKey: currencyKeys.list(),
@@ -47,6 +51,17 @@ export function CurrenciesPanel() {
   });
 
   const data = useMemo(() => currencyList.map(listItemToCurrency), [currencyList]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return data.filter((c) => {
+      if (statusFilter && c.status !== statusFilter) return false;
+      if (q && !c.code.toLowerCase().includes(q) && !(c.name || '').toLowerCase().includes(q)) {
+        return false;
+      }
+      return true;
+    });
+  }, [data, search, statusFilter]);
 
   const createCurrency = useMutation({
     mutationFn: (payload: typeof form) =>
@@ -119,19 +134,28 @@ export function CurrenciesPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-text-primary">Currencies</h2>
-          <p className="mt-0.5 text-sm text-text-muted">Manage supported currencies</p>
-        </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4" /> Add Currency
-        </Button>
+      <div>
+        <h2 className="text-lg font-semibold text-text-primary">Currencies</h2>
+        <p className="mt-0.5 text-sm text-text-muted">Manage supported currencies</p>
       </div>
+
+      <SearchStatusRow
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Code or name..."
+        statusValue={statusFilter}
+        onStatusChange={setStatusFilter}
+        statusOptions={CATALOG_STATUS_FILTER_OPTIONS}
+        trailing={
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4" /> Add Currency
+          </Button>
+        }
+      />
 
       <DataTable
         columns={columns}
-        data={data ?? []}
+        data={filtered}
         isLoading={isLoading}
         emptyMessage="No currencies configured"
       />

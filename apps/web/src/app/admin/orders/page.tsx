@@ -9,9 +9,15 @@ import { adminKeys } from '@/lib/query-keys';
 import { DataTable } from '@/components/ui/data-table';
 import { StatusBadge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
-import { FilterBar, FilterSelect, FilterInput } from '@/components/ui/filters';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
+import { FilterInput, FilterSelect } from '@/components/ui/filters';
+import {
+  FilterFieldsRow,
+  FiltersToggleButton,
+  ListPageHeader,
+} from '@/components/ui/list-page-tools';
 import { format } from 'date-fns';
 import {
   ORDER_LIST_UI_TAB,
@@ -48,6 +54,7 @@ export default function AdminOrdersPage() {
   const [traderFilter, setTraderFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
   const [assigningOrder, setAssigningOrder] = useState<string | null>(null);
   const [selectedTrader, setSelectedTrader] = useState('');
 
@@ -227,60 +234,80 @@ export default function AdminOrdersPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-          <ArrowLeftRight size={24} />
-          Orders
-        </h1>
-        <p className="text-sm text-text-muted mt-1">
-          View and manage all platform orders
-        </p>
-      </div>
-
-      <Tabs
-        tabs={[
-          { key: ORDER_LIST_UI_TAB.PAY_IN, label: 'Pay-In' },
-          { key: ORDER_LIST_UI_TAB.PAY_OUT, label: 'Pay-Out' },
-        ]}
-        active={tab}
-        onChange={(k) => {
-          setTab(k as OrderListUiTab);
-          setStatusFilter('');
-        }}
+      <ListPageHeader
+        title={
+          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+            <ArrowLeftRight size={24} />
+            Orders
+          </h1>
+        }
+        description="View and manage all platform orders"
+        actions={
+          <>
+            <Tabs
+              tabs={[
+                { key: ORDER_LIST_UI_TAB.PAY_IN, label: 'Pay-In' },
+                { key: ORDER_LIST_UI_TAB.PAY_OUT, label: 'Pay-Out' },
+              ]}
+              active={tab}
+              onChange={(k) => {
+                setTab(k as OrderListUiTab);
+                setStatusFilter('');
+              }}
+            />
+            <FiltersToggleButton
+              expanded={showFilters}
+              onToggle={() => setShowFilters((v) => !v)}
+            />
+          </>
+        }
       />
 
-      <FilterBar>
-        <FilterSelect
-          label="Status"
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={statusFilterOptions}
-        />
+      <FilterFieldsRow>
+        <div className="w-full shrink-0 sm:w-44">
+          <FilterSelect
+            label="Status"
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={statusFilterOptions}
+          />
+        </div>
         <FilterInput
           label="Merchant"
           value={merchantFilter}
           onChange={setMerchantFilter}
           placeholder="Merchant name..."
+          className="min-w-0 w-full sm:flex-1 sm:basis-[12rem] sm:max-w-xs"
         />
         <FilterInput
           label="Trader"
           value={traderFilter}
           onChange={setTraderFilter}
           placeholder="Trader name..."
+          className="min-w-0 w-full sm:flex-1 sm:basis-[12rem] sm:max-w-xs"
         />
-        <FilterInput
-          label="From"
-          type="date"
-          value={dateFrom}
-          onChange={setDateFrom}
-        />
-        <FilterInput
-          label="To"
-          type="date"
-          value={dateTo}
-          onChange={setDateTo}
-        />
-      </FilterBar>
+      </FilterFieldsRow>
+
+      {showFilters && (
+        <Card>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <FilterInput label="From" type="date" value={dateFrom} onChange={setDateFrom} />
+            <FilterInput label="To" type="date" value={dateTo} onChange={setDateTo} />
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setDateFrom('');
+                setDateTo('');
+              }}
+            >
+              Clear dates
+            </Button>
+          </div>
+        </Card>
+      )}
 
       <DataTable
         columns={columns}

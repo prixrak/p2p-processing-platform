@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { ownerKeys } from '@/lib/query-keys';
 import { IconButton } from '@/components/ui/icon-button';
-import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
+import { ListPageHeader, SearchStatusRow } from '@/components/ui/list-page-tools';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -197,40 +197,39 @@ export default function OrdersPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary">Orders</h1>
-        <p className="mt-1 text-sm text-text-muted">Manage all Pay-In and Pay-Out orders</p>
-      </div>
-
-      <Tabs
-        tabs={[
-          { key: 'PAYIN', label: 'Pay-In' },
-          { key: 'PAYOUT', label: 'Pay-Out' },
-        ]}
-        active={tab}
-        onChange={(k) => {
-          setTab(k);
-          setPage(1);
-          setStatusFilter('');
-        }}
+      <ListPageHeader
+        title={<h1 className="text-2xl font-bold text-text-primary">Orders</h1>}
+        description="Manage all Pay-In and Pay-Out orders"
+        actions={
+          <Tabs
+            tabs={[
+              { key: 'PAYIN', label: 'Pay-In' },
+              { key: 'PAYOUT', label: 'Pay-Out' },
+            ]}
+            active={tab}
+            onChange={(k) => {
+              setTab(k);
+              setPage(1);
+              setStatusFilter('');
+            }}
+          />
+        }
       />
 
-      <FilterBar>
-        <FilterInput
-          label="Search"
-          value={searchInput}
-          onChange={(v) => { setSearchInput(v); setPage(1); }}
-          placeholder="Search by ID or merchant..."
-          className="w-72 min-w-[12rem]"
-        />
-        <FilterSelect
-          label="Status"
-          value={statusFilter}
-          onChange={(v) => { setStatusFilter(v); setPage(1); }}
-          options={statusFilterOptions}
-          className="w-40"
-        />
-      </FilterBar>
+      <SearchStatusRow
+        searchValue={searchInput}
+        onSearchChange={(v) => {
+          setSearchInput(v);
+          setPage(1);
+        }}
+        searchPlaceholder="Search by ID or merchant..."
+        statusValue={statusFilter}
+        onStatusChange={(v) => {
+          setStatusFilter(v);
+          setPage(1);
+        }}
+        statusOptions={statusFilterOptions}
+      />
 
       <DataTable
         columns={columns}

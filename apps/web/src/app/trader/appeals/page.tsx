@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Table } from '@/components/ui/table';
+import { Tabs } from '@/components/ui/tabs';
 import { Modal } from '@/components/ui/modal';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -35,6 +36,7 @@ const appealStatusVariant: Record<AppealStatus, 'warning' | 'success' | 'danger'
 
 export default function AppealsPage() {
   const queryClient = useQueryClient();
+  const [listTab, setListTab] = useState<'current' | 'history'>('current');
   const [selectedAppeal, setSelectedAppeal] = useState<AppealDto | null>(null);
   const [viewingProof, setViewingProof] = useState<string | null>(null);
 
@@ -63,6 +65,8 @@ export default function AppealsPage() {
     }
     return { currentAppeals: current, historyAppeals: history };
   }, [appeals]);
+
+  const listData = listTab === 'current' ? currentAppeals : historyAppeals;
 
   const columns = [
     {
@@ -164,50 +168,39 @@ export default function AppealsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-3">
           <AlertTriangle className="h-6 w-6 text-accent-yellow" />
           <div>
             <h1 className="text-2xl font-bold text-text-primary">Appeals</h1>
             <p className="text-sm text-text-muted">
-              Appeals on orders assigned to you: review payer proof files and resolve or reject. Support and
-              administrators can intervene when needed.
+              {listTab === 'current'
+                ? 'Open appeals on your assigned orders: review payer proof files and resolve or reject. Support and administrators can intervene when needed.'
+                : 'Completed appeals on your orders: accepted (resolved) or rejected (cancelled).'}{' '}
+              <span className="text-text-secondary">({listData.length} in this view)</span>
             </p>
           </div>
         </div>
+        <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+          <Tabs
+            tabs={[
+              { key: 'current', label: 'Current' },
+              { key: 'history', label: 'History' },
+            ]}
+            active={listTab}
+            onChange={(k) => setListTab(k as 'current' | 'history')}
+          />
+        </div>
       </div>
 
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-lg font-semibold text-text-primary">Current</h2>
-          <p className="text-sm text-text-muted">Open appeals awaiting your decision (or support/admin).</p>
-        </div>
-        <Table
-          columns={columns}
-          data={currentAppeals}
-          keyExtractor={(row) => row.id}
-          loading={isLoading}
-          onRowClick={(row) => setSelectedAppeal(row)}
-          emptyMessage="No open appeals"
-        />
-      </section>
-
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-lg font-semibold text-text-primary">History</h2>
-          <p className="text-sm text-text-muted">
-            Completed appeals: accepted (resolved) or rejected (cancelled).
-          </p>
-        </div>
-        <Table
-          columns={columns}
-          data={historyAppeals}
-          keyExtractor={(row) => row.id}
-          loading={isLoading}
-          onRowClick={(row) => setSelectedAppeal(row)}
-          emptyMessage="No completed appeals yet"
-        />
-      </section>
+      <Table
+        columns={columns}
+        data={listData}
+        keyExtractor={(row) => row.id}
+        loading={isLoading}
+        onRowClick={(row) => setSelectedAppeal(row)}
+        emptyMessage={listTab === 'current' ? 'No open appeals' : 'No completed appeals yet'}
+      />
 
       <Modal
         open={!!selectedAppeal}

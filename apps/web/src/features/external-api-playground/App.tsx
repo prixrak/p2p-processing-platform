@@ -38,6 +38,24 @@ import {
 } from './playground-styles';
 import { jsonBodyStorageKey, LS, loadKeys } from './playground-storage';
 
+function fileDedupeKey(f: File): string {
+  return `${f.name}:${f.size}:${f.lastModified}`;
+}
+
+/** Merge newly picked files into the list (same picker can be used repeatedly). */
+function mergeUniqueFiles(existing: File[], incoming: File[]): File[] {
+  const seen = new Set(existing.map(fileDedupeKey));
+  const next = [...existing];
+  for (const f of incoming) {
+    const k = fileDedupeKey(f);
+    if (!seen.has(k)) {
+      seen.add(k);
+      next.push(f);
+    }
+  }
+  return next;
+}
+
 export function App() {
   const [keys, setKeys] = useState(loadKeys);
   const [endpointId, setEndpointId] = useState(() =>
@@ -59,8 +77,8 @@ export function App() {
     appealOrderId: '',
     appealPaidAmount: '100',
     appealNonce: String(Date.now()),
-    proofFiles: null as FileList | null,
-    appealFiles: null as FileList | null,
+    proofFiles: [] as File[],
+    appealFiles: [] as File[],
   });
 
   const [loading, setLoading] = useState(false);
@@ -175,8 +193,8 @@ export function App() {
       appealOrderId: d.appealOrderId ?? '',
       appealPaidAmount: d.appealPaidAmount ?? '100',
       appealNonce: d.appealNonce ?? String(Date.now()),
-      proofFiles: null,
-      appealFiles: null,
+      proofFiles: [],
+      appealFiles: [],
     });
   }, [endpoint.id, endpoint.kind, endpoint.multipart]);
 
@@ -427,10 +445,8 @@ export function App() {
       const fd = new FormData();
       fd.append('id', multipart.proofId);
       fd.append('status', multipart.status);
-      if (multipart.proofFiles) {
-        for (let i = 0; i < multipart.proofFiles.length; i++) {
-          fd.append('files', multipart.proofFiles[i]);
-        }
+      for (const f of multipart.proofFiles) {
+        fd.append('files', f);
       }
       const res = await fetch(externalApiUrl(endpoint.path), {
         method: 'POST',
@@ -489,10 +505,8 @@ export function App() {
       fd.append('order_id', multipart.appealOrderId);
       fd.append('paid_amount', String(paid));
       fd.append('nonce', String(nonceNum));
-      if (multipart.appealFiles) {
-        for (let i = 0; i < multipart.appealFiles.length; i++) {
-          fd.append('files', multipart.appealFiles[i]);
-        }
+      for (const f of multipart.appealFiles) {
+        fd.append('files', f);
       }
       const res = await fetch(externalApiUrl(endpoint.path), {
         method: 'POST',
@@ -786,10 +800,46 @@ export function App() {
                 type="file"
                 multiple
                 style={fileInput}
-                onChange={(e) =>
-                  setMultipart((m) => ({ ...m, proofFiles: e.target.files }))
-                }
+                onChange={(e) => {
+                  const incoming = Array.from(e.target.files ?? []);
+                  e.target.value = '';
+                  setMultipart((m) => ({
+                    ...m,
+                    proofFiles: mergeUniqueFiles(m.proofFiles, incoming),
+                  }));
+                }}
               />
+              {multipart.proofFiles.length > 0 && (
+                <>
+                  <p style={{ ...help, marginTop: '0.35rem' }}>
+                    {multipart.proofFiles.length} file(s) will be sent. Use multi-select
+                    (Ctrl/Cmd+click) or choose again to add more.
+                  </p>
+                  <ul
+                    style={{
+                      margin: '0.25rem 0 0.35rem',
+                      paddingLeft: '1.1rem',
+                      fontSize: '0.72rem',
+                      lineHeight: 1.35,
+                      maxHeight: '6.5rem',
+                      overflow: 'auto',
+                    }}
+                  >
+                    {multipart.proofFiles.map((f) => (
+                      <li key={`${f.name}-${f.size}-${f.lastModified}`}>{f.name}</li>
+                    ))}
+                  </ul>
+                  <div style={btnRow}>
+                    <button
+                      type="button"
+                      style={btnSecondary}
+                      onClick={() => setMultipart((m) => ({ ...m, proofFiles: [] }))}
+                    >
+                      Clear proof files
+                    </button>
+                  </div>
+                </>
+              )}
               </div>
             </div>
           ) : (
@@ -836,10 +886,46 @@ export function App() {
                 type="file"
                 multiple
                 style={fileInput}
-                onChange={(e) =>
-                  setMultipart((m) => ({ ...m, appealFiles: e.target.files }))
-                }
+                onChange={(e) => {
+                  const incoming = Array.from(e.target.files ?? []);
+                  e.target.value = '';
+                  setMultipart((m) => ({
+                    ...m,
+                    appealFiles: mergeUniqueFiles(m.appealFiles, incoming),
+                  }));
+                }}
               />
+              {multipart.appealFiles.length > 0 && (
+                <>
+                  <p style={{ ...help, marginTop: '0.35rem' }}>
+                    {multipart.appealFiles.length} file(s) will be sent. Use multi-select
+                    (Ctrl/Cmd+click) or choose again to add more.
+                  </p>
+                  <ul
+                    style={{
+                      margin: '0.25rem 0 0.35rem',
+                      paddingLeft: '1.1rem',
+                      fontSize: '0.72rem',
+                      lineHeight: 1.35,
+                      maxHeight: '6.5rem',
+                      overflow: 'auto',
+                    }}
+                  >
+                    {multipart.appealFiles.map((f) => (
+                      <li key={`${f.name}-${f.size}-${f.lastModified}`}>{f.name}</li>
+                    ))}
+                  </ul>
+                  <div style={btnRow}>
+                    <button
+                      type="button"
+                      style={btnSecondary}
+                      onClick={() => setMultipart((m) => ({ ...m, appealFiles: [] }))}
+                    >
+                      Clear appeal files
+                    </button>
+                  </div>
+                </>
+              )}
               </div>
             </div>
           )}

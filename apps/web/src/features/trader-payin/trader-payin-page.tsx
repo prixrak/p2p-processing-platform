@@ -2,21 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  ArrowDownToLine,
-  Filter,
-  Eye,
-  FileText,
-} from 'lucide-react';
+import { ArrowDownToLine, Eye, FileText } from 'lucide-react';
 import type { OrderDto } from '@p2p/shared';
 import { Button } from '@/components/ui/button';
 import { PayinOrderStatusBadge } from '@/components/ui/order-status-badge';
-import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { Table } from '@/components/ui/table';
-import { FilterInput } from '@/components/ui/filters';
+import { ListPageHeader, SearchStatusRow } from '@/components/ui/list-page-tools';
 import { Tabs } from '@/components/ui/tabs';
-import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/toast';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -56,7 +49,6 @@ export function TraderPayInPage() {
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<OrderDto | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
   const [receiptOrder, setReceiptOrder] = useState<OrderDto | null>(null);
   const [viewingProofFileId, setViewingProofFileId] = useState<string | null>(null);
   const [finalizeMenu, setFinalizeMenu] = useState<OrderFinalizeMenuState>(null);
@@ -169,6 +161,7 @@ export function TraderPayInPage() {
     value: s,
     label: payinStatusLabel(s),
   }));
+  const statusSelectOptions = [{ value: '', label: 'All statuses' }, ...statusOptions];
 
   const timerOrCompletionColumn =
     listTab === 'history'
@@ -283,20 +276,22 @@ export function TraderPayInPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-center gap-3">
-          <ArrowDownToLine className="h-6 w-6 text-accent-green" />
-          <div>
-            <h1 className="text-2xl font-bold text-text-primary">Pay-In Orders</h1>
-            <p className="text-sm text-text-muted">
-              {listTab === 'current'
-                ? 'Active requests: pending assignment, awaiting payer, or awaiting your confirmation.'
-                : 'Completed or closed orders: paid, canceled, appeal, or upload failed.'}{' '}
-              <span className="text-text-secondary">({data?.total ?? 0} in this view)</span>
-            </p>
+      <ListPageHeader
+        title={
+          <div className="flex items-center gap-3">
+            <ArrowDownToLine className="h-6 w-6 text-accent-green" />
+            <div>
+              <h1 className="text-2xl font-bold text-text-primary">Pay-In Orders</h1>
+              <p className="text-sm text-text-muted">
+                {listTab === 'current'
+                  ? 'Active requests: pending assignment, awaiting payer, or awaiting your confirmation.'
+                  : 'Completed or closed orders: paid, canceled, appeal, or upload failed.'}{' '}
+                <span className="text-text-secondary">({data?.total ?? 0} in this view)</span>
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
+        }
+        actions={
           <Tabs
             tabs={[
               { key: 'current', label: 'Current' },
@@ -313,39 +308,17 @@ export function TraderPayInPage() {
               );
             }}
           />
-          <Button variant="secondary" size="sm" onClick={() => setShowFilters(!showFilters)}>
-            <Filter className="h-4 w-4" />
-            Filters
-          </Button>
-        </div>
-      </div>
-
-      <FilterInput
-        label="Search"
-        value={searchInput}
-        onChange={setSearchInput}
-        placeholder="Order ID, request ID, requisite, or account owner..."
-        className="w-full max-w-md"
+        }
       />
 
-      {showFilters && (
-        <Card>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Select
-              label="Status"
-              options={statusOptions}
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              placeholder="All statuses"
-            />
-          </div>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setStatusFilter('')}>
-              Clear
-            </Button>
-          </div>
-        </Card>
-      )}
+      <SearchStatusRow
+        searchValue={searchInput}
+        onSearchChange={setSearchInput}
+        searchPlaceholder="Order ID, request ID, requisite, or account owner..."
+        statusValue={statusFilter}
+        onStatusChange={setStatusFilter}
+        statusOptions={statusSelectOptions}
+      />
 
       <Table
         columns={columns}
