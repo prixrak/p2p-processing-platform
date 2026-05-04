@@ -1,27 +1,37 @@
 'use client';
 
-import { Input } from '@/components/ui/input';
+import type { SelectOption } from '@/components/ui/select';
+import { Select } from '@/components/ui/select';
 
 export function CascadeCoverageSection({
   currency,
   setCurrency,
+  currencyOptions,
+  currenciesLoading,
   nominals,
 }: {
   currency: string;
   setCurrency: (v: string) => void;
+  currencyOptions: SelectOption[];
+  currenciesLoading: boolean;
   nominals: { nominal: number; count: number }[] | undefined;
 }) {
+  const disabled = currencyOptions.length === 0;
+
   return (
     <section className="rounded-xl border border-border-primary bg-surface-secondary p-5">
       <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label className="text-xs text-text-muted">Coverage currency</label>
-          <Input
-            className="mt-1 w-28"
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-          />
-        </div>
+        <Select
+          label="Coverage currency"
+          labelClassName="text-xs font-normal text-text-muted"
+          rootClassName="w-auto min-w-0"
+          className="min-w-[8.5rem]"
+          options={currencyOptions}
+          value={currency}
+          onChange={(e) => setCurrency(e.target.value)}
+          disabled={disabled}
+          placeholder={currenciesLoading ? 'Loading…' : 'No currencies'}
+        />
       </div>
       {nominals && (
         <div className="mt-4 overflow-x-auto">

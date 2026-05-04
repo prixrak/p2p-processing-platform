@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GitFork } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { parseDecimalInput } from '@/lib/decimal-input';
-import { cascadeKeys } from '@/lib/query-keys';
+import { cascadeKeys, currencyKeys, fetchCurrencyList } from '@/lib/query-keys';
 import type { CascadeSettings, NominalRow, TrafficPercentPolicy } from './cascade-types';
 import { CascadeCoverageSection } from './cascade-coverage-section';
 import { CascadeGlobalSettingsSection } from './cascade-global-settings-section';
@@ -58,6 +58,32 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
       return res.nominals;
     },
   });
+
+  const currenciesQ = useQuery({
+    queryKey: currencyKeys.list(),
+    queryFn: fetchCurrencyList,
+  });
+
+  const currencyOptions = useMemo(() => {
+    const rows = currenciesQ.data ?? [];
+    const active = rows.filter((c) => c.isActive);
+    const source = active.length > 0 ? active : rows;
+    return source
+      .slice()
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map((c) => ({
+        label: c.code.trim().toUpperCase(),
+        value: c.code.trim().toUpperCase(),
+      }));
+  }, [currenciesQ.data]);
+
+  useEffect(() => {
+    if (currencyOptions.length === 0) return;
+    const codes = new Set(currencyOptions.map((o) => o.value));
+    if (!codes.has(currency)) {
+      setCurrency(currencyOptions[0]!.value);
+    }
+  }, [currencyOptions, currency]);
 
   const coverageQ = useQuery({
     queryKey: cascadeKeys.coverage(currency),
@@ -161,6 +187,8 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
       <CascadeCoverageSection
         currency={currency}
         setCurrency={setCurrency}
+        currencyOptions={currencyOptions}
+        currenciesLoading={currenciesQ.isLoading}
         nominals={coverageQ.data?.nominals}
       />
 

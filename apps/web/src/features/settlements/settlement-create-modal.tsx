@@ -33,18 +33,18 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { errorMessageFromUnknown } from '@/lib/error-message';
 import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
 import { parseDecimalInput } from '@/lib/decimal-input';
+import {
+  ledgerAmountForCurrency,
+  maxUsdtDebitAllowed,
+  normalizeTraderApiProfileForSettlement,
+  type SettlementTraderLedgerSnapshot,
+} from '@/features/settlements/settlement-trader-ledger';
 
 type SettlementTab = 'trader' | 'payout' | 'merchant';
 
 interface TraderOption {
   id: string;
   name: string;
-}
-
-interface TraderBalance {
-  currency: string;
-  available: number;
-  frozen: number;
 }
 
 interface PayoutSpecialistOption {
@@ -152,9 +152,18 @@ export function SettlementCreateModal({
     return row ? Number(row.amount ?? 0) : 0;
   }, [merchantBalances, merchantCurrency]);
 
-  const { data: traderBalances } = useQuery<TraderBalance[]>({
-    queryKey: settlementKeys.staffTraderBalances(queryPrefix, traderId),
-    queryFn: () => api.get(internalPaths.traderBalances(traderId)),
+  const {
+    data: traderLedgerSnapshot,
+    isLoading: traderLedgerLoading,
+  } = useQuery<SettlementTraderLedgerSnapshot>({
+    queryKey: settlementKeys.traderLedgerForSettlementModal(queryPrefix, traderId),
+    queryFn: async () => {
+      const raw = await api.get<{
+        overdraftLimit?: unknown;
+        balances?: Array<{ currency: unknown; amount: unknown }>;
+      }>(internalPaths.trader(traderId));
+      return normalizeTraderApiProfileForSettlement(raw);
+    },
     enabled: open && tab === 'trader' && !!traderId,
   });
 
@@ -298,7 +307,15 @@ export function SettlementCreateModal({
     return `Debit ${fiat.toLocaleString()} ${merchantCurrency} from the merchant and record ${usdt.toLocaleString()} USDT paid out to the listed address.`;
   }
 
-  const currentTraderBalance = traderBalances?.find((b) => b.currency === traderCurrency);
+  const ledgerForSelectedCurrency = traderLedgerSnapshot
+    ? ledgerAmountForCurrency(traderLedgerSnapshot.rows, traderCurrency)
+    : 0;
+
+  const usdtLedgerRow = traderLedgerSnapshot?.rows.find((r) => r.currency === 'USDT');
+  const usdtMaxDebit =
+    traderLedgerSnapshot && usdtLedgerRow !== undefined
+      ? maxUsdtDebitAllowed(usdtLedgerRow.ledger, traderLedgerSnapshot.overdraftLimitUsdt)
+      : null;
 
   const payoutSelected = payoutOptions.find((p) => p.id === payoutSpecialistId);
 
@@ -351,6 +368,73 @@ export function SettlementCreateModal({
               required
             />
 
+            {traderId ? (
+              <div className="rounded-lg border border-border-primary bg-bg-tertiary/60 p-4 text-sm space-y-3">
+                <p className="font-medium text-text-primary">Ledger overview</p>
+                <p className="text-xs text-text-muted leading-relaxed">
+                  Positive amounts are on-platform ledger balances. For off-platform payouts to the
+                  trader, operators usually book a DEBIT in the relevant currency. USDT can go
+                  negative within the overdraft limit for Pay-In capacity.
+                </p>
+                {traderLedgerLoading ? (
+                  <p className="text-xs text-text-muted">Loading balances…</p>
+                ) : traderLedgerSnapshot && traderLedgerSnapshot.rows.length === 0 ? (
+                  <p className="text-xs text-text-muted">No ledger rows for this trader yet.</p>
+                ) : traderLedgerSnapshot && traderLedgerSnapshot.rows.length > 0 ? (
+                  <div className="overflow-x-auto rounded-md border border-border-primary">
+                    <table className="w-full text-xs">
+                      <thead className="bg-bg-tertiary text-text-muted text-left">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">Currency</th>
+                          <th className="px-3 py-2 font-medium text-end">Ledger balance</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-text-primary">
+                        {traderLedgerSnapshot.rows.map((r) => (
+                          <tr key={r.currency} className="border-t border-border-primary">
+                            <td className="px-3 py-2 font-mono">{r.currency}</td>
+                            <td className="px-3 py-2 text-end font-mono tabular-nums">
+                              {r.ledger.toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+                {traderLedgerSnapshot && usdtLedgerRow !== undefined ? (
+                  <div className="space-y-1 text-xs text-text-secondary border-t border-border-primary pt-3">
+                    <p>
+                      <span className="text-text-muted">USDT overdraft limit: </span>
+                      <span className="font-mono text-text-primary">
+                        {traderLedgerSnapshot.overdraftLimitUsdt.toLocaleString()}
+                      </span>
+                    </p>
+                    <p>
+                      <span className="text-text-muted">Max USDT DEBIT allowed (ledger + overdraft): </span>
+                      <span className="font-mono text-text-primary">
+                        {usdtMaxDebit !== null ? usdtMaxDebit.toLocaleString() : '—'}
+                      </span>
+                    </p>
+                    {usdtLedgerRow.ledger < 0 ? (
+                      <p className="text-amber-600">
+                        USDT ledger is negative (overdraft in use). CREDIT increases the balance;
+                        DEBIT cannot exceed the max above.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : traderLedgerSnapshot &&
+                  !traderLedgerLoading &&
+                  traderLedgerSnapshot.rows.length > 0 &&
+                  usdtLedgerRow === undefined ? (
+                  <p className="text-xs text-text-muted border-t border-border-primary pt-3">
+                    No USDT ledger row: USDT balance is 0 unless you add a CREDIT or trading
+                    activity creates one.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="grid grid-cols-2 gap-4">
               <Select
                 label="Type"
@@ -394,14 +478,14 @@ export function SettlementCreateModal({
               placeholder="Optional note…"
             />
 
-            {traderId && currentTraderBalance && (
+            {traderId && !traderLedgerLoading && traderLedgerSnapshot ? (
               <div className="bg-bg-tertiary rounded-lg p-4 text-sm">
-                <p className="text-text-muted mb-2">Balance preview</p>
+                <p className="text-text-muted mb-2">Balance preview ({traderCurrency})</p>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-text-muted text-xs">Current</p>
+                    <p className="text-text-muted text-xs">Current ledger</p>
                     <p className="text-text-primary font-mono">
-                      {currentTraderBalance.available.toLocaleString()} {traderCurrency}
+                      {ledgerForSelectedCurrency.toLocaleString()} {traderCurrency}
                     </p>
                   </div>
                   <div>
@@ -414,7 +498,7 @@ export function SettlementCreateModal({
                       }`}
                     >
                       {(
-                        currentTraderBalance.available +
+                        ledgerForSelectedCurrency +
                         (traderSettlementType === 'credit' ? 1 : -1) *
                           (parseDecimalInput(traderAmount) || 0)
                       ).toLocaleString()}{' '}
@@ -423,7 +507,7 @@ export function SettlementCreateModal({
                   </div>
                 </div>
               </div>
-            )}
+            ) : null}
           </>
         )}
 
@@ -489,10 +573,15 @@ export function SettlementCreateModal({
             />
 
             {payoutSelected ? (
-              <div className="bg-bg-tertiary rounded-lg p-3 text-xs text-text-secondary">
-                <p>
+              <div className="rounded-lg border border-border-primary bg-bg-tertiary/60 p-4 text-sm space-y-2">
+                <p className="font-medium text-text-primary">USDT ledger (Pay-Out specialist)</p>
+                <p className="text-xs text-text-muted leading-relaxed">
+                  On-platform balance before this settlement. After you send USDT off-chain, a DEBIT
+                  here reduces this ledger to match.
+                </p>
+                <p className="text-text-secondary text-xs">
                   Current balance:{' '}
-                  <span className="font-mono text-text-primary">
+                  <span className="font-mono text-base text-text-primary">
                     {payoutSelected.balance_usdt.toFixed(4)} USDT
                   </span>
                 </p>

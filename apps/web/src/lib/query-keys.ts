@@ -163,8 +163,9 @@ export const settlementKeys = {
   payoutSpecialistOptions: ['settlements', 'payout-specialist-options'] as const,
   merchantsBriefOptions: ['merchants', 'brief-options'] as const,
   merchantBalances: (merchantId: string) => ['merchants', merchantId, 'balances'] as const,
-  staffTraderBalances: (prefix: 'admin' | 'owner', traderId: string) =>
-    [prefix, 'traders', traderId, 'balances'] as const,
+  /** Staff settlement modal: GET /api/traders/:id snapshot for ledger + overdraft. */
+  traderLedgerForSettlementModal: (prefix: StaffRolePrefix, traderId: string) =>
+    [prefix, 'settlements', 'modal-trader-ledger', traderId] as const,
 };
 
 export const staffMerchantsOptionsKey = (prefix: 'admin' | 'owner') =>
