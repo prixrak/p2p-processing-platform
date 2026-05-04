@@ -617,7 +617,7 @@ model RequisiteGroup {
   traderId        String    @map("trader_id") @db.Uuid
   name            String
   currencyId      String    @map("currency_id") @db.Uuid
-  paymentMethodId String?   @map("payment_method_id") @db.Uuid
+  paymentMethodId String    @map("payment_method_id") @db.Uuid
   isActive        Boolean   @default(true) @map("is_active")
   archivedAt      DateTime? @map("archived_at")
   deactivatedAt   DateTime? @map("deactivated_at")
@@ -625,7 +625,7 @@ model RequisiteGroup {
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
   trader         TraderProfile  @relation(fields: [traderId], references: [id], onDelete: Cascade)
-  paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id])
   currency       Currency       @relation(fields: [currencyId], references: [id], onDelete: Restrict)
   requisites     Requisite[]
 

@@ -30,7 +30,7 @@ import type {
   RequisiteFormData,
   RequisiteGroupApi,
 } from './types';
-import { defaultRequisiteForm, num, requisiteGroupCurrencyCode } from './utils';
+import { defaultRequisiteForm, num, paymentMethodsForPayinCurrency, requisiteGroupCurrencyCode } from './utils';
 import { TraderRequisitesGroupTable } from './requisite-group-table';
 import {
   TraderAddGroupModal,
@@ -143,6 +143,38 @@ export function TraderRequisitesPage() {
     });
   }, [groups, search]);
 
+  const groupCreatePmOptions = useMemo(() => {
+    return paymentMethodsForPayinCurrency(paymentMethods, groupForm.currency).map((p) => ({
+      value: p.id,
+      label: p.displayName || p.name,
+    }));
+  }, [paymentMethods, groupForm.currency]);
+
+  const groupEditPmOptions = useMemo(() => {
+    if (!editingGroup) return [];
+    const code = requisiteGroupCurrencyCode(editingGroup.currency);
+    let list = paymentMethodsForPayinCurrency(paymentMethods, code);
+    const selectedId = editingGroup.paymentMethod.id;
+    if (!list.some((p) => p.id === selectedId)) {
+      const current = paymentMethods.find((p) => p.id === selectedId);
+      if (current) {
+        list = [current, ...list];
+      } else {
+        list = [
+          {
+            id: editingGroup.paymentMethod.id,
+            displayName: editingGroup.paymentMethod.displayName,
+            name: editingGroup.paymentMethod.name,
+            availability: 'PAYIN' as const,
+            country: { currency: { code } },
+          },
+          ...list,
+        ];
+      }
+    }
+    return list.map((p) => ({ value: p.id, label: p.displayName || p.name }));
+  }, [paymentMethods, editingGroup]);
+
   const invalidateGroups = () => {
     queryClient.invalidateQueries({ queryKey: traderKeys.requisiteGroupsScope });
     queryClient.invalidateQueries({ queryKey: traderKeys.payinAssignRanges });
@@ -153,7 +185,7 @@ export function TraderRequisitesPage() {
       api.post(internalPaths.requisiteGroupsMyRoot, {
         name: groupForm.name,
         currency: groupForm.currency,
-        ...(groupForm.payment_method_id ? { paymentMethodId: groupForm.payment_method_id } : {}),
+        paymentMethodId: groupForm.payment_method_id,
       }),
     onSuccess: () => {
       invalidateGroups();
@@ -168,7 +200,7 @@ export function TraderRequisitesPage() {
       body,
     }: {
       id: string;
-      body: { name?: string; isActive?: boolean; paymentMethodId?: string | null };
+      body: { name?: string; isActive?: boolean; paymentMethodId?: string };
     }) => api.patch(internalPaths.requisiteGroupMy(id), body),
     onSuccess: () => {
       invalidateGroups();
@@ -188,13 +220,13 @@ export function TraderRequisitesPage() {
 
   const createMutation = useMutation({
     mutationFn: ({ groupId, data }: { groupId: string; data: RequisiteFormData }) => {
-      const bankId = data.bank_id ? Number(data.bank_id) : undefined;
+      const bankId = Number(data.bank_id);
       return api.post(internalPaths.requisitesMy, {
         groupId,
         type: data.type,
         number: data.number,
         owner: data.owner,
-        ...(bankId ? { bankId } : {}),
+        bankId,
         minAmount: data.min_amount,
         maxAmount: data.max_amount,
         limitTotalAmount: data.limit_amount,
@@ -268,7 +300,7 @@ export function TraderRequisitesPage() {
     setEditingGroup(g);
     setGroupEditForm({
       name: g.name,
-      payment_method_id: g.paymentMethod?.id ?? '',
+      payment_method_id: g.paymentMethod.id,
     });
   }
 
@@ -276,10 +308,6 @@ export function TraderRequisitesPage() {
   const currencyOptions = currencies
     .filter((c) => c.isActive)
     .map((c) => ({ value: c.code, label: c.code }));
-  const pmOptions = paymentMethods.map((p) => ({
-    value: p.id,
-    label: p.displayName || p.name,
-  }));
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -517,7 +545,7 @@ export function TraderRequisitesPage() {
         groupForm={groupForm}
         setGroupForm={setGroupForm}
         currencyOptions={currencyOptions}
-        pmOptions={pmOptions}
+        pmOptions={groupCreatePmOptions}
         createGroupMutation={createGroupMutation}
         onSubmit={() => createGroupMutation.mutate()}
       />
@@ -527,7 +555,7 @@ export function TraderRequisitesPage() {
         onClose={() => setEditingGroup(null)}
         groupEditForm={groupEditForm}
         setGroupEditForm={setGroupEditForm}
-        pmOptions={pmOptions}
+        pmOptions={groupEditPmOptions}
         updateGroupMutation={updateGroupMutation}
         onSubmit={() => {
           if (!editingGroup) return;
@@ -535,7 +563,7 @@ export function TraderRequisitesPage() {
             id: editingGroup.id,
             body: {
               name: groupEditForm.name,
-              paymentMethodId: groupEditForm.payment_method_id || null,
+              paymentMethodId: groupEditForm.payment_method_id,
             },
           });
         }}

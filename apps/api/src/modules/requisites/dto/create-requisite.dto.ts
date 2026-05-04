@@ -33,10 +33,13 @@ export class CreateRequisiteDto {
   @IsNotEmpty()
   owner: string;
 
-  @ApiPropertyOptional({ description: 'Bank ID' })
+  @ApiProperty({
+    description:
+      'Catalog bank ID (required for pay-in routing and merchant-visible bank lists)',
+  })
   @IsInt()
-  @IsOptional()
-  bankId?: number;
+  @Min(1)
+  bankId: number;
 
   @ApiPropertyOptional({ description: 'Bank code (e.g. MFO, SWIFT)' })
   @IsString()

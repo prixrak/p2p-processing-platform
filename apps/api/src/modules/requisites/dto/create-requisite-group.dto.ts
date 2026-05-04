@@ -1,5 +1,5 @@
-import { IsString, IsNotEmpty, IsOptional, IsUUID, MaxLength } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, IsUUID, MaxLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateRequisiteGroupDto {
   @ApiProperty({ description: 'Display name for this group of requisites' })
@@ -14,8 +14,11 @@ export class CreateRequisiteGroupDto {
   @MaxLength(10)
   currency: string;
 
-  @ApiPropertyOptional({ description: 'Optional catalog payment method link' })
+  @ApiProperty({
+    description:
+      'Catalog payment method ID (Pay-In routing and requisite-type rules; must match group currency)',
+  })
   @IsUUID()
-  @IsOptional()
-  paymentMethodId?: string;
+  @IsNotEmpty()
+  paymentMethodId: string;
 }

@@ -31,7 +31,7 @@ export interface RequisiteGroupApi {
   isActive: boolean;
   archivedAt: string | null;
   createdAt: string;
-  paymentMethod: { id: string; displayName: string; name: string } | null;
+  paymentMethod: { id: string; displayName: string; name: string };
   requisites: RequisiteApiRow[];
 }
 
@@ -44,6 +44,8 @@ export interface PaymentMethodRow {
   id: string;
   displayName: string;
   name: string;
+  availability: 'PAYIN' | 'PAYOUT' | 'BOTH';
+  country?: { currency?: { code: string } | null } | null;
 }
 
 export interface AuditItem {

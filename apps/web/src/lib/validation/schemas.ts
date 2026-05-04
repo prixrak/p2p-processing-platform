@@ -209,12 +209,12 @@ export const settlementMerchantFieldsSchema = z.object({
 export const requisiteGroupCreateSchema = z.object({
   name: z.string().trim().min(1, 'Enter a group name').max(120),
   currency: z.string().trim().min(1, 'Select a currency'),
-  payment_method_id: z.string(),
+  payment_method_id: z.string().trim().uuid('Select a payment method'),
 });
 
 export const requisiteGroupEditSchema = z.object({
   name: z.string().trim().min(1, 'Enter a group name').max(120),
-  payment_method_id: z.string(),
+  payment_method_id: z.string().trim().uuid('Select a payment method'),
 });
 
 function finiteNonNegative(n: number, path: string, ctx: z.RefinementCtx) {
@@ -323,7 +323,12 @@ export const requisiteCreateSchema = z
     type: z.nativeEnum(RequisiteType),
     number: z.string(),
     owner: z.string().trim().min(2, 'Enter the account owner name'),
-    bank_id: z.string(),
+    bank_id: z
+      .string()
+      .trim()
+      .min(1, 'Select a bank')
+      .regex(/^\d+$/, 'Select a bank')
+      .refine((s) => Number(s) >= 1, 'Select a bank'),
     accepts_other_banks: z.boolean(),
     min_amount: z.number(),
     max_amount: z.number(),

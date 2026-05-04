@@ -63,7 +63,9 @@ export class PaymentMethodsService {
         ...(countryId ? { countryId } : {}),
         ...(activeOnly ? { isActive: true } : {}),
       },
-      include: { country: true },
+      include: {
+        country: { include: { currency: { select: { code: true } } } },
+      },
       orderBy: [{ countryId: 'asc' }, { name: 'asc' }],
     });
   }
@@ -71,7 +73,7 @@ export class PaymentMethodsService {
   async findById(id: string) {
     const row = await this.prisma.paymentMethod.findUnique({
       where: { id },
-      include: { country: true },
+      include: { country: { include: { currency: { select: { code: true } } } } },
     });
     if (!row) throw new NotFoundException(`PaymentMethod ${id} not found`);
     return row;
@@ -90,7 +92,7 @@ export class PaymentMethodsService {
         requisiteType: dto.requisiteType,
         availability: dto.availability,
       },
-      include: { country: true },
+      include: { country: { include: { currency: { select: { code: true } } } } },
     });
     this.logger.log(`PaymentMethod created: ${dto.name}`);
     return row;
@@ -105,7 +107,7 @@ export class PaymentMethodsService {
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
         ...(dto.availability !== undefined ? { availability: dto.availability } : {}),
       },
-      include: { country: true },
+      include: { country: { include: { currency: { select: { code: true } } } } },
     });
     this.logger.log(`PaymentMethod ${id} updated`);
     return row;

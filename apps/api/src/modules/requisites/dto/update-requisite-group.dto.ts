@@ -13,7 +13,10 @@ export class UpdateRequisiteGroupDto {
   @IsOptional()
   isActive?: boolean;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      'Replace catalog payment method (must remain Pay-In capable and match group currency); omit to leave unchanged — cannot be cleared',
+  })
   @IsUUID()
   @IsOptional()
   paymentMethodId?: string | null;

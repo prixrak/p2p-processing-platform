@@ -201,6 +201,15 @@ export class RequisitesService {
       throw new BadRequestException('GROUP_ARCHIVED: cannot add requisite to an archived group');
     }
 
+    const bank = await this.prisma.bank.findFirst({
+      where: { id: dto.bankId, isActive: true },
+    });
+    if (!bank) {
+      throw new BadRequestException(
+        'BANK_NOT_FOUND: bank does not exist, is inactive, or was removed from the catalog',
+      );
+    }
+
     const created = await this.prisma.requisite.create({
       data: {
         traderId,

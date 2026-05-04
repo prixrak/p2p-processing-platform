@@ -23,6 +23,24 @@ interface Bank {
   status: string;
 }
 
+/** Admin API returns Prisma rows with `isActive`, not `status`. */
+interface BankApiRow {
+  id: number;
+  name: string;
+  logoFileId?: string | null;
+  logoUrl?: string | null;
+  isActive: boolean;
+}
+
+function bankApiToBank(row: BankApiRow, fallback?: Pick<Bank, 'logoUrl'>): Bank {
+  return {
+    id: String(row.id),
+    name: row.name,
+    logoUrl: row.logoUrl ?? fallback?.logoUrl ?? null,
+    status: row.isActive ? 'active' : 'inactive',
+  };
+}
+
 export function BanksPanel() {
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -35,7 +53,10 @@ export function BanksPanel() {
 
   const { data, isLoading } = useQuery({
     queryKey: ownerReferenceKeys.banks,
-    queryFn: () => api.get<Bank[]>(internalPaths.banksAdmin),
+    queryFn: async () => {
+      const rows = await api.get<BankApiRow[]>(internalPaths.banksAdmin);
+      return rows.map((row) => bankApiToBank(row));
+    },
   });
 
   const rows = data ?? [];
@@ -58,13 +79,13 @@ export function BanksPanel() {
         const uploaded = await api.upload<{ id: string }>(internalPaths.fileUpload, fd);
         logoFileId = uploaded.id;
       }
-      return api.post<Bank>(internalPaths.banks, {
+      return api.post<BankApiRow>(internalPaths.banks, {
         name: form.name.trim(),
         ...(logoFileId ? { logoFileId } : {}),
       });
     },
     onSuccess: (row) => {
-      upsertSortedArrayCache(queryClient, ownerReferenceKeys.banks, row, {
+      upsertSortedArrayCache(queryClient, ownerReferenceKeys.banks, bankApiToBank(row), {
         idOf: (b: Bank) => b.id,
         sort: (a: Bank, b: Bank) => a.name.localeCompare(b.name),
       });
@@ -73,7 +94,7 @@ export function BanksPanel() {
   });
 
   const updateBank = useMutation({
-    mutationFn: async (): Promise<Bank> => {
+    mutationFn: async (): Promise<BankApiRow> => {
       if (!editItem) {
         throw new Error('No bank selected');
       }
@@ -84,13 +105,15 @@ export function BanksPanel() {
         const uploaded = await api.upload<{ id: string }>(internalPaths.fileUpload, fd);
         logoFileId = uploaded.id;
       }
-      return api.put<Bank>(internalPaths.bank(editItem.id), {
+      return api.put<BankApiRow>(internalPaths.bank(editItem.id), {
         name: form.name.trim(),
         ...(logoFileId ? { logoFileId } : {}),
       });
     },
     onSuccess: (row) => {
-      upsertSortedArrayCache(queryClient, ownerReferenceKeys.banks, row, {
+      const prev = queryClient.getQueryData<Bank[]>(ownerReferenceKeys.banks) ?? [];
+      const existing = prev.find((b) => b.id === String(row.id));
+      upsertSortedArrayCache(queryClient, ownerReferenceKeys.banks, bankApiToBank(row, existing ?? undefined), {
         idOf: (b: Bank) => b.id,
         sort: (a: Bank, b: Bank) => a.name.localeCompare(b.name),
       });
@@ -101,13 +124,16 @@ export function BanksPanel() {
   const toggleStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       status === 'active'
-        ? api.patch<Bank>(internalPaths.bankDeactivate(id))
-        : api.patch<Bank>(internalPaths.bankActivate(id)),
-    onSuccess: (row) =>
-      upsertSortedArrayCache(queryClient, ownerReferenceKeys.banks, row, {
+        ? api.patch<BankApiRow>(internalPaths.bankDeactivate(id))
+        : api.patch<BankApiRow>(internalPaths.bankActivate(id)),
+    onSuccess: (row) => {
+      const prev = queryClient.getQueryData<Bank[]>(ownerReferenceKeys.banks) ?? [];
+      const existing = prev.find((b) => b.id === String(row.id));
+      upsertSortedArrayCache(queryClient, ownerReferenceKeys.banks, bankApiToBank(row, existing ?? undefined), {
         idOf: (b: Bank) => b.id,
         sort: (a: Bank, b: Bank) => a.name.localeCompare(b.name),
-      }),
+      });
+    },
   });
 
   const closeCreate = () => {
@@ -205,7 +231,10 @@ export function BanksPanel() {
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold text-text-primary">Banks</h2>
-        <p className="mt-0.5 text-sm text-text-muted">Manage bank directory</p>
+        <p className="mt-0.5 text-sm text-text-muted">
+          Manage bank directory. Use deactivate instead of deleting banks that appear on historical
+          orders; merchants only see active banks (for example via Pay-In bank lists).
+        </p>
       </div>
 
       <SearchStatusRow

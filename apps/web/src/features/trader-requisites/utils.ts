@@ -1,12 +1,25 @@
 import { RequisiteType } from '@p2p/shared';
 import { ibanInputMaxLength } from '@/lib/validation/iban-registry';
-import type { RequisiteFormData } from './types';
+import type { PaymentMethodRow, RequisiteFormData } from './types';
 
 /** API returns `currency.code` when the group includes the currency relation */
 export function requisiteGroupCurrencyCode(
   currency: string | { code: string },
 ): string {
   return typeof currency === 'string' ? currency : currency.code;
+}
+
+/** Active catalog methods that accept Pay-In for the given ISO currency code. */
+export function paymentMethodsForPayinCurrency(
+  methods: PaymentMethodRow[],
+  currencyCode: string,
+): PaymentMethodRow[] {
+  const code = currencyCode.trim().toUpperCase();
+  return methods.filter((p) => {
+    const cc = p.country?.currency?.code?.toUpperCase?.() ?? '';
+    if (cc !== code) return false;
+    return p.availability === 'PAYIN' || p.availability === 'BOTH';
+  });
 }
 
 export function num(v: unknown): number {

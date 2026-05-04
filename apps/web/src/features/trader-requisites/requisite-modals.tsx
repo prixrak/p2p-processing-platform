@@ -88,15 +88,30 @@ export function TraderAddGroupModal({
           label="Currency"
           options={currencyOptions.length ? currencyOptions : [{ value: 'UAH', label: 'UAH' }]}
           value={groupForm.currency}
-          onChange={(e) => setGroupForm({ ...groupForm, currency: e.target.value })}
+          onChange={(e) =>
+            setGroupForm((prev) => ({
+              ...prev,
+              currency: e.target.value,
+              payment_method_id: '',
+            }))
+          }
           error={errors.currency}
         />
         <Select
-          label="Catalog payment method (optional)"
-          options={[{ value: '', label: '—' }, ...pmOptions]}
+          label="Catalog payment method"
+          placeholder={pmOptions.length ? 'Select a payment method' : undefined}
+          options={pmOptions}
           value={groupForm.payment_method_id}
           onChange={(e) => setGroupForm({ ...groupForm, payment_method_id: e.target.value })}
+          error={errors.payment_method_id}
+          required
         />
+        {!pmOptions.length ? (
+          <p className="text-sm text-text-muted">
+            No Pay-In catalog payment methods exist for this currency. Ask an administrator to add
+            one before creating a group.
+          </p>
+        ) : null}
         {createGroupMutation.isError ? (
           <FormAlert>{errorMessageFromUnknown(createGroupMutation.error)}</FormAlert>
         ) : null}
@@ -132,7 +147,7 @@ export function TraderEditGroupModal({
     unknown,
     {
       id: string;
-      body: { name?: string; isActive?: boolean; paymentMethodId?: string | null };
+      body: { name?: string; isActive?: boolean; paymentMethodId?: string };
     }
   >;
   onSubmit: () => void;
@@ -167,12 +182,21 @@ export function TraderEditGroupModal({
           />
           <Select
             label="Catalog payment method"
-            options={[{ value: '', label: '—' }, ...pmOptions]}
+            placeholder={pmOptions.length ? 'Select a payment method' : undefined}
+            options={pmOptions}
             value={groupEditForm.payment_method_id}
             onChange={(e) =>
               setGroupEditForm({ ...groupEditForm, payment_method_id: e.target.value })
             }
+            error={errors.payment_method_id}
+            required
           />
+          {!pmOptions.length ? (
+            <p className="text-sm text-text-muted">
+              No Pay-In payment methods match this group&apos;s currency. Add a catalog method or
+              contact support.
+            </p>
+          ) : null}
           {updateGroupMutation.isError ? (
             <FormAlert>{errorMessageFromUnknown(updateGroupMutation.error)}</FormAlert>
           ) : null}
@@ -304,11 +328,20 @@ export function TraderAddRequisiteModal({
           error={errors.owner}
         />
         <Select
-          label="Bank (optional)"
-          options={[{ value: '', label: '—' }, ...bankOptions]}
+          label="Bank"
+          placeholder={bankOptions.length ? 'Select a bank' : undefined}
+          options={bankOptions}
           value={form.bank_id}
           onChange={(e) => setForm({ ...form, bank_id: e.target.value })}
+          error={errors.bank_id}
+          required
         />
+        {!bankOptions.length ? (
+          <p className="text-sm text-text-muted">
+            No banks are available in the catalog yet. Ask an administrator to add banks before
+            creating a requisite.
+          </p>
+        ) : null}
         <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
           <input
             type="checkbox"

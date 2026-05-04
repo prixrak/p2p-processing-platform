@@ -3,7 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { PaymentMethodAvailability, Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { PAYIN_IN_FLIGHT_STATUSES, PayInOrderStatus } from '@p2p/shared';
 import { CreateRequisiteGroupDto } from './dto/create-requisite-group.dto';
@@ -35,24 +35,40 @@ export class RequisiteGroupsService {
     private readonly currencies: CurrenciesService,
   ) {}
 
-  async create(traderId: string, dto: CreateRequisiteGroupDto) {
-    if (dto.paymentMethodId) {
-      const pm = await this.prisma.paymentMethod.findUnique({
-        where: { id: dto.paymentMethodId },
-      });
-      if (!pm) {
-        throw new BadRequestException('PAYMENT_METHOD_NOT_FOUND');
-      }
+  /** Ensures the catalog method is Pay-In capable, active, and tied to the group's fiat currency. */
+  private async assertPayinPaymentMethodMatchesGroupCurrency(
+    paymentMethodId: string,
+    groupCurrencyId: string,
+  ): Promise<void> {
+    const pm = await this.prisma.paymentMethod.findFirst({
+      where: {
+        id: paymentMethodId,
+        isActive: true,
+        availability: {
+          in: [PaymentMethodAvailability.PAYIN, PaymentMethodAvailability.BOTH],
+        },
+        country: { currencyId: groupCurrencyId },
+      },
+      select: { id: true },
+    });
+    if (!pm) {
+      throw new BadRequestException(
+        'PAYMENT_METHOD_INVALID: method must exist, be active, support Pay-In, and match the group currency',
+      );
     }
+  }
 
+  async create(traderId: string, dto: CreateRequisiteGroupDto) {
     const currencyId = await this.currencies.requireActiveCurrencyIdByCode(dto.currency);
+
+    await this.assertPayinPaymentMethodMatchesGroupCurrency(dto.paymentMethodId, currencyId);
 
     return this.prisma.requisiteGroup.create({
       data: {
         traderId,
         name: dto.name.trim(),
         currencyId,
-        paymentMethodId: dto.paymentMethodId ?? null,
+        paymentMethodId: dto.paymentMethodId,
       },
       include: {
         paymentMethod: { select: { id: true, displayName: true, name: true } },
@@ -209,22 +225,20 @@ export class RequisiteGroupsService {
     });
     if (!group) throw new NotFoundException('Requisite group not found');
 
-    if (dto.paymentMethodId) {
-      const pm = await this.prisma.paymentMethod.findUnique({
-        where: { id: dto.paymentMethodId },
-      });
-      if (!pm) throw new BadRequestException('PAYMENT_METHOD_NOT_FOUND');
-    }
-
     const data: Prisma.RequisiteGroupUpdateInput = {};
 
     if (dto.name !== undefined) {
       data.name = dto.name.trim();
     }
     if (dto.paymentMethodId !== undefined) {
-      data.paymentMethod = dto.paymentMethodId
-        ? { connect: { id: dto.paymentMethodId } }
-        : { disconnect: true };
+      if (dto.paymentMethodId === null) {
+        throw new BadRequestException('PAYMENT_METHOD_REQUIRED');
+      }
+      await this.assertPayinPaymentMethodMatchesGroupCurrency(
+        dto.paymentMethodId,
+        group.currencyId,
+      );
+      data.paymentMethod = { connect: { id: dto.paymentMethodId } };
     }
 
     if (dto.isActive === true) {
