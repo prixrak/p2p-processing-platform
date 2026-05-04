@@ -36,6 +36,7 @@ import {
   sectionTitle,
   textarea,
 } from './playground-styles';
+import { runJsonLoadTest } from './playground-load-test';
 import { jsonBodyStorageKey, LS, loadKeys } from './playground-storage';
 
 function fileDedupeKey(f: File): string {
@@ -92,6 +93,13 @@ export function App() {
   const [signingHeaders, setSigningHeaders] = useState(emptySigningHeaders);
   const [lockSigningHeaders, setLockSigningHeaders] = useState(false);
   const [signingHeadersError, setSigningHeadersError] = useState<string | null>(null);
+
+  const loadTestAbortRef = useRef<AbortController | null>(null);
+  const [loadTestTotal, setLoadTestTotal] = useState('50');
+  const [loadTestConcurrency, setLoadTestConcurrency] = useState('50');
+  const [loadTestRunning, setLoadTestRunning] = useState(false);
+  const [loadTestProgress, setLoadTestProgress] = useState('');
+  const [loadTestOutput, setLoadTestOutput] = useState('');
 
   const endpoint = useMemo(
     () => EXTERNAL_ENDPOINTS.find((e) => e.id === endpointId) ?? EXTERNAL_ENDPOINTS[0],
@@ -553,6 +561,92 @@ export function App() {
     }
   };
 
+  const stopLoadTest = useCallback(() => {
+    loadTestAbortRef.current?.abort();
+  }, []);
+
+  const runLoadTest = useCallback(async () => {
+    if (!publicKey.trim() || !secret.trim()) {
+      setLoadTestOutput('Set Pay-In / Pay-Out keys for this endpoint direction.');
+      return;
+    }
+    if (endpoint.kind !== 'json') return;
+
+    let template: Record<string, unknown>;
+    try {
+      template = JSON.parse(bodyJson) as Record<string, unknown>;
+    } catch {
+      setLoadTestOutput('Body must be valid JSON.');
+      return;
+    }
+
+    const total = Number.parseInt(loadTestTotal.trim(), 10);
+    const concurrency = Number.parseInt(loadTestConcurrency.trim(), 10);
+
+    loadTestAbortRef.current?.abort();
+    const ac = new AbortController();
+    loadTestAbortRef.current = ac;
+    setLoadTestRunning(true);
+    setLoadTestProgress('0/…');
+    setLoadTestOutput('');
+
+    try {
+      const result = await runJsonLoadTest({
+        fetchUrl: externalApiUrl(endpoint.path),
+        signingPath: endpoint.path,
+        template,
+        useV2,
+        publicKey,
+        secret,
+        total,
+        concurrency,
+        signal: ac.signal,
+        onProgress: (done, tot) => setLoadTestProgress(`${done}/${tot}`),
+      });
+
+      if (!result.ok) {
+        setLoadTestOutput(result.error);
+        return;
+      }
+
+      const failSamples = result.attempts
+        .filter((a) => !a.ok)
+        .slice(0, 15)
+        .map((a) => ({
+          index: a.index,
+          status: a.status,
+          latencyMs: a.latencyMs,
+          detail: a.bodyPreview,
+        }));
+
+      setLoadTestOutput(
+        JSON.stringify(
+          {
+            summary: result.summary,
+            failuresSample: failSamples,
+          },
+          null,
+          2,
+        ),
+      );
+    } finally {
+      setLoadTestRunning(false);
+      setLoadTestProgress('');
+      if (loadTestAbortRef.current === ac) {
+        loadTestAbortRef.current = null;
+      }
+    }
+  }, [
+    bodyJson,
+    endpoint.kind,
+    endpoint.path,
+    loadTestConcurrency,
+    loadTestTotal,
+    publicKey,
+    secret,
+    useV2,
+  ]);
+
   return (
     <div style={layout.app}>
       <header style={layout.toolbar}>
@@ -569,7 +663,7 @@ export function App() {
         <button
           type="button"
           style={{ ...button, padding: '0.55rem 1.4rem', flexShrink: 0 }}
-          disabled={loading}
+          disabled={loading || loadTestRunning}
           onClick={() => send()}
         >
           {loading ? 'Sending…' : 'Send request'}
@@ -707,6 +801,72 @@ export function App() {
               <code style={{ fontSize: '0.7rem' }}>{endpoint.path}</code>
             </div>
           </div>
+
+          {endpoint.kind === 'json' && (
+            <>
+              <h2 style={{ ...sectionTitle, marginTop: '1.1rem' }}>Load test</h2>
+              <p style={{ ...help, margin: '0 0 0.5rem' }}>
+                Reuses the JSON body above. Each iteration sets a distinct <code>nonce</code> and{' '}
+                <code>request_id</code> when that field exists, and suffixes{' '}
+                <code>user_id</code> for Pay-In uploads. Sends real HTTPS traffic — use a staging API
+                base.
+              </p>
+              <label style={label}>Total requests (1–500)</label>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                style={input}
+                value={loadTestTotal}
+                onChange={(e) => setLoadTestTotal(e.target.value)}
+                disabled={loadTestRunning}
+              />
+              <label style={label}>Concurrency (1–100)</label>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                style={input}
+                value={loadTestConcurrency}
+                onChange={(e) => setLoadTestConcurrency(e.target.value)}
+                disabled={loadTestRunning}
+              />
+              {loadTestProgress ? (
+                <p style={{ ...help, margin: '0.35rem 0 0', color: '#9aa3b5' }}>{loadTestProgress}</p>
+              ) : null}
+              <div style={{ ...btnRow, marginTop: '0.45rem' }}>
+                <button
+                  type="button"
+                  style={{ ...button, padding: '0.45rem 0.95rem', fontSize: '0.82rem' }}
+                  disabled={loading || loadTestRunning}
+                  onClick={() => void runLoadTest()}
+                >
+                  Run load test
+                </button>
+                <button
+                  type="button"
+                  style={btnSecondary}
+                  disabled={!loadTestRunning}
+                  onClick={stopLoadTest}
+                >
+                  Stop
+                </button>
+              </div>
+              {loadTestOutput ? (
+                <pre
+                  style={{
+                    ...pre,
+                    marginTop: '0.55rem',
+                    maxHeight: '180px',
+                    fontSize: '0.68rem',
+                    overflow: 'auto',
+                  }}
+                >
+                  {loadTestOutput}
+                </pre>
+              ) : null}
+            </>
+          )}
         </aside>
 
         <section
