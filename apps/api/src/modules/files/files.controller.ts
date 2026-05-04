@@ -27,8 +27,11 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { MAX_FILE_SIZE_BYTES } from '@p2p/shared';
-import { UserRole } from '@p2p/shared';
+import {
+  MAX_FILE_SIZE_BYTES,
+  MAX_MULTIPART_FILES_PER_REQUEST,
+  UserRole,
+} from '@p2p/shared';
 
 @ApiTags('Files')
 @ApiBearerAuth()
@@ -64,7 +67,7 @@ export class FilesController {
   @ApiOperation({ summary: 'Upload multiple files' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
-    FilesInterceptor('files', 10, {
+    FilesInterceptor('files', MAX_MULTIPART_FILES_PER_REQUEST, {
       limits: { fileSize: MAX_FILE_SIZE_BYTES },
     }),
   )

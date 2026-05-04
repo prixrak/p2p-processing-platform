@@ -3,6 +3,8 @@ import { PayInOrderStatus, PayOutOrderStatus } from './enums';
 export const NONCE_VALIDITY_SECONDS = 300; // 5 minutes
 export const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
 export const ALLOWED_FILE_TYPES = ['image/png', 'image/jpg', 'image/jpeg', 'application/pdf'];
+/** Max files per multipart upload for merchant proofs and internal batch upload (`POST /files/upload/batch`). */
+export const MAX_MULTIPART_FILES_PER_REQUEST = 10;
 export const WEBHOOK_MAX_RETRIES = 8;
 export const WEBHOOK_RETRY_DELAYS_MS = [
   5_000,      // 5s

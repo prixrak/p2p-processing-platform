@@ -17,6 +17,7 @@ import {
   WebhookMethod,
   DirectionType,
   MAX_PAGE_SIZE,
+  MAX_MULTIPART_FILES_PER_REQUEST,
   PAYIN_ORDER_REALTIME_EVENT_TYPE,
   PAYIN_TRADER_CURRENT_STATUSES,
   PAYIN_TRADER_HISTORY_STATUSES,
@@ -388,6 +389,12 @@ export class PayinService {
       );
     }
 
+    if (files.length > MAX_MULTIPART_FILES_PER_REQUEST) {
+      throw new BadRequestException(
+        `At most ${MAX_MULTIPART_FILES_PER_REQUEST} proof files allowed per request`,
+      );
+    }
+
     const fileIds = await this.filesService.saveFiles(files);
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -718,6 +725,12 @@ export class PayinService {
     if (!isValidPayInTransition(order.status as PayInOrderStatus, PayInOrderStatus.APPEAL)) {
       throw new BadRequestException(
         `Cannot appeal order in status ${order.status}`,
+      );
+    }
+
+    if (files.length > MAX_MULTIPART_FILES_PER_REQUEST) {
+      throw new BadRequestException(
+        `At most ${MAX_MULTIPART_FILES_PER_REQUEST} proof files allowed per request`,
       );
     }
 

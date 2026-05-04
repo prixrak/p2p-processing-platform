@@ -18,7 +18,12 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiProduces, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { PayInOrderStatus, UserRole } from '@p2p/shared';
+import {
+  MAX_FILE_SIZE_BYTES,
+  MAX_MULTIPART_FILES_PER_REQUEST,
+  PayInOrderStatus,
+  UserRole,
+} from '@p2p/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { MerchantId } from '../../common/decorators/merchant.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -68,7 +73,11 @@ export class PayinController {
   @Post('update_order_with_proofs')
   @ApiOperation({ summary: 'Update order status with proof files' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FilesInterceptor('files'))
+  @UseInterceptors(
+    FilesInterceptor('files', MAX_MULTIPART_FILES_PER_REQUEST, {
+      limits: { fileSize: MAX_FILE_SIZE_BYTES },
+    }),
+  )
   async updateOrderWithProofs(
     @MerchantId() merchantId: string,
     @Body('id') id: string,
@@ -129,7 +138,11 @@ export class PayinController {
   @Post('appeal/send')
   @ApiOperation({ summary: 'Submit appeal with proof files' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FilesInterceptor('files'))
+  @UseInterceptors(
+    FilesInterceptor('files', MAX_MULTIPART_FILES_PER_REQUEST, {
+      limits: { fileSize: MAX_FILE_SIZE_BYTES },
+    }),
+  )
   async appealSend(
     @MerchantId() merchantId: string,
     @Body() dto: AppealSendDto,
