@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Percent, Clock } from 'lucide-react';
+import { Percent, Clock, Pencil, Trash2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,7 @@ interface GlobalSettings {
 }
 
 interface MerchantRow {
+  id: string;
   merchant_id: string;
   merchant_name: string;
   pool_b_percent: number;
@@ -35,6 +36,10 @@ export function AdminPayoutPoolPage() {
   const [pickedDisplayName, setPickedDisplayName] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement | null>(null);
+  /** When set, the form submits PATCH instead of PUT and locks merchant name. */
+  const [editingMerchantId, setEditingMerchantId] = useState<string | null>(null);
+  const [assignmentPoolBPercent, setAssignmentPoolBPercent] = useState('');
+  const [assignmentActive, setAssignmentActive] = useState(true);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedMerchantSearch(merchantSearch.trim()), 300);
@@ -80,6 +85,16 @@ export function AdminPayoutPoolPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: adminPayoutPoolKeys.scope }),
   });
 
+  function resetMerchantAssignmentForm() {
+    setMerchantSearch('');
+    setDebouncedMerchantSearch('');
+    setPickedDisplayName(null);
+    setPickerOpen(false);
+    setEditingMerchantId(null);
+    setAssignmentPoolBPercent('');
+    setAssignmentActive(true);
+  }
+
   const upsertMerchant = useMutation({
     mutationFn: (body: {
       merchant_display_name: string;
@@ -88,14 +103,63 @@ export function AdminPayoutPoolPage() {
     }) => api.put(internalPaths.adminPayoutPoolMerchantAssignment, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminPayoutPoolKeys.merchants() });
-      setMerchantSearch('');
-      setDebouncedMerchantSearch('');
-      setPickedDisplayName(null);
-      setPickerOpen(false);
+      resetMerchantAssignmentForm();
     },
   });
 
+  const patchMerchantAssignment = useMutation({
+    mutationFn: ({
+      merchantId,
+      pool_b_percent,
+      is_active,
+    }: {
+      merchantId: string;
+      pool_b_percent: number;
+      is_active: boolean;
+    }) =>
+      api.patch(internalPaths.adminPayoutPoolMerchantAssignmentByMerchant(merchantId), {
+        pool_b_percent,
+        is_active,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminPayoutPoolKeys.merchants() });
+      resetMerchantAssignmentForm();
+    },
+  });
+
+  const deleteMerchantAssignment = useMutation({
+    mutationFn: (merchantId: string) =>
+      api.delete<void>(internalPaths.adminPayoutPoolMerchantAssignmentByMerchant(merchantId)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: adminPayoutPoolKeys.merchants() }),
+  });
+
   const g = globalQ.data;
+
+  const assignmentFormBusy =
+    upsertMerchant.isPending || patchMerchantAssignment.isPending;
+
+  function handleLoadRowForEdit(r: MerchantRow) {
+    setEditingMerchantId(r.merchant_id);
+    setMerchantSearch(r.merchant_name);
+    setPickedDisplayName(r.merchant_name);
+    setAssignmentPoolBPercent(String(r.pool_b_percent));
+    setAssignmentActive(r.is_active);
+    setPickerOpen(false);
+  }
+
+  function handleRemoveAssignment(r: MerchantRow) {
+    if (
+      !confirm(
+        `Remove Pool B override for "${r.merchant_name}"? New Pay-Out orders for this merchant will follow the global Pool B percent only.`,
+      )
+    )
+      return;
+    deleteMerchantAssignment.mutate(r.merchant_id, {
+      onSuccess: () => {
+        if (editingMerchantId === r.merchant_id) resetMerchantAssignmentForm();
+      },
+    });
+  }
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -201,17 +265,22 @@ export function AdminPayoutPoolPage() {
           className="flex flex-col gap-3 max-w-3xl"
           onSubmit={(e) => {
             e.preventDefault();
-            const form = e.currentTarget;
-            const fd = new FormData(form);
             const displayName = (pickedDisplayName ?? merchantSearch).trim();
-            const pct = parseDecimalInput(String(fd.get('pool_b_percent') ?? '0'));
-            const active =
-              (form.elements.namedItem('is_active') as HTMLInputElement | null)?.checked ?? true;
+            const pct = parseDecimalInput(assignmentPoolBPercent.trim() || '0');
+            if (!Number.isFinite(pct) || pct < 0 || pct > 100) return;
+            if (editingMerchantId) {
+              patchMerchantAssignment.mutate({
+                merchantId: editingMerchantId,
+                pool_b_percent: pct,
+                is_active: assignmentActive,
+              });
+              return;
+            }
             if (!displayName) return;
             upsertMerchant.mutate({
               merchant_display_name: displayName,
-              pool_b_percent: Number.isFinite(pct) ? pct : 0,
-              is_active: active,
+              pool_b_percent: pct,
+              is_active: assignmentActive,
             });
           }}
         >
@@ -221,16 +290,19 @@ export function AdminPayoutPoolPage() {
                 id="merchant-display-name"
                 label="Merchant display name"
                 autoComplete="off"
+                disabled={editingMerchantId !== null}
                 value={merchantSearch}
                 onChange={(ev) => {
                   setMerchantSearch(ev.target.value);
                   setPickedDisplayName(null);
                 }}
-                onFocus={() => setPickerOpen(true)}
+                onFocus={() => {
+                  if (!editingMerchantId) setPickerOpen(true);
+                }}
                 placeholder="Search by name…"
                 className="w-full"
               />
-              {pickerOpen ? (
+              {!editingMerchantId && pickerOpen ? (
                 <div
                   className="absolute z-20 mt-1 max-h-80 w-full overflow-auto rounded-lg border border-border-primary bg-surface-primary py-1 shadow-lg"
                   role="listbox"
@@ -267,24 +339,42 @@ export function AdminPayoutPoolPage() {
               ) : null}
             </div>
             <Input
-              name="pool_b_percent"
               label="Pool B percent"
               type="text"
               inputMode="decimal"
               className="w-36"
+              value={assignmentPoolBPercent}
+              onChange={(ev) => setAssignmentPoolBPercent(ev.target.value)}
             />
             <label className="flex items-center gap-2 text-sm text-text-secondary pb-2">
-              <input type="checkbox" name="is_active" defaultChecked className="rounded" />
+              <input
+                type="checkbox"
+                checked={assignmentActive}
+                onChange={(ev) => setAssignmentActive(ev.target.checked)}
+                className="rounded"
+              />
               Active
             </label>
-            <Button type="submit" loading={upsertMerchant.isPending}>
-              Upsert assignment
+            <Button type="submit" loading={assignmentFormBusy}>
+              {editingMerchantId ? 'Save changes' : 'Upsert assignment'}
             </Button>
+            {editingMerchantId ? (
+              <Button type="button" variant="secondary" size="sm" onClick={() => resetMerchantAssignmentForm()}>
+                Cancel editing
+              </Button>
+            ) : null}
           </div>
           <p className="text-xs text-text-muted">
             Search and choose a merchant, or type the exact display name. Names are unique and matching is
-            case-sensitive.
+            case-sensitive. Use <span className="font-medium text-text-secondary">Edit</span> or{' '}
+            <span className="font-medium text-text-secondary">Delete</span> in the table below to change or remove
+            an existing override entirely.
           </p>
+          {editingMerchantId ? (
+            <p className="text-xs text-text-secondary">
+              You are editing an existing assignment; the merchant name is fixed until you cancel.
+            </p>
+          ) : null}
         </form>
 
         <div className="overflow-x-auto border border-border-primary rounded-lg">
@@ -294,18 +384,19 @@ export function AdminPayoutPoolPage() {
                 <th className="p-3">Display name</th>
                 <th className="p-3">Pool B %</th>
                 <th className="p-3">Active</th>
+                <th className="p-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {listQ.isLoading ? (
                 <tr>
-                  <td colSpan={3} className="p-4 text-text-muted">
+                  <td colSpan={4} className="p-4 text-text-muted">
                     Loading…
                   </td>
                 </tr>
               ) : (listQ.data?.items?.length ?? 0) === 0 ? (
                 <tr>
-                  <td colSpan={3} className="p-4 text-text-muted">
+                  <td colSpan={4} className="p-4 text-text-muted">
                     No per-merchant assignments yet.
                   </td>
                 </tr>
@@ -318,6 +409,42 @@ export function AdminPayoutPoolPage() {
                     </td>
                     <td className="p-3 tabular-nums">{r.pool_b_percent}</td>
                     <td className="p-3">{r.is_active ? 'Yes' : 'No'}</td>
+                    <td className="p-3 text-right whitespace-nowrap">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          icon={<Pencil className="h-4 w-4" />}
+                          onClick={() => handleLoadRowForEdit(r)}
+                          disabled={
+                            assignmentFormBusy ||
+                            deleteMerchantAssignment.isPending ||
+                            (editingMerchantId !== null && editingMerchantId !== r.merchant_id)
+                          }
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="danger"
+                          size="sm"
+                          icon={<Trash2 className="h-4 w-4" />}
+                          loading={
+                            deleteMerchantAssignment.isPending &&
+                            deleteMerchantAssignment.variables === r.merchant_id
+                          }
+                          onClick={() => handleRemoveAssignment(r)}
+                          disabled={
+                            assignmentFormBusy ||
+                            (deleteMerchantAssignment.isPending &&
+                              deleteMerchantAssignment.variables !== r.merchant_id)
+                          }
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}

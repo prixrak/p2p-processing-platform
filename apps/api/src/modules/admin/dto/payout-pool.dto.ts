@@ -64,3 +64,18 @@ export class UpsertMerchantPayoutPoolAssignmentDto {
   @IsBoolean()
   is_active?: boolean;
 }
+
+export class PatchMerchantPayoutPoolAssignmentDto {
+  @ApiPropertyOptional({ description: 'Per-merchant pool B share (0–100).' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  pool_b_percent?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  is_active?: boolean;
+}

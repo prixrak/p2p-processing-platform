@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AdminPayoutPoolController } from './admin-payout-pool.controller';
 
 describe('AdminPayoutPoolController', () => {
@@ -59,6 +59,83 @@ describe('AdminPayoutPoolController', () => {
         ),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.merchantPayoutPoolAssignment.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('patchMerchantAssignment', () => {
+    it('throws BadRequestException when nothing to update', async () => {
+      const prisma = {};
+      const c = createController(prisma as any);
+      await expect(c.patchMerchantAssignment(merchantId, {} as any)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('updates assignment when merchant has a row', async () => {
+      const prisma = {
+        merchantPayoutPoolAssignment: {
+          findUnique: jest.fn().mockResolvedValue({
+            merchantId,
+            merchant: { name: 'Acme Ltd' },
+          }),
+          update: jest.fn().mockResolvedValue({
+            id: 'asg-1',
+            merchantId,
+            poolBPercent: 40,
+            isActive: false,
+            merchant: { id: merchantId, name: 'Acme Ltd' },
+          }),
+        },
+      };
+      const c = createController(prisma);
+      const result = await c.patchMerchantAssignment(merchantId, {
+        pool_b_percent: 40,
+        is_active: false,
+      });
+      expect(result.pool_b_percent).toBe(40);
+      expect(result.is_active).toBe(false);
+    });
+
+    it('throws when merchant has no assignment', async () => {
+      const prisma = {
+        merchantPayoutPoolAssignment: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          update: jest.fn(),
+        },
+      };
+      const c = createController(prisma);
+      await expect(
+        c.patchMerchantAssignment(merchantId, { pool_b_percent: 10 }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.merchantPayoutPoolAssignment.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteMerchantAssignment', () => {
+    it('throws when merchant has no assignment', async () => {
+      const prisma = {
+        merchantPayoutPoolAssignment: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          delete: jest.fn(),
+        },
+      };
+      const c = createController(prisma);
+      await expect(c.deleteMerchantAssignment(merchantId)).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.merchantPayoutPoolAssignment.delete).not.toHaveBeenCalled();
+    });
+
+    it('deletes when row exists', async () => {
+      const prisma = {
+        merchantPayoutPoolAssignment: {
+          findUnique: jest.fn().mockResolvedValue({ merchantId }),
+          delete: jest.fn().mockResolvedValue({}),
+        },
+      };
+      const c = createController(prisma);
+      await expect(c.deleteMerchantAssignment(merchantId)).resolves.toBeUndefined();
+      expect(prisma.merchantPayoutPoolAssignment.delete).toHaveBeenCalledWith({
+        where: { merchantId },
+      });
     });
   });
 

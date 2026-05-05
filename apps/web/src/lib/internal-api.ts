@@ -91,6 +91,9 @@ export const internalPaths = {
   adminPayoutPoolMerchantDirectory: (q: string) =>
     `/api/admin/payout-pool/merchants/directory?q=${encodeURIComponent(q)}`,
   adminPayoutPoolMerchantAssignment: '/api/admin/payout-pool/merchants/assignment',
+  /** Update or delete a per-merchant Pool B assignment by merchant UUID (`merchant_id`). */
+  adminPayoutPoolMerchantAssignmentByMerchant: (merchantId: string) =>
+    `/api/admin/payout-pool/merchants/assignment/${merchantId}`,
 
   // Pay-Out pool (trader cabinet)
   payoutPool: '/api/trader/payout/pool',

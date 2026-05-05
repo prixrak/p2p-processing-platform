@@ -1,10 +1,16 @@
 import {
+  BadRequestException,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Patch,
   Put,
   Body,
+  Param,
   Query,
+  ParseUUIDPipe,
   UseGuards,
   DefaultValuePipe,
   ParseIntPipe,
@@ -20,6 +26,7 @@ import { PrismaService } from '../../config/prisma.service';
 import {
   UpdatePayoutPoolGlobalDto,
   UpsertMerchantPayoutPoolAssignmentDto,
+  PatchMerchantPayoutPoolAssignmentDto,
 } from './dto/payout-pool.dto';
 
 const PAYOUT_POOL_SETTINGS_ROW_ID = '00000000-0000-0000-0000-000000000001';
@@ -205,5 +212,70 @@ export class AdminPayoutPoolController {
       pool_b_percent: Number(row.poolBPercent),
       is_active: row.isActive,
     };
+  }
+
+  @Patch('merchants/assignment/:merchantId')
+  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @ApiOperation({ summary: 'Update an existing merchant pool B assignment by merchant id' })
+  async patchMerchantAssignment(
+    @Param('merchantId', ParseUUIDPipe) merchantId: string,
+    @Body() dto: PatchMerchantPayoutPoolAssignmentDto,
+  ) {
+    if (dto.pool_b_percent === undefined && dto.is_active === undefined) {
+      throw new BadRequestException(
+        'At least one of pool_b_percent or is_active is required',
+      );
+    }
+
+    const existing = await this.prisma.merchantPayoutPoolAssignment.findUnique({
+      where: { merchantId },
+      include: { merchant: { select: { name: true } } },
+    });
+    if (!existing) {
+      throw new NotFoundException(`No pool B assignment found for merchant ${merchantId}`);
+    }
+
+    const data: Record<string, unknown> = {};
+    if (dto.pool_b_percent !== undefined) {
+      data.poolBPercent = dto.pool_b_percent;
+    }
+    if (dto.is_active !== undefined) {
+      data.isActive = dto.is_active;
+    }
+
+    const row = await this.prisma.merchantPayoutPoolAssignment.update({
+      where: { merchantId },
+      data: data as any,
+      include: { merchant: { select: { id: true, name: true } } },
+    });
+
+    return {
+      id: row.id,
+      merchant_id: row.merchantId,
+      merchant_display_name: row.merchant.name,
+      pool_b_percent: Number(row.poolBPercent),
+      is_active: row.isActive,
+    };
+  }
+
+  @Delete('merchants/assignment/:merchantId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @ApiOperation({
+    summary: 'Remove merchant pool B override',
+    description:
+      'Deletes the assignment row so new Pay-Out orders for this merchant use global pool B percent only.',
+  })
+  async deleteMerchantAssignment(@Param('merchantId', ParseUUIDPipe) merchantId: string) {
+    const existing = await this.prisma.merchantPayoutPoolAssignment.findUnique({
+      where: { merchantId },
+    });
+    if (!existing) {
+      throw new NotFoundException(`No pool B assignment found for merchant ${merchantId}`);
+    }
+
+    await this.prisma.merchantPayoutPoolAssignment.delete({
+      where: { merchantId },
+    });
   }
 }
