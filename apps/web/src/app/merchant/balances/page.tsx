@@ -9,9 +9,10 @@ import { merchantKeys } from '@/lib/query-keys';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
+import { currencyCodeFromUnknown } from '@/lib/currency-code';
 
 interface BalanceRow {
-  currency: string;
+  currency: unknown;
   available: number;
   frozen: number;
 }
@@ -30,7 +31,7 @@ interface MerchantBalanceTx {
   id: string;
   type: string;
   amount: string;
-  currency: string;
+  currency: unknown;
   referenceId: string | null;
   comment: string | null;
   createdAt: string;
@@ -39,7 +40,7 @@ interface MerchantBalanceTx {
 interface MerchantSettlementRow {
   id: string;
   amount: string | number;
-  currency: string;
+  currency: unknown;
   manualRate: string | number | null;
   usdtEquivalent: string | number | null;
   usdtAddress: string | null;
@@ -121,7 +122,7 @@ export default function MerchantBalancesPage() {
       className: 'text-end font-mono text-sm',
       render: (r: MerchantSettlementRow) => (
         <span>
-          {Number(r.amount).toLocaleString()} {r.currency}
+          {Number(r.amount).toLocaleString()} {currencyCodeFromUnknown(r.currency)}
         </span>
       ),
     },
@@ -178,7 +179,7 @@ export default function MerchantBalancesPage() {
       className: 'text-end font-mono text-sm',
       render: (r: MerchantBalanceTx) => (
         <span>
-          {Number(r.amount).toLocaleString()} {r.currency}
+          {Number(r.amount).toLocaleString()} {currencyCodeFromUnknown(r.currency)}
         </span>
       ),
     },
@@ -227,14 +228,15 @@ export default function MerchantBalancesPage() {
             </div>
           ))
         ) : (
-          balances.map((b) => {
+          balances.map((b, idx) => {
+            const curCode = currencyCodeFromUnknown(b.currency);
             const frozen = b.frozen ?? 0;
             return (
               <div
-                key={b.currency}
+                key={curCode || `bal-${idx}`}
                 className="bg-bg-card border border-border-primary rounded-xl p-5"
               >
-                <p className="text-sm text-text-muted mb-1">{b.currency}</p>
+                <p className="text-sm text-text-muted mb-1">{curCode}</p>
                 <p className="text-xs text-text-muted uppercase tracking-wide mb-0.5">Available</p>
                 <p className="text-2xl font-bold text-text-primary font-mono">
                   {b.available.toLocaleString()}

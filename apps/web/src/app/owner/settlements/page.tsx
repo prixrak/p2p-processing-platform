@@ -21,6 +21,7 @@ import {
   staffMerchantsOptionsKey,
   staffTraderKeys,
 } from '@/lib/query-keys';
+import { currencyCodeFromUnknown } from '@/lib/currency-code';
 
 interface Settlement {
   id: string;
@@ -166,7 +167,7 @@ export default function SettlementsPage() {
           `"${participantLabel(row).replace(/"/g, '""')}"`,
           row.type,
           typeof row.amount === 'string' ? row.amount : String(row.amount),
-          row.currency,
+          currencyCodeFromUnknown(row.currency),
           row.manualRate != null ? String(row.manualRate) : '',
           row.usdtEquivalent != null ? String(row.usdtEquivalent) : '',
           row.createdAt,
@@ -273,7 +274,7 @@ export default function SettlementsPage() {
       className: 'text-end tabular-nums',
       render: (s: Settlement) => (
         <span className="font-mono text-sm font-medium text-text-primary">
-          {Number(s.amount).toLocaleString()} {s.currency}
+          {Number(s.amount).toLocaleString()} {currencyCodeFromUnknown(s.currency)}
         </span>
       ),
     },
@@ -440,7 +441,8 @@ export default function SettlementsPage() {
               <div>
                 <p className="text-xs text-text-muted">Amount</p>
                 <p className="font-mono font-medium text-text-primary">
-                  {Number(details.amount).toLocaleString()} {details.currency}
+                  {Number(details.amount).toLocaleString()}{' '}
+                  {currencyCodeFromUnknown(details.currency)}
                 </p>
               </div>
               <div>

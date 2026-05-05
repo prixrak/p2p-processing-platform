@@ -33,7 +33,9 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { errorMessageFromUnknown } from '@/lib/error-message';
 import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
 import { parseDecimalInput } from '@/lib/decimal-input';
+import { currencyCodeFromUnknown } from '@/lib/currency-code';
 import {
+  currencyCodeFromBalanceRow,
   ledgerAmountForCurrency,
   maxUsdtDebitAllowed,
   normalizeTraderApiProfileForSettlement,
@@ -59,7 +61,7 @@ interface MerchantBrief {
 }
 
 interface MerchantDetail {
-  balances: Array<{ currency: string; amount: string | number }>;
+  balances: Array<{ currency: unknown; amount: string | number }>;
 }
 
 export function SettlementCreateModal({
@@ -136,7 +138,17 @@ export function SettlementCreateModal({
     enabled: open && tab === 'merchant' && Boolean(merchantId),
   });
 
-  const merchantBalances = merchantDetail?.balances ?? [];
+  const merchantBalances = useMemo(() => {
+    const rows = merchantDetail?.balances;
+    if (!rows?.length) return [];
+    return rows.map((b) => ({
+      currency: currencyCodeFromBalanceRow({
+        currency: b.currency,
+        amount: b.amount,
+      }),
+      amount: b.amount,
+    }));
+  }, [merchantDetail?.balances]);
 
   useEffect(() => {
     if (merchantBalances.length > 0) {
@@ -451,7 +463,12 @@ export function SettlementCreateModal({
                 label="Currency"
                 options={
                   currencyOptions.length > 0
-                    ? currencyOptions.map((c) => ({ value: c.code, label: c.code }))
+                    ? currencyOptions
+                        .map((c) => {
+                          const code = currencyCodeFromUnknown(c.code as unknown);
+                          return code ? { value: code, label: code } : null;
+                        })
+                        .filter((o): o is { value: string; label: string } => o !== null)
                     : [{ value: 'USDT', label: 'USDT' }]
                 }
                 value={traderCurrency}

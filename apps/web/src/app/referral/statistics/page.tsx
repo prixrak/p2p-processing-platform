@@ -15,6 +15,7 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { referralKeys } from '@/lib/query-keys';
 import { formatCurrency, cn } from '@/lib/utils';
+import { currencyCodeFromUnknown } from '@/lib/currency-code';
 
 interface TraderStat {
   userId: string;
@@ -145,8 +146,15 @@ export default function ReferralStatisticsPage() {
 }
 
 function TraderCard({ trader }: { trader: TraderStat }) {
-  const primaryFiatBalanceRow = trader.balances.find((b) => b.currency === 'UAH');
-  const usdtBalance = trader.balances.find((b) => b.currency === 'USDT');
+  const normBalances = trader.balances
+    .map((b) => ({
+      code: currencyCodeFromUnknown((b as { currency: unknown }).currency),
+      amount: b.amount,
+    }))
+    .filter((b) => b.code.length > 0);
+
+  const primaryFiatBalanceRow = normBalances.find((b) => b.code.toUpperCase() === 'UAH');
+  const usdtBalance = normBalances.find((b) => b.code.toUpperCase() === 'USDT');
 
   return (
     <div className="rounded-lg border border-border-primary bg-bg-secondary/50 p-4">
@@ -169,11 +177,11 @@ function TraderCard({ trader }: { trader: TraderStat }) {
         <Metric
           icon={<Wallet className="h-4 w-4 text-text-muted" />}
           label={
-            primaryFiatBalanceRow?.currency
-              ? `Balance (${primaryFiatBalanceRow.currency})`
+            primaryFiatBalanceRow?.code
+              ? `Balance (${primaryFiatBalanceRow.code})`
               : 'Fiat balance'
           }
-          value={formatCurrency(primaryFiatBalanceRow?.amount ?? 0, primaryFiatBalanceRow?.currency ?? 'UAH')}
+          value={formatCurrency(primaryFiatBalanceRow?.amount ?? 0, primaryFiatBalanceRow?.code ?? 'UAH')}
         />
         <Metric
           icon={<Wallet className="h-4 w-4 text-text-muted" />}
@@ -196,6 +204,13 @@ function TraderCard({ trader }: { trader: TraderStat }) {
 }
 
 function MerchantCard({ merchant }: { merchant: MerchantStat }) {
+  const rows = merchant.balances
+    .map((b) => ({
+      code: currencyCodeFromUnknown((b as { currency: unknown }).currency),
+      amount: b.amount,
+    }))
+    .filter((b) => b.code.length > 0);
+
   return (
     <div className="rounded-lg border border-border-primary bg-bg-secondary/50 p-4">
       <div className="flex items-start justify-between">
@@ -214,11 +229,11 @@ function MerchantCard({ merchant }: { merchant: MerchantStat }) {
       </div>
 
       <div className="mt-3 flex flex-wrap gap-3">
-        {merchant.balances.map((b) => (
-          <div key={b.currency} className="flex items-center gap-1.5 rounded-md bg-bg-tertiary px-2 py-1">
+        {rows.map((b) => (
+          <div key={b.code} className="flex items-center gap-1.5 rounded-md bg-bg-tertiary px-2 py-1">
             <Wallet className="h-4 w-4 text-text-muted" />
             <span className="text-sm font-medium text-text-primary">
-              {formatCurrency(b.amount, b.currency)}
+              {formatCurrency(b.amount, b.code)}
             </span>
           </div>
         ))}

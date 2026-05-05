@@ -19,6 +19,7 @@ import {
   staffMerchantsOptionsKey,
   staffTraderKeys,
 } from '@/lib/query-keys';
+import { currencyCodeFromUnknown } from '@/lib/currency-code';
 
 interface SettlementRow {
   id: string;
@@ -155,7 +156,7 @@ export default function SettlementsPage() {
           `"${participantLabel(row).replace(/"/g, '""')}"`,
           row.type,
           num(row.amount),
-          row.currency,
+          currencyCodeFromUnknown(row.currency),
           num(row.manualRate ?? undefined),
           num(row.usdtEquivalent ?? undefined),
           `"${(row.note ?? '').replace(/"/g, '""')}"`,
@@ -257,7 +258,7 @@ export default function SettlementsPage() {
       render: (row: SettlementRow) => (
         <span className="font-mono text-text-primary">
           {row.type === 'CREDIT' ? '+' : '−'}
-          {Number(row.amount).toLocaleString()} {row.currency}
+          {Number(row.amount).toLocaleString()} {currencyCodeFromUnknown(row.currency)}
         </span>
       ),
     },

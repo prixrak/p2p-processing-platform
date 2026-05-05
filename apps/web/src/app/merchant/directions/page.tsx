@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { merchantKeys } from '@/lib/query-keys';
 import { Badge } from '@/components/ui/badge';
+import { currencyCodeFromUnknown } from '@/lib/currency-code';
 
 const DIR_LABELS: Record<string, string> = { PAYIN: 'Pay-In', PAYOUT: 'Pay-Out' };
 
@@ -19,7 +20,7 @@ interface CommissionTier {
 interface MerchantDirectionRow {
   id: string;
   directionType: string;
-  currency: string;
+  currency: unknown;
   minAmount: unknown;
   maxAmount: unknown;
   defaultCommissionPercent: unknown;
@@ -117,7 +118,9 @@ export default function MerchantDirectionsPage() {
       )}
 
       {!loading && showCustom &&
-        customDirections.map((dir) => (
+        customDirections.map((dir) => {
+          const dirCurrency = currencyCodeFromUnknown(dir.currency);
+          return (
           <div
             key={dir.id}
             className="rounded-xl border border-border-primary bg-bg-card p-5 space-y-4"
@@ -127,7 +130,7 @@ export default function MerchantDirectionsPage() {
                 <Badge color={dir.directionType === 'PAYIN' ? 'blue' : 'yellow'}>
                   {DIR_LABELS[dir.directionType] ?? dir.directionType}
                 </Badge>
-                <span className="font-mono font-semibold text-text-primary">{dir.currency}</span>
+                <span className="font-mono font-semibold text-text-primary">{dirCurrency}</span>
                 <Badge color={dir.isActive ? 'green' : 'red'}>
                   {dir.isActive ? 'active' : 'inactive'}
                 </Badge>
@@ -147,7 +150,7 @@ export default function MerchantDirectionsPage() {
                 <p className="text-text-muted text-xs mb-1">Amount range</p>
                 <p className="text-text-primary font-mono">
                   {num(dir.minAmount).toLocaleString()} — {num(dir.maxAmount).toLocaleString()}{' '}
-                  {dir.currency}
+                  {dirCurrency}
                 </p>
               </div>
               <div>
@@ -182,7 +185,8 @@ export default function MerchantDirectionsPage() {
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
 
       {!loading &&
         !showCustom &&

@@ -9,20 +9,14 @@ import { internalPaths } from '@/lib/internal-api';
 import { traderKeys } from '@/lib/query-keys';
 import { WALLET_HIGHLIGHT_PRESETS } from '@/lib/surface-ring';
 import { cn, formatCurrency } from '@/lib/utils';
+import { currencyCodeFromUnknown } from '@/lib/currency-code';
 
 /** GET /api/traders/me/balances — Prisma `TraderBalance` rows (nested currency from include) */
 interface TraderMeBalanceRow {
   id: string;
   traderId: string;
-  currency: string | { code: string };
+  currency: unknown;
   amount: string | number;
-}
-
-function balanceCurrencyCode(row: TraderMeBalanceRow): string {
-  const c = row.currency;
-  if (typeof c === 'string') return c.trim();
-  if (c && typeof c === 'object' && typeof c.code === 'string') return c.code.trim();
-  return '';
 }
 
 interface UsdtWalletSummary {
@@ -68,7 +62,7 @@ export function TraderDashboardWalletListSection() {
   const wallets = useMemo(() => {
     const rows = [...(balances ?? [])];
     const upperCodes = new Set(
-      rows.map((r) => balanceCurrencyCode(r).toUpperCase()).filter(Boolean),
+      rows.map((r) => currencyCodeFromUnknown(r.currency).toUpperCase()).filter(Boolean),
     );
     if (usdtWallet && !upperCodes.has('USDT')) {
       rows.push({
@@ -80,7 +74,7 @@ export function TraderDashboardWalletListSection() {
     }
     return rows
       .map((row) => {
-        const currency = balanceCurrencyCode(row).toUpperCase();
+        const currency = currencyCodeFromUnknown(row.currency).toUpperCase();
         const amount =
           currency === 'USDT' && usdtWallet ? usdtWallet.balance_usdt : parseAmount(row.amount);
         return {

@@ -17,6 +17,7 @@ import { cascadeKeys, staffKeys, staffTraderKeys } from '@/lib/query-keys';
 import type { TrafficPercentPolicy } from '@/features/cascade/cascade-types';
 import type { StaffTraderRow } from './staff-trader-types';
 import { parseDecimalInput } from '@/lib/decimal-input';
+import { currencyCodeFromUnknown } from '@/lib/currency-code';
 
 const CASCADE_TRAFFIC_HINT =
   'For active traders with accepting orders, targets must total 100% or all be 0% (equal split). Saving here updates this trader and, when needed, auto-adjusts other traders in that group so the total stays valid.';
@@ -48,11 +49,8 @@ const sectionShell =
   'space-y-4 rounded-xl border border-border-primary bg-bg-card/40 p-5 shadow-sm';
 
 function currencyDisplayCode(raw: unknown): string {
-  if (typeof raw === 'string' && raw.trim()) return raw.trim().toUpperCase();
-  if (raw && typeof raw === 'object' && 'code' in raw && typeof (raw as { code: unknown }).code === 'string') {
-    return (raw as { code: string }).code.trim().toUpperCase();
-  }
-  return '';
+  const code = currencyCodeFromUnknown(raw);
+  return code ? code.toUpperCase() : '';
 }
 
 export function TraderDetailModal({

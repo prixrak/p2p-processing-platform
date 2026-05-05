@@ -3,6 +3,8 @@
  * Handles both nested Prisma-style `{ currency: { code } }` and flat `{ currency: string }` rows.
  */
 
+import { currencyCodeFromUnknown } from '@/lib/currency-code';
+
 export type NormalizedTraderLedgerRow = {
   currency: string;
   ledger: number;
@@ -20,12 +22,7 @@ export type TraderProfileBalanceRow = {
 };
 
 export function currencyCodeFromBalanceRow(row: TraderProfileBalanceRow): string {
-  const c = row.currency;
-  if (typeof c === 'string') return c;
-  if (c && typeof c === 'object' && 'code' in c && typeof (c as { code: unknown }).code === 'string') {
-    return (c as { code: string }).code;
-  }
-  return '';
+  return currencyCodeFromUnknown(row.currency);
 }
 
 /**

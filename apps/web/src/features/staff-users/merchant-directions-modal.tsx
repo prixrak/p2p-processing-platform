@@ -15,11 +15,12 @@ import { parseDecimalInput } from '@/lib/decimal-input';
 import { currencyKeys, fetchCurrencyList, staffKeys } from '@/lib/query-keys';
 import { CurrencySelectWithCreate } from '@/features/currencies/currency-select-with-create';
 import type { StaffRolePrefix } from '@/features/traders';
+import { currencyCodeFromUnknown } from '@/lib/currency-code';
 
 interface MerchantDirection {
   id: string;
   directionType: 'PAYIN' | 'PAYOUT';
-  currency: string;
+  currency: unknown;
   minAmount: string;
   maxAmount: string;
   defaultCommissionPercent: string;
@@ -104,7 +105,8 @@ export function MerchantDirectionsModal({
           const next = [...old.filter((d) => d.id !== row.id), row];
           next.sort(
             (a, b) =>
-              a.directionType.localeCompare(b.directionType) || a.currency.localeCompare(b.currency),
+              a.directionType.localeCompare(b.directionType) ||
+              currencyCodeFromUnknown(a.currency).localeCompare(currencyCodeFromUnknown(b.currency)),
           );
           return next;
         },
@@ -167,7 +169,9 @@ export function MerchantDirectionsModal({
           </p>
         )}
 
-        {(merchantDirections ?? []).map((dir) => (
+        {(merchantDirections ?? []).map((dir) => {
+          const dirCurrency = currencyCodeFromUnknown(dir.currency);
+          return (
           <div
             key={dir.id}
             className="rounded-lg border border-border-primary bg-bg-secondary p-4 space-y-3"
@@ -177,7 +181,7 @@ export function MerchantDirectionsModal({
                 <Badge color={dir.directionType === 'PAYIN' ? 'blue' : 'yellow'}>
                   {DIR_LABELS[dir.directionType]}
                 </Badge>
-                <span className="font-mono font-semibold text-text-primary">{dir.currency}</span>
+                <span className="font-mono font-semibold text-text-primary">{dirCurrency}</span>
                 <Badge color={dir.isActive ? 'green' : 'red'}>
                   {dir.isActive ? 'active' : 'inactive'}
                 </Badge>
@@ -204,7 +208,7 @@ export function MerchantDirectionsModal({
                 <p className="text-text-muted text-xs">Min/Max</p>
                 <p className="text-text-primary">
                   {Number(dir.minAmount).toLocaleString()} — {Number(dir.maxAmount).toLocaleString()}{' '}
-                  {dir.currency}
+                  {dirCurrency}
                 </p>
               </div>
               <div>
@@ -238,7 +242,8 @@ export function MerchantDirectionsModal({
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
 
         {!showAddDir ? (
           <Button variant="ghost" size="sm" onClick={() => setShowAddDir(true)}>

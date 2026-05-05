@@ -14,9 +14,10 @@ import { StatCard } from '@/components/ui/stat-card';
 import { useAuth } from '@/hooks/use-auth';
 import { statCardToneAt, surfaceRingClass } from '@/lib/surface-ring';
 import { cn } from '@/lib/utils';
+import { currencyCodeFromUnknown } from '@/lib/currency-code';
 
 interface MerchantBalance {
-  currency: string;
+  currency: unknown;
   available: number;
   frozen: number;
 }
@@ -69,12 +70,14 @@ export default function MerchantDashboard() {
               </div>
             ))
           ) : balances.length > 0 ? (
-            balances.map((b, i) => (
+            balances.map((b, i) => {
+              const curCode = currencyCodeFromUnknown(b.currency);
+              return (
               <div
-                key={b.currency}
+                key={curCode || `balance-${i}`}
                 className={cn('rounded-xl p-5', surfaceRingClass(statCardToneAt(i)))}
               >
-                <p className="text-sm text-text-muted mb-1">{b.currency}</p>
+                <p className="text-sm text-text-muted mb-1">{curCode}</p>
                 <p className="text-2xl font-bold text-text-primary font-mono">
                   {b.available.toLocaleString()}
                 </p>
@@ -84,7 +87,8 @@ export default function MerchantDashboard() {
                   </p>
                 )}
               </div>
-            ))
+            );
+            })
           ) : (
             <div
               className={cn(

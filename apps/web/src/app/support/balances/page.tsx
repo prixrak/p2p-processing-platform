@@ -9,6 +9,7 @@ import { Tabs } from '@/components/ui/tabs';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
+import { currencyCodeFromUnknown } from '@/lib/currency-code';
 
 interface BalanceEntry {
   id: string;
@@ -16,7 +17,7 @@ interface BalanceEntry {
   email: string;
   balance: number;
   frozenBalance: number;
-  currency: string;
+  currency: unknown;
   status: string;
 }
 
@@ -56,31 +57,40 @@ export default function BalancesPage() {
       key: 'balance',
       header: 'Available Balance',
       className: 'text-end tabular-nums',
-      render: (b: BalanceEntry) => (
+      render: (b: BalanceEntry) => {
+        const code = currencyCodeFromUnknown(b.currency);
+        return (
         <span className="font-mono text-sm font-medium text-text-primary">
-          {b.balance.toLocaleString()} {b.currency}
+          {b.balance.toLocaleString()} {code}
         </span>
-      ),
+        );
+      },
     },
     {
       key: 'frozen',
       header: 'Frozen',
       className: 'text-end tabular-nums',
-      render: (b: BalanceEntry) => (
+      render: (b: BalanceEntry) => {
+        const code = currencyCodeFromUnknown(b.currency);
+        return (
         <span className={`font-mono text-sm ${b.frozenBalance > 0 ? 'text-warning' : 'text-text-muted'}`}>
-          {b.frozenBalance.toLocaleString()} {b.currency}
+          {b.frozenBalance.toLocaleString()} {code}
         </span>
-      ),
+        );
+      },
     },
     {
       key: 'total',
       header: 'Total',
       className: 'text-end tabular-nums',
-      render: (b: BalanceEntry) => (
+      render: (b: BalanceEntry) => {
+        const code = currencyCodeFromUnknown(b.currency);
+        return (
         <span className="font-mono text-sm font-medium text-accent">
-          {(b.balance + b.frozenBalance).toLocaleString()} {b.currency}
+          {(b.balance + b.frozenBalance).toLocaleString()} {code}
         </span>
-      ),
+        );
+      },
     },
     {
       key: 'status',
