@@ -4,7 +4,7 @@
  */
 
 export const CASCADE_TRAFFIC_PERCENT_POLICY_TEXT =
-  'For every active trader with accepting orders enabled, configured traffic_percent values must sum to 100%, or all be 0 (the cascade then applies an equal split). Updating one trader’s target share rebalance peer targets in that cohort when needed so the rule stays satisfied.';
+  'For every active trader with accepting orders enabled, configured traffic_percent values must sum to 100%, or all be 0 (the cascade then applies an equal split). Updating one trader’s share or creating a trader with a non-default share adjusts peer targets when needed so the rule stays satisfied.';
 
 export const CASCADE_TRAFFIC_PERCENT_ASSIGNMENT_NOTE =
   'When assigning a Pay-In, only traders with at least one eligible requisite for the requested amount compete; their configured shares are normalized within that eligible subset.';

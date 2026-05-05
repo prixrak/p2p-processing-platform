@@ -318,7 +318,6 @@ export class UsersService {
       if (maxL > 0 && minL > maxL) {
         throw new BadRequestException('payoutMinLimit cannot be greater than payoutMaxLimit');
       }
-      await this.tradersService.assertTrafficPercentAllowsNewActiveTrader(opts?.trafficPercent ?? 0);
     }
 
     let referralCurrencyId: string | undefined;
@@ -330,55 +329,64 @@ export class UsersService {
     const passwordHash = await hashPassword(password);
 
     try {
-      const user = await this.prisma.user.create({
-        data: {
-          email,
-          passwordHash,
-          role,
-          ...(role === UserRole.TRADER
-            ? {
-                traderProfile: {
-                  create: {
-                    overdraftLimit: opts?.overdraftLimitUsdt ?? 0,
-                    payinRate: opts?.payinRate ?? 0,
-                    payoutRate: opts?.traderPayoutRate ?? 0,
-                    payoutMinLimit: opts?.payoutMinLimit ?? 0,
-                    payoutMaxLimit: opts?.payoutMaxLimit ?? 0,
-                    processingMethod: opts?.processingMethod ?? TraderProcessingMethod.CARD,
-                    trafficPercent: opts?.trafficPercent ?? 0,
+      const user = await this.prisma.$transaction(async (tx) => {
+        if (role === UserRole.TRADER) {
+          await this.tradersService.rebalanceCohortBeforeCreatingTrader(
+            opts?.trafficPercent ?? 0,
+            tx,
+          );
+        }
+
+        return tx.user.create({
+          data: {
+            email,
+            passwordHash,
+            role,
+            ...(role === UserRole.TRADER
+              ? {
+                  traderProfile: {
+                    create: {
+                      overdraftLimit: opts?.overdraftLimitUsdt ?? 0,
+                      payinRate: opts?.payinRate ?? 0,
+                      payoutRate: opts?.traderPayoutRate ?? 0,
+                      payoutMinLimit: opts?.payoutMinLimit ?? 0,
+                      payoutMaxLimit: opts?.payoutMaxLimit ?? 0,
+                      processingMethod: opts?.processingMethod ?? TraderProcessingMethod.CARD,
+                      trafficPercent: opts?.trafficPercent ?? 0,
+                    },
                   },
-                },
-              }
-            : {}),
-          ...(role === UserRole.PAYOUT_TRADER
-            ? {
-                payoutTraderProfile: {
-                  create: {
-                    countryId: opts!.countryId!,
-                    payoutRate: opts?.payoutRate ?? 0,
+                }
+              : {}),
+            ...(role === UserRole.PAYOUT_TRADER
+              ? {
+                  payoutTraderProfile: {
+                    create: {
+                      countryId: opts!.countryId!,
+                      payoutRate: opts?.payoutRate ?? 0,
+                    },
                   },
-                },
-              }
-            : {}),
-          ...(role === UserRole.REFERRAL
-            ? {
-                referralProfile: {
-                  create: {
-                    referralPercent: opts?.referralPercent ?? 0,
-                    currencyId: referralCurrencyId!,
+                }
+              : {}),
+            ...(role === UserRole.REFERRAL
+              ? {
+                  referralProfile: {
+                    create: {
+                      referralPercent: opts?.referralPercent ?? 0,
+                      currencyId: referralCurrencyId!,
+                    },
                   },
-                },
-              }
-            : {}),
-          ...(role === UserRole.MERCHANT
-            ? {
-                merchant: {
-                  create: { name: opts!.merchantName!.trim() },
-                },
-              }
-            : {}),
-        },
-        select: USER_SELECT,
+                }
+              : {}),
+            ...(role === UserRole.MERCHANT
+              ? {
+                  merchant: {
+                    create: { name: opts!.merchantName!.trim() },
+                  },
+                }
+              : {}),
+          },
+          select: USER_SELECT,
+        });
       });
 
       this.logger.log(`User ${email} created with role ${role}`);

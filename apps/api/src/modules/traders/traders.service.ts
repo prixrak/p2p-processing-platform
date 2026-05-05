@@ -144,6 +144,71 @@ export function computeCascadeTrafficPercentRebalance(
   return out;
 }
 
+/**
+ * To fit a new active+accepting trader with a target `traffic_percent`, scales or splits the
+ * **existing** cohort so their post-update sum is `100 - newTraderTrafficPercent`.
+ * Empty cohort: no updates (first trader must be created with 100% or 0% only).
+ */
+export function computeExistingCohortTrafficBeforeNewTrader(
+  cohort: Array<{ id: string; trafficPercent: unknown }>,
+  newTraderTrafficPercent: number,
+): Map<string, number> {
+  const updates = new Map<string, number>();
+  const newPct = newTraderTrafficPercent;
+
+  if (newPct > 100 + TRAFFIC_SUM_EPS) {
+    throw new BadRequestException('traffic_percent cannot exceed 100%.');
+  }
+
+  const cCount = cohort.length;
+  if (cCount === 0) {
+    if (!isValidCascadeTrafficPercentTotal(newPct)) {
+      throw new BadRequestException(
+        `traffic_percent for the first active trader (accepting orders) must be 100% or 0% (equal split). Requested: ${newPct.toFixed(2)}%.`,
+      );
+    }
+    return updates;
+  }
+
+  const remaining = round4(100 - newPct);
+  if (remaining < -TRAFFIC_SUM_EPS) {
+    throw new BadRequestException('traffic_percent cannot exceed 100%.');
+  }
+
+  const sumExisting = cohort.reduce((s, row) => s + Number(row.trafficPercent), 0);
+
+  if (sumExisting <= TRAFFIC_SUM_EPS && Math.abs(newPct) <= TRAFFIC_SUM_EPS) {
+    return updates;
+  }
+
+  if (sumExisting <= TRAFFIC_SUM_EPS && newPct > TRAFFIC_SUM_EPS) {
+    let allocated = 0;
+    for (let i = 0; i < cCount; i++) {
+      const isLast = i === cCount - 1;
+      const chunk = isLast
+        ? round4(remaining - allocated)
+        : round4(remaining / cCount);
+      allocated += chunk;
+      updates.set(cohort[i].id, chunk);
+    }
+    return updates;
+  }
+
+  const scale = remaining / sumExisting;
+  let allocated = 0;
+  for (let i = 0; i < cCount; i++) {
+    const row = cohort[i];
+    const isLast = i === cCount - 1;
+    const chunk = isLast
+      ? round4(remaining - allocated)
+      : round4(Number(row.trafficPercent) * scale);
+    allocated += chunk;
+    updates.set(row.id, chunk);
+  }
+
+  return updates;
+}
+
 @Injectable()
 export class TradersService {
   private readonly logger = new Logger(TradersService.name);
@@ -177,20 +242,30 @@ export class TradersService {
   }
 
   /**
-   * Validates traffic_percent when creating a new trader (profile defaults: isActive, acceptingOrders).
-   * Same cohort as PATCH `/traders/:id/cascade-routing`.
+   * Before creating a trader profile that joins the active+accepting cohort, adjusts existing
+   * members so total traffic stays at 100% (or all 0) once the new `traffic_percent` is applied.
    */
-  async assertTrafficPercentAllowsNewActiveTrader(additionalTrafficPercent: number): Promise<void> {
-    const rows = await this.prisma.traderProfile.findMany({
+  async rebalanceCohortBeforeCreatingTrader(
+    newTraderTrafficPercent: number,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const cohort = await tx.traderProfile.findMany({
       where: { isActive: true, acceptingOrders: true },
-      select: { trafficPercent: true },
+      select: { id: true, trafficPercent: true },
+      orderBy: { id: 'asc' },
     });
-    const currentSum = rows.reduce((s, r) => s + Number(r.trafficPercent), 0);
-    const nextSum = currentSum + additionalTrafficPercent;
-    if (!isValidCascadeTrafficPercentTotal(nextSum)) {
-      throw new BadRequestException(
-        `traffic_percent for active traders (accepting orders) must sum to 100% or all be 0 after adding this user. Current sum: ${currentSum.toFixed(2)}%, adding ${additionalTrafficPercent} would yield ${nextSum.toFixed(2)}%. See GET /api/admin/cascade/traffic-policy.`,
-      );
+    const updates = computeExistingCohortTrafficBeforeNewTrader(
+      cohort,
+      newTraderTrafficPercent,
+    );
+    if (updates.size > 0) {
+      this.logger.log(`Cohort traffic targets rebalanced for new trader (${updates.size} rows)`);
+    }
+    for (const [id, pct] of updates) {
+      await tx.traderProfile.update({
+        where: { id },
+        data: { trafficPercent: new Prisma.Decimal(pct.toFixed(4)) },
+      });
     }
   }
 

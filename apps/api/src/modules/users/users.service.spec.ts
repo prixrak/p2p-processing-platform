@@ -24,7 +24,7 @@ describe('UsersService', () => {
   };
 
   function createService() {
-    const prisma = {
+    const prisma: any = {
       user: {
         findUnique: jest.fn(),
         findMany: jest.fn(),
@@ -47,6 +47,7 @@ describe('UsersService', () => {
       payoutTraderProfile: {},
       country: { findUnique: jest.fn() },
     };
+    prisma.$transaction = jest.fn(async (fn: (tx: any) => Promise<unknown>) => fn(prisma));
     const traderWallets = { ensureProvisioned: jest.fn() };
     const currencies = {
       requireActiveCurrencyIdByCode: jest
@@ -55,7 +56,7 @@ describe('UsersService', () => {
     };
     const tradersService = {
       deactivate: jest.fn().mockResolvedValue({}),
-      assertTrafficPercentAllowsNewActiveTrader: jest.fn().mockResolvedValue(undefined),
+      rebalanceCohortBeforeCreatingTrader: jest.fn().mockResolvedValue(undefined),
       invalidateCascadeCoverageCaches: jest.fn(),
     };
     const service = new UsersService(
@@ -187,7 +188,10 @@ describe('UsersService', () => {
         }),
         select: expect.any(Object),
       });
-      expect(tradersService.assertTrafficPercentAllowsNewActiveTrader).toHaveBeenCalledWith(0);
+      expect(tradersService.rebalanceCohortBeforeCreatingTrader).toHaveBeenCalledWith(
+        0,
+        expect.anything(),
+      );
       expect(traderWallets.ensureProvisioned).toHaveBeenCalledWith('tp-1');
       expect(tradersService.invalidateCascadeCoverageCaches).toHaveBeenCalled();
     });
@@ -207,16 +211,19 @@ describe('UsersService', () => {
 
       await service.create('t2@example.com', 'password12345', UserRole.TRADER, {
         processingMethod: 'FORK' as any,
-        trafficPercent: 12.5,
+        trafficPercent: 0,
       });
 
-      expect(tradersService.assertTrafficPercentAllowsNewActiveTrader).toHaveBeenCalledWith(12.5);
+      expect(tradersService.rebalanceCohortBeforeCreatingTrader).toHaveBeenCalledWith(
+        0,
+        expect.anything(),
+      );
       expect(prisma.user.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           traderProfile: {
             create: expect.objectContaining({
               processingMethod: 'FORK',
-              trafficPercent: 12.5,
+              trafficPercent: 0,
             }),
           },
         }),
@@ -226,10 +233,10 @@ describe('UsersService', () => {
       expect(tradersService.invalidateCascadeCoverageCaches).toHaveBeenCalled();
     });
 
-    it('rejects TRADER when cascade traffic assertion fails', async () => {
+    it('rejects TRADER when cascade cohort rebalance fails', async () => {
       const { service, prisma, tradersService } = createService();
       prisma.user.findUnique.mockResolvedValue(null);
-      tradersService.assertTrafficPercentAllowsNewActiveTrader.mockRejectedValueOnce(
+      tradersService.rebalanceCohortBeforeCreatingTrader.mockRejectedValueOnce(
         new BadRequestException('traffic_percent invalid'),
       );
 

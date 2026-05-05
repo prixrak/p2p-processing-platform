@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import {
   computeCascadeTrafficPercentRebalance,
+  computeExistingCohortTrafficBeforeNewTrader,
   isValidCascadeTrafficPercentTotal,
   isValidEthereumUsdtDepositAddress,
   isValidTronTrc20Address,
@@ -82,6 +83,46 @@ describe('computeCascadeTrafficPercentRebalance', () => {
     expect(() => computeCascadeTrafficPercentRebalance(cohort, 'solo', 50)).toThrow(
       BadRequestException,
     );
+  });
+});
+
+describe('computeExistingCohortTrafficBeforeNewTrader', () => {
+  it('scales existing traders down when new one takes a slice (100% baseline)', () => {
+    const cohort = [
+      { id: 'a', trafficPercent: 50 },
+      { id: 'b', trafficPercent: 50 },
+    ];
+    const m = computeExistingCohortTrafficBeforeNewTrader(cohort, 30);
+    expect(m.get('a')).toBe(35);
+    expect(m.get('b')).toBe(35);
+  });
+
+  it('splits remainder equally when existing weights are zero', () => {
+    const cohort = [
+      { id: 'a', trafficPercent: 0 },
+      { id: 'b', trafficPercent: 0 },
+    ];
+    const m = computeExistingCohortTrafficBeforeNewTrader(cohort, 40);
+    expect(m.get('a')).toBe(30);
+    expect(m.get('b')).toBe(30);
+  });
+
+  it('keeps no updates when first trader uses valid 0 or 100 targets', () => {
+    expect(computeExistingCohortTrafficBeforeNewTrader([], 100).size).toBe(0);
+    expect(computeExistingCohortTrafficBeforeNewTrader([], 0).size).toBe(0);
+  });
+
+  it('rejects invalid first-trader target', () => {
+    expect(() => computeExistingCohortTrafficBeforeNewTrader([], 30)).toThrow(BadRequestException);
+  });
+
+  it('keeps everyone at zero when cohort and new target are all zero', () => {
+    const cohort = [
+      { id: 'a', trafficPercent: 0 },
+      { id: 'b', trafficPercent: 0 },
+    ];
+    const m = computeExistingCohortTrafficBeforeNewTrader(cohort, 0);
+    expect(m.size).toBe(0);
   });
 });
 
