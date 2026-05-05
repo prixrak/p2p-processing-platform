@@ -11,7 +11,7 @@ export class UpdateTraderCascadeDto {
 
   @ApiPropertyOptional({
     description:
-      'Target traffic share among active traders with accepting orders enabled (0–100). The API rejects saves unless all such traders sum to 100% or all are 0 (equal split). See GET /api/admin/cascade/traffic-policy.',
+      'Target traffic share among active traders with accepting orders enabled (0–100). Saves must keep that cohort at 100% total or all 0% (equal split). When PATCH applies to a member of that cohort, peer targets are adjusted automatically so the rule holds. See GET /api/admin/cascade/traffic-policy.',
   })
   @IsOptional()
   @Type(() => Number)

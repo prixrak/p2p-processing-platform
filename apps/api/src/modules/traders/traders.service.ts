@@ -78,6 +78,72 @@ function round4(n: number): number {
   return Math.round(n * 1e4) / 1e4;
 }
 
+const TRAFFIC_SUM_EPS = 0.02;
+
+/**
+ * Given the current cohort (active + accepting orders) and a new traffic_percent for one member,
+ * returns per-trader targets that satisfy the 100% / all-zero rule.
+ * Exported for unit tests.
+ */
+export function computeCascadeTrafficPercentRebalance(
+  cohort: Array<{ id: string; trafficPercent: unknown }>,
+  primaryTraderId: string,
+  primaryPercent: number,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const others = cohort.filter((c) => c.id !== primaryTraderId);
+  if (others.length === 0) {
+    out.set(primaryTraderId, primaryPercent);
+    if (!isValidCascadeTrafficPercentTotal(primaryPercent)) {
+      throw new BadRequestException(
+        `traffic_percent for the only active trader (accepting orders) must be 100% or 0% (equal split). Requested: ${primaryPercent.toFixed(2)}%.`,
+      );
+    }
+    return out;
+  }
+
+  const sumOthersOld = others.reduce((s, c) => s + Number(c.trafficPercent), 0);
+  if (Math.abs(primaryPercent) <= TRAFFIC_SUM_EPS && sumOthersOld <= TRAFFIC_SUM_EPS) {
+    for (const c of cohort) {
+      out.set(c.id, 0);
+    }
+    return out;
+  }
+
+  const remaining = round4(100 - primaryPercent);
+  if (remaining < -TRAFFIC_SUM_EPS) {
+    throw new BadRequestException('traffic_percent cannot exceed 100%.');
+  }
+
+  out.set(primaryTraderId, primaryPercent);
+
+  if (sumOthersOld <= TRAFFIC_SUM_EPS) {
+    let allocated = 0;
+    for (let i = 0; i < others.length; i++) {
+      const isLast = i === others.length - 1;
+      const chunk = isLast
+        ? round4(remaining - allocated)
+        : round4(remaining / others.length);
+      allocated += chunk;
+      out.set(others[i].id, chunk);
+    }
+    return out;
+  }
+
+  let allocated = 0;
+  for (let i = 0; i < others.length; i++) {
+    const c = others[i];
+    const isLast = i === others.length - 1;
+    const chunk = isLast
+      ? round4(remaining - allocated)
+      : round4(remaining * (Number(c.trafficPercent) / sumOthersOld));
+    allocated += chunk;
+    out.set(c.id, chunk);
+  }
+
+  return out;
+}
+
 @Injectable()
 export class TradersService {
   private readonly logger = new Logger(TradersService.name);
@@ -966,9 +1032,49 @@ export class TradersService {
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      const u = await tx.traderProfile.update({
+      if (dto.traffic_percent !== undefined) {
+        const cohort = await tx.traderProfile.findMany({
+          where: { isActive: true, acceptingOrders: true },
+          select: { id: true, trafficPercent: true },
+          orderBy: { id: 'asc' },
+        });
+        const inCohort = cohort.some((c) => c.id === traderId);
+
+        if (inCohort) {
+          const assignments = computeCascadeTrafficPercentRebalance(
+            cohort,
+            traderId,
+            dto.traffic_percent,
+          );
+          if (assignments.size > 1) {
+            this.logger.log(
+              `Cascade traffic rebalance after ${traderId} update: ${assignments.size} active accepting trader targets adjusted`,
+            );
+          }
+          for (const [id, pct] of assignments) {
+            const patch: Prisma.TraderProfileUpdateInput = {
+              trafficPercent: new Prisma.Decimal(pct.toFixed(4)),
+            };
+            if (id === traderId && dto.processing_method !== undefined) {
+              patch.processingMethod = dto.processing_method;
+            }
+            await tx.traderProfile.update({ where: { id }, data: patch });
+          }
+        } else {
+          await tx.traderProfile.update({
+            where: { id: traderId },
+            data,
+          });
+        }
+      } else {
+        await tx.traderProfile.update({
+          where: { id: traderId },
+          data,
+        });
+      }
+
+      const u = await tx.traderProfile.findUniqueOrThrow({
         where: { id: traderId },
-        data,
       });
 
       await tx.auditLog.create({

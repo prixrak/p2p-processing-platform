@@ -1,4 +1,6 @@
+import { BadRequestException } from '@nestjs/common';
 import {
+  computeCascadeTrafficPercentRebalance,
   isValidCascadeTrafficPercentTotal,
   isValidEthereumUsdtDepositAddress,
   isValidTronTrc20Address,
@@ -27,6 +29,59 @@ describe('isValidCascadeTrafficPercentTotal', () => {
     expect(isValidCascadeTrafficPercentTotal(50)).toBe(false);
     expect(isValidCascadeTrafficPercentTotal(99)).toBe(false);
     expect(isValidCascadeTrafficPercentTotal(0.5)).toBe(false);
+  });
+});
+
+describe('computeCascadeTrafficPercentRebalance', () => {
+  it('gives the remainder to the other trader when two peers', () => {
+    const cohort = [
+      { id: 'a', trafficPercent: 50 },
+      { id: 'b', trafficPercent: 50 },
+    ];
+    const m = computeCascadeTrafficPercentRebalance(cohort, 'a', 60);
+    expect(m.get('a')).toBe(60);
+    expect(m.get('b')).toBe(40);
+  });
+
+  it('keeps all-zero when the cohort was already all-zero', () => {
+    const cohort = [
+      { id: 'a', trafficPercent: 0 },
+      { id: 'b', trafficPercent: 0 },
+    ];
+    const m = computeCascadeTrafficPercentRebalance(cohort, 'a', 0);
+    expect(m.get('a')).toBe(0);
+    expect(m.get('b')).toBe(0);
+  });
+
+  it('splits remainder equally when peers had no weight', () => {
+    const cohort = [
+      { id: 'a', trafficPercent: 0 },
+      { id: 'b', trafficPercent: 0 },
+    ];
+    const m = computeCascadeTrafficPercentRebalance(cohort, 'a', 50);
+    expect(m.get('a')).toBe(50);
+    expect(m.get('b')).toBe(50);
+  });
+
+  it('preserves relative weights among non-primary peers', () => {
+    const cohort = [
+      { id: 'a', trafficPercent: 30 },
+      { id: 'b', trafficPercent: 30 },
+      { id: 'c', trafficPercent: 40 },
+    ];
+    const m = computeCascadeTrafficPercentRebalance(cohort, 'a', 10);
+    expect(m.get('a')).toBe(10);
+    const sum = [...m.values()].reduce((s, v) => s + v, 0);
+    expect(Math.abs(sum - 100) <= 0.02).toBe(true);
+    expect(m.get('b')).toBeCloseTo(90 * (30 / 70), 4);
+    expect(m.get('c')).toBeCloseTo(90 * (40 / 70), 4);
+  });
+
+  it('rejects non-0/100 targets for the sole active accepting trader', () => {
+    const cohort = [{ id: 'solo', trafficPercent: 100 }];
+    expect(() => computeCascadeTrafficPercentRebalance(cohort, 'solo', 50)).toThrow(
+      BadRequestException,
+    );
   });
 });
 

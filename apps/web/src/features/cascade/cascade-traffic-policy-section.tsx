@@ -28,7 +28,7 @@ export function CascadeTrafficPolicySection({
             Current total share (active traders accepting orders): {data.active_traders_sum_percent}%
             {data.matches_rule
               ? ' — valid'
-              : ' — totals must equal 100% before changes can be saved'}
+              : ' — adjust trader targets so the group totals 100% (or all 0% for equal split)'}
           </p>
         </div>
       ) : (

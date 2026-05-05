@@ -19,7 +19,7 @@ import type { StaffTraderRow } from './staff-trader-types';
 import { parseDecimalInput } from '@/lib/decimal-input';
 
 const CASCADE_TRAFFIC_HINT =
-  'For active traders with accepting orders, configured traffic_percent values must sum to 100% or all be 0 (equal split). Invalid saves are rejected.';
+  'For active traders with accepting orders, targets must total 100% or all be 0% (equal split). Saving here updates this trader and, when needed, auto-adjusts other traders in that group so the total stays valid.';
 
 interface TraderDetail {
   id: string;
@@ -427,7 +427,9 @@ export function TraderDetailModal({
                   >
                     Active traders (accepting orders) traffic sum:{' '}
                     {trafficPolicy.active_traders_sum_percent.toFixed(2)}%.{' '}
-                    {trafficPolicy.matches_rule ? 'Within policy.' : 'Does not match policy yet — adjust other traders or use CASCADE traffic dashboard.'}
+                    {trafficPolicy.matches_rule
+                      ? 'Within policy.'
+                      : 'Does not match policy yet — edit a trader’s cascade routing (peers adjust automatically) or use the CASCADE traffic dashboard.'}
                   </p>
                 ) : null}
                 <p className="text-xs text-text-muted">{CASCADE_TRAFFIC_HINT}</p>
