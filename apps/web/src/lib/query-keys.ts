@@ -47,6 +47,9 @@ export const payoutCabinetKeys = {
   payoutOrdersScope: (scope: PayoutCabinetScope) => [scope, 'payout-orders'] as const,
   payoutPool: (scope: PayoutCabinetScope, params?: unknown) =>
     [scope, 'payout-pool', params ?? {}] as const,
+  /** Sidebar pool total; invalidated with `payoutPool` prefix. */
+  payoutPoolNavBadge: (scope: PayoutCabinetScope) =>
+    [scope, 'payout-pool', 'nav-badge'] as const,
   specialistSummary: () => [...payoutTraderRoot, 'summary'] as const,
 };
 
@@ -57,6 +60,8 @@ export const traderKeys = {
   profile: () => [...traderRoot, 'profile'] as const,
   payinOrders: (params: unknown) => [...traderRoot, 'payin-orders', params] as const,
   payinOrdersScope: [...traderRoot, 'payin-orders'] as const,
+  /** Pay-In count for sidebar (lightweight `limit=1`); invalidated with `payinOrdersScope`. */
+  payinNavBadge: () => [...traderRoot, 'payin-orders', 'nav-badge'] as const,
   balancesMe: () => [...traderRoot, 'balances', 'me'] as const,
   usdtWallet: () => [...traderRoot, 'usdt-wallet'] as const,
   balanceTransactions: (

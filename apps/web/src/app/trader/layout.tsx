@@ -22,8 +22,8 @@ const TRADER_ALLOWED = [UserRole.TRADER] as const;
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/trader', icon: LayoutDashboard },
-  { label: 'Pay-In', href: '/trader/payin', icon: ArrowDownToLine },
-  { label: 'Pay-Out', href: '/trader/payout', icon: ArrowUpFromLine },
+  { label: 'Pay-In', href: '/trader/payin', icon: ArrowDownToLine, navBadge: 'payin-current' },
+  { label: 'Pay-Out', href: '/trader/payout', icon: ArrowUpFromLine, navBadge: 'payout-pool' },
   { label: 'Analytics', href: '/trader/analytics', icon: PieChart },
   { label: 'Requisites', href: '/trader/requisites', icon: CreditCard },
   { label: 'Balance', href: '/trader/balance', icon: Wallet },

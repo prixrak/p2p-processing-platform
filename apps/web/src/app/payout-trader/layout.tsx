@@ -15,7 +15,7 @@ const PAYOUT_TRADER_ALLOWED = [UserRole.PAYOUT_TRADER] as const;
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/payout-trader', icon: LayoutDashboard },
-  { label: 'Pay-Out', href: '/payout-trader/payout', icon: ArrowUpFromLine },
+  { label: 'Pay-Out', href: '/payout-trader/payout', icon: ArrowUpFromLine, navBadge: 'payout-pool' },
   { label: 'Statistics', href: '/payout-trader/statistics', icon: BarChart3 },
   { label: 'Balance', href: '/payout-trader/balance', icon: Wallet },
   { label: 'Notifications', href: '/payout-trader/notifications', icon: Bell },

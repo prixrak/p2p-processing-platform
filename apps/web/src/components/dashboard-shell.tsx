@@ -9,13 +9,18 @@ import { LogOut, Menu, Power, PowerOff, X, type LucideIcon } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
-import { traderKeys } from '@/lib/query-keys';
+import { payoutCabinetKeys, traderKeys } from '@/lib/query-keys';
 import { Tooltip } from '@/components/ui/tooltip';
+import type { PayInListApiResponse } from '@/features/trader-payin/payin-types';
+
+export type NavItemSidebarBadge = 'payin-current' | 'payout-pool';
 
 export interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  /** Red count badge; uses lightweight list/pool requests (limit=1). */
+  navBadge?: NavItemSidebarBadge;
 }
 
 interface DashboardShellProps {
@@ -27,6 +32,124 @@ interface DashboardShellProps {
 interface TraderAcceptingOrdersResponse {
   accepting_orders: boolean;
   account_active: boolean;
+}
+
+interface PayOutListTotalResponse {
+  total: number;
+}
+
+function useTraderSidebarBadgeData(role: string) {
+  const payinQuery = useQuery({
+    queryKey: traderKeys.payinNavBadge(),
+    queryFn: () =>
+      api
+        .get<PayInListApiResponse>(internalPaths.traderPayinOrders, {
+          list: 'current',
+          page: '1',
+          limit: '1',
+        })
+        .then((r) => r.total),
+    enabled: role === 'trader',
+    staleTime: 10_000,
+  });
+
+  const payoutTraderPool = useQuery({
+    queryKey: payoutCabinetKeys.payoutPoolNavBadge('trader'),
+    queryFn: () =>
+      api
+        .get<PayOutListTotalResponse>(`${internalPaths.payoutCabinetTrader}/pool`, {
+          page: '1',
+          limit: '1',
+        })
+        .then((r) => r.total),
+    enabled: role === 'trader',
+    staleTime: 10_000,
+  });
+
+  const payoutSpecialistPool = useQuery({
+    queryKey: payoutCabinetKeys.payoutPoolNavBadge('payout-trader'),
+    queryFn: () =>
+      api
+        .get<PayOutListTotalResponse>(`${internalPaths.payoutCabinetSpecialist}/pool`, {
+          page: '1',
+          limit: '1',
+        })
+        .then((r) => r.total),
+    enabled: role === 'payout-trader',
+    staleTime: 10_000,
+  });
+
+  return { payinQuery, payoutTraderPool, payoutSpecialistPool };
+}
+
+function resolveNavBadgeCount(
+  item: NavItem,
+  role: string,
+  data: ReturnType<typeof useTraderSidebarBadgeData>,
+): number | undefined {
+  if (item.navBadge === 'payin-current' && role === 'trader') {
+    return data.payinQuery.data;
+  }
+  if (item.navBadge === 'payout-pool') {
+    if (role === 'trader') return data.payoutTraderPool.data;
+    if (role === 'payout-trader') return data.payoutSpecialistPool.data;
+  }
+  return undefined;
+}
+
+function SidebarNavBadge({
+  count,
+  label,
+}: {
+  count: number | undefined;
+  label: string;
+}) {
+  if (count === undefined || count < 1) return null;
+  const text = count > 99 ? '99+' : String(count);
+  return (
+    <span
+      className="pointer-events-none absolute right-1.5 top-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-[3px] text-[8px] font-bold leading-none text-white tabular-nums shadow-sm ring-1 ring-red-600/30"
+      aria-label={`${label}: ${count} pending`}
+    >
+      {text}
+    </span>
+  );
+}
+
+function DashboardSidebarNavLink({
+  item,
+  firstHref,
+  pathname,
+  badgeCount,
+  onNavigate,
+}: {
+  item: NavItem;
+  firstHref: string;
+  pathname: string;
+  badgeCount: number | undefined;
+  onNavigate: () => void;
+}) {
+  const isActive =
+    pathname === item.href || (item.href !== firstHref && pathname.startsWith(item.href));
+  const showBadge = badgeCount !== undefined && badgeCount > 0;
+
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      className={clsx(
+        'relative flex min-h-10 items-center gap-3 rounded-lg py-2.5 pl-3 pr-3 text-sm font-medium transition-colors',
+        showBadge && 'pr-5',
+        isActive
+          ? 'bg-accent-muted text-accent-hover'
+          : 'text-text-secondary hover:bg-surface-tertiary hover:text-text-primary',
+      )}
+    >
+      <item.icon className="h-4.5 w-4.5 shrink-0" />
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      <SidebarNavBadge count={badgeCount} label={item.label} />
+    </Link>
+  );
 }
 
 /** Same payload shape as dashboard stats; avoids a separate GET that may 404 on older API builds. */
@@ -136,6 +259,7 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarBadges = useTraderSidebarBadgeData(role);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -171,25 +295,16 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href || (item.href !== navItems[0].href && pathname.startsWith(item.href));
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setSidebarOpen(false)}
-                className={clsx(
-                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-accent-muted text-accent-hover'
-                    : 'text-text-secondary hover:bg-surface-tertiary hover:text-text-primary',
-                )}
-              >
-                <item.icon className="h-4.5 w-4.5 shrink-0" />
-                {item.label}
-              </Link>
-            );
-          })}
+          {navItems.map((item) => (
+            <DashboardSidebarNavLink
+              key={item.href}
+              item={item}
+              firstHref={navItems[0].href}
+              pathname={pathname}
+              badgeCount={resolveNavBadgeCount(item, role, sidebarBadges)}
+              onNavigate={() => setSidebarOpen(false)}
+            />
+          ))}
         </nav>
 
         <div className="border-t border-border-primary p-4">
