@@ -155,6 +155,41 @@ export class UsersService {
     });
   }
 
+  /**
+   * HMAC routes reject locked merchants. Staff user flag drives merchant lock:
+   * inactive user → lock; reactivation (was inactive, now active) → unlock.
+   * Does not clear a manual lock on an already-active merchant (e.g. email-only PATCH).
+   */
+  private async syncMerchantLockWithLinkedUser(
+    userId: string,
+    role: UserRole,
+    isActive: boolean,
+    previousIsActive: boolean,
+  ) {
+    if (role !== UserRole.MERCHANT) return;
+
+    if (!isActive) {
+      const result = await this.prisma.merchant.updateMany({
+        where: { userId, isLock: false },
+        data: { isLock: true },
+      });
+      if (result.count > 0) {
+        this.logger.warn(`Merchant for user ${userId} locked automatically (inactive user)`);
+      }
+      return;
+    }
+
+    if (previousIsActive === false) {
+      const result = await this.prisma.merchant.updateMany({
+        where: { userId, isLock: true },
+        data: { isLock: false },
+      });
+      if (result.count > 0) {
+        this.logger.log(`Merchant for user ${userId} unlocked automatically (user reactivated)`);
+      }
+    }
+  }
+
   private mapDirectoryUserRow(u: UserListWithInclude) {
     return {
       id: u.id,
@@ -470,6 +505,13 @@ export class UsersService {
       }
     }
 
+    await this.syncMerchantLockWithLinkedUser(
+      id,
+      updated.role as UserRole,
+      updated.isActive,
+      existing.isActive,
+    );
+
     this.logger.log(`User ${id} updated`);
     return updated;
   }
@@ -495,6 +537,13 @@ export class UsersService {
         await this.tradersService.deactivate(profile.id);
       }
     }
+
+    await this.syncMerchantLockWithLinkedUser(
+      id,
+      user.role as UserRole,
+      user.isActive,
+      existing.isActive,
+    );
 
     this.logger.log(`User ${id} deactivated`);
     return user;

@@ -17,7 +17,8 @@ export interface CountryListItem {
   _count?: { paymentMethods: number };
 }
 
-function currencyCodeFromRelation(value: unknown): string {
+/** Resolves API `currency` when it is either a code string or `{ code: string }`. */
+export function currencyCodeFromRelation(value: unknown): string {
   if (typeof value === 'string' && value.trim()) return value.trim().toUpperCase();
   if (value && typeof value === 'object' && 'code' in value && typeof (value as { code: unknown }).code === 'string')
     return (value as { code: string }).code.trim().toUpperCase();

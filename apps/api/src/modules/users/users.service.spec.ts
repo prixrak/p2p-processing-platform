@@ -43,6 +43,7 @@ describe('UsersService', () => {
       merchant: {
         findUnique: jest.fn(),
         upsert: jest.fn(),
+        updateMany: jest.fn(),
       },
       payoutTraderProfile: {},
       country: { findUnique: jest.fn() },
@@ -320,6 +321,28 @@ describe('UsersService', () => {
 
       expect(tradersService.deactivate).not.toHaveBeenCalled();
     });
+
+    it('locks merchant when merchant user is deactivated', async () => {
+      const { service, prisma } = createService();
+      const merchantUser = {
+        id: userId,
+        email: 'm@example.com',
+        role: UserRole.MERCHANT,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      prisma.user.findUnique.mockResolvedValue(merchantUser);
+      prisma.user.update.mockResolvedValue({ ...merchantUser, isActive: false });
+      prisma.merchant.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.deactivate(userId);
+
+      expect(prisma.merchant.updateMany).toHaveBeenCalledWith({
+        where: { userId, isLock: false },
+        data: { isLock: true },
+      });
+    });
   });
 
   describe('update', () => {
@@ -341,6 +364,71 @@ describe('UsersService', () => {
       await service.update(userId, { email: 'new@example.com' });
 
       expect(prisma.user.update).toHaveBeenCalled();
+    });
+
+    it('locks merchant when merchant user is set inactive via PATCH', async () => {
+      const { service, prisma } = createService();
+      const merchantUser = {
+        id: userId,
+        email: 'm@example.com',
+        role: UserRole.MERCHANT,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      prisma.user.findUnique.mockResolvedValue(merchantUser);
+      prisma.user.update.mockResolvedValue({ ...merchantUser, isActive: false });
+      prisma.merchant.upsert.mockResolvedValue({});
+      prisma.merchant.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.update(userId, { isActive: false });
+
+      expect(prisma.merchant.updateMany).toHaveBeenCalledWith({
+        where: { userId, isLock: false },
+        data: { isLock: true },
+      });
+    });
+
+    it('unlocks merchant when merchant user is reactivated via PATCH', async () => {
+      const { service, prisma } = createService();
+      const inactiveMerchant = {
+        id: userId,
+        email: 'm@example.com',
+        role: UserRole.MERCHANT,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      prisma.user.findUnique.mockResolvedValue(inactiveMerchant);
+      prisma.user.update.mockResolvedValue({ ...inactiveMerchant, isActive: true });
+      prisma.merchant.upsert.mockResolvedValue({});
+      prisma.merchant.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.update(userId, { isActive: true });
+
+      expect(prisma.merchant.updateMany).toHaveBeenCalledWith({
+        where: { userId, isLock: true },
+        data: { isLock: false },
+      });
+    });
+
+    it('does not sync merchant lock when active merchant user gets email-only PATCH', async () => {
+      const { service, prisma } = createService();
+      const merchantUser = {
+        id: userId,
+        email: 'm@example.com',
+        role: UserRole.MERCHANT,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      prisma.user.findUnique.mockResolvedValue(merchantUser);
+      prisma.user.update.mockResolvedValue({ ...merchantUser, email: 'new@example.com' });
+      prisma.merchant.upsert.mockResolvedValue({});
+
+      await service.update(userId, { email: 'new@example.com' });
+
+      expect(prisma.merchant.updateMany).not.toHaveBeenCalled();
     });
 
     it('keeps referral profile hook when user is already REFERRAL and email changes', async () => {

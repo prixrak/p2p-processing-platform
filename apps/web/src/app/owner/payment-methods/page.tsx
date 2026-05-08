@@ -20,8 +20,12 @@ import {
   ownerReferenceKeys,
   type CountryListItem,
 } from '@/lib/query-keys';
+import { currencyCodeFromRelation } from '@/lib/country-queries';
 
-type PaymentMethodCountry = CountryListItem;
+/** Country embed from payment-method APIs: `currency` may be a Prisma `{ select: { code } }` relation. */
+type PaymentMethodCountry = Omit<CountryListItem, 'currency'> & {
+  currency: CountryListItem['currency'] | { code: string };
+};
 
 interface PaymentMethod {
   id: string;
@@ -124,7 +128,9 @@ export default function PaymentMethodsPage() {
       header: 'Country',
       className: 'font-mono text-center',
       render: (m: PaymentMethod) => (
-        <span className="font-mono text-sm">{m.country.code} / {m.country.currency}</span>
+        <span className="font-mono text-sm">
+          {m.country.code} / {currencyCodeFromRelation(m.country.currency)}
+        </span>
       ),
     },
     {
