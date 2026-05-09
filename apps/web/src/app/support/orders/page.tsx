@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Eye } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -55,13 +56,49 @@ interface OrderDetails {
   statusHistory: { status: string; timestamp: string; actor: string }[];
 }
 
-export default function SupportOrdersPage() {
+const ORDER_ID_QUERY = 'orderId';
+
+function looksLikeOrderIdUuid(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    s.trim(),
+  );
+}
+
+function SupportOrdersPageContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState('PAYIN');
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
   const [merchantFilter, setMerchantFilter] = useState('');
   const [traderFilter, setTraderFilter] = useState('');
   const [detailOrder, setDetailOrder] = useState<string | null>(null);
+
+  const openOrderDetail = useCallback(
+    (id: string) => {
+      const p = new URLSearchParams(searchParams.toString());
+      p.set(ORDER_ID_QUERY, id);
+      router.replace(`${pathname}?${p.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  const closeOrderDetail = useCallback(() => {
+    const p = new URLSearchParams(searchParams.toString());
+    p.delete(ORDER_ID_QUERY);
+    const q = p.toString();
+    router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    const raw = searchParams.get(ORDER_ID_QUERY)?.trim() ?? '';
+    if (looksLikeOrderIdUuid(raw)) {
+      setDetailOrder(raw);
+      return;
+    }
+    setDetailOrder(null);
+  }, [searchParams]);
 
   const statusFilterOptions = useMemo(
     () => (tab === 'PAYIN' ? payinStatusFilterOptions : payoutStatusFilterOptions),
@@ -152,7 +189,7 @@ export default function SupportOrdersPage() {
       header: '',
       className: 'w-12 text-center',
       render: (o: Order) => (
-        <IconButton label="View order details" onClick={() => setDetailOrder(o.id)}>
+        <IconButton label="View order details" onClick={() => openOrderDetail(o.id)}>
           <Eye className="h-4 w-4" />
         </IconButton>
       ),
@@ -227,7 +264,7 @@ export default function SupportOrdersPage() {
 
       <Modal
         open={!!detailOrder}
-        onClose={() => setDetailOrder(null)}
+        onClose={closeOrderDetail}
         title={`Order — ${detailOrder?.slice(0, 12) ?? ''}`}
         className="max-w-2xl"
       >
@@ -331,5 +368,19 @@ export default function SupportOrdersPage() {
         )}
       </Modal>
     </div>
+  );
+}
+
+export default function SupportOrdersPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-6xl animate-fade-in space-y-6 p-6 text-text-muted">
+          Loading…
+        </div>
+      }
+    >
+      <SupportOrdersPageContent />
+    </Suspense>
   );
 }

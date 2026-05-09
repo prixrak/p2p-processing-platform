@@ -308,6 +308,10 @@ export class PayinService {
 
       if (order.requisiteId) {
         void this.cascadeCoverageCache.invalidateCurrency(order.currency.code);
+        void this.cascadeCoverageCache.recordRequisiteAssignment(
+          order.requisiteId,
+          order.id,
+        );
       }
 
       this.emitPayinOrderRealtime({
@@ -692,6 +696,10 @@ export class PayinService {
 
       if (order.requisiteId) {
         void this.cascadeCoverageCache.invalidateCurrency(order.currency.code);
+        void this.cascadeCoverageCache.recordRequisiteAssignment(
+          order.requisiteId,
+          order.id,
+        );
       }
 
       this.emitPayinOrderRealtime({

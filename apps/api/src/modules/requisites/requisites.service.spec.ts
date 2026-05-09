@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { RequisiteType } from '@p2p/shared';
 import type { PrismaService } from '../../config/prisma.service';
 import type { CascadeService } from '../cascade/cascade.service';
@@ -25,9 +26,12 @@ describe('RequisitesService.activate', () => {
         findUnique: jest.fn().mockResolvedValue({
           id: requisiteId,
           traderId: 't',
+          type: RequisiteType.CARD,
+          numberNormalized: '4111111111111111',
           currency: { code: 'UAH' },
           group: { isActive: false, archivedAt: null },
         }),
+        findFirst: jest.fn(),
         update: jest.fn(),
       },
     } as unknown as PrismaService;
@@ -42,14 +46,41 @@ describe('RequisitesService.activate', () => {
         findUnique: jest.fn().mockResolvedValue({
           id: requisiteId,
           traderId: 't',
+          type: RequisiteType.CARD,
+          numberNormalized: '4111111111111111',
           currency: { code: 'UAH' },
           group: { isActive: false, archivedAt: new Date() },
         }),
+        findFirst: jest.fn(),
         update: jest.fn(),
       },
     } as unknown as PrismaService;
 
     await expect(svc(prisma).activate(requisiteId)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.requisite.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects when another active requisite already uses the same normalized identity', async () => {
+    const prisma = {
+      requisite: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: requisiteId,
+          traderId: 't',
+          type: RequisiteType.CARD,
+          numberNormalized: '4111111111111111',
+          currency: { code: 'UAH' },
+          group: { isActive: true, archivedAt: null },
+        }),
+        findFirst: jest.fn().mockResolvedValue({ id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' }),
+        update: jest.fn(),
+      },
+    } as unknown as PrismaService;
+
+    await expect(svc(prisma).activate(requisiteId)).rejects.toMatchObject({
+      response: expect.objectContaining({
+        message: expect.stringContaining('REQUISITE_ALREADY_EXISTS'),
+      }),
+    });
     expect(prisma.requisite.update).not.toHaveBeenCalled();
   });
 });
@@ -88,7 +119,7 @@ describe('RequisitesService.create', () => {
         }),
       },
       bank: { findFirst: jest.fn().mockResolvedValue(null) },
-      requisite: { create: jest.fn() },
+      requisite: { findFirst: jest.fn(), create: jest.fn() },
     } as unknown as PrismaService;
 
     await expect(svc(prisma).create(traderId, baseDto)).rejects.toBeInstanceOf(BadRequestException);
@@ -110,6 +141,7 @@ describe('RequisitesService.create', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 1, name: 'TestBank', isActive: true }),
       },
       requisite: {
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({
           currency: { code: 'UAH' },
           bank: {},
@@ -127,6 +159,7 @@ describe('RequisitesService.create', () => {
           requisiteGroupId: groupId,
           bankId: 1,
           currencyId,
+          numberNormalized: '4111111111111111',
           isActive: true,
         }),
       }),
@@ -148,6 +181,7 @@ describe('RequisitesService.create', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 1, name: 'TestBank', isActive: true }),
       },
       requisite: {
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({
           currency: { code: 'UAH' },
           bank: {},
@@ -165,5 +199,88 @@ describe('RequisitesService.create', () => {
         }),
       }),
     );
+  });
+
+  it('rejects when an active requisite with the same normalized number already exists', async () => {
+    const prisma = {
+      requisiteGroup: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: groupId,
+          traderId,
+          archivedAt: null,
+          currencyId,
+          isActive: true,
+        }),
+      },
+      bank: {
+        findFirst: jest.fn().mockResolvedValue({ id: 1, name: 'TestBank', isActive: true }),
+      },
+      requisite: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'existing-active' }),
+        create: jest.fn(),
+      },
+    } as unknown as PrismaService;
+
+    await expect(svc(prisma).create(traderId, baseDto)).rejects.toMatchObject({
+      response: expect.objectContaining({
+        message: expect.stringContaining('REQUISITE_ALREADY_EXISTS'),
+      }),
+    });
+    expect(prisma.requisite.create).not.toHaveBeenCalled();
+  });
+
+  it('maps unique violations on create to duplicate requisite error', async () => {
+    const prisma = {
+      requisiteGroup: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: groupId,
+          traderId,
+          archivedAt: null,
+          currencyId,
+          isActive: true,
+        }),
+      },
+      bank: {
+        findFirst: jest.fn().mockResolvedValue({ id: 1, name: 'TestBank', isActive: true }),
+      },
+      requisite: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation(() => {
+          throw new Prisma.PrismaClientKnownRequestError('unique', {
+            code: 'P2002',
+            clientVersion: 'test',
+          });
+        }),
+      },
+    } as unknown as PrismaService;
+
+    await expect(svc(prisma).create(traderId, baseDto)).rejects.toMatchObject({
+      response: expect.objectContaining({
+        message: expect.stringContaining('REQUISITE_ALREADY_EXISTS'),
+      }),
+    });
+  });
+
+  it('rejects empty normalized card number', async () => {
+    const prisma = {
+      requisiteGroup: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: groupId,
+          traderId,
+          archivedAt: null,
+          currencyId,
+          isActive: true,
+        }),
+      },
+      bank: {
+        findFirst: jest.fn().mockResolvedValue({ id: 1, name: 'TestBank', isActive: true }),
+      },
+      requisite: { findFirst: jest.fn(), create: jest.fn() },
+    } as unknown as PrismaService;
+
+    await expect(
+      svc(prisma).create(traderId, { ...baseDto, number: '----' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.requisite.create).not.toHaveBeenCalled();
   });
 });

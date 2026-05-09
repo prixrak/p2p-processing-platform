@@ -113,7 +113,7 @@ export class TradersController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
   @ApiOperation({ summary: 'List all traders (paginated)' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })

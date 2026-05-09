@@ -8,15 +8,22 @@ import {
   type CascadeStoredSnapshot,
   type CascadeReqSnapshotRow,
   type CoverageNominalRow,
+  type CascadeReqRedisMeta,
 } from './cascade-redis-state.service';
 import {
   approximateOthersEffectiveRange,
   computeForkAssignBounds,
+  computeForkAutolimitAutoMaxAmount,
+  fillRatioAmount,
+  fillRatioTx,
+  forkAutolimitAutoMinPerTx,
   isForkAutolimitActive,
   nominalCoveredByRange,
   requisiteRating,
+  tzRequisiteRatingPercent,
   type TraderCascadeMethod,
 } from '@p2p/shared';
+import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
 
 export interface CascadeResult {
   traderId: string;
@@ -42,6 +49,7 @@ export class CascadeService {
     private readonly prisma: PrismaService,
     private readonly redisState: CascadeRedisStateService,
     private readonly currencies: CurrenciesService,
+    private readonly exchangeRate: ExchangeRateService,
   ) {}
 
   async getSettings(): Promise<CascadeSetting> {
@@ -111,6 +119,265 @@ export class CascadeService {
   }
 
   /**
+   * Level 3 checks for a single requisite snapshot (same rules as assignment, score on success).
+   */
+  private evaluateSnapshotForPayInAmount(
+    row: ReqSnapshot,
+    amount: number,
+    snapshots: ReqSnapshot[],
+    nominalAmounts: number[],
+    settings: CascadeSetting,
+    usdtBal: Map<string, number>,
+    overdraft: Map<string, number>,
+    parserRate: number | undefined,
+    enforceUsdtCapacity: boolean,
+  ): { ok: true; score: number } | { ok: false; code: string; detail: string } {
+    const coverageCounts = new Map<number, number>();
+    for (const n of nominalAmounts) {
+      let c = 0;
+      for (const other of snapshots) {
+        if (other.id === row.id) continue;
+        const range = approximateOthersEffectiveRange({
+          traderMethod: other.processingMethod as TraderCascadeMethod,
+          limitTotalAmount: Number(other.limitTotalAmount),
+          usedAmount: Number(other.usedAmount),
+          limitTotalOps: other.limitTotalOps,
+          usedOps: other.usedOps,
+          manualMin: Number(other.minAmount),
+          manualMax: Number(other.maxAmount),
+          autolimitEnabledGlobal: settings.autolimitEnabled,
+          autolimitThreshold: Number(settings.autolimitThreshold),
+        });
+        if (!range) continue;
+        if (nominalCoveredByRange(n, range.min, range.max)) c++;
+      }
+      coverageCounts.set(n, c);
+    }
+
+    const forkInp = {
+      traderMethod: row.processingMethod as TraderCascadeMethod,
+      limitTotalAmount: Number(row.limitTotalAmount),
+      usedAmount: Number(row.usedAmount),
+      limitTotalOps: row.limitTotalOps,
+      usedOps: row.usedOps,
+      manualMin: Number(row.minAmount),
+      manualMax: Number(row.maxAmount),
+      autolimitEnabledGlobal: settings.autolimitEnabled,
+      autolimitThreshold: Number(settings.autolimitThreshold),
+    };
+
+    const bounds = computeForkAssignBounds(
+      forkInp,
+      nominalAmounts,
+      (nominal) => coverageCounts.get(nominal) ?? 0,
+    );
+    if (!bounds) {
+      return {
+        ok: false,
+        code: 'EFFECTIVE_BOUNDS_UNAVAILABLE',
+        detail:
+          'Fork/card bounds could not be derived (limits exhausted or incompatible with coverage grid).',
+      };
+    }
+    if (amount < bounds.effMin - 1e-9 || amount > bounds.effMax + 1e-9) {
+      return {
+        ok: false,
+        code: 'AMOUNT_OUTSIDE_EFFECTIVE_RANGE',
+        detail: `Amount ${amount} not in [${bounds.effMin.toFixed(2)}, ${bounds.effMax.toFixed(2)}].`,
+      };
+    }
+
+    if (enforceUsdtCapacity && parserRate !== undefined) {
+      const cap =
+        (usdtBal.get(row.traderId) ?? 0) + (overdraft.get(row.traderId) ?? 0);
+      const need =
+        amount / (parserRate * (1 + Number(row.payinRate)));
+      if (need > cap + 1e-9) {
+        return {
+          ok: false,
+          code: 'USDT_CAPACITY_INSUFFICIENT',
+          detail: `Required ≈${need.toFixed(4)} USDT (with pay-in rate) exceeds trader capacity ${cap.toFixed(4)} USDT (incl. overdraft).`,
+        };
+      }
+    }
+
+    const w =
+      row.processingMethod === 'FORK'
+        ? settings.forkRatingWeight
+        : settings.cardRatingWeight;
+    const score = requisiteRating(
+      Number(row.usedAmount),
+      Number(row.limitTotalAmount),
+      w,
+    );
+    return { ok: true, score };
+  }
+
+  private async getUsdtCapacityMaps(
+    db: PrismaService | Prisma.TransactionClient,
+  ): Promise<{
+    usdtBal: Map<string, number>;
+    overdraft: Map<string, number>;
+  }> {
+    const usdtId = await this.currencies.getUsdtCurrencyId();
+    const balanceRows = await db.traderBalance.findMany({
+      where: { currencyId: usdtId },
+      select: { traderId: true, amount: true },
+    });
+    const usdtBal = new Map<string, number>();
+    const overdraft = new Map<string, number>();
+    for (const b of balanceRows) {
+      usdtBal.set(b.traderId, Number(b.amount));
+    }
+    const odRows = await db.traderProfile.findMany({
+      select: { id: true, overdraftLimit: true },
+    });
+    for (const r of odRows) {
+      overdraft.set(r.id, Number(r.overdraftLimit));
+    }
+    return { usdtBal, overdraft };
+  }
+
+  /**
+   * Levels 1–3 ordering for a hypothetical Pay-In amount (same ordering as assignment; no Redis locks).
+   */
+  private async buildOrderedRequisiteIdsForAmount(
+    db: PrismaService | Prisma.TransactionClient,
+    args: {
+      currency: string;
+      amount: number;
+      parserRate?: number;
+      enforceUsdtCapacity: boolean;
+      settings: CascadeSetting;
+      nominalAmounts: number[];
+      reqRows: ReqSnapshot[];
+    },
+  ): Promise<Array<{ id: string; score: number; traderId: string }>> {
+    const {
+      currency,
+      amount,
+      parserRate,
+      enforceUsdtCapacity,
+      settings,
+      nominalAmounts,
+      reqRows,
+    } = args;
+    const cur = currency.trim().toUpperCase();
+
+    const eligibleTraderIds = new Set(
+      reqRows
+        .filter((row) => {
+          const remAmt = Number(row.limitTotalAmount) - Number(row.usedAmount);
+          return remAmt >= amount - 1e-9;
+        })
+        .map((r) => r.traderId),
+    );
+
+    const traderRows =
+      eligibleTraderIds.size === 0
+        ? []
+        : await db.traderProfile.findMany({
+            where: {
+              id: { in: [...eligibleTraderIds] },
+              isActive: true,
+              acceptingOrders: true,
+            },
+            select: { id: true, trafficPercent: true },
+          });
+
+    const sumPct = traderRows.reduce((s, t) => s + Number(t.trafficPercent), 0);
+    const targets = new Map<string, number>();
+    if (traderRows.length > 0 && sumPct <= 0) {
+      const eq = 1 / traderRows.length;
+      for (const t of traderRows) targets.set(t.id, eq);
+    } else {
+      for (const t of traderRows) {
+        targets.set(t.id, Number(t.trafficPercent) / sumPct);
+      }
+    }
+
+    const windowStart = new Date(
+      Date.now() - settings.slidingWindowHours * 60 * 60 * 1000,
+    );
+
+    const volumeRows = await db.$queryRaw<Array<{ traderId: string; vol: Prisma.Decimal }>>`
+      SELECT tdl.trader_id AS "traderId", COALESCE(SUM(tdl.amount), 0)::decimal AS vol
+      FROM traffic_distribution_logs tdl
+      INNER JOIN payin_orders po ON po.id = tdl.payin_order_id
+      INNER JOIN currencies poc ON poc.id = po.currency_id AND poc.code = ${cur}
+      WHERE tdl.created_at >= ${windowStart}
+      GROUP BY tdl.trader_id
+    `;
+
+    const volMap = new Map<string, number>();
+    let totalVol = 0;
+    for (const row of volumeRows) {
+      const v = Number(row.vol);
+      volMap.set(row.traderId, v);
+      totalVol += v;
+    }
+
+    const deficits: Array<{ traderId: string; deficit: number }> = [];
+    for (const t of traderRows) {
+      const tgt = targets.get(t.id) ?? 0;
+      const v = volMap.get(t.id) ?? 0;
+      const actual = totalVol > 0 ? v / totalVol : 0;
+      deficits.push({ traderId: t.id, deficit: tgt - actual });
+    }
+    deficits.sort((a, b) => {
+      const d = b.deficit - a.deficit;
+      if (Math.abs(d) > 1e-12) return d;
+      return a.traderId.localeCompare(b.traderId);
+    });
+
+    const { usdtBal, overdraft } = await this.getUsdtCapacityMaps(db);
+
+    const snapshots = reqRows.filter((row) => {
+      const remAmt = Number(row.limitTotalAmount) - Number(row.usedAmount);
+      return remAmt >= amount - 1e-9;
+    });
+
+    const orderedReqIds: Array<{ id: string; score: number; traderId: string }> = [];
+
+    for (const { traderId } of deficits) {
+      const mine = snapshots.filter((s) => s.traderId === traderId);
+      const ranked = mine
+        .map((row) => {
+          const ev = this.evaluateSnapshotForPayInAmount(
+            row,
+            amount,
+            snapshots,
+            nominalAmounts,
+            settings,
+            usdtBal,
+            overdraft,
+            parserRate,
+            enforceUsdtCapacity,
+          );
+          if (!ev.ok) return null;
+          return {
+            id: row.id,
+            score: ev.score,
+            tie: Math.random(),
+            traderId: row.traderId,
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null)
+        .sort((a, b) => b.score - a.score || a.tie - b.tie);
+
+      for (const r of ranked) {
+        orderedReqIds.push({
+          id: r.id,
+          score: r.score,
+          traderId: r.traderId,
+        });
+      }
+    }
+
+    return orderedReqIds;
+  }
+
+  /**
    * Single materialized snapshot for a currency: nominal coverage + active requisite rows +
    * Fork autolimit-derived fields stored alongside rows in Redis (spec §4.4, §5.5).
    */
@@ -130,6 +397,8 @@ export class CascadeService {
       orderBy: { sortOrder: 'asc' },
     });
     const nominalAmounts = nominalRows.map((n) => Number(n.amount));
+
+    const cur = currency.trim().toUpperCase();
 
     const rawRows = await db.$queryRaw<
       Array<{
@@ -165,7 +434,7 @@ export class CascadeService {
         AND tp.accepting_orders = true
       INNER JOIN users u ON u.id = tp.user_id
         AND u.is_active = true
-      INNER JOIN currencies rc ON rc.id = r.currency_id AND rc.code = ${currency}
+      INNER JOIN currencies rc ON rc.id = r.currency_id AND rc.code = ${cur}
       WHERE r.is_active = true
         AND r.used_ops < r.limit_total_ops
     `;
@@ -195,10 +464,52 @@ export class CascadeService {
       nominals.push({ nominal: n, count });
     }
 
+    for (const row of nominals) {
+      if (row.count === 0) {
+        this.logger.warn({
+          msg: 'cascade.nominal_coverage_zero',
+          event: 'nominal_coverage_zero',
+          currency: cur,
+          nominal: row.nominal,
+        });
+      }
+    }
+
+    const previewAmount =
+      nominalAmounts.length > 0 ? Math.min(...nominalAmounts) : 100;
+
+    let parserRate: number | undefined;
+    if (cur === 'UAH') {
+      try {
+        parserRate = await this.exchangeRate.requireParserRateFiatPerUsdt('UAH');
+      } catch {
+        parserRate = undefined;
+      }
+    }
+
+    const enforceUsdt = cur === 'UAH' && parserRate !== undefined;
+
+    const previewOrder = await this.buildOrderedRequisiteIdsForAmount(db, {
+      currency: cur,
+      amount: previewAmount,
+      parserRate,
+      enforceUsdtCapacity: enforceUsdt,
+      settings,
+      nominalAmounts,
+      reqRows: reqs,
+    });
+
+    const rankById = new Map<string, number>();
+    for (let i = 0; i < previewOrder.length; i++) {
+      rankById.set(previewOrder[i]!.id, i + 1);
+    }
+    const eligiblePreview = new Set(previewOrder.map((x) => x.id));
+
     const snapshots: CascadeStoredSnapshot[] = reqs.map((row) => {
       const lim = Number(row.limitTotalAmount);
       const ua = Number(row.usedAmount);
-      const fillRatio = lim > 0 ? ua / lim : 0;
+      const fr = fillRatioAmount(ua, lim);
+      const frTx = fillRatioTx(row.usedOps, row.limitTotalOps);
       const forkInp = {
         traderMethod: row.processingMethod as TraderCascadeMethod,
         limitTotalAmount: lim,
@@ -213,19 +524,85 @@ export class CascadeService {
       const activ = isForkAutolimitActive(forkInp);
       const remAmt = lim - ua;
       const remTx = row.limitTotalOps - row.usedOps;
-      let fork_auto_min_estimate: number | undefined;
-      if (activ && remTx > 0) {
-        fork_auto_min_estimate = remAmt / remTx;
+
+      const coverageCounts = new Map<number, number>();
+      for (const n of nominalAmounts) {
+        let c = 0;
+        for (const other of reqs) {
+          if (other.id === row.id) continue;
+          const range = approximateOthersEffectiveRange({
+            traderMethod: other.processingMethod as TraderCascadeMethod,
+            limitTotalAmount: Number(other.limitTotalAmount),
+            usedAmount: Number(other.usedAmount),
+            limitTotalOps: other.limitTotalOps,
+            usedOps: other.usedOps,
+            manualMin: Number(other.minAmount),
+            manualMax: Number(other.maxAmount),
+            autolimitEnabledGlobal: settings.autolimitEnabled,
+            autolimitThreshold: Number(settings.autolimitThreshold),
+          });
+          if (!range) continue;
+          if (nominalCoveredByRange(n, range.min, range.max)) c++;
+        }
+        coverageCounts.set(n, c);
       }
+
+      const bounds = computeForkAssignBounds(
+        forkInp,
+        nominalAmounts,
+        (nominal) => coverageCounts.get(nominal) ?? 0,
+      );
+
+      const w =
+        row.processingMethod === 'FORK'
+          ? settings.forkRatingWeight
+          : settings.cardRatingWeight;
+      const weighted = requisiteRating(ua, lim, w);
+
+      let autoMaxNominal: number | undefined = computeForkAutolimitAutoMaxAmount(
+        forkInp,
+        nominalAmounts,
+        (nominal) => coverageCounts.get(nominal) ?? 0,
+      );
+      if (autoMaxNominal !== undefined) {
+        autoMaxNominal = Math.min(autoMaxNominal, remAmt);
+      }
+
+      const forkMinEst = forkAutolimitAutoMinPerTx(forkInp);
+      const fork_auto_min_estimate =
+        forkMinEst !== undefined ? forkMinEst : activ && remTx > 0 ? remAmt / remTx : undefined;
+
+      const redis_meta: CascadeReqRedisMeta = {
+        fill_ratio: Math.round(fr * 1e6) / 1e6,
+        fill_ratio_tx: Math.round(frTx * 1e6) / 1e6,
+        rating: tzRequisiteRatingPercent(fr),
+        remaining_amount: Math.round(remAmt * 1e4) / 1e4,
+        remaining_transactions: remTx,
+        effective_min: bounds ? bounds.effMin : null,
+        effective_max: bounds ? bounds.effMax : null,
+        fork_autolimit_active: activ,
+        weighted_score: Math.round(weighted * 1e6) / 1e6,
+        is_eligible_preview: eligiblePreview.has(row.id),
+        cascade_rank: rankById.get(row.id) ?? null,
+        ...(fork_auto_min_estimate !== undefined
+          ? { fork_auto_min_estimate: Math.round(fork_auto_min_estimate * 1e4) / 1e4 }
+          : {}),
+        ...(autoMaxNominal !== undefined ? { auto_max_amount: autoMaxNominal } : {}),
+      };
+
+      if (fr > 0.8) {
+        this.logger.log({
+          msg: 'cascade.requisite_fill_ratio_high',
+          event: 'requisite_fill_ratio_high',
+          currency: cur,
+          requisite_id: row.id,
+          fill_ratio: fr,
+        });
+      }
+
       return {
         ...row,
-        redis_meta: {
-          fill_ratio: Math.round(fillRatio * 1e6) / 1e6,
-          fork_autolimit_active: activ,
-          ...(fork_auto_min_estimate !== undefined
-            ? { fork_auto_min_estimate }
-            : {}),
-        },
+        redis_meta,
       };
     });
 
@@ -238,11 +615,13 @@ export class CascadeService {
     );
 
     return {
+      payload_version: 3,
       snapshot_row_sig: sig,
       nominal_amounts: nominalAmounts,
       nominals,
       snapshots,
       built_at: new Date().toISOString(),
+      preview_amount: previewAmount,
     };
   }
 
@@ -316,7 +695,10 @@ export class CascadeService {
     let reqRows: ReqSnapshot[];
 
     const cachedPayload = await this.redisState.getPayload(cur);
-    if (cachedPayload?.snapshot_row_sig === txSig) {
+    if (
+      cachedPayload?.snapshot_row_sig === txSig &&
+      cachedPayload.payload_version === 3
+    ) {
       reqRows = cachedPayload.snapshots.map(stripRedisMeta);
     } else {
       const payload = await this.buildCurrencyPayload(tx, cur);
@@ -324,179 +706,20 @@ export class CascadeService {
       reqRows = payload.snapshots.map(stripRedisMeta);
     }
 
-    /**
-     * Level 1 candidate traders: only IDs present on the materialized requisite snapshot (Redis/DB)
-     * with at least one requisite that still has remaining volume for this order amount (spec §2.2 step 1, §6 step 2).
-     */
-    const eligibleTraderIds = new Set(
-      reqRows
-        .filter((row) => {
-          const remAmt = Number(row.limitTotalAmount) - Number(row.usedAmount);
-          return remAmt >= params.amount - 1e-9;
-        })
-        .map((r) => r.traderId),
-    );
-
-    const traderRows =
-      eligibleTraderIds.size === 0
-        ? []
-        : await tx.traderProfile.findMany({
-            where: {
-              id: { in: [...eligibleTraderIds] },
-              isActive: true,
-              acceptingOrders: true,
-            },
-            select: { id: true, trafficPercent: true },
-          });
-
-    const sumPct = traderRows.reduce((s, t) => s + Number(t.trafficPercent), 0);
-    const targets = new Map<string, number>();
-    if (traderRows.length > 0 && sumPct <= 0) {
-      const eq = 1 / traderRows.length;
-      for (const t of traderRows) targets.set(t.id, eq);
-    } else {
-      for (const t of traderRows) {
-        targets.set(t.id, Number(t.trafficPercent) / sumPct);
-      }
-    }
-
-    const windowStart = new Date(
-      Date.now() - settings.slidingWindowHours * 60 * 60 * 1000,
-    );
-
-    /** Sliding-window volume by assigned Pay-In traffic (see `traffic_distribution_logs`), scoped by order currency. */
-    const volumeRows = await tx.$queryRaw<Array<{ traderId: string; vol: Prisma.Decimal }>>`
-      SELECT tdl.trader_id AS "traderId", COALESCE(SUM(tdl.amount), 0)::decimal AS vol
-      FROM traffic_distribution_logs tdl
-      INNER JOIN payin_orders po ON po.id = tdl.payin_order_id
-      INNER JOIN currencies poc ON poc.id = po.currency_id AND poc.code = ${cur}
-      WHERE tdl.created_at >= ${windowStart}
-      GROUP BY tdl.trader_id
-    `;
-
-    const volMap = new Map<string, number>();
-    let totalVol = 0;
-    for (const row of volumeRows) {
-      const v = Number(row.vol);
-      volMap.set(row.traderId, v);
-      totalVol += v;
-    }
-
-    const deficits: Array<{ traderId: string; deficit: number }> = [];
-    for (const t of traderRows) {
-      const tgt = targets.get(t.id) ?? 0;
-      const v = volMap.get(t.id) ?? 0;
-      const actual = totalVol > 0 ? v / totalVol : 0;
-      deficits.push({ traderId: t.id, deficit: tgt - actual });
-    }
-    deficits.sort((a, b) => {
-      const d = b.deficit - a.deficit;
-      if (Math.abs(d) > 1e-12) return d;
-      return a.traderId.localeCompare(b.traderId);
+    const orderedReqIds = await this.buildOrderedRequisiteIdsForAmount(tx, {
+      currency: cur,
+      amount: params.amount,
+      parserRate: params.parserRate,
+      enforceUsdtCapacity: params.enforceUsdtCapacity,
+      settings,
+      nominalAmounts,
+      reqRows,
     });
-
-    const usdtId = await this.currencies.getUsdtCurrencyId();
-    const balanceRows = await tx.traderBalance.findMany({
-      where: { currencyId: usdtId },
-      select: { traderId: true, amount: true },
-    });
-    const usdtBal = new Map<string, number>();
-    const overdraft = new Map<string, number>();
-    for (const b of balanceRows) {
-      usdtBal.set(b.traderId, Number(b.amount));
-    }
-    const odRows = await tx.traderProfile.findMany({
-      select: { id: true, overdraftLimit: true },
-    });
-    for (const r of odRows) {
-      overdraft.set(r.id, Number(r.overdraftLimit));
-    }
 
     const snapshots = reqRows.filter((row) => {
       const remAmt = Number(row.limitTotalAmount) - Number(row.usedAmount);
       return remAmt >= params.amount - 1e-9;
     });
-
-    const orderedReqIds: Array<{ id: string; score: number }> = [];
-
-    for (const { traderId } of deficits) {
-      const mine = snapshots.filter((s) => s.traderId === traderId);
-      const ranked = mine
-        .map((row) => {
-          const coverageCounts = new Map<number, number>();
-          for (const n of nominalAmounts) {
-            let c = 0;
-            for (const other of snapshots) {
-              if (other.id === row.id) continue;
-              const range = approximateOthersEffectiveRange({
-                traderMethod: other.processingMethod as TraderCascadeMethod,
-                limitTotalAmount: Number(other.limitTotalAmount),
-                usedAmount: Number(other.usedAmount),
-                limitTotalOps: other.limitTotalOps,
-                usedOps: other.usedOps,
-                manualMin: Number(other.minAmount),
-                manualMax: Number(other.maxAmount),
-                autolimitEnabledGlobal: settings.autolimitEnabled,
-                autolimitThreshold: Number(settings.autolimitThreshold),
-              });
-              if (!range) continue;
-              if (nominalCoveredByRange(n, range.min, range.max)) c++;
-            }
-            coverageCounts.set(n, c);
-          }
-
-          const forkInp = {
-            traderMethod: row.processingMethod as TraderCascadeMethod,
-            limitTotalAmount: Number(row.limitTotalAmount),
-            usedAmount: Number(row.usedAmount),
-            limitTotalOps: row.limitTotalOps,
-            usedOps: row.usedOps,
-            manualMin: Number(row.minAmount),
-            manualMax: Number(row.maxAmount),
-            autolimitEnabledGlobal: settings.autolimitEnabled,
-            autolimitThreshold: Number(settings.autolimitThreshold),
-          };
-
-          const bounds = computeForkAssignBounds(
-            forkInp,
-            nominalAmounts,
-            (nominal) => coverageCounts.get(nominal) ?? 0,
-          );
-          if (!bounds) return null;
-          if (
-            params.amount < bounds.effMin - 1e-9 ||
-            params.amount > bounds.effMax + 1e-9
-          ) {
-            return null;
-          }
-
-          if (params.enforceUsdtCapacity && params.parserRate !== undefined) {
-            const cap =
-              (usdtBal.get(row.traderId) ?? 0) + (overdraft.get(row.traderId) ?? 0);
-            const need =
-              params.amount /
-              (params.parserRate * (1 + Number(row.payinRate)));
-            if (need > cap + 1e-9) return null;
-          }
-
-          const w =
-            row.processingMethod === 'FORK'
-              ? settings.forkRatingWeight
-              : settings.cardRatingWeight;
-          const score = requisiteRating(
-            Number(row.usedAmount),
-            Number(row.limitTotalAmount),
-            w,
-          );
-          return { id: row.id, score, tie: Math.random() };
-        })
-        .filter((x): x is NonNullable<typeof x> => x !== null)
-        .sort((a, b) => b.score - a.score || a.tie - b.tie);
-
-      for (const r of ranked) {
-        orderedReqIds.push({ id: r.id, score: r.score });
-      }
-    }
 
     for (const { id, score } of orderedReqIds) {
       const redisOk = await this.redisState.tryAcquireRequisiteLock(id);
@@ -730,6 +953,558 @@ export class CascadeService {
     }
 
     return { requisites };
+  }
+
+  /**
+   * Staff: requisite cascade observability rows for the rating table (TZ).
+   */
+  async listRequisiteRatingsForStaff(options: {
+    currency: string;
+    preview_amount?: number;
+    trader_id?: string;
+    method?: 'CARD' | 'FORK' | 'ALL';
+    status_filter?: 'all' | 'active' | 'locked' | 'ineligible' | 'disabled';
+    autolimit_filter?: 'all' | 'on' | 'off';
+    q?: string;
+    sort?: 'rating' | 'trader' | 'remainder' | 'status' | 'rank';
+    sort_dir?: 'asc' | 'desc';
+  }): Promise<{
+    currency: string;
+    preview_amount: number;
+    rows: Array<Record<string, unknown>>;
+  }> {
+    const cur = options.currency.trim().toUpperCase();
+    const settings = await this.getSettings();
+    const nominalRows = await this.prisma.coverageNominalSetting.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    });
+    const nominalAmounts = nominalRows.map((n) => Number(n.amount));
+    const defaultPreview = nominalAmounts.length > 0 ? Math.min(...nominalAmounts) : 100;
+    const previewAmount = options.preview_amount ?? defaultPreview;
+
+    let parserRate: number | undefined;
+    if (cur === 'UAH') {
+      try {
+        parserRate = await this.exchangeRate.requireParserRateFiatPerUsdt('UAH');
+      } catch {
+        parserRate = undefined;
+      }
+    }
+    const enforceUsdt = cur === 'UAH' && parserRate !== undefined;
+
+    let payload = await this.redisState.getPayload(cur);
+    if (!payload || payload.payload_version !== 3) {
+      payload = await this.buildCurrencyPayload(this.prisma, cur);
+      await this.redisState.setPayload(cur, payload);
+    }
+
+    const strip = (s: CascadeStoredSnapshot): ReqSnapshot => {
+      const { redis_meta: _rm, ...rest } = s;
+      return rest;
+    };
+
+    let rankById = new Map<string, number>();
+    let eligiblePreview = new Set<string>();
+    if (Math.abs(previewAmount - payload.preview_amount) < 1e-9) {
+      for (const s of payload.snapshots) {
+        const rk = s.redis_meta?.cascade_rank;
+        if (rk != null) rankById.set(s.id, rk);
+        if (s.redis_meta?.is_eligible_preview) eligiblePreview.add(s.id);
+      }
+    } else {
+      const ordered = await this.buildOrderedRequisiteIdsForAmount(this.prisma, {
+        currency: cur,
+        amount: previewAmount,
+        parserRate,
+        enforceUsdtCapacity: enforceUsdt,
+        settings,
+        nominalAmounts,
+        reqRows: payload.snapshots.map(strip),
+      });
+      for (let i = 0; i < ordered.length; i++) {
+        rankById.set(ordered[i]!.id, i + 1);
+      }
+      eligiblePreview = new Set(ordered.map((o) => o.id));
+    }
+
+    const metaById = new Map(
+      payload.snapshots.map((s) => [s.id, s.redis_meta]),
+    );
+
+    const dbReqs = await this.prisma.requisite.findMany({
+      where: { currency: { code: cur } },
+      include: {
+        trader: {
+          select: {
+            id: true,
+            processingMethod: true,
+            user: { select: { email: true } },
+          },
+        },
+      },
+    });
+
+    const maskNum = (num: string) => {
+      const d = num.replace(/\s/g, '');
+      if (d.length <= 4) return '****';
+      return `**** ${d.slice(-4)}`;
+    };
+
+    type RowOut = {
+      requisite_id: string;
+      trader_id: string;
+      trader_label: string;
+      processing_method: string;
+      requisite_masked: string;
+      is_active: boolean;
+      is_in_cascade_pool: boolean;
+      fill_ratio: number;
+      fill_ratio_tx: number;
+      rating: number;
+      weighted_score: number;
+      used_amount: number;
+      limit_total_amount: number;
+      used_ops: number;
+      limit_total_ops: number;
+      remaining_amount: number;
+      manual_min_amount: number;
+      manual_max_amount: number;
+      effective_min: number | null;
+      effective_max: number | null;
+      autolimit_active: boolean;
+      auto_min_amount: number | null;
+      auto_max_amount: number | null;
+      cascade_rank: number | null;
+      is_eligible_preview: boolean;
+      is_locked: boolean;
+      last_assigned_at: string | null;
+      last_assignment_order_id: string | null;
+      assignments_count: number;
+      composite_status: 'ACTIVE' | 'LOCKED' | 'INELIGIBLE' | 'DISABLED';
+      autolimit_badge: boolean;
+      fill_high: boolean;
+    };
+
+    const ids = dbReqs.map((r) => r.id);
+    const [locks, assigns] = await Promise.all([
+      this.redisState.areRequisitesLocked(ids),
+      this.redisState.getRequisiteAssignmentMetaMany(ids),
+    ]);
+
+    const methodF = (options.method ?? 'ALL').toUpperCase();
+    const statusF = options.status_filter ?? 'active';
+
+    const rows: RowOut[] = [];
+
+    for (const r of dbReqs) {
+      if (options.trader_id && r.traderId !== options.trader_id) continue;
+      const pm = r.trader.processingMethod as string;
+      if (methodF === 'CARD' && pm !== 'CARD') continue;
+      if (methodF === 'FORK' && pm !== 'FORK') continue;
+
+      const meta = metaById.get(r.id);
+      const inPool = meta !== undefined;
+      const lim = Number(r.limitTotalAmount);
+      const ua = Number(r.usedAmount);
+      const fr = meta?.fill_ratio ?? fillRatioAmount(ua, lim);
+      const frTx = meta?.fill_ratio_tx ?? fillRatioTx(r.usedOps, r.limitTotalOps);
+      const rating = meta?.rating ?? tzRequisiteRatingPercent(fr);
+      const w =
+        pm === 'FORK' ? settings.forkRatingWeight : settings.cardRatingWeight;
+      const weighted =
+        meta?.weighted_score ?? requisiteRating(ua, lim, w);
+
+      let effMin = meta?.effective_min ?? null;
+      let effMax = meta?.effective_max ?? null;
+      let autolimitActive = meta?.fork_autolimit_active ?? false;
+      let autoMin = meta?.fork_auto_min_estimate ?? null;
+      let autoMax = meta?.auto_max_amount ?? null;
+      if (!inPool) {
+        const forkInp = {
+          traderMethod: r.trader.processingMethod as TraderCascadeMethod,
+          limitTotalAmount: lim,
+          usedAmount: ua,
+          limitTotalOps: r.limitTotalOps,
+          usedOps: r.usedOps,
+          manualMin: Number(r.minAmount),
+          manualMax: Number(r.maxAmount),
+          autolimitEnabledGlobal: settings.autolimitEnabled,
+          autolimitThreshold: Number(settings.autolimitThreshold),
+        };
+        autolimitActive = isForkAutolimitActive(forkInp);
+        autoMin = forkAutolimitAutoMinPerTx(forkInp) ?? null;
+        const coverageCounts = new Map<number, number>();
+        for (const n of nominalAmounts) {
+          let c = 0;
+          for (const other of payload.snapshots.map(strip)) {
+            if (other.id === r.id) continue;
+            const range = approximateOthersEffectiveRange({
+              traderMethod: other.processingMethod as TraderCascadeMethod,
+              limitTotalAmount: Number(other.limitTotalAmount),
+              usedAmount: Number(other.usedAmount),
+              limitTotalOps: other.limitTotalOps,
+              usedOps: other.usedOps,
+              manualMin: Number(other.minAmount),
+              manualMax: Number(other.maxAmount),
+              autolimitEnabledGlobal: settings.autolimitEnabled,
+              autolimitThreshold: Number(settings.autolimitThreshold),
+            });
+            if (!range) continue;
+            if (nominalCoveredByRange(n, range.min, range.max)) c++;
+          }
+          coverageCounts.set(n, c);
+        }
+        const bounds = computeForkAssignBounds(
+          forkInp,
+          nominalAmounts,
+          (nominal) => coverageCounts.get(nominal) ?? 0,
+        );
+        effMin = bounds?.effMin ?? null;
+        effMax = bounds?.effMax ?? null;
+        const am = computeForkAutolimitAutoMaxAmount(
+          forkInp,
+          nominalAmounts,
+          (nominal) => coverageCounts.get(nominal) ?? 0,
+        );
+        autoMax = am !== undefined ? Math.min(am, lim - ua) : null;
+      }
+
+      const remAmt = meta?.remaining_amount ?? lim - ua;
+      const isLocked = locks.get(r.id) ?? false;
+      const eligible = inPool
+        ? eligiblePreview.has(r.id)
+        : false;
+      const assign = assigns.get(r.id)!;
+
+      let composite: RowOut['composite_status'] = 'ACTIVE';
+      if (!r.isActive) composite = 'DISABLED';
+      else if (isLocked) composite = 'LOCKED';
+      else if (!eligible) composite = 'INELIGIBLE';
+
+      const autolimitBadge =
+        pm === 'FORK' && (meta?.fork_autolimit_active ?? autolimitActive);
+      const fillHigh = fr > 0.8;
+
+      if (statusF === 'active' && !(composite === 'ACTIVE')) continue;
+      if (statusF === 'locked' && composite !== 'LOCKED') continue;
+      if (statusF === 'ineligible' && composite !== 'INELIGIBLE') continue;
+      if (statusF === 'disabled' && composite !== 'DISABLED') continue;
+
+      const altF = options.autolimit_filter ?? 'all';
+      if (altF === 'on' && !autolimitBadge) continue;
+      if (altF === 'off' && autolimitBadge) continue;
+
+      const q = options.q?.trim().toLowerCase();
+      if (q) {
+        const email = (r.trader.user.email ?? '').toLowerCase();
+        const masked = maskNum(r.number).toLowerCase();
+        if (!email.includes(q) && !masked.includes(q) && !r.id.toLowerCase().includes(q)) {
+          continue;
+        }
+      }
+
+      rows.push({
+        requisite_id: r.id,
+        trader_id: r.traderId,
+        trader_label: r.trader.user.email ?? r.traderId,
+        processing_method: pm,
+        requisite_masked: maskNum(r.number),
+        is_active: r.isActive,
+        is_in_cascade_pool: inPool,
+        fill_ratio: fr,
+        fill_ratio_tx: frTx,
+        rating,
+        weighted_score: weighted,
+        used_amount: ua,
+        limit_total_amount: lim,
+        used_ops: r.usedOps,
+        limit_total_ops: r.limitTotalOps,
+        remaining_amount: remAmt,
+        manual_min_amount: Number(r.minAmount),
+        manual_max_amount: Number(r.maxAmount),
+        effective_min: effMin,
+        effective_max: effMax,
+        autolimit_active: autolimitBadge,
+        auto_min_amount: autoMin,
+        auto_max_amount: autoMax,
+        cascade_rank: rankById.get(r.id) ?? null,
+        is_eligible_preview: eligible,
+        is_locked: isLocked,
+        last_assigned_at: assign.last_assigned_at,
+        last_assignment_order_id: assign.last_assignment_order_id,
+        assignments_count: assign.assignments_count,
+        composite_status: composite,
+        autolimit_badge: !!autolimitBadge,
+        fill_high: fillHigh,
+      });
+    }
+
+    const sort = options.sort ?? 'rating';
+    const sort_dir =
+      options.sort_dir ??
+      (sort === 'rating' || sort === 'remainder' ? 'desc' : 'asc');
+    const dir = sort_dir === 'asc' ? 1 : -1;
+    const cmpNum = (a: number | null, b: number | null) => {
+      const av = a ?? 999999;
+      const bv = b ?? 999999;
+      return av === bv ? 0 : av < bv ? -1 : 1;
+    };
+    rows.sort((a, b) => {
+      let c = 0;
+      if (sort === 'rank') c = cmpNum(a.cascade_rank, b.cascade_rank) * dir;
+      else if (sort === 'rating') c = (a.rating - b.rating) * dir;
+      else if (sort === 'trader')
+        c = a.trader_label.localeCompare(b.trader_label) * dir;
+      else if (sort === 'remainder')
+        c = (a.remaining_amount - b.remaining_amount) * dir;
+      else if (sort === 'status')
+        c = a.composite_status.localeCompare(b.composite_status) * dir;
+      if (c !== 0) return c;
+      return a.requisite_id.localeCompare(b.requisite_id);
+    });
+
+    return {
+      currency: cur,
+      preview_amount: previewAmount,
+      rows,
+    };
+  }
+
+  /** Trader cabinet: simplified observability for own requisites (all currencies). */
+  async listRequisiteRatingsForTrader(traderId: string) {
+    const settings = await this.getSettings();
+    const nominalRows = await this.prisma.coverageNominalSetting.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    });
+    const nominalAmounts = nominalRows.map((n) => Number(n.amount));
+
+    const requisites = await this.prisma.requisite.findMany({
+      where: { traderId },
+      include: {
+        currency: { select: { code: true } },
+        trader: { select: { processingMethod: true } },
+      },
+    });
+
+    const out: Array<{
+      requisite_id: string;
+      currency: string;
+      fill_ratio: number;
+      rating: number;
+      effective_min: number | null;
+      effective_max: number | null;
+      composite_status: string;
+      autolimit_active: boolean;
+    }> = [];
+
+    const byCode = new Map<string, (typeof requisites)[number][]>();
+    for (const r of requisites) {
+      const code = r.currency.code.toUpperCase();
+      const arr = byCode.get(code) ?? [];
+      arr.push(r);
+      byCode.set(code, arr);
+    }
+
+    for (const [code, list] of byCode) {
+      let payload = await this.redisState.getPayload(code);
+      if (!payload || payload.payload_version !== 3) {
+        payload = await this.buildCurrencyPayload(this.prisma, code);
+        await this.redisState.setPayload(code, payload);
+      }
+      const metaById = new Map(
+        payload.snapshots.map((s) => [s.id, s.redis_meta]),
+      );
+
+      for (const r of list) {
+        const meta = metaById.get(r.id);
+        const lim = Number(r.limitTotalAmount);
+        const ua = Number(r.usedAmount);
+        const fr = meta?.fill_ratio ?? fillRatioAmount(ua, lim);
+        const inPool = meta !== undefined;
+        let effMin = meta?.effective_min ?? null;
+        let effMax = meta?.effective_max ?? null;
+        let autolimitActive = meta?.fork_autolimit_active ?? false;
+        if (!inPool) {
+          const forkInp = {
+            traderMethod: r.trader.processingMethod as TraderCascadeMethod,
+            limitTotalAmount: lim,
+            usedAmount: ua,
+            limitTotalOps: r.limitTotalOps,
+            usedOps: r.usedOps,
+            manualMin: Number(r.minAmount),
+            manualMax: Number(r.maxAmount),
+            autolimitEnabledGlobal: settings.autolimitEnabled,
+            autolimitThreshold: Number(settings.autolimitThreshold),
+          };
+          const coverageCounts = new Map<number, number>();
+          for (const n of nominalAmounts) {
+            let c = 0;
+            for (const other of payload.snapshots) {
+              if (other.id === r.id) continue;
+              const range = approximateOthersEffectiveRange({
+                traderMethod: other.processingMethod as TraderCascadeMethod,
+                limitTotalAmount: Number(other.limitTotalAmount),
+                usedAmount: Number(other.usedAmount),
+                limitTotalOps: other.limitTotalOps,
+                usedOps: other.usedOps,
+                manualMin: Number(other.minAmount),
+                manualMax: Number(other.maxAmount),
+                autolimitEnabledGlobal: settings.autolimitEnabled,
+                autolimitThreshold: Number(settings.autolimitThreshold),
+              });
+              if (!range) continue;
+              if (nominalCoveredByRange(n, range.min, range.max)) c++;
+            }
+            coverageCounts.set(n, c);
+          }
+          const bounds = computeForkAssignBounds(
+            forkInp,
+            nominalAmounts,
+            (nominal) => coverageCounts.get(nominal) ?? 0,
+          );
+          effMin = bounds?.effMin ?? null;
+          effMax = bounds?.effMax ?? null;
+          autolimitActive =
+            r.trader.processingMethod === 'FORK' && isForkAutolimitActive(forkInp);
+        } else {
+          autolimitActive =
+            r.trader.processingMethod === 'FORK' && (meta?.fork_autolimit_active ?? false);
+        }
+        const eligible = meta?.is_eligible_preview ?? false;
+        let composite: 'ACTIVE' | 'LOCKED' | 'INELIGIBLE' | 'DISABLED' = 'ACTIVE';
+        if (!r.isActive) composite = 'DISABLED';
+        else if (!eligible) composite = 'INELIGIBLE';
+
+        out.push({
+          requisite_id: r.id,
+          currency: code,
+          fill_ratio: fr,
+          rating: meta?.rating ?? tzRequisiteRatingPercent(fr),
+          effective_min: effMin,
+          effective_max: effMax,
+          composite_status: composite,
+          autolimit_active: autolimitActive,
+        });
+      }
+    }
+
+    return { rows: out };
+  }
+
+  /** Ordered assignment preview for a hypothetical amount (explain cascade path). */
+  async explainAssignmentOrder(
+    currency: string,
+    amount: number,
+    options?: { detailed?: boolean },
+  ) {
+    const cur = currency.trim().toUpperCase();
+    const settings = await this.getSettings();
+    const nominalRows = await this.prisma.coverageNominalSetting.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    });
+    const nominalAmounts = nominalRows.map((n) => Number(n.amount));
+    let parserRate: number | undefined;
+    if (cur === 'UAH') {
+      try {
+        parserRate = await this.exchangeRate.requireParserRateFiatPerUsdt('UAH');
+      } catch {
+        parserRate = undefined;
+      }
+    }
+    const enforceUsdt = cur === 'UAH' && parserRate !== undefined;
+    const payload = await this.buildCurrencyPayload(this.prisma, cur);
+    const strip = (s: CascadeStoredSnapshot): ReqSnapshot => {
+      const { redis_meta: _rm, ...rest } = s;
+      return rest;
+    };
+    const reqRows = payload.snapshots.map(strip);
+    const ordered = await this.buildOrderedRequisiteIdsForAmount(this.prisma, {
+      currency: cur,
+      amount,
+      parserRate,
+      enforceUsdtCapacity: enforceUsdt,
+      settings,
+      nominalAmounts,
+      reqRows,
+    });
+    const ranked = ordered.map((o, i) => ({
+      rank: i + 1,
+      requisite_id: o.id,
+      trader_id: o.traderId,
+      weighted_score: Math.round(o.score * 1e6) / 1e6,
+    }));
+
+    const base = {
+      currency: cur,
+      amount,
+      ranks: ranked,
+    };
+
+    if (!options?.detailed) {
+      return base;
+    }
+
+    const { usdtBal, overdraft } = await this.getUsdtCapacityMaps(this.prisma);
+    const snapshots = reqRows.filter((row) => {
+      const remAmt = Number(row.limitTotalAmount) - Number(row.usedAmount);
+      return remAmt >= amount - 1e-9;
+    });
+    const orderedIds = new Set(ordered.map((o) => o.id));
+
+    const excluded: Array<{
+      requisite_id: string;
+      trader_id: string;
+      code: string;
+      detail: string;
+    }> = [];
+
+    for (const row of reqRows) {
+      const lim = Number(row.limitTotalAmount);
+      const ua = Number(row.usedAmount);
+      const remAmt = lim - ua;
+      if (remAmt < amount - 1e-9) {
+        excluded.push({
+          requisite_id: row.id,
+          trader_id: row.traderId,
+          code: 'INSUFFICIENT_AMOUNT_HEADROOM',
+          detail: `Remaining amount ${remAmt.toFixed(2)} is less than order ${amount}.`,
+        });
+        continue;
+      }
+
+      const ev = this.evaluateSnapshotForPayInAmount(
+        row,
+        amount,
+        snapshots,
+        nominalAmounts,
+        settings,
+        usdtBal,
+        overdraft,
+        parserRate,
+        enforceUsdt,
+      );
+      if (!ev.ok) {
+        excluded.push({
+          requisite_id: row.id,
+          trader_id: row.traderId,
+          code: ev.code,
+          detail: ev.detail,
+        });
+      } else if (!orderedIds.has(row.id)) {
+        excluded.push({
+          requisite_id: row.id,
+          trader_id: row.traderId,
+          code: 'LOWER_CASCADE_ORDER',
+          detail:
+            'Passes amount checks but is ranked after higher-priority candidates in traffic-deficit × weighted-score ordering.',
+        });
+      }
+    }
+
+    return { ...base, excluded };
   }
 
   async updateSettings(

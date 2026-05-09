@@ -2,8 +2,9 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
 import { createRedisConnectionOptions } from '../../common/redis-connection-options';
 
-const PAYLOAD_PREFIX = 'p2p:cascade:payload:v2:';
+const PAYLOAD_PREFIX = 'p2p:cascade:payload:v3:';
 const LOCK_PREFIX = 'p2p:cascade:lock:req:';
+const ASSIGN_PREFIX = 'p2p:cascade:req:assign:';
 
 export type CoverageNominalRow = { nominal: number; count: number };
 
@@ -22,13 +23,28 @@ export type CascadeReqSnapshotRow = {
 };
 
 /**
- * Fork autolimit-derived fields stored in Redis with the materialized snapshot (spec §4.4, §8).
+ * Observability fields stored with the materialized snapshot (requisite rating TZ).
  */
 export type CascadeReqRedisMeta = {
   fill_ratio: number;
+  fill_ratio_tx: number;
+  /** TZ display: int 0–100 from amount fill ratio */
+  rating: number;
+  remaining_amount: number;
+  remaining_transactions: number;
+  effective_min: number | null;
+  effective_max: number | null;
+  /** Fork autolimit auto max from coverage-gap algorithm */
+  auto_max_amount?: number;
   fork_autolimit_active: boolean;
-  /** remaining_amount / remaining_tx when Fork autolimit is active; omitted otherwise */
+  /** remaining_amount / remaining_tx when Fork autolimit is active */
   fork_auto_min_estimate?: number;
+  /** Weighted Level-2 score (fill_ratio × method weight) */
+  weighted_score: number;
+  /** Preview: eligible for default preview amount (see payload preview_amount) */
+  is_eligible_preview: boolean;
+  /** 1-based rank for preview amount ordering */
+  cascade_rank: number | null;
 };
 
 export type CascadeStoredSnapshot = CascadeReqSnapshotRow & {
@@ -36,12 +52,21 @@ export type CascadeStoredSnapshot = CascadeReqSnapshotRow & {
 };
 
 export type CascadeCurrencyPayload = {
+  payload_version: 3;
   /** Deterministic fingerprint of requisite usage rows for cache validation inside transactions */
   snapshot_row_sig: string;
   nominal_amounts: number[];
   nominals: CoverageNominalRow[];
   snapshots: CascadeStoredSnapshot[];
   built_at: string;
+  /** Amount used for is_eligible_preview and cascade_rank in redis_meta */
+  preview_amount: number;
+};
+
+export type RequisiteAssignmentMeta = {
+  last_assigned_at: string | null;
+  last_assignment_order_id: string | null;
+  assignments_count: number;
 };
 
 /**
@@ -55,6 +80,8 @@ export class CascadeRedisStateService implements OnModuleDestroy {
   private readonly ttlSec = 120;
   /** Assignment lock — held until Pay-In tx commits (released by caller; TTL is safety net) */
   private readonly lockTtlMs = 55_000;
+  /** Rolling window for assignment counters / last assignment metadata */
+  private readonly assignHashTtlSec = 86_400;
 
   constructor() {
     try {
@@ -86,6 +113,10 @@ export class CascadeRedisStateService implements OnModuleDestroy {
 
   private lockKey(requisiteId: string): string {
     return `${LOCK_PREFIX}${requisiteId}`;
+  }
+
+  private assignKey(requisiteId: string): string {
+    return `${ASSIGN_PREFIX}${requisiteId}`;
   }
 
   async getPayload(currency: string): Promise<CascadeCurrencyPayload | null> {
@@ -166,5 +197,102 @@ export class CascadeRedisStateService implements OnModuleDestroy {
     } catch (e) {
       this.logger.warn(`Cascade requisite lock release failed: ${e}`);
     }
+  }
+
+  /**
+   * Records assignment telemetry (rolling window TTL). Called after Pay-In commit.
+   */
+  async recordRequisiteAssignment(requisiteId: string, payinOrderId: string): Promise<void> {
+    if (!this.redis) return;
+    const key = this.assignKey(requisiteId);
+    const now = new Date().toISOString();
+    try {
+      await this.redis
+        .multi()
+        .hset(key, 'last_assigned_at', now)
+        .hset(key, 'last_assignment_order_id', payinOrderId)
+        .hincrby(key, 'assignments_count', 1)
+        .expire(key, this.assignHashTtlSec)
+        .exec();
+    } catch (e) {
+      this.logger.warn(`Cascade assignment record failed: ${e}`);
+    }
+  }
+
+  async getRequisiteAssignmentMetaMany(
+    requisiteIds: string[],
+  ): Promise<Map<string, RequisiteAssignmentMeta>> {
+    const out = new Map<string, RequisiteAssignmentMeta>();
+    if (!this.redis || requisiteIds.length === 0) {
+      for (const id of requisiteIds) {
+        out.set(id, {
+          last_assigned_at: null,
+          last_assignment_order_id: null,
+          assignments_count: 0,
+        });
+      }
+      return out;
+    }
+    try {
+      const pipe = this.redis.pipeline();
+      for (const id of requisiteIds) {
+        pipe.hgetall(this.assignKey(id));
+      }
+      const rows = await pipe.exec();
+      for (let i = 0; i < requisiteIds.length; i++) {
+        const id = requisiteIds[i]!;
+        const raw = rows?.[i]?.[1] as Record<string, string> | null;
+        if (!raw || Object.keys(raw).length === 0) {
+          out.set(id, {
+            last_assigned_at: null,
+            last_assignment_order_id: null,
+            assignments_count: 0,
+          });
+        } else {
+          out.set(id, {
+            last_assigned_at: raw['last_assigned_at'] ?? null,
+            last_assignment_order_id: raw['last_assignment_order_id'] ?? null,
+            assignments_count: Number(raw['assignments_count'] ?? 0) || 0,
+          });
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`Cascade assignment meta read failed: ${e}`);
+      for (const id of requisiteIds) {
+        if (!out.has(id)) {
+          out.set(id, {
+            last_assigned_at: null,
+            last_assignment_order_id: null,
+            assignments_count: 0,
+          });
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Whether each requisite id currently holds the distributed assignment lock */
+  async areRequisitesLocked(requisiteIds: string[]): Promise<Map<string, boolean>> {
+    const out = new Map<string, boolean>();
+    if (!this.redis || requisiteIds.length === 0) {
+      for (const id of requisiteIds) out.set(id, false);
+      return out;
+    }
+    try {
+      const pipe = this.redis.pipeline();
+      for (const id of requisiteIds) {
+        pipe.exists(this.lockKey(id));
+      }
+      const rows = await pipe.exec();
+      for (let i = 0; i < requisiteIds.length; i++) {
+        const id = requisiteIds[i]!;
+        const n = Number(rows?.[i]?.[1] ?? 0);
+        out.set(id, n === 1);
+      }
+    } catch (e) {
+      this.logger.warn(`Cascade lock batch read failed: ${e}`);
+      for (const id of requisiteIds) out.set(id, false);
+    }
+    return out;
   }
 }

@@ -18,6 +18,10 @@ export const internalPaths = {
     `/api/admin/cascade/coverage?currency=${encodeURIComponent(currency)}`,
   adminCascadeNominals: '/api/admin/cascade/nominals',
   adminCascadeNominal: (id: string) => `/api/admin/cascade/nominals/${id}`,
+  /** Base path — append query string for filters */
+  adminCascadeRequisiteRatingsBase: '/api/admin/cascade/requisite-ratings',
+  adminCascadeAssignmentExplain: (currency: string, amount: number, detailed = true) =>
+    `/api/admin/cascade/assignment-explain?currency=${encodeURIComponent(currency)}&amount=${encodeURIComponent(String(amount))}&detailed=${detailed ? 'true' : 'false'}`,
 
   adminOrdersStream: '/api/admin/orders/stream',
   adminOrders: (qs: string) => `/api/admin/orders?${qs}`,
@@ -55,6 +59,7 @@ export const internalPaths = {
   traderDashboardStats: '/api/trader/dashboard/stats',
   traderDashboardRecentOrders: '/api/trader/dashboard/recent-orders',
   traderDashboardPayinAssignRanges: '/api/trader/dashboard/payin-assign-ranges',
+  traderDashboardRequisiteRatings: '/api/trader/dashboard/requisite-ratings',
 
   traderPayinStream: '/api/trader/payin/stream',
   traderPayinOrders: '/api/trader/payin/orders',

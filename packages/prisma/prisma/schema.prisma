@@ -640,6 +640,8 @@ model Requisite {
   requisiteGroupId  String                   @map("requisite_group_id") @db.Uuid
   type              RequisiteType
   number            String
+  /// Normalized identifier for cross-platform uniqueness while active (see migrations).
+  numberNormalized  String                   @map("number_normalized")
   owner             String
   bankId            Int?                     @map("bank_id")
   code              String?

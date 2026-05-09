@@ -35,6 +35,73 @@ export interface EffectiveAmountBounds {
   effMax: number;
 }
 
+/** Fill ratio by amount (0–1). */
+export function fillRatioAmount(usedAmount: number, limitTotalAmount: number): number {
+  if (limitTotalAmount <= 0) return 0;
+  return Math.min(1, Math.max(0, usedAmount / limitTotalAmount));
+}
+
+/** Fill ratio by transaction count (0–1). */
+export function fillRatioTx(usedOps: number, limitTotalOps: number): number {
+  if (limitTotalOps <= 0) return 0;
+  return Math.min(1, Math.max(0, usedOps / limitTotalOps));
+}
+
+/**
+ * TZ display rating: int 0–100 from amount fill ratio.
+ */
+export function tzRequisiteRatingPercent(fillRatioAmount: number): number {
+  return Math.round(Math.min(1, Math.max(0, fillRatioAmount)) * 100);
+}
+
+/**
+ * Fork autolimit auto-min = remaining_amount / remaining_tx (when autolimit active).
+ */
+export function forkAutolimitAutoMinPerTx(inp: ForkAutolimitInputs): number | undefined {
+  if (!isForkAutolimitActive(inp)) return undefined;
+  const remainingAmt = inp.limitTotalAmount - inp.usedAmount;
+  const remainingTx = inp.limitTotalOps - inp.usedOps;
+  if (remainingTx <= 0) return undefined;
+  return remainingAmt / remainingTx;
+}
+
+/**
+ * Coverage-gap auto max nominal for Fork autolimit (same algorithm as assign bounds).
+ * Undefined when autolimit inactive or no valid band.
+ */
+export function computeForkAutolimitAutoMaxAmount(
+  inp: ForkAutolimitInputs,
+  nominalAmountsAsc: number[],
+  coverageExcludeSelf: (nominal: number) => number,
+): number | undefined {
+  if (!isForkAutolimitActive(inp)) return undefined;
+  const remainingAmt = inp.limitTotalAmount - inp.usedAmount;
+  const remainingTx = inp.limitTotalOps - inp.usedOps;
+  if (remainingAmt <= 0 || remainingTx <= 0) {
+    return undefined;
+  }
+
+  const autoMinRaw = remainingAmt / remainingTx;
+  const autoMin = Math.max(inp.manualMin, autoMinRaw);
+
+  const sorted = [...nominalAmountsAsc].sort((a, b) => a - b);
+  const aboveAutoMin = sorted.filter((n) => n >= autoMin - 1e-9);
+  if (aboveAutoMin.length === 0) {
+    return undefined;
+  }
+
+  let autoMaxCandidate = aboveAutoMin[0]!;
+  const hole = sorted.find((n) => n >= autoMin - 1e-9 && coverageExcludeSelf(n) === 0);
+  if (hole !== undefined) {
+    autoMaxCandidate = hole;
+  } else {
+    const strictlyAbove = sorted.filter((n) => n > autoMin + 1e-9);
+    autoMaxCandidate =
+      strictlyAbove.length > 0 ? strictlyAbove[0]! : aboveAutoMin[aboveAutoMin.length - 1]!;
+  }
+  return autoMaxCandidate;
+}
+
 /**
  * Nominals sorted ascending (e.g. DB coverage settings).
  * coverageExcludeSelf(N) = count of *other* requisites that accept nominal N (integer comparison).
@@ -70,18 +137,16 @@ export function computeForkAssignBounds(
     return { effMin, effMax };
   }
 
-  let autoMaxCandidate = aboveAutoMin[0]!;
-  const hole = sorted.find((n) => n >= autoMin - 1e-9 && coverageExcludeSelf(n) === 0);
-  if (hole !== undefined) {
-    autoMaxCandidate = hole;
-  } else {
-    const strictlyAbove = sorted.filter((n) => n > autoMin + 1e-9);
-    autoMaxCandidate =
-      strictlyAbove.length > 0 ? strictlyAbove[0]! : aboveAutoMin[aboveAutoMin.length - 1]!;
+  const autoMaxNominal = computeForkAutolimitAutoMaxAmount(inp, nominalAmountsAsc, coverageExcludeSelf);
+  if (autoMaxNominal === undefined) {
+    effMin = Math.max(effMin, autoMin);
+    effMax = Math.min(effMax, remainingAmt);
+    if (effMin > effMax) return null;
+    return { effMin, effMax };
   }
 
   effMin = Math.max(effMin, autoMin);
-  effMax = Math.min(effMax, autoMaxCandidate);
+  effMax = Math.min(effMax, autoMaxNominal);
   effMax = Math.min(effMax, remainingAmt);
 
   if (effMin > effMax) return null;

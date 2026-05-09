@@ -10,6 +10,7 @@ import {
   UseGuards,
   DefaultValuePipe,
   ParseUUIDPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -102,6 +103,74 @@ export class AdminCascadeController {
   ) {
     const rows = await this.cascadeService.getCoverageByNominals(currency.trim());
     return { currency: currency.trim(), nominals: rows };
+  }
+
+  @Get('requisite-ratings')
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Requisite cascade observability (rating table, TZ)' })
+  async requisiteRatings(
+    @Query('currency', new DefaultValuePipe('UAH')) currency: string,
+    @Query('preview_amount') previewAmountRaw?: string,
+    @Query('trader_id') traderId?: string,
+    @Query('method') method?: string,
+    @Query('status') statusFilter?: string,
+    @Query('autolimit') autolimitFilter?: string,
+    @Query('q') q?: string,
+    @Query('sort') sort?: string,
+    @Query('sort_dir') sortDir?: string,
+  ) {
+    let preview_amount: number | undefined;
+    if (previewAmountRaw !== undefined && previewAmountRaw !== '') {
+      const n = Number(previewAmountRaw);
+      preview_amount = Number.isFinite(n) ? n : undefined;
+    }
+    return this.cascadeService.listRequisiteRatingsForStaff({
+      currency: currency.trim(),
+      preview_amount,
+      trader_id: traderId,
+      method:
+        method === 'CARD' || method === 'FORK' || method === 'ALL' ? method : 'ALL',
+      status_filter:
+        statusFilter === 'all' ||
+        statusFilter === 'active' ||
+        statusFilter === 'locked' ||
+        statusFilter === 'ineligible' ||
+        statusFilter === 'disabled'
+          ? statusFilter
+          : 'active',
+      autolimit_filter:
+        autolimitFilter === 'on' || autolimitFilter === 'off' ? autolimitFilter : 'all',
+      q,
+      sort:
+        sort === 'rating' ||
+        sort === 'trader' ||
+        sort === 'remainder' ||
+        sort === 'status' ||
+        sort === 'rank'
+          ? sort
+          : 'rank',
+      sort_dir: sortDir === 'asc' || sortDir === 'desc' ? sortDir : 'asc',
+    });
+  }
+
+  @Get('assignment-explain')
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
+  @ApiOperation({
+    summary: 'Hypothetical cascade assignment order for an amount (observability)',
+  })
+  async assignmentExplain(
+    @Query('currency', new DefaultValuePipe('UAH')) currency: string,
+    @Query('amount') amountRaw?: string,
+    @Query('detailed') detailedRaw?: string,
+  ) {
+    const amount = amountRaw !== undefined ? Number(amountRaw) : NaN;
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('amount must be a positive number');
+    }
+    const detailed = detailedRaw !== 'false' && detailedRaw !== '0';
+    return this.cascadeService.explainAssignmentOrder(currency.trim(), amount, {
+      detailed,
+    });
   }
 
   @Get('nominals')

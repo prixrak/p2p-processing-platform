@@ -121,7 +121,7 @@ export class RequisitesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER)
+  @Roles(UserRole.TRADER, UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
   @ApiOperation({ summary: 'Get requisite by ID' })
   async findById(
     @Param('id', ParseUUIDPipe) id: string,

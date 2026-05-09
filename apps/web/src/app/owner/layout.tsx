@@ -12,6 +12,7 @@ import {
   ScrollText,
   CreditCard,
   GitFork,
+  Table2,
   Percent,
   CircleDollarSign,
 } from 'lucide-react';
@@ -29,6 +30,7 @@ const navItems: NavItem[] = [
   { label: 'Treasury', href: '/owner/treasury', icon: CircleDollarSign },
   { label: 'Directions', href: '/owner/directions', icon: ArrowLeftRight },
   { label: 'Cascade', href: '/owner/cascade', icon: GitFork },
+  { label: 'Cascade requisites', href: '/owner/cascade-requisites', icon: Table2 },
   { label: 'Pay-Out pool', href: '/owner/payout-pool', icon: Percent },
   { label: 'Reference', href: '/owner/catalog', icon: Library },
   { label: 'Payment Methods', href: '/owner/payment-methods', icon: CreditCard },

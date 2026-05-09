@@ -1,5 +1,9 @@
 import {
   computeForkAssignBounds,
+  computeForkAutolimitAutoMaxAmount,
+  fillRatioAmount,
+  fillRatioTx,
+  tzRequisiteRatingPercent,
   isForkAutolimitActive,
   nominalCoveredByRange,
   requisiteRating,
@@ -118,5 +122,44 @@ describe('nominalCoveredByRange', () => {
   it('includes boundaries', () => {
     expect(nominalCoveredByRange(500, 400, 600)).toBe(true);
     expect(nominalCoveredByRange(399, 400, 600)).toBe(false);
+  });
+});
+
+describe('observability metrics', () => {
+  it('fillRatioAmount clamps to 0–1', () => {
+    expect(fillRatioAmount(0, 100)).toBe(0);
+    expect(fillRatioAmount(50, 100)).toBe(0.5);
+    expect(fillRatioAmount(200, 100)).toBe(1);
+  });
+
+  it('fillRatioTx', () => {
+    expect(fillRatioTx(3, 10)).toBeCloseTo(0.3);
+  });
+
+  it('tzRequisiteRatingPercent', () => {
+    expect(tzRequisiteRatingPercent(0.805)).toBe(81);
+  });
+
+  it('computeForkAutolimitAutoMaxAmount stays consistent with bounds', () => {
+    const inp: ForkAutolimitInputs = {
+      traderMethod: 'FORK',
+      limitTotalAmount: 1000,
+      usedAmount: 850,
+      limitTotalOps: 100,
+      usedOps: 60,
+      manualMin: 50,
+      manualMax: 5000,
+      autolimitEnabledGlobal: true,
+      autolimitThreshold: 0.2,
+    };
+    expect(isForkAutolimitActive(inp)).toBe(true);
+    const nominals = [100, 200, 300, 400, 500];
+    const maxN = computeForkAutolimitAutoMaxAmount(inp, nominals, () => 2);
+    expect(maxN).toBeDefined();
+    const bounds = computeForkAssignBounds(inp, nominals, () => 2);
+    expect(bounds).not.toBeNull();
+    if (bounds && maxN !== undefined) {
+      expect(bounds.effMax).toBeLessThanOrEqual(maxN + 1e-6);
+    }
   });
 });

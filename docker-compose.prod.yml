@@ -1,6 +1,19 @@
 services:
+  # Named Docker volumes are often root-owned; the Vault image runs as UID 100 / GID 1000.
+  # This one-shot fixes permissions on every compose up (chown is a no-op when already correct).
+  vault-data-perms:
+    image: alpine:3.20
+    user: "0:0"
+    volumes:
+      - vaultdata:/vault/data
+    command: ["sh", "-c", "chown -R 100:1000 /vault/data"]
+    restart: "no"
+
   vault:
     image: hashicorp/vault:1.15
+    depends_on:
+      vault-data-perms:
+        condition: service_completed_successfully
     cap_add:
       - IPC_LOCK
     volumes:

@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { normalizeRequisiteIdentifier, RequisiteType } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
 import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
 import { CascadeService } from '../cascade/cascade.service';
@@ -15,6 +16,10 @@ import { UpdateRequisiteDto } from './dto/update-requisite.dto';
 @Injectable()
 export class RequisitesService {
   private readonly logger = new Logger(RequisitesService.name);
+
+  /** Shown to traders/admins when another cabinet already uses this requisite while active. */
+  static readonly DUPLICATE_ACTIVE_MESSAGE =
+    'REQUISITE_ALREADY_EXISTS: This requisite already exists on the platform.';
 
   constructor(
     private readonly prisma: PrismaService,
@@ -37,6 +42,34 @@ export class RequisitesService {
       throw new BadRequestException(
         'GROUP_INACTIVE: turn the payment group on before activating this requisite',
       );
+    }
+  }
+
+  private isPrismaUniqueViolation(err: unknown): boolean {
+    return (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === 'P2002'
+    );
+  }
+
+  private async assertNoOtherActiveRequisiteWithIdentity(params: {
+    type: RequisiteType;
+    numberNormalized: string;
+    excludeRequisiteId?: string;
+  }) {
+    const other = await this.prisma.requisite.findFirst({
+      where: {
+        type: params.type,
+        numberNormalized: params.numberNormalized,
+        isActive: true,
+        ...(params.excludeRequisiteId
+          ? { NOT: { id: params.excludeRequisiteId } }
+          : {}),
+      },
+      select: { id: true },
+    });
+    if (other) {
+      throw new BadRequestException(RequisitesService.DUPLICATE_ACTIVE_MESSAGE);
     }
   }
 
@@ -233,25 +266,44 @@ export class RequisitesService {
       );
     }
 
-    const created = await this.prisma.requisite.create({
-      data: {
-        traderId,
-        requisiteGroupId: group.id,
-        type: dto.type as any,
-        number: dto.number,
-        owner: dto.owner,
-        bankId: dto.bankId,
-        code: dto.code,
-        acceptsOtherBanks: dto.acceptsOtherBanks ?? false,
-        minAmount: dto.minAmount ?? 0,
-        maxAmount: dto.maxAmount ?? 999999999,
-        limitTotalAmount: dto.limitTotalAmount ?? 999999999,
-        limitTotalOps: dto.limitTotalOps ?? 999999,
-        currencyId: group.currencyId,
-        isActive: group.isActive,
-      },
-      include: { bank: true, group: true, currency: { select: { code: true } } },
+    const numberNormalized = normalizeRequisiteIdentifier(dto.type, dto.number);
+    if (!numberNormalized) {
+      throw new BadRequestException('INVALID_REQUISITE_NUMBER: requisite number is empty');
+    }
+
+    await this.assertNoOtherActiveRequisiteWithIdentity({
+      type: dto.type,
+      numberNormalized,
     });
+
+    let created;
+    try {
+      created = await this.prisma.requisite.create({
+        data: {
+          traderId,
+          requisiteGroupId: group.id,
+          type: dto.type as any,
+          number: dto.number,
+          numberNormalized,
+          owner: dto.owner,
+          bankId: dto.bankId,
+          code: dto.code,
+          acceptsOtherBanks: dto.acceptsOtherBanks ?? false,
+          minAmount: dto.minAmount ?? 0,
+          maxAmount: dto.maxAmount ?? 999999999,
+          limitTotalAmount: dto.limitTotalAmount ?? 999999999,
+          limitTotalOps: dto.limitTotalOps ?? 999999,
+          currencyId: group.currencyId,
+          isActive: group.isActive,
+        },
+        include: { bank: true, group: true, currency: { select: { code: true } } },
+      });
+    } catch (err) {
+      if (this.isPrismaUniqueViolation(err)) {
+        throw new BadRequestException(RequisitesService.DUPLICATE_ACTIVE_MESSAGE);
+      }
+      throw err;
+    }
     void this.cascadeCoverageCache.invalidateCurrency(created.currency.code);
     return created;
   }
@@ -311,11 +363,26 @@ export class RequisitesService {
   async activate(id: string) {
     const prev = await this.findById(id);
     this.assertGroupAllowsActivatedRequisite(prev.group);
-    const updated = await this.prisma.requisite.update({
-      where: { id },
-      data: { isActive: true, disabledReason: null },
-      include: { bank: true, group: true },
+
+    await this.assertNoOtherActiveRequisiteWithIdentity({
+      type: prev.type as RequisiteType,
+      numberNormalized: prev.numberNormalized,
+      excludeRequisiteId: id,
     });
+
+    let updated;
+    try {
+      updated = await this.prisma.requisite.update({
+        where: { id },
+        data: { isActive: true, disabledReason: null },
+        include: { bank: true, group: true },
+      });
+    } catch (err) {
+      if (this.isPrismaUniqueViolation(err)) {
+        throw new BadRequestException(RequisitesService.DUPLICATE_ACTIVE_MESSAGE);
+      }
+      throw err;
+    }
     void this.cascadeCoverageCache.invalidateCurrency(prev.currency.code);
     return updated;
   }

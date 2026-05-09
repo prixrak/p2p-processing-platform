@@ -55,6 +55,14 @@ export class TraderDashboardController {
     return this.cascadeService.getEffectiveAssignRangesForTrader(traderId);
   }
 
+  @Get('requisite-ratings')
+  @ApiOperation({
+    summary: 'Simplified cascade observability for own requisites (fill ratio, bounds, status)',
+  })
+  async getRequisiteRatings(@CurrentUser('traderId') traderId: string) {
+    return this.cascadeService.listRequisiteRatingsForTrader(traderId);
+  }
+
   @Get('usdt-wallet')
   @ApiOperation({
     summary:

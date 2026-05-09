@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftRight } from 'lucide-react';
+import { ArrowLeftRight, Eye } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { adminKeys } from '@/lib/query-keys';
 import { DataTable } from '@/components/ui/data-table';
-import { StatusBadge } from '@/components/ui/badge';
+import { Badge, StatusBadge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -18,6 +19,8 @@ import {
   FiltersToggleButton,
   ListPageHeader,
 } from '@/components/ui/list-page-tools';
+import { IconButton } from '@/components/ui/icon-button';
+import { Modal } from '@/components/ui/modal';
 import { format } from 'date-fns';
 import {
   ORDER_LIST_UI_TAB,
@@ -25,9 +28,22 @@ import {
   orderListUiTabToDirection,
   type OrderListUiTab,
 } from '@p2p/shared';
-import { payinStatusFilterOptions, payoutStatusFilterOptions } from '@/lib/order-status-ui';
+import {
+  badgeVariantForPayin,
+  badgeVariantForPayout,
+  payinStatusFilterOptions,
+  payoutStatusFilterOptions,
+} from '@/lib/order-status-ui';
 
 const ADMIN_ORDERS_PAGE_SIZE = 20;
+
+const ORDER_ID_QUERY = 'orderId';
+
+function looksLikeOrderIdUuid(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    s.trim(),
+  );
+}
 
 interface Order {
   id: string;
@@ -48,8 +64,28 @@ interface TraderOption {
   name: string;
 }
 
-export default function AdminOrdersPage() {
+interface OrderDetails {
+  id: string;
+  type: string;
+  merchantName: string;
+  traderName: string;
+  amount: number;
+  currency: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  traderProcessingMethod?: string | null;
+  forkExchangeReference?: string | null;
+  forkChatProofFileIds?: string[];
+  requisites?: { bank: string; cardNumber: string };
+  statusHistory: { status: string; timestamp: string; actor: string }[];
+}
+
+function AdminOrdersPageContent() {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<OrderListUiTab>(ORDER_LIST_UI_TAB.PAY_IN);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
@@ -60,6 +96,32 @@ export default function AdminOrdersPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [assigningOrder, setAssigningOrder] = useState<string | null>(null);
   const [selectedTrader, setSelectedTrader] = useState('');
+  const [detailOrder, setDetailOrder] = useState<string | null>(null);
+
+  const openOrderDetail = useCallback(
+    (id: string) => {
+      const p = new URLSearchParams(searchParams.toString());
+      p.set(ORDER_ID_QUERY, id);
+      router.replace(`${pathname}?${p.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  const closeOrderDetail = useCallback(() => {
+    const p = new URLSearchParams(searchParams.toString());
+    p.delete(ORDER_ID_QUERY);
+    const q = p.toString();
+    router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    const raw = searchParams.get(ORDER_ID_QUERY)?.trim() ?? '';
+    if (looksLikeOrderIdUuid(raw)) {
+      setDetailOrder(raw);
+      return;
+    }
+    setDetailOrder(null);
+  }, [searchParams]);
 
   const direction = orderListUiTabToDirection(tab);
 
@@ -126,6 +188,12 @@ export default function AdminOrdersPage() {
     },
   });
 
+  const { data: details } = useQuery({
+    queryKey: adminKeys.orderDetails(detailOrder),
+    queryFn: () => api.get<OrderDetails>(internalPaths.adminOrder(detailOrder!)),
+    enabled: !!detailOrder,
+  });
+
   const columns = [
     {
       key: 'id',
@@ -181,6 +249,22 @@ export default function AdminOrdersPage() {
         <span className="text-xs text-text-muted">
           {format(new Date(row.createdAt), 'dd.MM.yy HH:mm')}
         </span>
+      ),
+    },
+    {
+      key: 'view',
+      header: '',
+      className: 'w-12 text-end',
+      render: (row: Order) => (
+        <IconButton
+          label="View order details"
+          onClick={(e) => {
+            e.stopPropagation();
+            openOrderDetail(row.id);
+          }}
+        >
+          <Eye className="h-4 w-4" />
+        </IconButton>
       ),
     },
     ...(isOrderListPayOutTab(tab)
@@ -333,6 +417,126 @@ export default function AdminOrdersPage() {
         totalPages={totalPages}
         onPageChange={setPage}
       />
+
+      <Modal
+        open={!!detailOrder}
+        onClose={closeOrderDetail}
+        title={`Order — ${detailOrder?.slice(0, 12) ?? ''}`}
+        className="max-w-2xl"
+      >
+        {details && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-text-muted">Type</p>
+                <p className="font-medium text-text-primary">{details.type}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">Status</p>
+                <Badge
+                  variant={
+                    details.type === 'PAYOUT'
+                      ? badgeVariantForPayout(details.status)
+                      : badgeVariantForPayin(details.status)
+                  }
+                >
+                  {details.status}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">Amount</p>
+                <p className="font-mono font-medium text-text-primary">
+                  {details.amount.toLocaleString()} {details.currency}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">Created</p>
+                <p className="text-sm text-text-secondary">
+                  {new Date(details.createdAt).toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">Merchant</p>
+                <p className="text-sm text-text-primary">{details.merchantName}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">Trader</p>
+                <p className="text-sm text-text-primary">{details.traderName || '—'}</p>
+              </div>
+              {details.type === 'PAYIN' && details.traderProcessingMethod ? (
+                <div>
+                  <p className="text-xs text-text-muted">Pay-In routing</p>
+                  <p className="text-sm text-text-primary">{details.traderProcessingMethod}</p>
+                </div>
+              ) : null}
+              {details.type === 'PAYIN' && details.forkExchangeReference ? (
+                <div className="col-span-2">
+                  <p className="text-xs text-text-muted">Exchange reference (FORK)</p>
+                  <p className="font-mono text-sm text-text-primary break-all">
+                    {details.forkExchangeReference}
+                  </p>
+                </div>
+              ) : null}
+              {details.type === 'PAYIN' &&
+              details.forkChatProofFileIds &&
+              details.forkChatProofFileIds.length > 0 ? (
+                <div className="col-span-2">
+                  <p className="text-xs text-text-muted">Fork chat proof file IDs</p>
+                  <p className="font-mono text-xs text-text-secondary break-all">
+                    {details.forkChatProofFileIds.join(', ')}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+
+            {details.requisites ? (
+              <div className="rounded-lg border border-border-primary bg-surface-primary p-3">
+                <p className="mb-1 text-xs text-text-muted">Requisites</p>
+                <p className="text-sm text-text-primary">{details.requisites.bank}</p>
+                <p className="font-mono text-sm text-text-secondary">
+                  {details.requisites.cardNumber}
+                </p>
+              </div>
+            ) : null}
+
+            {details.statusHistory?.length > 0 ? (
+              <div>
+                <h4 className="mb-2 text-sm font-medium text-text-secondary">Status History</h4>
+                <div className="space-y-2">
+                  {details.statusHistory.map((h, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary px-3 py-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Badge variant="muted">{h.status}</Badge>
+                        <span className="text-xs text-text-muted">by {h.actor}</span>
+                      </div>
+                      <span className="text-xs text-text-muted">
+                        {new Date(h.timestamp).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </Modal>
     </div>
+  );
+}
+
+export default function AdminOrdersPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-6xl animate-fade-in space-y-6 p-6 text-text-muted">
+          Loading…
+        </div>
+      }
+    >
+      <AdminOrdersPageContent />
+    </Suspense>
   );
 }

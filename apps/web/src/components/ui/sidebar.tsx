@@ -18,6 +18,7 @@ import {
   PanelLeft,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
+import { isNavHrefActive } from '@/lib/nav-active';
 
 const traderNavItems = [
   { label: 'Dashboard', href: '/trader', icon: LayoutDashboard },
@@ -64,9 +65,7 @@ export function Sidebar() {
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-3">
         {traderNavItems.map((item) => {
-          const isActive =
-            pathname === item.href ||
-            (item.href !== '/trader' && pathname.startsWith(item.href));
+          const isActive = isNavHrefActive(pathname, item.href, '/trader');
           const Icon = item.icon;
 
           return (

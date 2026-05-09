@@ -11,6 +11,7 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { payoutCabinetKeys, traderKeys } from '@/lib/query-keys';
 import { Tooltip } from '@/components/ui/tooltip';
+import { isNavHrefActive } from '@/lib/nav-active';
 import type { PayInListApiResponse } from '@/features/trader-payin/payin-types';
 
 export type NavItemSidebarBadge = 'payin-current' | 'payout-pool';
@@ -129,8 +130,7 @@ function DashboardSidebarNavLink({
   badgeCount: number | undefined;
   onNavigate: () => void;
 }) {
-  const isActive =
-    pathname === item.href || (item.href !== firstHref && pathname.startsWith(item.href));
+  const isActive = isNavHrefActive(pathname, item.href, firstHref);
   const showBadge = badgeCount !== undefined && badgeCount > 0;
 
   return (

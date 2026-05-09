@@ -204,6 +204,8 @@ export const adminKeys = {
   ordersScope: [...adminRoot, 'orders'] as const,
   tradersOptions: () => [...adminRoot, 'traders', 'options'] as const,
   statistics: () => [...adminRoot, 'statistics'] as const,
+  orderDetails: (orderId: string | null) => [...adminRoot, 'order-details', orderId] as const,
+  orderDetailsScope: [...adminRoot, 'order-details'] as const,
 };
 
 export const ownerKeys = {
@@ -259,6 +261,8 @@ export const cascadeKeys = {
   trafficPolicy: () => [...cascadeRoot, 'traffic-policy'] as const,
   nominals: () => [...cascadeRoot, 'nominals'] as const,
   coverage: (currency: string) => [...cascadeRoot, 'coverage', currency] as const,
+  requisiteRatings: (currency: string, qs: string) =>
+    [...cascadeRoot, 'requisite-ratings', currency, qs] as const,
 };
 
 export const treasuryKeys = {

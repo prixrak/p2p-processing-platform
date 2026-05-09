@@ -1,7 +1,7 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { LayoutDashboard, FileText, AlertTriangle, Wallet, GitFork } from 'lucide-react';
+import { LayoutDashboard, FileText, AlertTriangle, Wallet, GitFork, Table2 } from 'lucide-react';
 import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
 import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
@@ -15,6 +15,7 @@ const navItems: NavItem[] = [
   { label: 'Disputes', href: '/support/disputes', icon: AlertTriangle },
   { label: 'Balances', href: '/support/balances', icon: Wallet },
   { label: 'Cascade', href: '/support/cascade', icon: GitFork },
+  { label: 'Cascade requisites', href: '/support/cascade/requisites', icon: Table2 },
 ];
 
 export default function SupportLayout({ children }: { children: React.ReactNode }) {
