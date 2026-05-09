@@ -4,6 +4,8 @@ import { AdminOrdersController } from './admin-orders.controller';
 import { AdminPlatformController } from './admin-platform.controller';
 import { AdminCascadeController } from './admin-cascade.controller';
 import { AdminPayoutPoolController } from './admin-payout-pool.controller';
+import { AdminApplicationLogsController } from './admin-application-logs.controller';
+import { AdminApplicationLogsService } from './admin-application-logs.service';
 import { PlatformTreasuryService } from './platform-treasury.service';
 import { PayinModule } from '../payin/payin.module';
 import { WalletDepositsModule } from '../wallet-deposits/wallet-deposits.module';
@@ -19,7 +21,8 @@ import { PayoutModule } from '../payout/payout.module';
     AdminPlatformController,
     AdminCascadeController,
     AdminPayoutPoolController,
+    AdminApplicationLogsController,
   ],
-  providers: [PlatformTreasuryService],
+  providers: [PlatformTreasuryService, AdminApplicationLogsService],
 })
 export class AdminModule {}

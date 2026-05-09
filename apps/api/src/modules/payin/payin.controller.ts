@@ -8,11 +8,13 @@ import {
     ParseUUIDPipe,
     Post,
     Query,
+    Req,
     Sse,
     UploadedFiles,
     UseGuards,
     UseInterceptors,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { Observable } from 'rxjs';
 import { SkipThrottle } from '@nestjs/throttler';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -43,6 +45,7 @@ import {
 } from './dto';
 import { PayinService } from './payin.service';
 import { PayinRealtimeService } from './payin-realtime.service';
+import { buildExternalOrderCreationMeta } from '../../common/utils/partner-request-meta';
 
 @ApiTags('Pay-In (External)')
 @ApiSecurity('hmac-auth')
@@ -57,8 +60,9 @@ export class PayinController {
   async uploadOrder(
     @MerchantId() merchantId: string,
     @Body() dto: UploadOrderDto,
+    @Req() req: Request,
   ) {
-    return this.payinService.uploadOrder(merchantId, dto);
+    return this.payinService.uploadOrder(merchantId, dto, buildExternalOrderCreationMeta(req));
   }
 
   @Post('update_order')
@@ -113,8 +117,9 @@ export class PayinController {
   async h2hInit(
     @MerchantId() merchantId: string,
     @Body() dto: H2hInitDto,
+    @Req() req: Request,
   ) {
-    return this.payinService.h2hInit(merchantId, dto);
+    return this.payinService.h2hInit(merchantId, dto, buildExternalOrderCreationMeta(req));
   }
 
   @Post('h2h_check_availability')

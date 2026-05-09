@@ -970,7 +970,7 @@ export class CascadeService {
     sort_dir?: 'asc' | 'desc';
   }): Promise<{
     currency: string;
-    preview_amount: number;
+    preview_amount: number | null;
     rows: Array<Record<string, unknown>>;
   }> {
     const cur = options.currency.trim().toUpperCase();
@@ -980,8 +980,6 @@ export class CascadeService {
       orderBy: { sortOrder: 'asc' },
     });
     const nominalAmounts = nominalRows.map((n) => Number(n.amount));
-    const defaultPreview = nominalAmounts.length > 0 ? Math.min(...nominalAmounts) : 100;
-    const previewAmount = options.preview_amount ?? defaultPreview;
 
     let parserRate: number | undefined;
     if (cur === 'UAH') {
@@ -1006,26 +1004,39 @@ export class CascadeService {
 
     let rankById = new Map<string, number>();
     let eligiblePreview = new Set<string>();
-    if (Math.abs(previewAmount - payload.preview_amount) < 1e-9) {
+    let responsePreviewAmount: number | null;
+
+    if (options.preview_amount === undefined) {
+      responsePreviewAmount = null;
       for (const s of payload.snapshots) {
         const rk = s.redis_meta?.cascade_rank;
         if (rk != null) rankById.set(s.id, rk);
-        if (s.redis_meta?.is_eligible_preview) eligiblePreview.add(s.id);
       }
+      eligiblePreview = new Set(payload.snapshots.map((s) => s.id));
     } else {
-      const ordered = await this.buildOrderedRequisiteIdsForAmount(this.prisma, {
-        currency: cur,
-        amount: previewAmount,
-        parserRate,
-        enforceUsdtCapacity: enforceUsdt,
-        settings,
-        nominalAmounts,
-        reqRows: payload.snapshots.map(strip),
-      });
-      for (let i = 0; i < ordered.length; i++) {
-        rankById.set(ordered[i]!.id, i + 1);
+      const previewAmount = options.preview_amount;
+      responsePreviewAmount = previewAmount;
+      if (Math.abs(previewAmount - payload.preview_amount) < 1e-9) {
+        for (const s of payload.snapshots) {
+          const rk = s.redis_meta?.cascade_rank;
+          if (rk != null) rankById.set(s.id, rk);
+          if (s.redis_meta?.is_eligible_preview) eligiblePreview.add(s.id);
+        }
+      } else {
+        const ordered = await this.buildOrderedRequisiteIdsForAmount(this.prisma, {
+          currency: cur,
+          amount: previewAmount,
+          parserRate,
+          enforceUsdtCapacity: enforceUsdt,
+          settings,
+          nominalAmounts,
+          reqRows: payload.snapshots.map(strip),
+        });
+        for (let i = 0; i < ordered.length; i++) {
+          rankById.set(ordered[i]!.id, i + 1);
+        }
+        eligiblePreview = new Set(ordered.map((o) => o.id));
       }
-      eligiblePreview = new Set(ordered.map((o) => o.id));
     }
 
     const metaById = new Map(
@@ -1266,7 +1277,7 @@ export class CascadeService {
 
     return {
       currency: cur,
-      preview_amount: previewAmount,
+      preview_amount: responsePreviewAmount,
       rows,
     };
   }

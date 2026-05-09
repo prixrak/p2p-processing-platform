@@ -729,6 +729,10 @@ model PayinOrder {
   traderProcessingMethod TraderProcessingMethod? @map("trader_processing_method")
   /// FORK flow: optional exchange / counterparty reference (set by trader).
   forkExchangeReference String? @map("fork_exchange_reference") @db.VarChar(512)
+  /// Client IP on external API order creation (first X-Forwarded-For hop or socket IP).
+  partnerIp         String?     @map("partner_ip") @db.VarChar(45)
+  /// External merchant API path that created this row (e.g. /api/external/v1/payin/upload_order).
+  externalApiPath   String?     @map("external_api_path") @db.VarChar(512)
   createdAt         DateTime    @default(now()) @map("created_at")
   updatedAt         DateTime    @updatedAt @map("updated_at")
 
@@ -819,6 +823,10 @@ model PayoutOrder {
   completionProofFile File?        @relation("PayoutOrderCompletionProof", fields: [completionProofFileId], references: [id], onDelete: SetNull)
   /// When status is FAILED after trader/specialist rejection (card inactive / funds returned).
   traderRejectReason PayoutTraderRejectReason? @map("trader_reject_reason")
+  /// Client IP on external API order creation (first X-Forwarded-For hop or socket IP).
+  partnerIp       String?           @map("partner_ip") @db.VarChar(45)
+  /// External merchant API path that created this row (e.g. /api/external/v1/payout/order_upload).
+  externalApiPath String?           @map("external_api_path") @db.VarChar(512)
   webhookOutbox   WebhookOutbox[]
 
   @@unique([merchantId, requestId])

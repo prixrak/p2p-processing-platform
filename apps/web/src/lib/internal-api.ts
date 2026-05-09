@@ -27,6 +27,10 @@ export const internalPaths = {
   adminOrders: (qs: string) => `/api/admin/orders?${qs}`,
   adminOrder: (id: string) => `/api/admin/orders/${id}`,
   adminOrderStatus: (id: string) => `/api/admin/orders/${id}/status`,
+  /** Staff application logs (charts + unified Pay-In/Pay-Out table); append query string */
+  adminOrdersLogs: '/api/admin/application-logs',
+  adminOrdersLogsSummary: '/api/admin/application-logs/summary',
+  adminOrdersLogsMeta: '/api/admin/application-logs/meta',
 
   audit: '/api/audit',
 

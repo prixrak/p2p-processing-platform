@@ -53,7 +53,8 @@ export type RequisiteRatingApiRow = {
 
 type RatingResponse = {
   currency: string;
-  preview_amount: number;
+  /** Present when the client requested amount-based rank/eligibility preview. */
+  preview_amount: number | null;
   rows: RequisiteRatingApiRow[];
 };
 
@@ -351,12 +352,22 @@ export function CascadeRequisiteRatingsPanel({
           </h2>
           {data ? (
             <span className="text-[11px] text-text-muted">
-              Cascade rank and eligibility preview at{' '}
-              <span className="font-mono text-text-secondary">
-                {data.preview_amount} {currency.trim().toUpperCase()}
-              </span>
-              {' '}
-              (table defaults to assignment order — rank 1 first).
+              {data.preview_amount != null ? (
+                <>
+                  Cascade rank and eligibility preview at{' '}
+                  <span className="font-mono text-text-secondary">
+                    {data.preview_amount} {currency.trim().toUpperCase()}
+                  </span>
+                  {' '}
+                  (table defaults to assignment order — rank 1 first).
+                </>
+              ) : (
+                <>
+                  No preview amount — all cascade pool requisites are listed. Enter Preview amt.
+                  to see rank and eligibility for that amount (rank column uses the cached snapshot
+                  order until then).
+                </>
+              )}
             </span>
           ) : null}
         </div>
@@ -380,7 +391,9 @@ export function CascadeRequisiteRatingsPanel({
             <Input
               id="cascade-preview-amt"
               className="h-9 min-w-0 text-xs"
-              placeholder={data ? String(data.preview_amount) : 'auto'}
+              placeholder={
+                data ? (data.preview_amount != null ? String(data.preview_amount) : 'Optional') : '…'
+              }
               value={previewAmount}
               onChange={(e) => setPreviewAmount(e.target.value)}
             />

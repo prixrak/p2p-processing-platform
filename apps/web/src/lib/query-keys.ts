@@ -204,6 +204,8 @@ export const adminKeys = {
   ordersScope: [...adminRoot, 'orders'] as const,
   tradersOptions: () => [...adminRoot, 'traders', 'options'] as const,
   statistics: () => [...adminRoot, 'statistics'] as const,
+  ordersLogs: (filters: unknown) => [...adminRoot, 'orders-logs', filters] as const,
+  ordersLogsScope: [...adminRoot, 'orders-logs'] as const,
   orderDetails: (orderId: string | null) => [...adminRoot, 'order-details', orderId] as const,
   orderDetailsScope: [...adminRoot, 'order-details'] as const,
 };
@@ -225,6 +227,8 @@ export const ownerKeys = {
   orderDetailsScope: [...ownerRoot, 'order-details'] as const,
   directions: () => [...ownerRoot, 'directions'] as const,
   statistics: (period: unknown) => [...ownerRoot, 'statistics', period] as const,
+  ordersLogs: (filters: unknown) => [...ownerRoot, 'orders-logs', filters] as const,
+  ordersLogsScope: [...ownerRoot, 'orders-logs'] as const,
 };
 
 export const supportKeys = {

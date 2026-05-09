@@ -23,19 +23,35 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import {
   UserRole,
   PayOutOrderStatus,
+  PayInOrderStatus,
+  ApplicationLogUiStatus,
   isValidPayOutTransition,
   WebhookMethod,
   DirectionType,
   ORDER_LIST_DIRECTION,
+  mapPayinToApplicationLogUiStatus,
+  mapPayoutToApplicationLogUiStatus,
+  applicationLogErrorMessage,
+  resolvePayinApplicationLogErrorCode,
+  resolvePayoutApplicationLogErrorCode,
 } from '@p2p/shared';
 import { SkipThrottle } from '@nestjs/throttler';
 import { Observable, merge } from 'rxjs';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { PayinService } from '../payin/payin.service';
 import { PayinRealtimeService } from '../payin/payin-realtime.service';
 import { PayoutRealtimeService } from '../payout/payout-realtime.service';
 import { IsString } from 'class-validator';
 import { buildPayinPayoutOrderSearchOr } from '../../common/order-search-where';
+
+const PAYOUT_ADMIN_ORDER_INCLUDE = {
+  merchant: { select: { id: true, name: true } },
+  trader: { select: { id: true, user: { select: { email: true } } } },
+  payoutTrader: { select: { user: { select: { email: true } } } },
+  currency: { select: { code: true } },
+  paymentMethod: { select: { displayName: true } },
+} as const;
 
 class UpdateOrderStatusDto {
   @IsString()
@@ -221,9 +237,18 @@ export class AdminOrdersController {
       const order = await this.prisma.payinOrder.findUnique({
         where: { id },
         include: {
-          merchant: { select: { name: true } },
-          trader: { select: { user: { select: { email: true } } } },
-          requisite: { include: { bank: { select: { name: true } } } },
+          merchant: { select: { id: true, name: true } },
+          trader: { select: { id: true, user: { select: { email: true } } } },
+          requisite: {
+            include: {
+              bank: { select: { name: true } },
+              group: {
+                include: {
+                  paymentMethod: { select: { displayName: true } },
+                },
+              },
+            },
+          },
           currency: { select: { code: true } },
           forkChatProofs: { select: { fileId: true } },
         },
@@ -232,14 +257,19 @@ export class AdminOrdersController {
       if (!order) {
         const payoutOrder = await this.prisma.payoutOrder.findUnique({
           where: { id },
-          include: {
-            merchant: { select: { name: true } },
-            trader: { select: { user: { select: { email: true } } } },
-            currency: { select: { code: true } },
-          },
+          include: PAYOUT_ADMIN_ORDER_INCLUDE,
         });
         if (!payoutOrder) throw new NotFoundException(`Order ${id} not found`);
-        return this.formatPayoutDetail(payoutOrder);
+        const auditLogsFb = await this.prisma.auditLog.findMany({
+          where: { entityId: id },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            action: true,
+            createdAt: true,
+            actor: { select: { email: true } },
+          },
+        });
+        return this.buildPayoutAdminDetail(payoutOrder, auditLogsFb);
       }
 
       const auditLogs = await this.prisma.auditLog.findMany({
@@ -252,20 +282,83 @@ export class AdminOrdersController {
         },
       });
 
+      const uiStatus = mapPayinToApplicationLogUiStatus(
+        order.status as PayInOrderStatus,
+        order.traderId,
+      );
+      const hideAssignmentSections = uiStatus === ApplicationLogUiStatus.PENDING;
+      const payinErrorCode = resolvePayinApplicationLogErrorCode(order.status as PayInOrderStatus);
+
       return {
         id: order.id,
         type: DirectionType.PAYIN,
         externalId: order.requestId,
+        merchantId: order.merchantId,
         merchantName: order.merchant.name,
         traderName: order.trader?.user?.email ?? null,
+        traderId: order.traderId,
         amount: Number(order.amount),
         currency: order.currency.code,
         status: order.status,
+        applicationLogUiStatus: uiStatus,
+        partnerIp: order.partnerIp ?? null,
+        externalApiPath: order.externalApiPath ?? null,
+        commissionPercent: Number(order.commissionPercent),
+        commission: Number(order.commission),
+        partnerAmount: Number(order.partnerAmount),
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
+        confirmedAt: order.confirmedAt,
+        completedAt: order.completedAt,
+        autocloseAt: order.autocloseAt,
         traderProcessingMethod: order.traderProcessingMethod ?? null,
         forkExchangeReference: order.forkExchangeReference ?? null,
         forkChatProofFileIds: order.forkChatProofs.map((p) => p.fileId),
+        paymentDetails:
+          hideAssignmentSections || !order.requisite
+            ? null
+            : {
+                requisiteType: order.requisite.type,
+                paymentMethodLabel:
+                  order.requisite.group.paymentMethod.displayName ?? order.requisite.type,
+                number: order.requisite.number,
+                owner: order.requisite.owner,
+                bankName: order.requisite.bank?.name ?? null,
+                requisiteId: order.requisite.id,
+              },
+        stakeholderAmounts: hideAssignmentSections
+          ? null
+          : {
+              partner: {
+                label: order.merchant.name,
+                userId: order.merchantId,
+                percent: Number(order.commissionPercent),
+                amountLocal: Number(order.partnerAmount),
+              },
+              trader: order.trader
+                ? {
+                    label: order.trader.user.email,
+                    userId: order.trader.id,
+                    percent: null,
+                    amountLocal: null,
+                  }
+                : null,
+              platform: {
+                label: 'Platform',
+                userId: null,
+                percent: Number(order.commissionPercent),
+                amountLocal: Number(order.commission),
+              },
+            },
+        applicationLogError:
+          uiStatus === ApplicationLogUiStatus.ERROR && payinErrorCode
+            ? {
+                code: payinErrorCode,
+                message: applicationLogErrorMessage('PAYIN', order.status as PayInOrderStatus),
+                at: order.completedAt?.toISOString() ?? order.updatedAt.toISOString(),
+              }
+            : null,
+        applicationLogHideAssignmentSections: hideAssignmentSections,
         requisites: order.requisite
           ? {
               bank: order.requisite.bank?.name ?? null,
@@ -281,11 +374,7 @@ export class AdminOrdersController {
     } else {
       const order = await this.prisma.payoutOrder.findUnique({
         where: { id },
-        include: {
-          merchant: { select: { name: true } },
-          trader: { select: { user: { select: { email: true } } } },
-          currency: { select: { code: true } },
-        },
+        include: PAYOUT_ADMIN_ORDER_INCLUDE,
       });
       if (!order) throw new NotFoundException(`Order ${id} not found`);
 
@@ -299,14 +388,7 @@ export class AdminOrdersController {
         },
       });
 
-      return {
-        ...this.formatPayoutDetail(order),
-        statusHistory: auditLogs.map((l) => ({
-          status: l.action,
-          timestamp: l.createdAt,
-          actor: l.actor?.email ?? 'system',
-        })),
-      };
+      return this.buildPayoutAdminDetail(order, auditLogs);
     }
   }
 
@@ -373,30 +455,106 @@ export class AdminOrdersController {
     });
   }
 
-  private formatPayoutDetail(order: {
-    id: string;
-    requestId: string;
-    merchant: { name: string };
-    trader?: { user: { email: string } } | null;
-    amount: unknown;
-    currency: { code: string };
-    status: string;
-    createdAt: Date;
-    updatedAt: Date;
-  }) {
+  private buildPayoutAdminDetail(
+    order: Prisma.PayoutOrderGetPayload<{ include: typeof PAYOUT_ADMIN_ORDER_INCLUDE }>,
+    auditLogs: Array<{
+      action: string;
+      createdAt: Date;
+      actor: { email: string } | null;
+    }>,
+  ) {
+    const uiStatus = mapPayoutToApplicationLogUiStatus(order.status as PayOutOrderStatus);
+    const hideAssignmentSections = uiStatus === ApplicationLogUiStatus.PENDING;
+    const payoutErrorCode = resolvePayoutApplicationLogErrorCode(
+      order.status as PayOutOrderStatus,
+      order.traderRejectReason,
+    );
+
+    const traderLabel =
+      order.trader?.user.email ?? order.payoutTrader?.user.email ?? null;
+
     return {
       id: order.id,
       type: DirectionType.PAYOUT,
       externalId: order.requestId,
+      merchantId: order.merchantId,
       merchantName: order.merchant.name,
-      traderName: order.trader?.user?.email ?? null,
+      traderName: traderLabel,
+      traderId: order.traderId,
+      payoutTraderEmail: order.payoutTrader?.user.email ?? null,
       amount: Number(order.amount),
       currency: order.currency.code,
       status: order.status,
+      applicationLogUiStatus: uiStatus,
+      partnerIp: order.partnerIp ?? null,
+      externalApiPath: order.externalApiPath ?? null,
+      partnerAmount: Number(order.partnerAmount),
+      commissionAmount: Number(order.commissionAmount),
+      percentFee: Number(order.percentFee),
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
+      startAt: order.startAt,
+      endAt: order.endAt,
+      paymentDetails: hideAssignmentSections
+        ? null
+        : {
+            requisiteType: order.detailsType,
+            paymentMethodLabel: order.paymentMethod?.displayName ?? order.detailsType,
+            number: order.detailsNumber,
+            owner: order.detailsOwner ?? null,
+            bankName: order.paymentMethod?.displayName ?? null,
+            requisiteId: null as string | null,
+          },
+      stakeholderAmounts: hideAssignmentSections
+        ? null
+        : {
+            partner: {
+              label: order.merchant.name,
+              userId: order.merchantId,
+              percent: Number(order.percentFee),
+              amountLocal: Number(order.partnerAmount),
+            },
+            trader: order.trader
+              ? {
+                  label: order.trader.user.email,
+                  userId: order.trader.id,
+                  percent: null as number | null,
+                  amountLocal: null as number | null,
+                }
+              : order.payoutTrader
+                ? {
+                    label: order.payoutTrader.user.email,
+                    userId: null as string | null,
+                    percent: null as number | null,
+                    amountLocal: null as number | null,
+                  }
+                : null,
+            platform: {
+              label: 'Platform',
+              userId: null as string | null,
+              percent: Number(order.percentFee),
+              amountLocal: Number(order.commissionAmount),
+            },
+          },
+      applicationLogError:
+        uiStatus === ApplicationLogUiStatus.ERROR && payoutErrorCode
+          ? {
+              code: payoutErrorCode,
+              message: applicationLogErrorMessage(
+                'PAYOUT',
+                order.status as PayOutOrderStatus,
+                order.traderRejectReason as never,
+              ),
+              at: order.endAt?.toISOString() ?? order.updatedAt.toISOString(),
+            }
+          : null,
+      applicationLogHideAssignmentSections: hideAssignmentSections,
       requisites: null,
-      statusHistory: [],
+      statusHistory: auditLogs.map((l) => ({
+        status: l.action,
+        timestamp: l.createdAt,
+        actor: l.actor?.email ?? 'system',
+      })),
     };
   }
 }

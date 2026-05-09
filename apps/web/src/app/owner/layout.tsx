@@ -15,6 +15,7 @@ import {
   Table2,
   Percent,
   CircleDollarSign,
+  FileSearch,
 } from 'lucide-react';
 import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
@@ -36,6 +37,7 @@ const navItems: NavItem[] = [
   { label: 'Payment Methods', href: '/owner/payment-methods', icon: CreditCard },
   { label: 'Settlements', href: '/owner/settlements', icon: Wallet },
   { label: 'Statistics', href: '/owner/statistics', icon: BarChart3 },
+  { label: 'Orders logs', href: '/owner/orders-logs', icon: FileSearch },
   { label: 'Audit Log', href: '/owner/audit', icon: ScrollText },
 ];
 

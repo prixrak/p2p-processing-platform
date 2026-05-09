@@ -80,6 +80,7 @@ import {
   payinOrderToOrderDto,
 } from './payin-order.mapper';
 import { payinCompletedAtForHistoryStatus } from './payin-history-completion';
+import type { ExternalOrderCreationMeta } from '../../common/utils/partner-request-meta';
 
 @Injectable()
 export class PayinService {
@@ -133,7 +134,11 @@ export class PayinService {
 
   // ─── External: upload_order ───
 
-  async uploadOrder(merchantId: string, dto: UploadOrderDto): Promise<OrderResponseDto> {
+  async uploadOrder(
+    merchantId: string,
+    dto: UploadOrderDto,
+    meta?: ExternalOrderCreationMeta,
+  ): Promise<OrderResponseDto> {
     if (dto.callback_url) {
       await validateCallbackUrl(dto.callback_url);
     }
@@ -221,6 +226,8 @@ export class PayinService {
               traderProcessingMethod: null,
               autocloseAt: autocloseAtNr,
               isH2h: false,
+              partnerIp: meta?.partnerIp ?? undefined,
+              externalApiPath: meta?.externalApiPath ?? undefined,
             },
             include: ORDER_INCLUDE,
           });
@@ -279,6 +286,8 @@ export class PayinService {
             traderProcessingMethod: requisite.trader.processingMethod,
             autocloseAt: autocloseAtAssigned,
             isH2h: false,
+            partnerIp: meta?.partnerIp ?? undefined,
+            externalApiPath: meta?.externalApiPath ?? undefined,
           },
           include: ORDER_INCLUDE,
         });
@@ -523,7 +532,11 @@ export class PayinService {
 
   // ─── External: h2h_init ───
 
-  async h2hInit(merchantId: string, dto: H2hInitDto): Promise<H2HOrderResponseDto> {
+  async h2hInit(
+    merchantId: string,
+    dto: H2hInitDto,
+    meta?: ExternalOrderCreationMeta,
+  ): Promise<H2HOrderResponseDto> {
     if (dto.callback_url) {
       await validateCallbackUrl(dto.callback_url);
     }
@@ -612,6 +625,8 @@ export class PayinService {
               traderProcessingMethod: null,
               autocloseAt: autocloseAtNr,
               isH2h: true,
+              partnerIp: meta?.partnerIp ?? undefined,
+              externalApiPath: meta?.externalApiPath ?? undefined,
             },
             include: ORDER_INCLUDE,
           });
@@ -671,6 +686,8 @@ export class PayinService {
             traderProcessingMethod: requisite.trader.processingMethod,
             autocloseAt: autocloseAtAssigned,
             isH2h: true,
+            partnerIp: meta?.partnerIp ?? undefined,
+            externalApiPath: meta?.externalApiPath ?? undefined,
           },
           include: ORDER_INCLUDE,
         });

@@ -346,7 +346,7 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
           </span>
           {role === 'trader' && <TraderHeaderOrderStatus />}
         </header>
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-surface-primary">
           <div className="mx-auto max-w-7xl p-6">{children}</div>
         </div>
       </main>

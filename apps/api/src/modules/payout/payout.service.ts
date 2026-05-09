@@ -54,6 +54,7 @@ import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
 import { OrderUploadDto, PayoutOrderInfoDto, PayoutListFiltersDto, SpecialistCompleteDto } from './dto';
 import { PayoutRealtimeService } from './payout-realtime.service';
 import { computePayoutPoolCloseDeadline } from './payout-pool-close-deadline.util';
+import type { ExternalOrderCreationMeta } from '../../common/utils/partner-request-meta';
 
 const CABINET_ORDER_INCLUDE = {
   paymentMethod: { select: { displayName: true } },
@@ -221,7 +222,11 @@ export class PayoutService {
 
   // ─── External: order_upload ───
 
-  async orderUpload(merchantId: string, dto: OrderUploadDto): Promise<PayOutOrderApiDto> {
+  async orderUpload(
+    merchantId: string,
+    dto: OrderUploadDto,
+    meta?: ExternalOrderCreationMeta,
+  ): Promise<PayOutOrderApiDto> {
     if (!dto.request_id || !dto.currency || !dto.amount || !dto.details) {
       throw new BadRequestException('request_id, currency, amount, and details are required');
     }
@@ -336,6 +341,8 @@ export class PayoutService {
             rateAdminOut: rateAdminOutVal ?? undefined,
             merchantDebitLocal: merchantDebitLocal ?? undefined,
             callbackUrl: dto.callback_url,
+            partnerIp: meta?.partnerIp ?? undefined,
+            externalApiPath: meta?.externalApiPath ?? undefined,
           },
           include: ORDER_INCLUDE,
         });

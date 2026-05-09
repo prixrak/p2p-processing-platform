@@ -14,6 +14,7 @@ import {
   GitFork,
   Percent,
   Table2,
+  FileSearch,
 } from 'lucide-react';
 import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
   { label: 'Reference', href: '/admin/catalog', icon: Library },
   { label: 'Payment Methods', href: '/admin/payment-methods', icon: CreditCard },
   { label: 'Statistics', href: '/admin/statistics', icon: BarChart3 },
+  { label: 'Orders logs', href: '/admin/orders-logs', icon: FileSearch },
   { label: 'Audit Log', href: '/admin/audit', icon: ScrollText },
 ];
 

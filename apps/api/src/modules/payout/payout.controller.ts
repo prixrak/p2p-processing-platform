@@ -11,11 +11,12 @@ import {
   Header,
   MessageEvent,
   Res,
+  Req,
   DefaultValuePipe,
   ParseIntPipe,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
-import { Response } from 'express';
+import { Response, type Request } from 'express';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiSecurity, ApiBearerAuth, ApiProduces, ApiQuery } from '@nestjs/swagger';
 import { UserRole } from '@p2p/shared';
@@ -28,6 +29,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { PayoutService } from './payout.service';
 import { PayoutRealtimeService } from './payout-realtime.service';
+import { buildExternalOrderCreationMeta } from '../../common/utils/partner-request-meta';
 import {
   OrderUploadDto,
   PayoutOrderInfoDto,
@@ -50,8 +52,9 @@ export class PayoutController {
   async orderUpload(
     @MerchantId() merchantId: string,
     @Body() dto: OrderUploadDto,
+    @Req() req: Request,
   ) {
-    return this.payoutService.orderUpload(merchantId, dto);
+    return this.payoutService.orderUpload(merchantId, dto, buildExternalOrderCreationMeta(req));
   }
 
   @Post('order_info')
