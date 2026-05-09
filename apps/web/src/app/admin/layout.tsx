@@ -1,5 +1,6 @@
 'use client';
 
+import { useQueryClient } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   Users,
@@ -16,6 +17,7 @@ import {
 import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
 import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
+import { useStaffOrdersRealtime } from '@/lib/payin-realtime';
 
 const ADMIN_ALLOWED = [UserRole.ADMIN] as const;
 
@@ -34,6 +36,9 @@ const navItems: NavItem[] = [
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
+  useStaffOrdersRealtime(queryClient);
+
   return (
     <AuthGuard allowedRoles={ADMIN_ALLOWED}>
       <DashboardShell navItems={navItems} role="admin">

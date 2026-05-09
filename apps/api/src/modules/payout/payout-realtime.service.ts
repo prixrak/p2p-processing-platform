@@ -26,6 +26,11 @@ export function payoutMerchantChannel(merchantId: string): string {
   return `payout:merchant:${merchantId}`;
 }
 
+/** Redis broadcast for admin / owner / support SSE (JWT required on HTTP). */
+export function payoutStaffBroadcastChannel(): string {
+  return 'payout:staff';
+}
+
 @Injectable()
 export class PayoutRealtimeService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PayoutRealtimeService.name);
@@ -45,6 +50,7 @@ export class PayoutRealtimeService implements OnModuleInit, OnModuleDestroy {
       const ops: Promise<number>[] = [
         this.publisher.publish(payoutOrderChannel(event.orderId), payload),
         this.publisher.publish(payoutMerchantChannel(event.merchantId), payload),
+        this.publisher.publish(payoutStaffBroadcastChannel(), payload),
       ];
       if (event.traderId) {
         ops.push(this.publisher.publish(payoutTraderChannel(event.traderId), payload));
@@ -81,6 +87,11 @@ export class PayoutRealtimeService implements OnModuleInit, OnModuleDestroy {
       this.createSseObservable([payoutMerchantChannel(merchantId)]),
       merchantId,
     );
+  }
+
+  streamForStaffCabinet(): Observable<MessageEvent> {
+    const channel = payoutStaffBroadcastChannel();
+    return this.pipeSseResilience(this.createSseObservable([channel]), 'payout-staff');
   }
 
   private pipeSseResilience(

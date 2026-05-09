@@ -18,7 +18,6 @@ import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
-import { usePayoutCabinetRealtime } from '@/lib/payin-realtime';
 import { cn } from '@/lib/utils';
 import { getToken } from '@/lib/auth';
 import { PAYOUT_TRADER_HISTORY_STATUSES } from '@p2p/shared';
@@ -60,8 +59,6 @@ export function TraderPayoutPage({
   const apiBase = isSpecialist ? internalPaths.payoutCabinetSpecialist : internalPaths.payoutCabinetTrader;
   const qk: PayoutCabinetScope = isSpecialist ? 'payout-trader' : 'trader';
   const apiPublicBase = process.env.NEXT_PUBLIC_API_URL ?? '';
-
-  usePayoutCabinetRealtime(queryClient, isSpecialist ? 'specialist' : 'standard');
 
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 

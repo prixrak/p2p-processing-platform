@@ -16,7 +16,11 @@ import {
 import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
 import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
-import { useTraderWalletDepositRealtime } from '@/lib/payin-realtime';
+import {
+  usePayOutTraderRealtime,
+  usePayinTraderRealtime,
+  useTraderWalletDepositRealtime,
+} from '@/lib/payin-realtime';
 
 const TRADER_ALLOWED = [UserRole.TRADER] as const;
 
@@ -35,6 +39,9 @@ const navItems: NavItem[] = [
 
 export default function TraderLayout({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
+  // Keep SSE alive across trader routes so lists refresh off Pay-In/Pay-Out/dashboard pages too.
+  usePayinTraderRealtime(queryClient);
+  usePayOutTraderRealtime(queryClient);
   useTraderWalletDepositRealtime(queryClient);
 
   return (

@@ -16,7 +16,6 @@ import { internalPaths } from '@/lib/internal-api';
 import { traderKeys } from '@/lib/query-keys';
 import { formatErrorMessage } from '@/lib/format-error';
 import { formatCurrency, formatDateFull } from '@/lib/utils';
-import { usePayinTraderRealtime } from '@/lib/payin-realtime';
 import { payinStatusLabel } from '@/lib/order-status-ui';
 import {
   PayInOrderStatus,
@@ -45,7 +44,6 @@ const PAYIN_LIST_PAGE_SIZE = 20;
 
 export function TraderPayInPage() {
   const queryClient = useQueryClient();
-  usePayinTraderRealtime(queryClient);
   const [listTab, setListTab] = useState<'current' | 'history'>('current');
   const [statusFilter, setStatusFilter] = useState('');
   const [searchInput, setSearchInput] = useState('');

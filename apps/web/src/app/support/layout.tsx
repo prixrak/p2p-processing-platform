@@ -1,9 +1,11 @@
 'use client';
 
+import { useQueryClient } from '@tanstack/react-query';
 import { LayoutDashboard, FileText, AlertTriangle, Wallet, GitFork } from 'lucide-react';
 import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
 import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
+import { useStaffOrdersRealtime } from '@/lib/payin-realtime';
 
 const SUPPORT_ALLOWED = [UserRole.SUPPORT] as const;
 
@@ -16,6 +18,9 @@ const navItems: NavItem[] = [
 ];
 
 export default function SupportLayout({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
+  useStaffOrdersRealtime(queryClient);
+
   return (
     <AuthGuard allowedRoles={SUPPORT_ALLOWED}>
       <DashboardShell navItems={navItems} role="support">

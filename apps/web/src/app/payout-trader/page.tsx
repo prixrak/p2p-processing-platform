@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { LayoutDashboard, ArrowUpFromLine } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,6 @@ import { statCardToneAt } from '@/lib/surface-ring';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { specialistCabinetKeys } from '@/lib/query-keys';
-import { usePayoutCabinetRealtime } from '@/lib/payin-realtime';
 
 interface SpecialistSummary {
   email: string;
@@ -28,9 +27,6 @@ interface SpecialistSummary {
 }
 
 export default function PayoutTraderDashboardPage() {
-  const queryClient = useQueryClient();
-  usePayoutCabinetRealtime(queryClient, 'specialist');
-
   const { data, isLoading } = useQuery({
     queryKey: specialistCabinetKeys.summary(),
     queryFn: () => api.get<SpecialistSummary>(internalPaths.payoutSpecialistSummary),

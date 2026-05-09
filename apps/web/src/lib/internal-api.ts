@@ -19,6 +19,7 @@ export const internalPaths = {
   adminCascadeNominals: '/api/admin/cascade/nominals',
   adminCascadeNominal: (id: string) => `/api/admin/cascade/nominals/${id}`,
 
+  adminOrdersStream: '/api/admin/orders/stream',
   adminOrders: (qs: string) => `/api/admin/orders?${qs}`,
   adminOrder: (id: string) => `/api/admin/orders/${id}`,
   adminOrderStatus: (id: string) => `/api/admin/orders/${id}/status`,

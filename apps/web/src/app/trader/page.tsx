@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   TrendingUp,
   ShoppingCart,
@@ -11,7 +11,6 @@ import { StatCard } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { traderKeys } from '@/lib/query-keys';
-import { usePayinTraderRealtime, usePayOutTraderRealtime } from '@/lib/payin-realtime';
 import { formatCurrency } from '@/lib/utils';
 import { statCardToneAt } from '@/lib/surface-ring';
 import { TraderDashboardWalletListSection } from '@/features/trader-dashboard/wallet-list-section';
@@ -27,9 +26,6 @@ interface DashboardStats {
 }
 
 export default function TraderDashboard() {
-  const queryClient = useQueryClient();
-  usePayinTraderRealtime(queryClient);
-  usePayOutTraderRealtime(queryClient);
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: traderKeys.dashboardStats(),
     queryFn: () => api.get<DashboardStats>(internalPaths.traderDashboardStats),

@@ -1,5 +1,6 @@
 'use client';
 
+import { useQueryClient } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   ArrowUpFromLine,
@@ -10,6 +11,7 @@ import {
 import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
 import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
+import { usePayOutSpecialistRealtime } from '@/lib/payin-realtime';
 
 const PAYOUT_TRADER_ALLOWED = [UserRole.PAYOUT_TRADER] as const;
 
@@ -22,6 +24,9 @@ const navItems: NavItem[] = [
 ];
 
 export default function PayoutTraderLayout({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
+  usePayOutSpecialistRealtime(queryClient);
+
   return (
     <AuthGuard allowedRoles={PAYOUT_TRADER_ALLOWED}>
       <DashboardShell navItems={navItems} role="payout-trader">

@@ -9,8 +9,11 @@ import {
 import { getToken } from '@/lib/auth';
 import { internalPaths } from '@/lib/internal-api';
 import {
+  adminKeys,
   merchantKeys,
+  ownerKeys,
   payoutCabinetKeys,
+  supportKeys,
   type PayoutCabinetScope,
   traderKeys,
 } from '@/lib/query-keys';
@@ -336,6 +339,70 @@ export function useMerchantOrdersRealtime(queryClient: QueryClient): void {
                     void queryClient.invalidateQueries({ queryKey: merchantKeys.stats() });
                     void queryClient.invalidateQueries({ queryKey: merchantKeys.balances() });
                     void queryClient.invalidateQueries({ queryKey: merchantKeys.analyticsScope });
+                  });
+                }
+              } catch {
+                /* malformed line */
+              }
+            },
+          });
+        } catch (e) {
+          if ((e as Error).name === 'AbortError' || ac.signal.aborted) break;
+        }
+
+        if (cancelled || ac.signal.aborted) break;
+        try {
+          await sleep(RECONNECT_MS, ac.signal);
+        } catch {
+          break;
+        }
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+      invalidateDebouncer.dispose();
+      ac.abort();
+    };
+  }, [queryClient]);
+}
+
+/**
+ * Admin / owner / support: global order lifecycle SSE (JWT). Support uses `/api/admin/orders/stream`.
+ */
+export function useStaffOrdersRealtime(queryClient: QueryClient): void {
+  useEffect(() => {
+    const ac = new AbortController();
+    let cancelled = false;
+
+    const invalidateDebouncer = createDebouncer(INVALIDATE_DEBOUNCE_MS);
+
+    const run = async () => {
+      while (!cancelled) {
+        const token = getToken();
+        if (!token) break;
+
+        try {
+          await consumeSseStream(internalPaths.adminOrdersStream, {
+            signal: ac.signal,
+            headers: { Authorization: `Bearer ${token}` },
+            onMessage: (raw) => {
+              try {
+                const parsed = JSON.parse(raw) as PayinOrderRealtimeEvent | PayOutOrderRealtimeEvent;
+                if (
+                  parsed.type === PAYIN_ORDER_REALTIME_EVENT_TYPE ||
+                  parsed.type === PAYOUT_ORDER_REALTIME_EVENT_TYPE
+                ) {
+                  invalidateDebouncer.schedule(() => {
+                    void queryClient.invalidateQueries({ queryKey: adminKeys.ordersScope });
+                    void queryClient.invalidateQueries({ queryKey: adminKeys.stats() });
+                    void queryClient.invalidateQueries({ queryKey: ownerKeys.ordersScope });
+                    void queryClient.invalidateQueries({ queryKey: ownerKeys.orderDetailsScope });
+                    void queryClient.invalidateQueries({ queryKey: ownerKeys.stats() });
+                    void queryClient.invalidateQueries({ queryKey: supportKeys.ordersScope });
+                    void queryClient.invalidateQueries({ queryKey: supportKeys.orderDetailsScope });
+                    void queryClient.invalidateQueries({ queryKey: supportKeys.stats() });
                   });
                 }
               } catch {

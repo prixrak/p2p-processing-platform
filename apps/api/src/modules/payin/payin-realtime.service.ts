@@ -20,6 +20,11 @@ export function payinMerchantChannel(merchantId: string): string {
   return `payin:merchant:${merchantId}`;
 }
 
+/** Redis broadcast for admin / owner / support SSE (JWT required on HTTP). */
+export function payinStaffBroadcastChannel(): string {
+  return 'payin:staff';
+}
+
 /**
  * Publishes Pay-In order change notifications and exposes SSE streams backed by Redis pub/sub.
  * Use a dedicated connection for PUBLISH; each SSE connection uses duplicate() + SUBSCRIBE.
@@ -46,6 +51,7 @@ export class PayinRealtimeService implements OnModuleInit, OnModuleDestroy {
       const ops: Promise<number>[] = [
         this.publisher.publish(payinOrderChannel(event.orderId), payload),
         this.publisher.publish(payinMerchantChannel(event.merchantId), payload),
+        this.publisher.publish(payinStaffBroadcastChannel(), payload),
       ];
       if (event.traderId) {
         ops.push(this.publisher.publish(payinTraderChannel(event.traderId), payload));
@@ -68,6 +74,12 @@ export class PayinRealtimeService implements OnModuleInit, OnModuleDestroy {
 
   streamForMerchant(merchantId: string): Observable<MessageEvent> {
     const channel = payinMerchantChannel(merchantId);
+    return this.pipeSseResilience(this.createSseObservable(channel), channel);
+  }
+
+  /** SSE for staff orders views (merged with payout staff stream at controller level). */
+  streamForStaffCabinet(): Observable<MessageEvent> {
+    const channel = payinStaffBroadcastChannel();
     return this.pipeSseResilience(this.createSseObservable(channel), channel);
   }
 

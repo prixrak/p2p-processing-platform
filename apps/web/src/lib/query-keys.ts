@@ -240,6 +240,8 @@ export const supportKeys = {
   ) =>
     [...supportRoot, 'orders', tab, page, statusFilter, merchantFilter, traderFilter] as const,
   orderDetails: (orderId: string | null) => [...supportRoot, 'order-details', orderId] as const,
+  orderDetailsScope: [...supportRoot, 'order-details'] as const,
+  ordersScope: [...supportRoot, 'orders'] as const,
   balances: (tab: string, page: number, search: string) =>
     [...supportRoot, 'balances', tab, page, search] as const,
 };

@@ -12,13 +12,11 @@ import {
   BadRequestException,
   NotFoundException,
   Logger,
+  Sse,
+  Header,
+  MessageEvent,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiBearerAuth,
-  ApiQuery,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiProduces } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -30,8 +28,12 @@ import {
   DirectionType,
   ORDER_LIST_DIRECTION,
 } from '@p2p/shared';
+import { SkipThrottle } from '@nestjs/throttler';
+import { Observable, merge } from 'rxjs';
 import { PrismaService } from '../../config/prisma.service';
 import { PayinService } from '../payin/payin.service';
+import { PayinRealtimeService } from '../payin/payin-realtime.service';
+import { PayoutRealtimeService } from '../payout/payout-realtime.service';
 import { IsString } from 'class-validator';
 import { buildPayinPayoutOrderSearchOr } from '../../common/order-search-where';
 
@@ -51,6 +53,8 @@ export class AdminOrdersController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly payinService: PayinService,
+    private readonly payinRealtime: PayinRealtimeService,
+    private readonly payoutRealtime: PayoutRealtimeService,
   ) {}
 
   @Get()
@@ -187,6 +191,21 @@ export class AdminOrdersController {
         totalPages: Math.max(1, Math.ceil(total / limit)),
       };
     }
+  }
+
+  /** Support listens on `/api/admin/orders/stream`; same RBAC envelope as merchant/trader SSE. */
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
+  @SkipThrottle()
+  @Sse('stream')
+  @Header('X-Accel-Buffering', 'no')
+  @Header('Cache-Control', 'no-cache')
+  @ApiOperation({ summary: 'SSE stream for Pay-In and Pay-Out order lifecycle (staff consoles)' })
+  @ApiProduces('text/event-stream')
+  streamStaffOrderEvents(): Observable<MessageEvent> {
+    return merge(
+      this.payinRealtime.streamForStaffCabinet(),
+      this.payoutRealtime.streamForStaffCabinet(),
+    );
   }
 
   @Get(':id')

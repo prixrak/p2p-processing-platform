@@ -2,6 +2,7 @@ import {
   payoutMerchantChannel,
   payoutOrderChannel,
   payoutPoolChannel,
+  payoutStaffBroadcastChannel,
   payoutTraderChannel,
   payoutSpecialistChannel,
 } from './payout-realtime.service';
@@ -14,5 +15,6 @@ describe('PayoutRealtimeService channel helpers', () => {
     expect(payoutSpecialistChannel(id)).toBe(`payout:specialist:${id}`);
     expect(payoutPoolChannel()).toBe('payout:pool');
     expect(payoutMerchantChannel(id)).toBe(`payout:merchant:${id}`);
+    expect(payoutStaffBroadcastChannel()).toBe('payout:staff');
   });
 });
