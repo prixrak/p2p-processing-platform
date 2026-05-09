@@ -24,6 +24,7 @@ import { getToken } from '@/lib/auth';
 import { PAYOUT_TRADER_HISTORY_STATUSES } from '@p2p/shared';
 import type { PayOutOrderApiDto } from '@p2p/shared';
 import { buildPayoutOrdersColumns, buildPayoutPoolColumns, type PayoutCompleteVars } from './trader-payout-columns';
+import type { PayoutRejectVars } from './trader-payout-workflow-actions';
 import { TraderPayoutOrderDetailModal } from './trader-payout-order-detail-modal';
 import { normalizeDecimalSeparators } from '@/lib/decimal-input';
 import {
@@ -211,12 +212,20 @@ export function TraderPayoutPage({
     },
   });
 
-  const failMutation = useMutation({
-    mutationFn: (orderId: string) =>
-      api.post(`${apiBase}/orders/${orderId}/fail`, {
-        orderId,
-        reason: 'Marked as failed by trader',
-      }),
+  const cancelMutation = useMutation({
+    mutationFn: (orderId: string) => api.post(`${apiBase}/orders/${orderId}/cancel`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
+      if (isSpecialist) {
+        queryClient.invalidateQueries({ queryKey: [qk, 'payout-pool'] });
+      }
+      setSelectedOrder(null);
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: ({ orderId, reason }: PayoutRejectVars) =>
+      api.post(`${apiBase}/orders/${orderId}/fail`, { reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
       if (isSpecialist) {
@@ -234,14 +243,14 @@ export function TraderPayoutPage({
   const poolColumns = buildPayoutPoolColumns({
     variant: isSpecialist ? 'specialist' : 'standard',
     takeFromPoolMutation,
-    onView: setSelectedOrder,
   });
 
   const ordersColumns = buildPayoutOrdersColumns({
     variant: isSpecialist ? 'specialist' : 'standard',
     processMutation,
     completeMutation,
-    failMutation,
+    cancelMutation,
+    rejectMutation,
     onView: setSelectedOrder,
   });
 
@@ -575,7 +584,8 @@ export function TraderPayoutPage({
         takeFromPoolMutation={takeFromPoolMutation}
         processMutation={processMutation}
         completeMutation={completeMutation}
-        failMutation={failMutation}
+        cancelMutation={cancelMutation}
+        rejectMutation={rejectMutation}
       />
     </div>
   );

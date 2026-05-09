@@ -1,5 +1,11 @@
-import { getToken } from '@/lib/auth';
+import { getRefreshToken, getToken } from '@/lib/auth';
 import { internalPaths } from '@/lib/internal-api';
+import {
+  hydrateSessionIfNeeded,
+  refreshSession,
+  shouldHydrateAuthForPath,
+} from '@/lib/session-refresh';
+import { notifySessionTerminated } from '@/lib/auth-session-redirect';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
 
@@ -26,20 +32,71 @@ function buildUrl(path: string, params?: Record<string, string>): string {
   return url.pathname + url.search;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
+function authHeaders(
+  token: string | null,
+  initHeaders?: HeadersInit,
+): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(init?.headers as Record<string, string>),
+    ...(initHeaders as Record<string, string>),
   };
-
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  return headers;
+}
 
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+async function fetchJsonWithRefresh(
+  urlPath: string,
+  init?: RequestInit,
+): Promise<{ res: Response; hadStoredCredentials: boolean }> {
+  let res: Response | undefined;
+  /** Snapshot before hydrate on first attempt — detects session end after successful token clear during refresh. */
+  let hadStoredCredentials = false;
 
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt === 0) {
+      hadStoredCredentials =
+        typeof window !== 'undefined' &&
+        !!(getRefreshToken() || getToken());
+      await hydrateSessionIfNeeded(urlPath);
+    }
+
+    const token = getToken();
+    res = await fetch(`${API_BASE}${urlPath}`, {
+      ...init,
+      headers: authHeaders(token, init?.headers),
+    });
+
+    const eligible =
+      attempt === 0 &&
+      res.status === 401 &&
+      typeof window !== 'undefined' &&
+      shouldHydrateAuthForPath(urlPath);
+
+    if (!eligible || (await refreshSession()) === false) {
+      break;
+    }
+  }
+
+  return { res: res!, hadStoredCredentials };
+}
+
+async function parseJsonResponse<T>(
+  res: Response,
+  gatedPath?: string,
+  hadStoredCredentials?: boolean,
+): Promise<T> {
   if (!res.ok) {
+    if (
+      res.status === 401 &&
+      gatedPath &&
+      hadStoredCredentials &&
+      typeof window !== 'undefined' &&
+      shouldHydrateAuthForPath(gatedPath)
+    ) {
+      notifySessionTerminated();
+    }
     const fallbackMessage = 'Unable to complete the request. Please try again.';
     const contentType = res.headers.get('content-type');
     if (contentType?.includes('application/json')) {
@@ -58,10 +115,42 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const { res, hadStoredCredentials } = await fetchJsonWithRefresh(path, init);
+  return parseJsonResponse<T>(res, path, hadStoredCredentials);
+}
+
+export type ApiGetClockOffsetResult<T> = { data: T; clockOffsetMs: number };
+
+/** GET JSON plus server clock skew from HTTP `Date` (for countdowns aligned with `autocloseAt`). */
+async function requestGetWithClockOffset<T>(
+  fullPath: string,
+): Promise<ApiGetClockOffsetResult<T>> {
+  const { res, hadStoredCredentials } = await fetchJsonWithRefresh(fullPath, {
+    method: 'GET',
+  });
+  const data = await parseJsonResponse<T>(
+    res,
+    fullPath,
+    hadStoredCredentials,
+  );
+
+  const dateHeader = res.headers.get('Date') ?? res.headers.get('date');
+  const serverMs = dateHeader ? Date.parse(dateHeader) : Number.NaN;
+  const clockOffsetMs = Number.isFinite(serverMs) ? serverMs - Date.now() : 0;
+
+  return { data, clockOffsetMs };
+}
+
 export const api = {
   get: <T>(path: string, params?: Record<string, string>) => {
     const url = params ? buildUrl(path, params) : path;
     return request<T>(url, { method: 'GET' });
+  },
+
+  getWithClockOffset: <T>(path: string, params?: Record<string, string>) => {
+    const url = params ? buildUrl(path, params) : path;
+    return requestGetWithClockOffset<T>(url);
   },
 
   /** Signed GET URLs cannot follow API→S3 redirects in fetch() due to CORS; response includes mimeType for previews (no extra metadata request). */
@@ -80,17 +169,49 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 
   upload: async <T>(path: string, formData: FormData): Promise<T> => {
-    const token = getToken();
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    let lastRes: Response | undefined;
+    let hadStoredCredentials = false;
 
-    const res = await fetch(`${API_BASE}${path}`, {
-      method: 'POST',
-      body: formData,
-      headers,
-    });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt === 0) {
+        hadStoredCredentials =
+          typeof window !== 'undefined' &&
+          !!(getRefreshToken() || getToken());
+        await hydrateSessionIfNeeded(path);
+      }
+
+      const token = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      lastRes = await fetch(`${API_BASE}${path}`, {
+        method: 'POST',
+        body: formData,
+        headers,
+      });
+
+      const eligible =
+        attempt === 0 &&
+        lastRes.status === 401 &&
+        typeof window !== 'undefined' &&
+        shouldHydrateAuthForPath(path);
+
+      if (!eligible || (await refreshSession()) === false) {
+        break;
+      }
+    }
+
+    const res = lastRes!;
 
     if (!res.ok) {
+      if (
+        res.status === 401 &&
+        hadStoredCredentials &&
+        typeof window !== 'undefined' &&
+        shouldHydrateAuthForPath(path)
+      ) {
+        notifySessionTerminated();
+      }
       const body = await res.json().catch(() => ({}));
       throw new ApiError(
         res.status,

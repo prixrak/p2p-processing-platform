@@ -1,5 +1,6 @@
-import { IsString, IsOptional, IsUUID, ValidateIf } from 'class-validator';
+import { IsString, IsOptional, IsUUID, ValidateIf, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PayoutTraderRejectReason } from '@p2p/shared';
 
 export class AssignToTraderDto {
   @ApiProperty({ description: 'Order UUID' })
@@ -30,12 +31,18 @@ export class TraderCompleteDto {
 }
 
 export class TraderFailDto {
-  @ApiProperty({ description: 'Order UUID' })
-  @IsString()
-  orderId!: string;
-
-  @ApiPropertyOptional({ description: 'Failure reason' })
+  /** Legacy field from older clients; the path parameter is authoritative. */
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
-  reason?: string;
+  @IsUUID()
+  orderId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Rejection reason when the payout cannot be completed (inactive card / funds returned). Defaults to OTHER.',
+    enum: PayoutTraderRejectReason,
+  })
+  @IsOptional()
+  @IsEnum(PayoutTraderRejectReason)
+  reason?: PayoutTraderRejectReason;
 }

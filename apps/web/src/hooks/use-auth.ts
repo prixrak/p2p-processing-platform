@@ -9,6 +9,7 @@ import {
   clearTokens,
   setTokens,
 } from '@/lib/auth';
+import { ensureValidAccessToken } from '@/lib/session-refresh';
 
 export interface AuthUser {
   id: string;
@@ -23,7 +24,7 @@ interface AuthState {
   isLoading: boolean;
   requires2FA: boolean;
   tempToken: string | null;
-  loadUser: () => void;
+  loadUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<{ requires2FA: boolean }>;
   verify2FA: (code: string) => Promise<void>;
   logout: () => void;
@@ -36,7 +37,12 @@ export const useAuth = create<AuthState>((set, get) => ({
   requires2FA: false,
   tempToken: null,
 
-  loadUser: () => {
+  loadUser: async () => {
+    if (typeof window === 'undefined') {
+      set({ isLoading: false });
+      return;
+    }
+    await ensureValidAccessToken();
     const token = getToken();
     if (token) {
       const decoded = getUserFromToken();

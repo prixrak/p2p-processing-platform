@@ -13,7 +13,8 @@ export class MaintenanceService {
     private readonly requisites: RequisitesService,
   ) {}
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  /** Every 10s so Pay-In `autocloseAt` aligns quickly with POST cancel + webhook side effects after the deadline. */
+  @Cron('*/10 * * * * *')
   async handleExpiredOrders() {
     const now = new Date();
 

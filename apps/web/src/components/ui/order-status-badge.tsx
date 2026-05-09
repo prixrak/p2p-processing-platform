@@ -12,7 +12,6 @@ import {
   Inbox,
   Scale,
   ShieldCheck,
-  TimerOff,
   TrendingDown,
   TrendingUp,
   XCircle,
@@ -36,7 +35,6 @@ const payinStatusIcon: Record<string, LucideIcon> = {
   PROCESSING: Activity,
   COMPLETED: CheckCircle2,
   FAILED: XCircle,
-  EXPIRED: TimerOff,
 };
 
 const payoutStatusIcon: Record<string, LucideIcon> = {

@@ -45,7 +45,7 @@ export function ConfirmDialog({
       size="sm"
       overlayClassName="z-[60]"
     >
-      <div className="space-y-4 p-6 pt-5">
+      <div className="space-y-4">
         <div className="flex gap-3">
           {resolvedIcon ? <span className="mt-0.5">{resolvedIcon}</span> : null}
           <div className="min-w-0 flex-1 space-y-2">

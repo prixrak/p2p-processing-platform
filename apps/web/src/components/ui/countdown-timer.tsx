@@ -9,6 +9,8 @@ export interface CountdownTimerProps {
   onExpire?: () => void;
   className?: string;
   showLabels?: boolean;
+  /** Skew from authenticated API responses (`Date` header): `serverTime − Date.now()`. */
+  clockOffsetMs?: number;
 }
 
 interface TimeLeft {
@@ -23,8 +25,8 @@ function toUnixMs(value: number): number {
   return value < 1_000_000_000_000 ? value * 1000 : value;
 }
 
-function computeTimeLeft(targetMs: number): TimeLeft {
-  const total = Math.max(0, targetMs - Date.now());
+function computeTimeLeft(targetMs: number, nowMs: number): TimeLeft {
+  const total = Math.max(0, targetMs - nowMs);
   return {
     hours: Math.floor(total / 3_600_000),
     minutes: Math.floor((total % 3_600_000) / 60_000),
@@ -42,19 +44,24 @@ export function CountdownTimer({
   onExpire,
   className,
   showLabels = false,
+  clockOffsetMs = 0,
 }: CountdownTimerProps) {
   const targetMs =
     typeof targetTimestamp === 'number'
       ? toUnixMs(targetTimestamp)
       : new Date(targetTimestamp).getTime();
 
-  const [timeLeft, setTimeLeft] = useState<TimeLeft>(() => computeTimeLeft(targetMs));
+  const adjustedNow = () => Date.now() + clockOffsetMs;
+
+  const [timeLeft, setTimeLeft] = useState<TimeLeft>(() =>
+    computeTimeLeft(targetMs, adjustedNow()),
+  );
   const [expired, setExpired] = useState(false);
 
   useEffect(() => {
     setExpired(false);
-    setTimeLeft(computeTimeLeft(targetMs));
-  }, [targetMs]);
+    setTimeLeft(computeTimeLeft(targetMs, adjustedNow()));
+  }, [targetMs, clockOffsetMs]);
 
   const handleExpire = useCallback(() => {
     setExpired(true);
@@ -65,7 +72,7 @@ export function CountdownTimer({
     if (expired) return;
 
     const interval = setInterval(() => {
-      const tl = computeTimeLeft(targetMs);
+      const tl = computeTimeLeft(targetMs, adjustedNow());
       setTimeLeft(tl);
       if (tl.total <= 0) {
         handleExpire();
@@ -74,7 +81,7 @@ export function CountdownTimer({
     }, 1_000);
 
     return () => clearInterval(interval);
-  }, [targetMs, expired, handleExpire]);
+  }, [targetMs, clockOffsetMs, expired, handleExpire]);
 
   const isUrgent = !expired && timeLeft.total > 0 && timeLeft.total < 60_000;
 
@@ -92,7 +99,7 @@ export function CountdownTimer({
       )}
     >
       {expired ? (
-        <span>Time&apos;s up</span>
+        <span>Canceled</span>
       ) : (
         <>
           <span>{pad(timeLeft.hours)}</span>

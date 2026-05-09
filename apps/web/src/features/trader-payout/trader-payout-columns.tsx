@@ -4,8 +4,6 @@ import { useEffect, useState } from 'react';
 import {
   Play,
   Eye,
-  CheckCircle2,
-  XCircle,
   Copy,
 } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
@@ -13,7 +11,8 @@ import { PayoutOrderStatusBadge } from '@/components/ui/order-status-badge';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { PayOutOrderStatus } from '@p2p/shared';
 import type { PayOutOrderApiDto } from '@p2p/shared';
-import { formatCurrency, formatDate, shortId, formatDurationShort, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, shortId, formatDurationShort, formatCountdownRemaining, cn } from '@/lib/utils';
+import { TraderPayoutWorkflowActions, type PayoutRejectVars } from './trader-payout-workflow-actions';
 
 export type PayoutTableVariant = 'standard' | 'specialist';
 
@@ -80,98 +79,77 @@ function CopyOrderIdCell({ id }: { id: string }) {
     </div>
   );
 }
+
+function PoolCloseCountdown({ untilUnix }: { untilUnix: number | null | undefined }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (untilUnix == null) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [untilUnix]);
+
+  if (untilUnix == null) {
+    return <span className="text-text-muted">—</span>;
+  }
+
+  const nowSec = Math.floor(now / 1000);
+  const remainingSec = Math.max(0, untilUnix - nowSec);
+
+  return (
+    <span
+      className={cn(
+        'font-mono tabular-nums text-sm text-text-secondary',
+        nowSec >= untilUnix && 'font-medium text-accent-yellow',
+      )}
+    >
+      {formatCountdownRemaining(remainingSec)}
+    </span>
+  );
+}
+
 export function buildPayoutPoolColumns(opts: {
   variant?: PayoutTableVariant;
   takeFromPoolMutation: UseMutationResult<unknown, unknown, string>;
-  onView: (row: PayOutOrderApiDto) => void;
 }) {
-  const { variant = 'standard', takeFromPoolMutation, onView } = opts;
-  const isSpecialist = variant === 'specialist';
+  const { takeFromPoolMutation } = opts;
 
-  const idCol = {
-    key: 'id',
-    header: 'ID',
-    className: 'font-mono tabular-nums text-end',
-    render: (row: PayOutOrderApiDto) =>
-      isSpecialist ? (
-        <CopyOrderIdCell id={row.id} />
-      ) : (
-        <span className="font-mono text-xs text-text-muted">{shortId(row.id)}</span>
-      ),
-  };
-
-  const amountCol = {
-    key: 'amount',
-    header: 'Amount',
-    className: 'text-end tabular-nums',
-    render: (row: PayOutOrderApiDto) => (
-      <span className="font-semibold text-accent-blue">
-        {formatCurrency(row.amount, row.currency)}
-      </span>
-    ),
-  };
-
-  const specialistMid = isSpecialist
-    ? [
-        {
-          key: 'usdt_est',
-          header: '~USDT',
-          className: 'text-end tabular-nums text-sm',
-          render: (row: PayOutOrderApiDto) => (
-            <span className="text-text-secondary">
-              {row.amount_usdt_estimate != null ? row.amount_usdt_estimate.toFixed(2) : '—'}
-            </span>
-          ),
-        },
-        {
-          key: 'method',
-          header: 'Method',
-          render: (row: PayOutOrderApiDto) => (
-            <span className="text-xs text-text-secondary">{row.payment_method_name ?? '—'}</span>
-          ),
-        },
-        {
-          key: 'in_pool',
-          header: 'In pool',
-          render: (row: PayOutOrderApiDto) => <LiveElapsed fromUnix={row.pool_assigned_at} />,
-        },
-      ]
-    : [];
-
-  const tail = [
+  return [
     {
-      key: 'currency',
-      header: 'Currency',
+      key: 'id',
+      header: 'ID',
+      className: 'font-mono tabular-nums text-end',
+      render: (row: PayOutOrderApiDto) => <CopyOrderIdCell id={row.id} />,
+    },
+    {
+      key: 'pool_close',
+      header: 'Time to close',
+      className: 'text-end',
+      render: (row: PayOutOrderApiDto) => (
+        <PoolCloseCountdown untilUnix={row.pool_close_deadline_at} />
+      ),
+    },
+    {
+      key: 'amount',
+      header: 'Amount',
+      className: 'text-end tabular-nums',
+      render: (row: PayOutOrderApiDto) => (
+        <span className="font-semibold text-accent-blue">
+          {formatCurrency(row.amount, row.currency)}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
       className: 'text-center',
-      render: (row: PayOutOrderApiDto) => (
-        <span className="text-text-secondary">{row.currency}</span>
-      ),
-    },
-    {
-      key: 'recipient',
-      header: 'Recipient',
-      render: (row: PayOutOrderApiDto) => (
-        <div className="flex flex-col">
-          <span className="font-mono text-xs">{row.details.number}</span>
-          {row.details.owner && (
-            <span className="text-xs text-text-muted">{row.details.owner}</span>
-          )}
-        </div>
-      ),
-    },
-    {
-      key: 'created_at',
-      header: 'Created',
-      render: (row: PayOutOrderApiDto) => (
-        <span className="text-text-muted text-sm">{formatDate(row.created_at)}</span>
-      ),
+      render: (row: PayOutOrderApiDto) => <PayoutOrderStatusBadge status={row.status} />,
     },
     {
       key: 'actions',
       header: 'Actions',
       className: 'text-end',
       render: (row: PayOutOrderApiDto) => (
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
           <IconButton
             label="Take order from pool"
             variant="primary"
@@ -182,15 +160,10 @@ export function buildPayoutPoolColumns(opts: {
           >
             <Play className="h-4 w-4" />
           </IconButton>
-          <IconButton label="View order details" onClick={() => onView(row)}>
-            <Eye className="h-4 w-4" />
-          </IconButton>
         </div>
       ),
     },
   ];
-
-  return [idCol, amountCol, ...specialistMid, ...tail];
 }
 
 export type PayoutCompleteVars = { orderId: string; completionProofFileId?: string };
@@ -199,14 +172,16 @@ export function buildPayoutOrdersColumns(opts: {
   variant?: PayoutTableVariant;
   processMutation: UseMutationResult<unknown, unknown, string>;
   completeMutation: UseMutationResult<unknown, unknown, PayoutCompleteVars>;
-  failMutation: UseMutationResult<unknown, unknown, string>;
+  cancelMutation: UseMutationResult<unknown, unknown, string>;
+  rejectMutation: UseMutationResult<unknown, unknown, PayoutRejectVars>;
   onView: (row: PayOutOrderApiDto) => void;
 }) {
   const {
     variant = 'standard',
     processMutation,
     completeMutation,
-    failMutation,
+    cancelMutation,
+    rejectMutation,
     onView,
   } = opts;
   const isSpecialist = variant === 'specialist';
@@ -300,45 +275,18 @@ export function buildPayoutOrdersColumns(opts: {
     },
     {
       key: 'actions',
-      header: 'Actions',
+      header: 'Action',
       className: 'text-end',
       render: (row: PayOutOrderApiDto) => (
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-          {row.status === PayOutOrderStatus.NEW && (
-            <IconButton
-              label="Start processing payout"
-              variant="primary"
-              onClick={() => processMutation.mutate(row.id)}
-              loading={
-                processMutation.isPending && processMutation.variables === row.id
-              }
-            >
-              <Play className="h-4 w-4" />
-            </IconButton>
-          )}
-          {row.status === PayOutOrderStatus.PROCESSING && (
-            <>
-              <IconButton
-                label="Mark payout complete"
-                variant="success"
-                onClick={() => completeMutation.mutate({ orderId: row.id })}
-                loading={
-                  completeMutation.isPending &&
-                  completeMutation.variables?.orderId === row.id
-                }
-              >
-                <CheckCircle2 className="h-4 w-4" />
-              </IconButton>
-              <IconButton
-                label="Mark payout failed"
-                variant="danger"
-                onClick={() => failMutation.mutate(row.id)}
-                loading={failMutation.isPending && failMutation.variables === row.id}
-              >
-                <XCircle className="h-4 w-4" />
-              </IconButton>
-            </>
-          )}
+        <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          <TraderPayoutWorkflowActions
+            order={row}
+            processMutation={processMutation}
+            completeMutation={completeMutation}
+            cancelMutation={cancelMutation}
+            rejectMutation={rejectMutation}
+            layout="cell"
+          />
           <IconButton label="View order details" onClick={() => onView(row)}>
             <Eye className="h-4 w-4" />
           </IconButton>

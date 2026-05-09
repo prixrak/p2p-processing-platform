@@ -52,7 +52,9 @@ export interface AuditItem {
   id: string;
   action: string;
   entityType: string;
+  entityId: string | null;
   createdAt: string;
+  ip: string | null;
   actor: { email: string; role: string } | null;
   oldValue: unknown;
   newValue: unknown;

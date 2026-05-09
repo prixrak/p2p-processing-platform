@@ -6,7 +6,13 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
-import { Prisma, PayoutOrder, PayoutStatus, PayoutPoolType } from '@prisma/client';
+import {
+  Prisma,
+  PayoutOrder,
+  PayoutStatus,
+  PayoutPoolType,
+  PayoutTraderRejectReason,
+} from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import {
   PayOutOrderStatus,
@@ -17,6 +23,7 @@ import {
   PAYOUT_ORDER_REALTIME_EVENT_TYPE,
   PAYOUT_TRADER_IN_PROGRESS_STATUSES,
   PAYOUT_TRADER_HISTORY_STATUSES,
+  PayoutTraderRejectReason as PayoutTraderRejectReasonApi,
 } from '@p2p/shared';
 import type { PayOutOrderApiDto, ProfileDto, DetailsDto } from '@p2p/shared';
 import {
@@ -46,6 +53,7 @@ import type { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
 import { OrderUploadDto, PayoutOrderInfoDto, PayoutListFiltersDto, SpecialistCompleteDto } from './dto';
 import { PayoutRealtimeService } from './payout-realtime.service';
+import { computePayoutPoolCloseDeadline } from './payout-pool-close-deadline.util';
 
 const CABINET_ORDER_INCLUDE = {
   paymentMethod: { select: { displayName: true } },
@@ -93,6 +101,18 @@ function csvEscape(value: string): string {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
+}
+
+function resolvePayoutRejectReason(
+  code: PayoutTraderRejectReasonApi | undefined,
+): PayoutTraderRejectReason {
+  if (code === PayoutTraderRejectReasonApi.FOREIGN_CARD) {
+    return PayoutTraderRejectReason.FOREIGN_CARD;
+  }
+  if (code === PayoutTraderRejectReasonApi.CARD_REFUND_IN_PROGRESS) {
+    return PayoutTraderRejectReason.CARD_REFUND_IN_PROGRESS;
+  }
+  return PayoutTraderRejectReason.OTHER;
 }
 
 @Injectable()
@@ -454,7 +474,7 @@ export class PayoutService {
 
     this.applyPayoutListFilters(where, filters);
 
-    const [items, total] = await Promise.all([
+    const [items, total, poolSettings] = await Promise.all([
       this.prisma.payoutOrder.findMany({
         where,
         include: CABINET_ORDER_INCLUDE,
@@ -463,10 +483,24 @@ export class PayoutService {
         take: limit,
       }),
       this.prisma.payoutOrder.count({ where }),
+      this.prisma.payoutPoolSetting.findUnique({
+        where: { id: PAYOUT_POOL_SETTINGS_ROW_ID },
+      }),
     ]);
 
     return {
-      orders: items.map((o) => this.toPayOutOrderApiDto(o)),
+      orders: items.map((o) =>
+        this.toPayOutOrderApiDto(o, {
+          poolListing: true,
+          poolCloseDeadline: computePayoutPoolCloseDeadline({
+            poolType: o.poolType,
+            createdAt: o.createdAt,
+            poolAssignedAt: o.poolAssignedAt,
+            poolTimeoutEnabled: poolSettings?.poolTimeoutEnabled ?? false,
+            poolTimeoutHours: poolSettings?.poolTimeoutHours,
+          }),
+        }),
+      ),
       total,
       page,
       limit,
@@ -505,7 +539,7 @@ export class PayoutService {
 
     this.applyPayoutListFilters(where, filters);
 
-    const [items, total] = await Promise.all([
+    const [items, total, poolSettings] = await Promise.all([
       this.prisma.payoutOrder.findMany({
         where,
         include: CABINET_ORDER_INCLUDE,
@@ -514,17 +548,31 @@ export class PayoutService {
         take: limit,
       }),
       this.prisma.payoutOrder.count({ where }),
+      this.prisma.payoutPoolSetting.findUnique({
+        where: { id: PAYOUT_POOL_SETTINGS_ROW_ID },
+      }),
     ]);
 
     return {
-      orders: items.map((o) => this.toPayOutOrderApiDto(o)),
+      orders: items.map((o) =>
+        this.toPayOutOrderApiDto(o, {
+          poolListing: true,
+          poolCloseDeadline: computePayoutPoolCloseDeadline({
+            poolType: o.poolType,
+            createdAt: o.createdAt,
+            poolAssignedAt: o.poolAssignedAt,
+            poolTimeoutEnabled: poolSettings?.poolTimeoutEnabled ?? false,
+            poolTimeoutHours: poolSettings?.poolTimeoutHours,
+          }),
+        }),
+      ),
       total,
       page,
       limit,
     };
   }
 
-  // ─── Internal: traderTakeFromPool ─── (trader self-assigns from pool; PENDING → NEW)
+  // ─── Internal: traderTakeFromPool ─── (trader self-assigns from pool; PENDING → PROCESSING)
 
   async traderTakeFromPool(traderId: string, orderId: string): Promise<PayOutOrderApiDto> {
     const trader = await this.prisma.traderProfile.findUnique({
@@ -577,15 +625,21 @@ export class PayoutService {
         );
       }
 
-      if (!isValidPayOutTransition(order.status as PayOutOrderStatus, PayOutOrderStatus.NEW)) {
+      if (
+        !isValidPayOutTransition(
+          order.status as PayOutOrderStatus,
+          PayOutOrderStatus.PROCESSING,
+        )
+      ) {
         throw new BadRequestException(
-          `Invalid status transition: ${order.status} -> NEW`,
+          `Invalid status transition: ${order.status} -> PROCESSING`,
         );
       }
 
+      const startAt = new Date();
       const result = await tx.payoutOrder.update({
         where: { id: orderId },
-        data: { traderId, status: 'NEW' },
+        data: { traderId, status: 'PROCESSING', startAt },
       });
 
       await this.createPayoutWebhookEntry(tx, result);
@@ -748,15 +802,14 @@ export class PayoutService {
         );
       }
 
-      const targetStatus =
-        dto.traderId != null ? PayOutOrderStatus.NEW : PayOutOrderStatus.PROCESSING;
+      const targetStatus = PayOutOrderStatus.PROCESSING;
       if (!isValidPayOutTransition(row.status as PayOutOrderStatus, targetStatus)) {
         throw new BadRequestException(`Invalid status transition: ${row.status} -> ${targetStatus}`);
       }
 
       const data =
         dto.traderId != null
-          ? { traderId: dto.traderId, status: 'NEW' as const }
+          ? { traderId: dto.traderId, status: 'PROCESSING' as const, startAt: new Date() }
           : {
               payoutTraderId: dto.payoutTraderId!,
               status: 'PROCESSING' as const,
@@ -1427,7 +1480,7 @@ export class PayoutService {
   async traderFail(
     traderId: string,
     orderId: string,
-    _reason?: string,
+    reasonCode?: PayoutTraderRejectReasonApi,
   ): Promise<PayOutOrderApiDto> {
     const order = await this.prisma.payoutOrder.findFirst({
       where: { id: orderId, traderId },
@@ -1440,10 +1493,12 @@ export class PayoutService {
       );
     }
 
+    const rejectReason = resolvePayoutRejectReason(reasonCode);
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.payoutOrder.update({
         where: { id: orderId },
-        data: { status: 'FAILED', endAt: new Date() },
+        data: { status: 'FAILED', endAt: new Date(), traderRejectReason: rejectReason },
       });
 
       if (order.merchantDebitLocal != null) {
@@ -1480,6 +1535,48 @@ export class PayoutService {
     });
 
     this.emitPayoutOrderRealtime(updated, false);
+
+    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+  }
+
+  /**
+   * Standard trader releases assigned work back to the shared PENDING pool (no merchant refund).
+   */
+  async traderCancelToPool(traderId: string, orderId: string): Promise<PayOutOrderApiDto> {
+    const order = await this.prisma.payoutOrder.findFirst({
+      where: { id: orderId, traderId, poolType: PayoutPoolType.STANDARD },
+    });
+    if (!order) {
+      throw new NotFoundException(
+        'Order not found, not assigned to this trader, or not a standard-pool payout',
+      );
+    }
+    if (order.status !== 'NEW' && order.status !== 'PROCESSING') {
+      throw new BadRequestException(
+        `Return to pool is only allowed from NEW or PROCESSING (current: ${order.status})`,
+      );
+    }
+    if (!isValidPayOutTransition(order.status as PayOutOrderStatus, PayOutOrderStatus.PENDING)) {
+      throw new BadRequestException(`Invalid status transition: ${order.status} -> PENDING`);
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.payoutOrder.update({
+        where: { id: orderId },
+        data: {
+          status: 'PENDING',
+          traderId: null,
+          startAt: null,
+          endAt: null,
+          poolAssignedAt: new Date(),
+          traderRejectReason: null,
+        },
+      });
+      await this.createPayoutWebhookEntry(tx, result);
+      return result;
+    });
+
+    this.emitPayoutOrderRealtime(updated, true);
 
     return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
@@ -1650,10 +1747,56 @@ export class PayoutService {
     return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
 
+  /**
+   * Specialist releases assigned work back to pool B (no merchant refund).
+   */
+  async specialistCancelToPool(
+    payoutTraderId: string,
+    orderId: string,
+  ): Promise<PayOutOrderApiDto> {
+    const order = await this.prisma.payoutOrder.findFirst({
+      where: { id: orderId, payoutTraderId, poolType: PayoutPoolType.PAYOUT_SPECIALIST },
+    });
+    if (!order) {
+      throw new NotFoundException(
+        'Order not found, not assigned to this specialist, or not a specialist-pool payout',
+      );
+    }
+    if (order.status !== 'NEW' && order.status !== 'PROCESSING') {
+      throw new BadRequestException(
+        `Return to pool is only allowed from NEW or PROCESSING (current: ${order.status})`,
+      );
+    }
+    if (!isValidPayOutTransition(order.status as PayOutOrderStatus, PayOutOrderStatus.PENDING)) {
+      throw new BadRequestException(`Invalid status transition: ${order.status} -> PENDING`);
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.payoutOrder.update({
+        where: { id: orderId },
+        data: {
+          status: 'PENDING',
+          payoutTraderId: null,
+          traderId: null,
+          startAt: null,
+          endAt: null,
+          poolAssignedAt: new Date(),
+          traderRejectReason: null,
+        },
+      });
+      await this.createPayoutWebhookEntry(tx, result);
+      return result;
+    });
+
+    this.emitPayoutOrderRealtime(updated, true);
+
+    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+  }
+
   async specialistFail(
     payoutTraderId: string,
     orderId: string,
-    _reason?: string,
+    reasonCode?: PayoutTraderRejectReasonApi,
   ): Promise<PayOutOrderApiDto> {
     const order = await this.prisma.payoutOrder.findFirst({
       where: { id: orderId, payoutTraderId },
@@ -1664,43 +1807,20 @@ export class PayoutService {
 
     if (order.status !== 'PROCESSING') {
       throw new BadRequestException(
-        `Specialist fail is only allowed from PROCESSING (current: ${order.status})`,
+        `Reject (fail) is only allowed from PROCESSING (current: ${order.status})`,
       );
     }
 
-    const settings = await this.prisma.payoutPoolSetting.findUnique({
-      where: { id: PAYOUT_POOL_SETTINGS_ROW_ID },
-    });
-    const returnToPool =
-      Boolean(settings?.specialistFailReturnsToPool) &&
-      order.poolType === PayoutPoolType.PAYOUT_SPECIALIST;
-
-    const targetStatus = returnToPool ? PayOutOrderStatus.PENDING : PayOutOrderStatus.FAILED;
-
-    if (!isValidPayOutTransition(order.status as PayOutOrderStatus, targetStatus)) {
-      throw new BadRequestException(`Invalid status transition: ${order.status} -> ${targetStatus}`);
+    if (!isValidPayOutTransition(order.status as PayOutOrderStatus, PayOutOrderStatus.FAILED)) {
+      throw new BadRequestException(`Invalid status transition: ${order.status} -> FAILED`);
     }
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      if (returnToPool) {
-        const result = await tx.payoutOrder.update({
-          where: { id: orderId },
-          data: {
-            status: 'PENDING',
-            payoutTraderId: null,
-            traderId: null,
-            startAt: null,
-            endAt: null,
-            poolAssignedAt: new Date(),
-          },
-        });
-        await this.createPayoutWebhookEntry(tx, result);
-        return result;
-      }
+    const rejectReason = resolvePayoutRejectReason(reasonCode);
 
+    const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.payoutOrder.update({
         where: { id: orderId },
-        data: { status: 'FAILED', endAt: new Date() },
+        data: { status: 'FAILED', endAt: new Date(), traderRejectReason: rejectReason },
       });
 
       if (order.merchantDebitLocal != null) {
@@ -1736,7 +1856,7 @@ export class PayoutService {
       return result;
     });
 
-    this.emitPayoutOrderRealtime(updated, returnToPool);
+    this.emitPayoutOrderRealtime(updated, false);
 
     return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
@@ -1934,7 +2054,10 @@ export class PayoutService {
     });
   }
 
-  private toPayOutOrderApiDto(order: PayoutOrderApiSource): PayOutOrderApiDto {
+  private toPayOutOrderApiDto(
+    order: PayoutOrderApiSource,
+    opts?: { poolListing?: boolean; poolCloseDeadline?: Date | null },
+  ): PayOutOrderApiDto {
     const details: DetailsDto = {
       type: order.detailsType as any,
       number: order.detailsNumber,
@@ -1951,7 +2074,11 @@ export class PayoutService {
         ? order.paymentMethod.displayName
         : null;
 
-    return {
+    const poolAssignedUnix = order.poolAssignedAt
+      ? Math.floor(order.poolAssignedAt.getTime() / 1000)
+      : null;
+
+    const base: PayOutOrderApiDto = {
       id: order.id,
       request_id: order.requestId,
       created_at: Math.floor(order.createdAt.getTime() / 1000),
@@ -1966,12 +2093,37 @@ export class PayoutService {
       percent_fee: Number(order.percentFee),
       pool_type: order.poolType,
       completion_proof_file_id: order.completionProofFileId ?? undefined,
-      pool_assigned_at: order.poolAssignedAt
-        ? Math.floor(order.poolAssignedAt.getTime() / 1000)
-        : null,
+      pool_assigned_at: poolAssignedUnix,
       parser_rate: parserRateVal,
       amount_usdt_estimate: amountUsdtEstimate,
       payment_method_name: paymentMethodName,
+      trader_reject_reason: order.traderRejectReason
+        ? (order.traderRejectReason as unknown as PayoutTraderRejectReasonApi)
+        : order.traderRejectReason === null
+          ? null
+          : undefined,
+    };
+
+    if (!opts?.poolListing) {
+      return base;
+    }
+
+    return {
+      ...base,
+      requisites_visible: false,
+      request_id: '',
+      details: {
+        type: order.detailsType as any,
+        number: '—',
+        owner: undefined,
+        code: undefined,
+      },
+      payment_method_name: null,
+      parser_rate: null,
+      amount_usdt_estimate: null,
+      pool_close_deadline_at: opts.poolCloseDeadline
+        ? Math.floor(opts.poolCloseDeadline.getTime() / 1000)
+        : null,
     };
   }
 }

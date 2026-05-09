@@ -315,9 +315,9 @@ export function TraderRequisitesPage() {
         open={!!deleteGroupId}
         onOpenChange={(next) => !next && setDeleteGroupId(null)}
         tone="danger"
-        title="Delete payment method group?"
-        description="Only empty groups can be deleted. Remove all requisites first if any remain."
-        confirmLabel="Delete group"
+        title="Archive payment method group?"
+        description="All requisites in this group will be turned off and the group will move to Archived immediately. Existing pay-ins keep their history; nothing is permanently deleted."
+        confirmLabel="Archive group"
         loading={deleteGroupMutation.isPending}
         onConfirm={() => {
           if (!deleteGroupId) return;
@@ -504,10 +504,9 @@ export function TraderRequisitesPage() {
                       </Button>
                     ) : (
                       <IconButton
-                        label="Delete group"
+                        label="Archive group"
                         variant="danger"
                         onClick={() => setDeleteGroupId(g.id)}
-                        disabled={g.requisites.length > 0}
                       >
                         <Trash2 className="h-4 w-4" />
                       </IconButton>

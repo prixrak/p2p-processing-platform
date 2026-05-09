@@ -141,16 +141,30 @@ export class PayoutInternalController {
 
   /**
    * POST /api/trader/payout/orders/:orderId/take
-   * Trader takes an order from the public pool (PENDING → NEW, assigns self).
+   * Trader takes an order from the public pool (PENDING → PROCESSING, assigns self).
    */
   @Post('orders/:orderId/take')
   @Roles(UserRole.TRADER)
-  @ApiOperation({ summary: 'Trader takes a pool order into their work queue (PENDING → NEW)' })
+  @ApiOperation({
+    summary: 'Trader takes a pool order into their work queue (PENDING → PROCESSING)',
+  })
   async traderTakeFromPool(
     @CurrentUser('traderId') traderId: string,
     @Param('orderId', ParseUUIDPipe) orderId: string,
   ) {
     return this.payoutService.traderTakeFromPool(traderId, orderId);
+  }
+
+  @Post('orders/:orderId/cancel')
+  @Roles(UserRole.TRADER)
+  @ApiOperation({
+    summary: 'Return assigned payout to the shared pool (NEW/PROCESSING → PENDING, no merchant refund)',
+  })
+  async traderCancelToPool(
+    @CurrentUser('traderId') traderId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ) {
+    return this.payoutService.traderCancelToPool(traderId, orderId);
   }
 
   /**
@@ -179,7 +193,10 @@ export class PayoutInternalController {
 
   @Post('orders/:orderId/fail')
   @Roles(UserRole.TRADER)
-  @ApiOperation({ summary: 'Trader marks order as failed (PROCESSING → FAILED)' })
+  @ApiOperation({
+    summary:
+      'Reject payout: mark FAILED, refund merchant when applicable (PROCESSING only); optional structured reason',
+  })
   async traderFail(
     @CurrentUser('traderId') traderId: string,
     @Param('orderId', ParseUUIDPipe) orderId: string,
@@ -342,9 +359,24 @@ export class PayoutSpecialistInternalController {
     return this.payoutService.specialistComplete(payoutTraderId, orderId, userId, body);
   }
 
+  @Post('orders/:orderId/cancel')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({
+    summary: 'Return assigned payout to pool B (NEW/PROCESSING → PENDING, no merchant refund)',
+  })
+  async cancelToPool(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ) {
+    return this.payoutService.specialistCancelToPool(payoutTraderId, orderId);
+  }
+
   @Post('orders/:orderId/fail')
   @Roles(UserRole.PAYOUT_TRADER)
-  @ApiOperation({ summary: 'Mark payout as failed' })
+  @ApiOperation({
+    summary:
+      'Reject payout: mark FAILED, refund merchant when applicable (PROCESSING only); optional structured reason',
+  })
   async fail(
     @CurrentUser('payoutTraderId') payoutTraderId: string,
     @Param('orderId', ParseUUIDPipe) orderId: string,

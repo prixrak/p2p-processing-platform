@@ -34,12 +34,14 @@ const FORK_VERIFICATION_STATUSES: PayInOrderStatus[] = [
 
 export function PayInOrderDetailModal({
   selectedOrder,
+  clockOffsetMs = 0,
   onClose,
   finalizeMenu,
   setFinalizeMenu,
   onPickFinalizeKind,
 }: {
   selectedOrder: OrderDto | null;
+  clockOffsetMs?: number;
   onClose: () => void;
   finalizeMenu: OrderFinalizeMenuState;
   setFinalizeMenu: (state: OrderFinalizeMenuState) => void;
@@ -112,6 +114,8 @@ export function PayInOrderDetailModal({
                 <CountdownTimer
                   autocloseAt={selectedOrder.autoclose_at}
                   createdAt={selectedOrder.created_at}
+                  status={selectedOrder.status}
+                  clockOffsetMs={clockOffsetMs}
                 />
               </PayinDetailRow>
             </div>

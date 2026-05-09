@@ -67,11 +67,17 @@ export function PaymentClient({ order }: PaymentClientProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
 
+  /** From API `Date` header so countdown matches server `autocloseAt`. */
+  const [clockOffsetMs, setClockOffsetMs] = useState(0);
+
   const [currentOrder, setCurrentOrder] = useState(order);
 
   const syncOrderFromServer = useCallback(async () => {
     try {
-      const fresh = await api.get<OrderDto>(internalPaths.payOrder(order.id));
+      const { data: fresh, clockOffsetMs: off } = await api.getWithClockOffset<OrderDto>(
+        internalPaths.payOrder(order.id),
+      );
+      setClockOffsetMs(off);
       setCurrentOrder(fresh);
       if (fresh.status === PayInOrderStatus.CANCELED) setStep('expired');
       if (
@@ -210,7 +216,11 @@ export function PaymentClient({ order }: PaymentClientProps) {
             <span className="text-xs font-medium text-success">Done</span>
           ) : (
             currentOrder.autoclose_at && (
-              <CountdownTimer targetTimestamp={currentOrder.autoclose_at} onExpire={handleTimerExpire} />
+              <CountdownTimer
+                targetTimestamp={currentOrder.autoclose_at}
+                clockOffsetMs={clockOffsetMs}
+                onExpire={handleTimerExpire}
+              />
             )
           )}
         </div>

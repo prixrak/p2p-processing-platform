@@ -770,6 +770,12 @@ enum PayoutPoolType {
   PAYOUT_SPECIALIST
 }
 
+enum PayoutTraderRejectReason {
+  FOREIGN_CARD
+  CARD_REFUND_IN_PROGRESS
+  OTHER
+}
+
 model PayoutOrder {
   id              String            @id @default(uuid()) @db.Uuid
   requestId       String            @map("request_id")
@@ -809,6 +815,8 @@ model PayoutOrder {
   currency        Currency            @relation(fields: [currencyId], references: [id], onDelete: Restrict)
   completionProofFileId String?      @map("completion_proof_file_id") @db.Uuid
   completionProofFile File?        @relation("PayoutOrderCompletionProof", fields: [completionProofFileId], references: [id], onDelete: SetNull)
+  /// When status is FAILED after trader/specialist rejection (card inactive / funds returned).
+  traderRejectReason PayoutTraderRejectReason? @map("trader_reject_reason")
   webhookOutbox   WebhookOutbox[]
 
   @@unique([merchantId, requestId])

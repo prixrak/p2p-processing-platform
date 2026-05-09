@@ -6,6 +6,7 @@
  */
 export const internalPaths = {
   authLogin: '/api/auth/login',
+  authRefresh: '/api/auth/refresh',
   authTwoFaVerify: '/api/auth/2fa/verify',
 
   adminStats: '/api/admin/stats',

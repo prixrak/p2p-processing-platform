@@ -29,6 +29,12 @@ import { fieldErrorsFromZod } from '@/lib/validation/zod-field-errors';
 import { errorMessageFromUnknown } from '@/lib/error-message';
 import { parseDecimalInput } from '@/lib/decimal-input';
 import {
+  humanizeFieldKey,
+  formatAuditFieldValue,
+  sanitizeAuditSnapshotForDisplay,
+  listAuditFieldChanges,
+} from '@/lib/audit-display';
+import {
   formatCardNumberInput,
   formatIbanInput,
   requisiteCaretAfterSignificant,
@@ -519,6 +525,85 @@ export function TraderEditRequisiteLimitsModal({
   );
 }
 
+function RequisiteAuditSnapshots({ oldRaw, newRaw }: { oldRaw: unknown; newRaw: unknown }) {
+  const oldRec = sanitizeAuditSnapshotForDisplay(oldRaw);
+  const newRec = sanitizeAuditSnapshotForDisplay(newRaw);
+  const changes = listAuditFieldChanges(oldRec, newRec);
+
+  if (changes.length > 0) {
+    return (
+      <div className="mt-2 space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+          Changed fields
+        </p>
+        <div className="space-y-2">
+          {changes.map((c) => (
+            <div
+              key={c.field}
+              className="rounded-md border border-border-primary/70 bg-bg-primary/30 px-2 py-2"
+            >
+              <p className="text-[11px] text-text-muted">{c.label}</p>
+              <div className="mt-1 grid gap-2 sm:grid-cols-2">
+                <div>
+                  <span className="text-[10px] uppercase text-text-muted">Before</span>
+                  <p className="break-words text-text-secondary">{c.before}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase text-text-muted">After</span>
+                  <p className="break-words text-text-primary">{c.after}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (oldRec || newRec) {
+    return (
+      <div className="mt-2 grid gap-4 md:grid-cols-2">
+        {oldRec ? (
+          <div>
+            <p className="mb-2 text-[11px] font-semibold text-text-muted">Previous state</p>
+            <dl className="max-h-52 space-y-2 overflow-y-auto pr-1 text-xs">
+              {Object.entries(oldRec)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([key, val]) => (
+                  <div key={key}>
+                    <dt className="text-text-muted">{humanizeFieldKey(key)}</dt>
+                    <dd className="break-words text-text-primary">{formatAuditFieldValue(val)}</dd>
+                  </div>
+                ))}
+            </dl>
+          </div>
+        ) : null}
+        {newRec ? (
+          <div>
+            <p className="mb-2 text-[11px] font-semibold text-text-muted">New state</p>
+            <dl className="max-h-52 space-y-2 overflow-y-auto pr-1 text-xs">
+              {Object.entries(newRec)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([key, val]) => (
+                  <div key={key}>
+                    <dt className="text-text-muted">{humanizeFieldKey(key)}</dt>
+                    <dd className="break-words text-text-primary">{formatAuditFieldValue(val)}</dd>
+                  </div>
+                ))}
+            </dl>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <p className="mt-2 text-text-muted">
+      No field snapshots were recorded for this entry (metadata-only log).
+    </p>
+  );
+}
+
 export function TraderRequisiteHistoryModal({
   historyRequisiteId,
   onClose,
@@ -531,8 +616,14 @@ export function TraderRequisiteHistoryModal({
   items: AuditItem[] | undefined;
 }) {
   return (
-    <Modal open={!!historyRequisiteId} onClose={onClose} title="Requisite history" size="lg">
-      <div className="max-h-[60vh] overflow-y-auto space-y-2">
+    <Modal
+      open={!!historyRequisiteId}
+      onClose={onClose}
+      title="Requisite history"
+      subtitle={historyRequisiteId ? `Requisite ID: ${historyRequisiteId}` : undefined}
+      size="xl"
+    >
+      <div className="max-h-[min(70vh,720px)] overflow-y-auto space-y-3">
         {historyLoading ? (
           <p className="text-sm text-text-muted">Loading…</p>
         ) : !items?.length ? (
@@ -541,17 +632,18 @@ export function TraderRequisiteHistoryModal({
           items.map((row) => (
             <div
               key={row.id}
-              className="rounded-lg border border-border-primary bg-bg-secondary px-3 py-2 text-xs"
+              className="rounded-lg border border-border-primary bg-bg-secondary px-3 py-3 text-xs"
             >
               <div className="flex flex-wrap justify-between gap-2 text-text-primary">
                 <span className="font-medium">{row.action}</span>
-                <span className="text-text-muted">{new Date(row.createdAt).toLocaleString()}</span>
+                <span className="font-mono tabular-nums text-text-muted">
+                  {new Date(row.createdAt).toLocaleString()}
+                </span>
               </div>
-              {row.actor && (
-                <p className="mt-1 text-text-muted">
-                  {row.actor.email} ({row.actor.role})
-                </p>
-              )}
+              <p className="mt-1 text-text-muted">
+                {row.actor ? `${row.actor.email} (${row.actor.role})` : 'Actor not recorded'}
+              </p>
+              <RequisiteAuditSnapshots oldRaw={row.oldValue} newRaw={row.newValue} />
             </div>
           ))
         )}

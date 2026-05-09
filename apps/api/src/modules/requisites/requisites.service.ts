@@ -23,6 +23,23 @@ export class RequisitesService {
     private readonly cascadeCoverageCache: CascadeRedisStateService,
   ) {}
 
+  /** A requisite may not remain active while its payment group is off or archived. */
+  private assertGroupAllowsActivatedRequisite(group: {
+    isActive: boolean;
+    archivedAt: Date | null;
+  }) {
+    if (group.archivedAt != null) {
+      throw new BadRequestException(
+        'GROUP_ARCHIVED: cannot activate requisite in archived payment group',
+      );
+    }
+    if (!group.isActive) {
+      throw new BadRequestException(
+        'GROUP_INACTIVE: turn the payment group on before activating this requisite',
+      );
+    }
+  }
+
   // ─── Used by PayinService ───
 
   /**
@@ -193,6 +210,12 @@ export class RequisitesService {
   async create(traderId: string, dto: CreateRequisiteDto) {
     const group = await this.prisma.requisiteGroup.findFirst({
       where: { id: dto.groupId, traderId },
+      select: {
+        id: true,
+        currencyId: true,
+        archivedAt: true,
+        isActive: true,
+      },
     });
     if (!group) {
       throw new BadRequestException('GROUP_NOT_FOUND: requisite group not found');
@@ -225,6 +248,7 @@ export class RequisitesService {
         limitTotalAmount: dto.limitTotalAmount ?? 999999999,
         limitTotalOps: dto.limitTotalOps ?? 999999,
         currencyId: group.currencyId,
+        isActive: group.isActive,
       },
       include: { bank: true, group: true, currency: { select: { code: true } } },
     });
@@ -286,6 +310,7 @@ export class RequisitesService {
 
   async activate(id: string) {
     const prev = await this.findById(id);
+    this.assertGroupAllowsActivatedRequisite(prev.group);
     const updated = await this.prisma.requisite.update({
       where: { id },
       data: { isActive: true, disabledReason: null },

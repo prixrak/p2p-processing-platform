@@ -80,7 +80,7 @@ export function Table<T>({
                       className={cn(
                         'align-middle px-4 py-3 text-text-primary',
                         actionsColumn &&
-                          'text-end [&>*]:flex [&>*]:flex-wrap [&>*]:justify-end',
+                          'text-end [&>*]:flex [&>*]:flex-nowrap [&>*]:items-center [&>*]:justify-end',
                         col.className,
                       )}
                     >

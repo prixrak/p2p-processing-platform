@@ -19,7 +19,7 @@ export function TraderRequisitesGroupTable({
   onHistory,
 }: {
   groupId: string;
-  /** Master switch: when false, requisites show inactive and cannot be toggled until the group is on. */
+  /** When false, requisite switches are disabled and Active shows off (nothing in the group routes pay-ins). */
   groupIsActive: boolean;
   data: RequisiteApiRow[];
   assignRangeByReqId: Map<string, PayinAssignRangeRow>;
@@ -200,18 +200,18 @@ export function TraderRequisitesGroupTable({
       key: 'active',
       header: 'Active',
       render: (r: RequisiteApiRow) => {
-        const effectiveActive = groupIsActive && r.isActive;
+        const acceptingPayIns = groupIsActive && r.isActive;
         return (
           <input
             type="checkbox"
             role="switch"
             className="accent-accent-blue"
-            checked={effectiveActive}
+            checked={acceptingPayIns}
             disabled={!groupIsActive}
             title={
-              groupIsActive
-                ? undefined
-                : 'Turn the payment group on to change requisite activity'
+              !groupIsActive
+                ? 'Payment group is off — requisites cannot accept Pay-In assignments'
+                : undefined
             }
             onChange={(e) => {
               if (!groupIsActive) return;
@@ -228,7 +228,7 @@ export function TraderRequisitesGroupTable({
       key: 'actions',
       header: 'Actions',
       render: (r: RequisiteApiRow) => (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-nowrap items-center justify-end gap-2">
           <IconButton
             label="Edit requisite limits"
             variant="secondary"

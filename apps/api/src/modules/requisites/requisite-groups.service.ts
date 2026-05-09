@@ -2,13 +2,15 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
-import { PaymentMethodAvailability, Prisma } from '@prisma/client';
+import { PaymentMethodAvailability, Prisma, RequisiteDisabledReason } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { PAYIN_IN_FLIGHT_STATUSES, PayInOrderStatus } from '@p2p/shared';
 import { CreateRequisiteGroupDto } from './dto/create-requisite-group.dto';
 import { UpdateRequisiteGroupDto } from './dto/update-requisite-group.dto';
 import { CurrenciesService } from '../currencies/currencies.service';
+import { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
 
 /** Clamp stored totals for API/UI so negative duplicates never leak downstream. */
 function clampUsedTotals(
@@ -30,9 +32,12 @@ function clampUsedTotals(
 
 @Injectable()
 export class RequisiteGroupsService {
+  private readonly logger = new Logger(RequisiteGroupsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly currencies: CurrenciesService,
+    private readonly cascadeCoverageCache: CascadeRedisStateService,
   ) {}
 
   /** Ensures the catalog method is Pay-In capable, active, and tied to the group's fiat currency. */
@@ -222,6 +227,7 @@ export class RequisiteGroupsService {
   async update(traderId: string, id: string, dto: UpdateRequisiteGroupDto) {
     const group = await this.prisma.requisiteGroup.findFirst({
       where: { id, traderId },
+      include: { currency: { select: { code: true } } },
     });
     if (!group) throw new NotFoundException('Requisite group not found');
 
@@ -250,12 +256,38 @@ export class RequisiteGroupsService {
       data.deactivatedAt = new Date();
     }
 
+    const include = {
+      paymentMethod: { select: { id: true, displayName: true, name: true } },
+    };
+
+    /**
+     * Turning a group off must persist-disable every active requisite in it (manual),
+     * so turning the group back on does not resurrect payment acceptance automatically.
+     * Turning a group on does not activate requisites — traders enable them individually.
+     */
+    if (dto.isActive === false) {
+      const updated = await this.prisma.$transaction(async (tx) => {
+        await tx.requisite.updateMany({
+          where: { requisiteGroupId: id, isActive: true },
+          data: { isActive: false, disabledReason: RequisiteDisabledReason.MANUAL },
+        });
+        return tx.requisiteGroup.update({
+          where: { id },
+          data,
+          include,
+        });
+      });
+      void this.cascadeCoverageCache.invalidateCurrency(group.currency.code);
+      this.logger.log(
+        `Deactivated requisite group id=${id} traderId=${traderId} (active requisites in group turned off)`,
+      );
+      return updated;
+    }
+
     return this.prisma.requisiteGroup.update({
       where: { id },
       data,
-      include: {
-        paymentMethod: { select: { id: true, displayName: true, name: true } },
-      },
+      include,
     });
   }
 
@@ -278,20 +310,41 @@ export class RequisiteGroupsService {
     });
   }
 
+  /**
+   * Soft-removes a group: deactivates all active requisites in the group (manual disable),
+   * turns the group off, and moves it to the archived list immediately (no 7-day wait).
+   * Requisites stay in the DB for pay-in history integrity.
+   */
   async delete(traderId: string, id: string) {
     const group = await this.prisma.requisiteGroup.findFirst({
       where: { id, traderId },
+      include: { currency: { select: { code: true } } },
     });
     if (!group) throw new NotFoundException('Requisite group not found');
-
-    const count = await this.prisma.requisite.count({
-      where: { requisiteGroupId: id },
-    });
-    if (count > 0) {
-      throw new BadRequestException('GROUP_NOT_EMPTY: remove requisites before deleting the group');
+    if (group.archivedAt != null) {
+      throw new BadRequestException('GROUP_ALREADY_ARCHIVED');
     }
 
-    await this.prisma.requisiteGroup.delete({ where: { id } });
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.requisite.updateMany({
+        where: { requisiteGroupId: id, isActive: true },
+        data: { isActive: false, disabledReason: RequisiteDisabledReason.MANUAL },
+      }),
+      this.prisma.requisiteGroup.update({
+        where: { id },
+        data: {
+          isActive: false,
+          deactivatedAt: now,
+          archivedAt: now,
+        },
+      }),
+    ]);
+
+    void this.cascadeCoverageCache.invalidateCurrency(group.currency.code);
+    this.logger.log(
+      `Archived requisite group id=${id} traderId=${traderId} (requisites in group deactivated)`,
+    );
     return { ok: true };
   }
 }

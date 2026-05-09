@@ -7,15 +7,16 @@ import { toast } from '@/components/ui/toast';
 import { AppealStatus, PayInOrderStatus } from '@p2p/shared';
 import type { OrderDto } from '@p2p/shared';
 import { shortId, cn } from '@/lib/utils';
+import { payinDeadlineElapsedShowsCanceled } from './payin-countdown-utils';
 
-type CountdownUrgency = 'expired' | 'critical' | 'low' | 'moderate' | 'comfortable';
+type CountdownUrgency = 'canceled' | 'critical' | 'low' | 'moderate' | 'comfortable';
 
 function computeUrgency(
   remainingMs: number,
   createdAt: number | null | undefined,
   autocloseAt: number | null,
-): CountdownUrgency {
-  if (!autocloseAt || remainingMs <= 0) return 'expired';
+): Exclude<CountdownUrgency, 'canceled'> {
+  if (!autocloseAt || remainingMs <= 0) return 'critical';
 
   const windowSec =
     createdAt != null && autocloseAt > createdAt ? autocloseAt - createdAt : null;
@@ -42,40 +43,50 @@ const urgencyClass: Record<CountdownUrgency, string> = {
   low: 'border-orange-400/45 bg-orange-400/12 text-orange-300 shadow-[0_0_0_1px_rgba(251,146,60,0.15)]',
   critical:
     'border-accent-red/55 bg-accent-red/15 text-accent-red shadow-[0_0_0_1px_rgba(239,68,68,0.2)]',
-  expired:
+  canceled:
     'border-accent-red/50 bg-accent-red/12 text-accent-red shadow-[0_0_0_1px_rgba(239,68,68,0.25)]',
 };
 
 export function CountdownTimer({
   autocloseAt,
   createdAt,
+  status,
+  clockOffsetMs = 0,
 }: {
   autocloseAt: number | null;
   /** When set with `autocloseAt`, remaining time is colored relative to the full window. */
   createdAt?: number | null;
+  status?: PayInOrderStatus;
+  /** Matches API deadline (`autocloseAt`) to server time via the response `Date` header. */
+  clockOffsetMs?: number;
 }) {
-  const [remaining, setRemaining] = useState<number>(0);
+  const [remainingMs, setRemainingMs] = useState(0);
 
   useEffect(() => {
     if (autocloseAt == null || autocloseAt <= 0) return;
     const deadlineMs = autocloseAt * 1000;
 
     function update() {
-      const diff = deadlineMs - Date.now();
-      setRemaining(Math.max(0, diff));
+      const adjustedNow = Date.now() + clockOffsetMs;
+      setRemainingMs(deadlineMs - adjustedNow);
     }
 
     update();
     const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
-  }, [autocloseAt]);
+  }, [autocloseAt, clockOffsetMs]);
 
   if (!autocloseAt) return <span className="text-text-muted">-</span>;
 
-  const isExpired = remaining <= 0;
-  const minutes = Math.floor(remaining / 60000);
-  const seconds = Math.floor((remaining % 60000) / 1000);
-  const urgency = isExpired ? 'expired' : computeUrgency(remaining, createdAt, autocloseAt);
+  const displayRemainingMs = Math.max(0, remainingMs);
+  const showCanceled = payinDeadlineElapsedShowsCanceled({ remainingMs, status });
+  const minutes = Math.floor(displayRemainingMs / 60000);
+  const seconds = Math.floor((displayRemainingMs % 60000) / 1000);
+  const urgency: CountdownUrgency = showCanceled
+    ? 'canceled'
+    : displayRemainingMs <= 0
+      ? 'critical'
+      : computeUrgency(displayRemainingMs, createdAt, autocloseAt);
 
   return (
     <span
@@ -84,7 +95,7 @@ export function CountdownTimer({
         urgencyClass[urgency],
       )}
     >
-      {isExpired ? 'EXPIRED' : `${minutes}:${seconds.toString().padStart(2, '0')}`}
+      {showCanceled ? 'Canceled' : `${minutes}:${seconds.toString().padStart(2, '0')}`}
     </span>
   );
 }

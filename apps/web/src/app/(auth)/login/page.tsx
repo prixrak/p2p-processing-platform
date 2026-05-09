@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Zap, Shield, ArrowRight } from 'lucide-react';
+import { Zap, Shield, ArrowRight, Clock3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -13,6 +13,10 @@ import { UserRole } from '@p2p/shared';
 import { getDashboardPathForRole } from '@/lib/role-dashboard';
 import { loginCredentialsSchema, loginTwoFactorSchema } from '@/lib/validation/schemas';
 import { fieldErrorsFromZod } from '@/lib/validation/zod-field-errors';
+import {
+  LOGIN_REASON_QUERY_PARAM,
+  LOGIN_SESSION_ENDED_REASON,
+} from '@/lib/auth-session-redirect';
 
 const AUTH_ERROR_TOAST_MS = 7000;
 
@@ -25,9 +29,21 @@ export default function LoginPage() {
   const [code2FA, setCode2FA] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [sessionEndedNotice, setSessionEndedNotice] = useState(false);
 
   useEffect(() => {
-    loadUser();
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get(LOGIN_REASON_QUERY_PARAM) !== LOGIN_SESSION_ENDED_REASON) return;
+    setSessionEndedNotice(true);
+    params.delete(LOGIN_REASON_QUERY_PARAM);
+    const qs = params.toString();
+    const path = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    window.history.replaceState(null, '', path);
+  }, []);
+
+  useEffect(() => {
+    void loadUser();
   }, [loadUser]);
 
   useEffect(() => {
@@ -110,6 +126,20 @@ export default function LoginPage() {
         </div>
 
         <Card>
+          {sessionEndedNotice && (
+            <div className="mb-5 flex items-start gap-3 rounded-lg border border-amber-500/35 bg-amber-500/10 px-4 py-3">
+              <Clock3 className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" aria-hidden />
+              <div>
+                <p className="text-sm font-medium text-text-primary">
+                  Session ended — please sign in again
+                </p>
+                <p className="mt-1 text-sm text-text-muted">
+                  Your login session expired or is no longer valid. This can happen after a long idle
+                  period or if an administrator deactivated your account.
+                </p>
+              </div>
+            </div>
+          )}
           {!requires2FA ? (
             <form onSubmit={handleLogin} className="space-y-5">
               <Input

@@ -89,7 +89,10 @@ export function TraderPayInPage() {
   const { data, isLoading } = useQuery({
     queryKey: traderKeys.payinOrders(queryParams),
     queryFn: async () => {
-      const res = await api.get<PayInListApiResponse>(internalPaths.traderPayinOrders, queryParams);
+      const { data: res, clockOffsetMs } = await api.getWithClockOffset<PayInListApiResponse>(
+        internalPaths.traderPayinOrders,
+        queryParams,
+      );
       const limit = res.limit ?? PAYIN_LIST_PAGE_SIZE;
       const totalPages = Math.max(1, Math.ceil(res.total / limit));
       return {
@@ -98,6 +101,7 @@ export function TraderPayInPage() {
         page: res.page,
         limit,
         totalPages,
+        clockOffsetMs,
       };
     },
   });
@@ -203,7 +207,12 @@ export function TraderPayInPage() {
           header: 'Time to complete',
           className: 'text-end font-mono tabular-nums',
           render: (row: OrderDto) => (
-            <CountdownTimer autocloseAt={row.autoclose_at} createdAt={row.created_at} />
+            <CountdownTimer
+              autocloseAt={row.autoclose_at}
+              createdAt={row.created_at}
+              status={row.status}
+              clockOffsetMs={data?.clockOffsetMs ?? 0}
+            />
           ),
         };
 
@@ -398,6 +407,7 @@ export function TraderPayInPage() {
 
       <PayInOrderDetailModal
         selectedOrder={selectedOrder}
+        clockOffsetMs={data?.clockOffsetMs ?? 0}
         onClose={() => {
           setFinalizeMenu((m) => (m?.anchor === 'modal' ? null : m));
           setSelectedOrder(null);

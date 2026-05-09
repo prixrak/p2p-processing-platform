@@ -21,6 +21,13 @@ export enum PayOutOrderStatus {
   UPLOAD_FAILED = 'UPLOAD_FAILED',
 }
 
+/** Trader/specialist rejection reason when a pay-out cannot proceed (e.g. inactive card, funds returned). */
+export enum PayoutTraderRejectReason {
+  FOREIGN_CARD = 'FOREIGN_CARD',
+  CARD_REFUND_IN_PROGRESS = 'CARD_REFUND_IN_PROGRESS',
+  OTHER = 'OTHER',
+}
+
 export enum UserRole {
   TRADER = 'TRADER',
   PAYOUT_TRADER = 'PAYOUT_TRADER',

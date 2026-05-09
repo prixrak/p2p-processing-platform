@@ -7,6 +7,53 @@ import type { ExchangeRateService } from '../exchange-rate/exchange-rate.service
 import { CreateRequisiteDto } from './dto/create-requisite.dto';
 import { RequisitesService } from './requisites.service';
 
+describe('RequisitesService.activate', () => {
+  const requisiteId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+  function svc(prisma: PrismaService) {
+    return new RequisitesService(
+      prisma,
+      {} as CascadeService,
+      {} as ExchangeRateService,
+      { invalidateCurrency: jest.fn() } as unknown as CascadeRedisStateService,
+    );
+  }
+
+  it('rejects when payment group is inactive', async () => {
+    const prisma = {
+      requisite: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: requisiteId,
+          traderId: 't',
+          currency: { code: 'UAH' },
+          group: { isActive: false, archivedAt: null },
+        }),
+        update: jest.fn(),
+      },
+    } as unknown as PrismaService;
+
+    await expect(svc(prisma).activate(requisiteId)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.requisite.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects when payment group is archived', async () => {
+    const prisma = {
+      requisite: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: requisiteId,
+          traderId: 't',
+          currency: { code: 'UAH' },
+          group: { isActive: false, archivedAt: new Date() },
+        }),
+        update: jest.fn(),
+      },
+    } as unknown as PrismaService;
+
+    await expect(svc(prisma).activate(requisiteId)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.requisite.update).not.toHaveBeenCalled();
+  });
+});
+
 describe('RequisitesService.create', () => {
   const traderId = '11111111-1111-1111-1111-111111111111';
   const groupId = '22222222-2222-2222-2222-222222222222';
@@ -37,6 +84,7 @@ describe('RequisitesService.create', () => {
           traderId,
           archivedAt: null,
           currencyId,
+          isActive: true,
         }),
       },
       bank: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -55,6 +103,7 @@ describe('RequisitesService.create', () => {
           traderId,
           archivedAt: null,
           currencyId,
+          isActive: true,
         }),
       },
       bank: {
@@ -78,6 +127,41 @@ describe('RequisitesService.create', () => {
           requisiteGroupId: groupId,
           bankId: 1,
           currencyId,
+          isActive: true,
+        }),
+      }),
+    );
+  });
+
+  it('creates inactive requisite when group is inactive', async () => {
+    const prisma = {
+      requisiteGroup: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: groupId,
+          traderId,
+          archivedAt: null,
+          currencyId,
+          isActive: false,
+        }),
+      },
+      bank: {
+        findFirst: jest.fn().mockResolvedValue({ id: 1, name: 'TestBank', isActive: true }),
+      },
+      requisite: {
+        create: jest.fn().mockResolvedValue({
+          currency: { code: 'UAH' },
+          bank: {},
+          group: {},
+        }),
+      },
+    } as unknown as PrismaService;
+
+    await svc(prisma).create(traderId, baseDto);
+
+    expect(prisma.requisite.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          isActive: false,
         }),
       }),
     );

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -65,11 +66,12 @@ export function Modal({
 
   const fullscreen = variant === 'fullscreen';
 
-  return (
+  /** Render at document body so the backdrop is not clipped by shell `overflow` / layout ancestors. */
+  return createPortal(
     <div
       ref={overlayRef}
       className={clsx(
-        'fixed inset-0 z-50',
+        'fixed inset-0 z-50 min-h-dvh w-full',
         fullscreen
           ? 'flex flex-col bg-black/45 backdrop-blur-[2px]'
           : 'flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm',
@@ -85,8 +87,8 @@ export function Modal({
           fullscreen
             ? 'h-full w-full max-h-full shrink-0 rounded-none border-0 shadow-none'
             : clsx(
-                'w-full rounded-xl border border-border-primary shadow-2xl',
-                'max-h-[90vh]',
+                'w-full shrink-0 rounded-xl border border-border-primary shadow-2xl',
+                'h-fit max-h-[90vh]',
                 sizeStyles[size],
               ),
           className,
@@ -141,13 +143,14 @@ export function Modal({
           <div
             className={clsx(
               'overflow-y-auto',
-              fullscreen ? 'h-full max-h-full p-6' : 'max-h-[90vh] p-6',
+              fullscreen ? 'h-full max-h-full p-6' : 'max-h-[90vh] px-6 py-5',
             )}
           >
             {children}
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -14,6 +14,7 @@ import {
   summarizeAuditValue,
   humanizeFieldKey,
   formatAuditFieldValue,
+  sanitizeAuditSnapshotForDisplay,
 } from '@/lib/audit-display';
 
 interface AuditEntry {
@@ -31,14 +32,6 @@ interface AuditEntry {
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function toJsonRecord(v: unknown): Record<string, unknown> | null {
-  if (v === null || v === undefined) return null;
-  if (typeof v === 'object' && !Array.isArray(v)) {
-    return v as Record<string, unknown>;
-  }
-  return { value: v as string | number | boolean };
-}
 
 export default function AuditLogPage() {
   const [actorFilter, setActorFilter] = useState('');
@@ -89,8 +82,8 @@ export default function AuditLogPage() {
         entity: log.entityType,
         entityId: log.entityId ?? '',
         details: summarizeAuditValue(log.newValue),
-        oldValue: toJsonRecord(log.oldValue),
-        newValue: toJsonRecord(log.newValue),
+        oldValue: sanitizeAuditSnapshotForDisplay(log.oldValue),
+        newValue: sanitizeAuditSnapshotForDisplay(log.newValue),
       }));
     },
   });

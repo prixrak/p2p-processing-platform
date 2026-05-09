@@ -1,6 +1,7 @@
 import {
   PayInOrderStatus,
   PayOutOrderStatus,
+  PayoutTraderRejectReason,
   DetailsType,
   WebhookMethod,
   AppealStatus,
@@ -139,12 +140,23 @@ export interface PayOutOrderApiDto {
   completion_proof_file_id?: string;
   /** Unix seconds — when the order was routed to its current pool (A or B). */
   pool_assigned_at?: number | null;
+  /**
+   * When present, countdown target for pool SLA (admin-configured pool timeout).
+   * Omitted or null if SLA is disabled.
+   */
+  pool_close_deadline_at?: number | null;
+  /**
+   * False for unassigned pool list payloads — recipient data must not be shown until the order is claimed.
+   */
+  requisites_visible?: boolean;
   /** Parser fiat per 1 USDT at order creation (Pay-Out v2). */
   parser_rate?: number | null;
   /** Rough USDT face value: amount / parser_rate when parser_rate is set. */
   amount_usdt_estimate?: number | null;
   /** Payment method label for payout (cabinet lists). */
   payment_method_name?: string | null;
+  /** Set when the order was rejected by the trader/specialist (FAILED). */
+  trader_reject_reason?: PayoutTraderRejectReason | null;
 }
 
 // --- Common Models ---

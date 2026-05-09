@@ -50,3 +50,14 @@ export function formatDurationShort(totalSeconds: number): string {
   const rh = h % 24;
   return `${d}d ${rh}h`;
 }
+
+/** Remaining time as MM:SS while under one hour; otherwise uses compact duration. */
+export function formatCountdownRemaining(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  if (s < 3600) {
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+  }
+  return formatDurationShort(s);
+}
