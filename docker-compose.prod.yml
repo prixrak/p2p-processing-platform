@@ -1,4 +1,19 @@
 services:
+  vault:
+    image: hashicorp/vault:1.15
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - vaultdata:/vault/data
+      - ./vault-config/vault.hcl:/vault/config/vault.hcl:ro
+    command: server -config=/vault/config/vault.hcl
+    restart: always
+    # Not published: only api / worker containers on this network may call Vault.
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
   api:
     image: ${ECR_REGISTRY}/p2p-api:${IMAGE_TAG:-latest}
     # Nest monorepo build outputs here; matches apps/api package.json start:prod
@@ -8,6 +23,8 @@ services:
     env_file: .env.prod
     restart: always
     depends_on:
+      vault:
+        condition: service_started
       redis:
         condition: service_healthy
     healthcheck:
@@ -99,3 +116,4 @@ services:
 
 volumes:
   redisdata:
+  vaultdata:
