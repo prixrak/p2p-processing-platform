@@ -5,8 +5,10 @@ services:
       - IPC_LOCK
     volumes:
       - vaultdata:/vault/data
+      # Mount only here: the official image loads every *.hcl under /vault/config.
+      # Do not also pass `-config=/vault/config/...` or listeners bind twice (port 8200 in use).
       - ./vault-config/vault.hcl:/vault/config/vault.hcl:ro
-    command: server -config=/vault/config/vault.hcl
+    command: server
     restart: always
     # Not published: only api / worker containers on this network may call Vault.
     deploy:

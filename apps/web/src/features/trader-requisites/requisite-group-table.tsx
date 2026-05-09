@@ -3,7 +3,7 @@
 import { History, Pencil } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
-import { ProgressBar } from '@/components/ui/progress-bar';
+import { LimitUsageBar } from '@/components/ui/limit-usage-bar';
 import { Table } from '@/components/ui/table';
 import type { UseMutationResult } from '@tanstack/react-query';
 import type { PayinAssignRangeRow, RequisiteApiRow } from './types';
@@ -69,22 +69,58 @@ export function TraderRequisitesGroupTable({
         const usedRaw = Math.max(0, num(r.usedAmount));
         const usedAmt =
           Number.isFinite(lim) && lim > 0 ? Math.min(usedRaw, lim) : usedRaw;
-        return (
-          <div className="space-y-1 text-[11px] leading-tight">
-            <ProgressBar label="" value={usedAmt} max={lim || 1} />
-            <div className="text-text-muted">
-              Processing:{' '}
-              <span className="tabular-nums text-text-secondary">{compactAmount(v.amountInProcessing)}</span>
+        const remainingAmt =
+          Number.isFinite(lim) && lim > 0 ? Math.max(0, lim - usedAmt) : Math.max(0, v.amountRemaining);
+        const amountTooltip = (
+          <div className="space-y-1 text-left">
+            <div>
+              <span className="text-text-muted">Current amount: </span>
+              <span className="tabular-nums font-medium text-success">
+                {usedRaw.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </span>
             </div>
-            <div className="text-text-muted">
-              Completed:{' '}
-              <span className="tabular-nums text-text-secondary">{compactAmount(v.amountCompleted)}</span>
+            <div>
+              <span className="text-text-muted">Amount limit: </span>
+              <span className="tabular-nums font-medium text-danger">
+                {lim.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </span>
             </div>
-            <div className="text-text-muted">
-              Remaining:{' '}
-              <span className="tabular-nums text-accent-green">{compactAmount(v.amountRemaining)}</span>
+            <div>
+              <span className="text-text-muted">Remaining: </span>
+              <span className="tabular-nums font-medium text-accent">
+                {remainingAmt.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </span>
             </div>
+            {(v.amountInProcessing > 0 || v.amountCompleted > 0) && (
+              <div className="space-y-0.5 border-t border-border-secondary pt-1.5 text-[11px] text-text-muted">
+                {v.amountInProcessing > 0 ? (
+                  <div>
+                    In processing:{' '}
+                    <span className="tabular-nums text-text-secondary">
+                      {v.amountInProcessing.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                ) : null}
+                {v.amountCompleted > 0 ? (
+                  <div>
+                    Completed:{' '}
+                    <span className="tabular-nums text-text-secondary">
+                      {v.amountCompleted.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
+        );
+        return (
+          <LimitUsageBar
+            used={usedAmt}
+            limit={lim}
+            usedSegmentLabel={compactAmount(usedAmt)}
+            remainingSegmentLabel={compactAmount(remainingAmt)}
+            tooltip={amountTooltip}
+          />
         );
       },
     },
@@ -131,7 +167,33 @@ export function TraderRequisitesGroupTable({
       render: (r: RequisiteApiRow) => {
         const limOps = Math.max(1, r.limitTotalOps);
         const usedOps = Math.max(0, Math.min(r.usedOps, limOps));
-        return <ProgressBar label="" value={usedOps} max={limOps} />;
+        const remOps = Math.max(0, limOps - usedOps);
+        const opsTooltip = (
+          <div className="space-y-1 text-left">
+            <div>
+              <span className="text-text-muted">Operations used: </span>
+              <span className="tabular-nums font-medium text-success">{usedOps}</span>
+            </div>
+            <div>
+              <span className="text-text-muted">Operation limit: </span>
+              <span className="tabular-nums font-medium text-danger">{limOps}</span>
+            </div>
+            <div>
+              <span className="text-text-muted">Available: </span>
+              <span className="tabular-nums font-medium text-accent">{remOps}</span>
+            </div>
+          </div>
+        );
+        return (
+          <LimitUsageBar
+            used={usedOps}
+            limit={limOps}
+            usedSegmentLabel={String(usedOps)}
+            remainingSegmentLabel={String(remOps)}
+            tooltip={opsTooltip}
+            size="sm"
+          />
+        );
       },
     },
     {
