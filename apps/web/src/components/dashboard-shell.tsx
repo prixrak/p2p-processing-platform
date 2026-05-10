@@ -262,7 +262,7 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
   const sidebarBadges = useTraderSidebarBadgeData(role);
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="fixed inset-0 z-30 flex overflow-hidden bg-surface-primary">
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-30 bg-black/50 lg:hidden"
