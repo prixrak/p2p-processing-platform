@@ -5,6 +5,7 @@ import {
   logExternalFailure,
   logHttpResponseFailure,
 } from '../../common/utils/external-error-log';
+import { encodeTrc20BalanceOfParameter } from '../wallet-sweep/tron-sweep-transaction.util';
 
 type Trc20Row = {
   transaction_id?: string;
@@ -389,10 +390,72 @@ export class TrongridClient {
         headers: this.headers(),
         signal: AbortSignal.timeout(config.http.webhookFetchTimeoutMs),
       });
+      if (res.ok) {
+        const j = (await res.json()) as {
+          data?: { token_address?: string; tokenAddress?: string; balance?: string }[];
+        };
+        const contract = config.tron.usdtTrc20Contract.toLowerCase();
+        for (const row of j.data ?? []) {
+          const rowAddr = (row.token_address ?? row.tokenAddress ?? '').toLowerCase();
+          if (rowAddr === contract || rowAddr.endsWith(contract.slice(2))) {
+            const raw = row.balance;
+            if (raw === undefined) return 0;
+            const n = Number(raw) / 1e6;
+            return Number.isFinite(n) ? n : null;
+          }
+        }
+        return 0;
+      }
+      logHttpResponseFailure(this.logger, {
+        integration: 'TronGrid',
+        operation: 'v1/accounts/.../tokens',
+        context: { baseUrl: config.tron.baseUrl },
+        status: res.status,
+        statusText: res.statusText,
+        level: 'warn',
+      });
+    } catch (e) {
+      logExternalFailure(this.logger, {
+        integration: 'TronGrid',
+        operation: 'v1/accounts/.../tokens',
+        context: { baseUrl: config.tron.baseUrl },
+        error: e,
+        level: 'warn',
+      });
+    }
+    return this.getUsdtTrc20BalanceViaBalanceOfCall(address);
+  }
+
+  /**
+   * Some networks (e.g. Nile on trongrid.io) omit `GET /v1/accounts/.../tokens`; fall back to `balanceOf`.
+   * Matches mainnet USDT-style 6 decimals.
+   */
+  private async getUsdtTrc20BalanceViaBalanceOfCall(address: string): Promise<number | null> {
+    if (!address.startsWith('T')) return null;
+    const url = `${config.tron.baseUrl}/wallet/triggerconstantcontract`;
+    try {
+      let parameter: string;
+      try {
+        parameter = encodeTrc20BalanceOfParameter(address);
+      } catch {
+        return null;
+      }
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify({
+          owner_address: address,
+          contract_address: config.tron.usdtTrc20Contract,
+          function_selector: 'balanceOf(address)',
+          parameter,
+          visible: true,
+        }),
+        signal: AbortSignal.timeout(config.http.webhookFetchTimeoutMs),
+      });
       if (!res.ok) {
         logHttpResponseFailure(this.logger, {
           integration: 'TronGrid',
-          operation: 'v1/accounts/.../tokens',
+          operation: 'wallet/triggerconstantcontract balanceOf',
           context: { baseUrl: config.tron.baseUrl },
           status: res.status,
           statusText: res.statusText,
@@ -400,24 +463,18 @@ export class TrongridClient {
         });
         return null;
       }
-      const j = (await res.json()) as {
-        data?: { token_address?: string; tokenAddress?: string; balance?: string }[];
-      };
-      const contract = config.tron.usdtTrc20Contract.toLowerCase();
-      for (const row of j.data ?? []) {
-        const addr = (row.token_address ?? row.tokenAddress ?? '').toLowerCase();
-        if (addr === contract || addr.endsWith(contract.slice(2))) {
-          const raw = row.balance;
-          if (raw === undefined) return 0;
-          const n = Number(raw) / 1e6;
-          return Number.isFinite(n) ? n : null;
-        }
-      }
-      return 0;
+      const j = (await res.json()) as { constant_result?: string[] };
+      const hex = j.constant_result?.[0];
+      if (!hex || typeof hex !== 'string') return null;
+      const normalized = hex.startsWith('0x') ? hex.slice(2) : hex;
+      if (!/^[0-9a-fA-F]+$/.test(normalized) || normalized.length < 1) return null;
+      const raw = BigInt('0x' + normalized);
+      const n = Number(raw) / 1e6;
+      return Number.isFinite(n) ? n : null;
     } catch (e) {
       logExternalFailure(this.logger, {
         integration: 'TronGrid',
-        operation: 'v1/accounts/.../tokens',
+        operation: 'wallet/triggerconstantcontract balanceOf',
         context: { baseUrl: config.tron.baseUrl },
         error: e,
         level: 'warn',

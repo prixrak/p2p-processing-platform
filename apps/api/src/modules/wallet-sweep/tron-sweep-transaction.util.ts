@@ -5,6 +5,21 @@ import bs58check from 'bs58check';
  * ABI-encodes only the argument tuple for `transfer(address,uint256)` as required by `wallet/triggersmartcontract`
  * when `function_selector` is set separately (no 4-byte selector prefix here).
  */
+/** ABI-encodes `balanceOf(address)` argument (no 4-byte selector) for `wallet/triggerconstantcontract`. */
+export function encodeTrc20BalanceOfParameter(accountTronBase58: string): string {
+  if (!accountTronBase58.startsWith('T')) {
+    throw new Error('TRON account must be base58 (T…) for visible=true triggers');
+  }
+  const decoded = bs58check.decode(accountTronBase58);
+  const payload = Buffer.isBuffer(decoded) ? decoded : Buffer.from(decoded);
+  if (payload.length !== 21 || payload[0] !== 0x41) {
+    throw new Error('Decoded TRON address must be 21 bytes prefixed with 0x41');
+  }
+  const addrWord = Buffer.alloc(32);
+  payload.subarray(1).copy(addrWord, 12);
+  return addrWord.toString('hex');
+}
+
 export function encodeTronTrc20TransferParameter(toTronBase58Address: string, amountSun: number): string {
   if (!toTronBase58Address.startsWith('T')) {
     throw new Error('TRON recipient must be base58 (T…) for visible=true triggers');

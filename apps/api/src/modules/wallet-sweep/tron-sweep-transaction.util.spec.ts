@@ -1,5 +1,9 @@
 import { deriveTronAddressFromMnemonic } from '../trader-wallets/tron-bip44.util';
-import { digestOfTronRawDataHex, encodeTronTrc20TransferParameter } from './tron-sweep-transaction.util';
+import {
+  digestOfTronRawDataHex,
+  encodeTrc20BalanceOfParameter,
+  encodeTronTrc20TransferParameter,
+} from './tron-sweep-transaction.util';
 
 describe('tron-sweep-transaction.util', () => {
   const mnemonic =
@@ -9,6 +13,13 @@ describe('tron-sweep-transaction.util', () => {
     const addr = deriveTronAddressFromMnemonic(mnemonic, 2).address;
     const hex = encodeTronTrc20TransferParameter(addr, 1_000_000);
     expect(hex).toHaveLength(128);
+    expect(/^([0-9a-f]{2})+$/.test(hex)).toBe(true);
+  });
+
+  it('ABI-encodes balanceOf(address) arg (32-byte word, 64 hex chars)', () => {
+    const addr = deriveTronAddressFromMnemonic(mnemonic, 2).address;
+    const hex = encodeTrc20BalanceOfParameter(addr);
+    expect(hex).toHaveLength(64);
     expect(/^([0-9a-f]{2})+$/.test(hex)).toBe(true);
   });
 
