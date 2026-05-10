@@ -60,6 +60,29 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Same image as api; runs BullMQ consumers, Tron/ERC-20 deposit pollers, and wallet sweep.
+  worker:
+    image: ${ECR_REGISTRY}/p2p-api:${IMAGE_TAG:-latest}
+    command: ["node", "dist/apps/api/src/worker.main.js"]
+    env_file: .env.prod
+    restart: always
+    depends_on:
+      vault:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   web:
     image: ${ECR_REGISTRY}/p2p-web:${IMAGE_TAG:-latest}
     ports:

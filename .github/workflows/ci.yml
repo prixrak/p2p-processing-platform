@@ -192,7 +192,7 @@ jobs:
               | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
             # Pull while api/web keep running (~short switchover only on up -d). Needs enough root EBS (~50 GiB+).
-            docker compose --env-file .env.prod -f docker-compose.prod.yml pull api web
+            docker compose --env-file .env.prod -f docker-compose.prod.yml pull api web worker
 
             docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm --no-deps api \
               npx prisma migrate deploy --schema=prisma/schema.prisma
