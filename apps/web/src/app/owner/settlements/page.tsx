@@ -22,6 +22,7 @@ import {
   staffTraderKeys,
 } from '@/lib/query-keys';
 import { currencyCodeFromUnknown } from '@/lib/currency-code';
+import { settlementRecordedByLabel } from '@/features/settlements/settlement-row-labels';
 
 interface Settlement {
   id: string;
@@ -36,6 +37,7 @@ interface Settlement {
   trader: { user: { email: string } } | null;
   payoutTrader: { user: { email: string } } | null;
   merchant: { name: string } | null;
+  walletDeposit?: { txHash: string; network: string; status: string } | null;
 }
 
 interface SettlementsResponse {
@@ -153,10 +155,12 @@ export default function SettlementsPage() {
       'id',
       'participant',
       'type',
+      'on_chain_top_up',
       'amount',
       'currency',
       'manual_rate',
       'usdt_equivalent',
+      'recorded_by',
       'created_at',
     ];
     const lines = [
@@ -166,10 +170,12 @@ export default function SettlementsPage() {
           row.id,
           `"${participantLabel(row).replace(/"/g, '""')}"`,
           row.type,
+          row.walletDeposit ? 'yes' : '',
           typeof row.amount === 'string' ? row.amount : String(row.amount),
           currencyCodeFromUnknown(row.currency),
           row.manualRate != null ? String(row.manualRate) : '',
           row.usdtEquivalent != null ? String(row.usdtEquivalent) : '',
+          `"${settlementRecordedByLabel(row).replace(/"/g, '""')}"`,
           row.createdAt,
         ].join(','),
       ),
@@ -262,6 +268,17 @@ export default function SettlementsPage() {
       ),
     },
     {
+      key: 'topUp',
+      header: 'Top-up',
+      className: 'text-center',
+      render: (s: Settlement) =>
+        s.walletDeposit ? (
+          <Badge color="green">On-chain</Badge>
+        ) : (
+          <span className="text-sm text-text-muted">—</span>
+        ),
+    },
+    {
       key: 'participant',
       header: 'Participant',
       render: (s: Settlement) => (
@@ -280,9 +297,9 @@ export default function SettlementsPage() {
     },
     {
       key: 'admin',
-      header: 'Created By',
+      header: 'Recorded by',
       render: (s: Settlement) => (
-        <span className="text-sm text-text-muted">{s.admin?.email ?? '—'}</span>
+        <span className="text-sm text-text-muted">{settlementRecordedByLabel(s)}</span>
       ),
     },
     {
@@ -450,9 +467,20 @@ export default function SettlementsPage() {
                 <p className="text-sm text-text-primary">{participantLabel(details)}</p>
               </div>
               <div>
-                <p className="text-xs text-text-muted">Created By</p>
-                <p className="text-sm text-text-secondary">{details.admin?.email ?? '—'}</p>
+                <p className="text-xs text-text-muted">Recorded by</p>
+                <p className="text-sm text-text-secondary">{settlementRecordedByLabel(details)}</p>
               </div>
+              {details.walletDeposit ? (
+                <div className="col-span-2 rounded-lg border border-border-subtle bg-bg-primary/40 p-3">
+                  <p className="text-xs text-text-muted mb-1">On-chain deposit</p>
+                  <p className="text-sm font-mono text-text-primary break-all">
+                    {details.walletDeposit.network} · {details.walletDeposit.txHash}
+                  </p>
+                  <p className="text-xs text-text-muted mt-1">
+                    Deposit status: {details.walletDeposit.status}
+                  </p>
+                </div>
+              ) : null}
               <div className="col-span-2">
                 <p className="text-xs text-text-muted">Created At</p>
                 <p className="text-sm text-text-secondary">

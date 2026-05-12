@@ -464,6 +464,13 @@ export class SettlementsService {
             select: { id: true, name: true },
           },
           currency: { select: { code: true } },
+          walletDeposit: {
+            select: {
+              txHash: true,
+              network: true,
+              status: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -488,6 +495,13 @@ export class SettlementsService {
           select: { id: true, name: true },
         },
         currency: { select: { code: true } },
+        walletDeposit: {
+          select: {
+            txHash: true,
+            network: true,
+            status: true,
+          },
+        },
       },
     });
     if (!settlement) {

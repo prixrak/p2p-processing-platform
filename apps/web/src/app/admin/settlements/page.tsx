@@ -20,6 +20,8 @@ import {
   staffTraderKeys,
 } from '@/lib/query-keys';
 import { currencyCodeFromUnknown } from '@/lib/currency-code';
+import { Badge } from '@/components/ui/badge';
+import { settlementRecordedByLabel } from '@/features/settlements/settlement-row-labels';
 
 interface SettlementRow {
   id: string;
@@ -34,6 +36,7 @@ interface SettlementRow {
   trader: { user: { email: string } } | null;
   payoutTrader: { user: { email: string } } | null;
   merchant: { id: string; name: string } | null;
+  walletDeposit?: { txHash: string; network: string; status: string } | null;
 }
 
 function num(v: number | string | null | undefined) {
@@ -141,11 +144,13 @@ export default function SettlementsPage() {
       'id',
       'participant',
       'type',
+      'on_chain_top_up',
       'amount',
       'currency',
       'manual_rate',
       'usdt_equivalent',
       'note',
+      'recorded_by',
       'created_at',
     ];
     const lines = [
@@ -155,11 +160,13 @@ export default function SettlementsPage() {
           row.id,
           `"${participantLabel(row).replace(/"/g, '""')}"`,
           row.type,
+          row.walletDeposit ? 'yes' : '',
           num(row.amount),
           currencyCodeFromUnknown(row.currency),
           num(row.manualRate ?? undefined),
           num(row.usdtEquivalent ?? undefined),
           `"${(row.note ?? '').replace(/"/g, '""')}"`,
+          `"${settlementRecordedByLabel(row).replace(/"/g, '""')}"`,
           row.createdAt,
         ].join(','),
       ),
@@ -252,6 +259,17 @@ export default function SettlementsPage() {
       ),
     },
     {
+      key: 'topUp',
+      header: 'Top-up',
+      className: 'text-center',
+      render: (row: SettlementRow) =>
+        row.walletDeposit ? (
+          <Badge color="green">On-chain</Badge>
+        ) : (
+          <span className="text-text-muted text-sm">—</span>
+        ),
+    },
+    {
       key: 'amount',
       header: 'Amount',
       className: 'text-end tabular-nums font-mono text-sm',
@@ -289,7 +307,7 @@ export default function SettlementsPage() {
       key: 'admin',
       header: 'Recorded by',
       render: (row: SettlementRow) => (
-        <span className="text-xs text-text-muted">{row.admin?.email ?? '—'}</span>
+        <span className="text-xs text-text-muted">{settlementRecordedByLabel(row)}</span>
       ),
     },
     {

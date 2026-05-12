@@ -8,6 +8,7 @@ import {
   BalanceTransactionType,
   BlockchainNetwork,
   Prisma,
+  SettlementTypeEnum,
 } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
@@ -320,6 +321,8 @@ export class WalletDepositsService {
           },
         });
 
+        const topUpNote = `On-chain deposit ${params.txHash} (${params.network})`;
+
         await this.balanceTxService.record({
           traderId: params.traderId,
           type: BalanceTransactionType.TOP_UP,
@@ -327,8 +330,20 @@ export class WalletDepositsService {
           currency: 'USDT',
           referenceId: depositRow.id,
           createdById: params.actorId ?? undefined,
-          comment: `On-chain deposit ${params.txHash} (${params.network})`,
+          comment: topUpNote,
           tx,
+        });
+
+        await tx.settlement.create({
+          data: {
+            adminId: params.actorId,
+            traderId: params.traderId,
+            type: SettlementTypeEnum.CREDIT,
+            amount: params.amountUsdt,
+            currencyId: usdtId,
+            note: topUpNote,
+            walletDepositId: depositRow.id,
+          },
         });
 
         if (params.actorId) {

@@ -176,6 +176,7 @@ export type SettlementListRow = {
   trader: { id?: string; user: { email: string } } | null;
   payoutTrader: { id?: string; user: { email: string } } | null;
   merchant: { id?: string; name: string } | null;
+  walletDeposit?: { txHash: string; network: string; status: string } | null;
 };
 
 export function normalizeSettlementListRow(raw: SettlementListRow): SettlementListRow {
@@ -190,6 +191,7 @@ export function normalizeSettlementListRow(raw: SettlementListRow): SettlementLi
         ? { id: raw.payoutTrader.id, user: { email: raw.payoutTrader.user.email } }
         : null,
     merchant: raw.merchant ? { id: raw.merchant.id, name: raw.merchant.name } : null,
+    walletDeposit: raw.walletDeposit ?? null,
   };
 }
 

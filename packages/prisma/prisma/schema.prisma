@@ -964,27 +964,31 @@ enum SettlementTypeEnum {
 }
 
 model Settlement {
-  id             String             @id @default(uuid()) @db.Uuid
-  adminId        String             @map("admin_id") @db.Uuid
-  traderId       String?            @map("trader_id") @db.Uuid
-  payoutTraderId String?            @map("payout_trader_id") @db.Uuid
-  merchantId     String?            @map("merchant_id") @db.Uuid
-  type           SettlementTypeEnum
-  amount         Decimal            @db.Decimal(18, 4)
-  currencyId     String             @map("currency_id") @db.Uuid
+  id              String             @id @default(uuid()) @db.Uuid
+  /// Null when the settlement was created automatically (on-chain monitoring worker).
+  adminId         String?            @map("admin_id") @db.Uuid
+  traderId        String?            @map("trader_id") @db.Uuid
+  payoutTraderId  String?            @map("payout_trader_id") @db.Uuid
+  merchantId      String?            @map("merchant_id") @db.Uuid
+  type            SettlementTypeEnum
+  amount          Decimal            @db.Decimal(18, 4)
+  currencyId      String             @map("currency_id") @db.Uuid
   /// Merchant-only: manual local fiat per USDT reference stored when an operator confirms a fiat withdrawal settlement (audit).
-  manualRate     Decimal?           @map("manual_rate") @db.Decimal(18, 8)
+  manualRate      Decimal?           @map("manual_rate") @db.Decimal(18, 8)
   /// Merchant or Pay-Out specialist: finalized USDT amount sent off-platform (merchant audit).
-  usdtEquivalent Decimal?           @map("usdt_equivalent") @db.Decimal(18, 6)
-  note           String?
-  usdtAddress    String?            @map("usdt_address") @db.VarChar(128)
-  createdAt      DateTime           @default(now()) @map("created_at")
+  usdtEquivalent  Decimal?           @map("usdt_equivalent") @db.Decimal(18, 6)
+  note            String?
+  usdtAddress     String?            @map("usdt_address") @db.VarChar(128)
+  /// When set, this settlement mirrors a credited on-chain wallet deposit (trader TOP_UP type 1).
+  walletDepositId String?            @unique @map("wallet_deposit_id") @db.Uuid
+  createdAt       DateTime           @default(now()) @map("created_at")
 
-  admin        User                 @relation("SettlementAdmin", fields: [adminId], references: [id])
-  trader       TraderProfile?       @relation(fields: [traderId], references: [id])
-  payoutTrader PayoutTraderProfile? @relation(fields: [payoutTraderId], references: [id])
-  merchant     Merchant?            @relation(fields: [merchantId], references: [id])
-  currency     Currency             @relation(fields: [currencyId], references: [id], onDelete: Restrict)
+  admin          User?                 @relation("SettlementAdmin", fields: [adminId], references: [id])
+  trader         TraderProfile?        @relation(fields: [traderId], references: [id])
+  payoutTrader   PayoutTraderProfile?  @relation(fields: [payoutTraderId], references: [id])
+  merchant       Merchant?             @relation(fields: [merchantId], references: [id])
+  currency       Currency              @relation(fields: [currencyId], references: [id], onDelete: Restrict)
+  walletDeposit  WalletDeposit?        @relation("WalletDepositTopUpSettlement", fields: [walletDepositId], references: [id])
 
   @@index([traderId])
   @@index([payoutTraderId])
@@ -1117,6 +1121,7 @@ model WalletDeposit {
   createdAt     DateTime            @default(now()) @map("created_at")
 
   trader TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
+  topUpSettlement Settlement? @relation("WalletDepositTopUpSettlement")
 
   @@index([traderId])
   @@map("deposits")
