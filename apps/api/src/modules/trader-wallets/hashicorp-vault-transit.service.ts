@@ -62,6 +62,10 @@ export class HashicorpVaultTransitService {
     v.token = t;
   }
 
+  private vaultErrorStatusCode(e: unknown): number | undefined {
+    return (e as { response?: { statusCode?: number } })?.response?.statusCode;
+  }
+
   /**
    * Calls `transit/sign/{key}`. Returns null if signing is not configured.
    * **Do not use for Tron mainnet** unless the key material is secp256k1-compatible (non-standard Vault).
@@ -70,9 +74,10 @@ export class HashicorpVaultTransitService {
     if (!this.isConfiguredForSigning()) {
       return null;
     }
-    await this.ensureToken();
     const key = config.vault.transitSigningKeyName!.trim();
-    try {
+
+    const attempt = async (): Promise<string | null> => {
+      await this.ensureToken();
       const res = await this.vault().write(`transit/sign/${key}`, {
         input: prehashedBase64,
         hash_algorithm: 'sha2-256',
@@ -84,7 +89,23 @@ export class HashicorpVaultTransitService {
         return null;
       }
       return sig;
-    } catch (e) {
+    };
+
+    try {
+      return await attempt();
+    } catch (e: unknown) {
+      if (this.vaultErrorStatusCode(e) === 403) {
+        this.logger.warn(
+          'Vault Transit rejected cached sweep token (403); refreshing AppRole login and retrying once',
+        );
+        this.token = null;
+        try {
+          return await attempt();
+        } catch (e2: unknown) {
+          this.logger.warn(`Vault Transit sign failed after retry: ${e2}`);
+          return null;
+        }
+      }
       this.logger.warn(`Vault Transit sign failed (expected for non-P256 Tron keys): ${e}`);
       return null;
     }
