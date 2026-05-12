@@ -121,18 +121,30 @@ export class PlatformTreasuryService {
   async listWalletDeposits(page = 1, limit = 50, traderId?: string) {
     const skip = (page - 1) * limit;
     const where: Prisma.WalletDepositWhereInput = traderId ? { traderId } : {};
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.walletDeposit.findMany({
         where,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
-          trader: { include: { user: { select: { email: true } } } },
+          trader: {
+            select: {
+              id: true,
+              user: { select: { email: true } },
+            },
+          },
         },
       }),
       this.prisma.walletDeposit.count({ where }),
     ]);
+    // BigInt (block_number) and Prisma Decimal are not JSON-safe for Nest's default serializer.
+    const data = rows.map((d) => ({
+      ...d,
+      amountUsdt: d.amountUsdt.toString(),
+      blockNumber:
+        d.blockNumber !== null && d.blockNumber !== undefined ? d.blockNumber.toString() : null,
+    }));
     return { data, total, page, limit };
   }
 
