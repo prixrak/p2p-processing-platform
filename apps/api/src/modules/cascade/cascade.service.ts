@@ -76,6 +76,13 @@ function stripRedisMeta(s: CascadeStoredSnapshot): ReqSnapshot {
   return rest;
 }
 
+/** PAN/IBAN masking shared between staff observability endpoints. */
+function maskRequisiteNumber(num: string): string {
+  const d = (num ?? '').replace(/\s/g, '');
+  if (d.length <= 4) return '****';
+  return `**** ${d.slice(-4)}`;
+}
+
 @Injectable()
 export class CascadeService {
   private readonly logger = new Logger(CascadeService.name);
@@ -87,6 +94,34 @@ export class CascadeService {
     private readonly exchangeRate: ExchangeRateService,
     private readonly platformSettings: PlatformSettingsService,
   ) {}
+
+  /**
+   * Idle ms using PostgreSQL NOW() vs cascade_idle_anchor_at (anchor is set with SQL NOW()).
+   * Avoids Node vs Postgres clock skew that can make idle look like 0 for everyone.
+   */
+  private async fetchRequisiteIdleMsFromDb(
+    db: PrismaService | Prisma.TransactionClient,
+    requisiteIds: string[],
+  ): Promise<Map<string, number>> {
+    const unique = [...new Set(requisiteIds)];
+    if (unique.length === 0) return new Map();
+    const rows = await db.$queryRaw<Array<{ id: string; idle_ms: bigint }>>(
+      Prisma.sql`
+        SELECT r.id::text AS id,
+          GREATEST(
+            0,
+            FLOOR(
+              (EXTRACT(EPOCH FROM (NOW() - r.cascade_idle_anchor_at)) * 1000)
+            )::bigint
+          ) AS idle_ms
+        FROM requisites r
+        WHERE r.id IN (${Prisma.join(
+          unique.map((id) => Prisma.sql`${id}::uuid`),
+        )})
+      `,
+    );
+    return new Map(rows.map((r) => [r.id, Number(r.idle_ms)]));
+  }
 
   async getSettings(): Promise<CascadeSetting> {
     const row = await this.prisma.cascadeSetting.findFirst({
@@ -189,6 +224,7 @@ export class CascadeService {
     nowMs: number,
     assignmentTier: 'FORK' | 'CARD',
     fillTiers: readonly FillMultiplierTier[] | null,
+    idleMsByRequisiteId?: ReadonlyMap<string, number>,
   ): { ok: true; score: number } | { ok: false; code: string; detail: string } {
     const coverageCounts = new Map<number, number>();
     for (const n of nominalAmounts) {
@@ -259,7 +295,9 @@ export class CascadeService {
       }
     }
 
-    const idleMs = effectiveIdleMs(nowMs, new Date(row.cascadeIdleAnchorAt).getTime());
+    const idleMs =
+      idleMsByRequisiteId?.get(row.id) ??
+      effectiveIdleMs(nowMs, new Date(row.cascadeIdleAnchorAt).getTime());
     const lim = Number(row.limitTotalAmount);
     const confirmed = Number(row.confirmedPayinAmount);
     const cf01 = confirmedPayinFillRatio(confirmed, lim);
@@ -292,6 +330,7 @@ export class CascadeService {
     enforceUsdtCapacity: boolean,
     nowMs: number,
     fillTiers: readonly FillMultiplierTier[] | null,
+    idleMsByRequisiteId?: ReadonlyMap<string, number>,
   ): Array<{
     id: string;
     score: number;
@@ -320,6 +359,7 @@ export class CascadeService {
           nowMs,
           tier,
           fillTiers,
+          idleMsByRequisiteId,
         );
         if (!ev.ok) return null;
         return {
@@ -416,6 +456,10 @@ export class CascadeService {
 
     const { usdtBal, overdraft } = await this.getUsdtCapacityMaps(db);
 
+    const idleMsByRequisiteId = await this.fetchRequisiteIdleMsFromDb(db, [
+      ...new Set(reqRows.map((r) => r.id)),
+    ]);
+
     const snapshots = reqRows.filter((row) => {
       const remAmt = Number(row.limitTotalAmount) - Number(row.usedAmount);
       return remAmt >= amount - 1e-9;
@@ -443,6 +487,7 @@ export class CascadeService {
         enforceUsdtCapacity,
         nowMs,
         fillTiers,
+        idleMsByRequisiteId,
       );
       orderedReqIds.push(...ranked);
     }
@@ -915,6 +960,10 @@ export class CascadeService {
       return remAmt >= params.amount - 1e-9;
     });
 
+    const idleMsByRequisiteId = await this.fetchRequisiteIdleMsFromDb(tx, [
+      ...new Set(snapshots.map((r) => r.id)),
+    ]);
+
     const applyDebtCredits = async () => {
       const nextCredits = applyCascadeCreditsAfterAssignment(levelCredits, targetsPct, primary);
       await tx.cascadeLevelDebt.upsert({
@@ -983,6 +1032,7 @@ export class CascadeService {
         params.enforceUsdtCapacity,
         assignNowMs,
         fillTiers,
+        idleMsByRequisiteId,
       );
 
       for (const cand of ranked) {
@@ -1291,6 +1341,20 @@ export class CascadeService {
   }): Promise<{
     currency: string;
     preview_amount: number | null;
+    cascade_context: {
+      level_pick_mode: CascadeLevelPickMode;
+      fork_traffic_percent: number;
+      card_traffic_percent: number;
+      provider_traffic_percent: number;
+      autolimit_enabled: boolean;
+      autolimit_threshold: number;
+      fork_credit: number;
+      card_credit: number;
+      provider_credit: number;
+      debt_primary_preview: 'FORK' | 'CARD' | null;
+      redis_rank_preview_amount: number;
+      fill_config_fingerprint: string;
+    };
     rows: Array<Record<string, unknown>>;
   }> {
     const cur = options.currency.trim().toUpperCase();
@@ -1356,8 +1420,8 @@ export class CascadeService {
       for (const s of payload.snapshots) {
         const rk = s.redis_meta?.cascade_rank;
         if (rk != null) rankById.set(s.id, rk);
+        if (s.redis_meta?.is_eligible_preview) eligiblePreview.add(s.id);
       }
-      eligiblePreview = new Set(payload.snapshots.map((s) => s.id));
     } else {
       const previewAmount = options.preview_amount;
       responsePreviewAmount = previewAmount;
@@ -1409,12 +1473,6 @@ export class CascadeService {
       },
     });
 
-    const maskNum = (num: string) => {
-      const d = num.replace(/\s/g, '');
-      if (d.length <= 4) return '****';
-      return `**** ${d.slice(-4)}`;
-    };
-
     type RowOut = {
       requisite_id: string;
       trader_id: string;
@@ -1427,6 +1485,12 @@ export class CascadeService {
       fill_ratio_tx: number;
       rating: number;
       weighted_score: number;
+      idle_ms: number;
+      confirmed_fill_ratio: number;
+      fill_ladder_multiplier: number | null;
+      fill_leg_multiplier: number | null;
+      trader_multiplier: number;
+      effective_race_multiplier: number;
       used_amount: number;
       limit_total_amount: number;
       used_ops: number;
@@ -1451,13 +1515,16 @@ export class CascadeService {
     };
 
     const ids = dbReqs.map((r) => r.id);
-    const [locks, assigns] = await Promise.all([
+    const [locks, assigns, idleMsById] = await Promise.all([
       this.redisState.areRequisitesLocked(ids),
       this.redisState.getRequisiteAssignmentMetaMany(ids),
+      this.fetchRequisiteIdleMsFromDb(this.prisma, ids),
     ]);
 
     const methodF = (options.method ?? 'ALL').toUpperCase();
     const statusF = options.status_filter ?? 'active';
+
+    const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
     const rows: RowOut[] = [];
 
@@ -1474,17 +1541,18 @@ export class CascadeService {
       const fr = meta?.fill_ratio ?? fillRatioAmount(ua, lim);
       const frTx = meta?.fill_ratio_tx ?? fillRatioTx(r.usedOps, r.limitTotalOps);
       const rating = meta?.rating ?? tzRequisiteRatingPercent(fr);
-      const idleMsFb = effectiveIdleMs(
-        ratingsNowMs,
-        r.cascadeIdleAnchorAt.getTime(),
-      );
+      // Idle relative to DB clock (anchor is set with SQL NOW()); avoids Node vs Postgres skew showing 0 everywhere.
+      const idleMsFb =
+        idleMsById.get(r.id) ??
+        effectiveIdleMs(ratingsNowMs, r.cascadeIdleAnchorAt.getTime());
       const traderMultFb = Math.max(1e-9, Number(r.trader.cascadeRatingMultiplier));
       const confirmedAmtFb = Number(r.confirmedPayinAmount);
       const cf01Fb = confirmedPayinFillRatio(confirmedAmtFb, lim);
       const pmFb = r.trader.processingMethod as TraderCascadeMethod;
+      // Staff observability: idle and race score must reflect "now", not redis_meta
+      // captured at the last snapshot build (otherwise Idle/Race score look stuck at 0).
       const weighted =
-        meta?.weighted_score ??
-        (pmFb === 'FORK'
+        pmFb === 'FORK'
           ? forkCascadeRaceScore({
               idleMs: idleMsFb,
               confirmedFill01: cf01Fb,
@@ -1495,7 +1563,7 @@ export class CascadeService {
           : cardCascadeRaceScore({
               idleMs: idleMsFb,
               traderMultiplier: traderMultFb,
-            }));
+            });
 
       let effMin = meta?.effective_min ?? null;
       let effMax = meta?.effective_max ?? null;
@@ -1577,10 +1645,30 @@ export class CascadeService {
       if (altF === 'on' && !autolimitBadge) continue;
       if (altF === 'off' && autolimitBadge) continue;
 
+      const confirmedRatio =
+        meta?.confirmed_fill_ratio !== undefined ? meta.confirmed_fill_ratio : round6(cf01Fb);
+      const idleMsRounded = Math.round(idleMsFb);
+
+      let fillLadderMult: number | null = null;
+      let fillLegMult: number | null = null;
+      if (pmFb === 'FORK') {
+        fillLadderMult = round6(
+          meta?.fill_multiplier ?? fillMultiplierFromConfirmedFill(cf01Fb, fillTiers),
+        );
+        fillLegMult = round6(
+          Math.max(fillLadderMult, newcomerRatingBoostMultiplier(r.payinAssignmentsCount)),
+        );
+      }
+
+      const effRaceMult =
+        pmFb === 'FORK' && fillLegMult !== null
+          ? round6(Math.max(fillLegMult, traderMultFb))
+          : round6(traderMultFb);
+
       const q = options.q?.trim().toLowerCase();
       if (q) {
         const email = (r.trader.user.email ?? '').toLowerCase();
-        const masked = maskNum(r.number).toLowerCase();
+        const masked = maskRequisiteNumber(r.number).toLowerCase();
         if (!email.includes(q) && !masked.includes(q) && !r.id.toLowerCase().includes(q)) {
           continue;
         }
@@ -1591,13 +1679,19 @@ export class CascadeService {
         trader_id: r.traderId,
         trader_label: r.trader.user.email ?? r.traderId,
         processing_method: pm,
-        requisite_masked: maskNum(r.number),
+        requisite_masked: maskRequisiteNumber(r.number),
         is_active: r.isActive,
         is_in_cascade_pool: inPool,
         fill_ratio: fr,
         fill_ratio_tx: frTx,
         rating,
-        weighted_score: weighted,
+        weighted_score: Math.round(weighted * 1e6) / 1e6,
+        idle_ms: idleMsRounded,
+        confirmed_fill_ratio: confirmedRatio,
+        fill_ladder_multiplier: fillLadderMult,
+        fill_leg_multiplier: fillLegMult,
+        trader_multiplier: round6(traderMultFb),
+        effective_race_multiplier: effRaceMult,
         used_amount: ua,
         limit_total_amount: lim,
         used_ops: r.usedOps,
@@ -1646,9 +1740,35 @@ export class CascadeService {
       return a.requisite_id.localeCompare(b.requisite_id);
     });
 
+    const targetsPct = {
+      fork: Number(settings.forkTrafficPercent),
+      card: Number(settings.cardTrafficPercent),
+      provider: Number(settings.providerTrafficPercent),
+    };
+    const debtPrimary =
+      settings.levelPickMode === 'DEBT'
+        ? pickPrimaryCascadeLevelDebt(levelCredits, targetsPct)
+        : null;
+
+    const cascade_context = {
+      level_pick_mode: settings.levelPickMode,
+      fork_traffic_percent: targetsPct.fork,
+      card_traffic_percent: targetsPct.card,
+      provider_traffic_percent: targetsPct.provider,
+      autolimit_enabled: settings.autolimitEnabled,
+      autolimit_threshold: Number(settings.autolimitThreshold),
+      fork_credit: Math.round(levelCredits.fork * 1e6) / 1e6,
+      card_credit: Math.round(levelCredits.card * 1e6) / 1e6,
+      provider_credit: Math.round(levelCredits.provider * 1e6) / 1e6,
+      debt_primary_preview: debtPrimary,
+      redis_rank_preview_amount: payload.preview_amount,
+      fill_config_fingerprint: fillFingerprint,
+    };
+
     return {
       currency: cur,
       preview_amount: responsePreviewAmount,
+      cascade_context,
       rows,
     };
   }
@@ -1784,11 +1904,13 @@ export class CascadeService {
   /** Ordered assignment preview for a hypothetical amount (explain cascade path). */
   async explainAssignmentOrder(
     currency: string,
-    amount: number,
+    amount: number | undefined,
     options?: { detailed?: boolean },
   ) {
     const cur = currency.trim().toUpperCase();
     const settings = await this.getSettings();
+    const fillTiersExplain = parseFillMultiplierTiersJson(settings.fillMultipliersConfig);
+    const fillFingerprint = fillMultiplierConfigFingerprint(settings.fillMultipliersConfig);
     const nominalRows = await this.prisma.coverageNominalSetting.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: 'asc' },
@@ -1803,12 +1925,28 @@ export class CascadeService {
       }
     }
     const enforceUsdt = cur === 'UAH' && parserRate !== undefined;
-    const payload = await this.buildCurrencyPayload(this.prisma, cur);
+
+    let payload = await this.redisState.getPayload(cur);
+    if (
+      !payload ||
+      payload.payload_version !== 6 ||
+      payload.fill_config_fingerprint !== fillFingerprint
+    ) {
+      payload = await this.buildCurrencyPayload(this.prisma, cur);
+      await this.redisState.setPayload(cur, payload);
+    }
     const strip = (s: CascadeStoredSnapshot): ReqSnapshot => {
       const { redis_meta: _rm, ...rest } = s;
       return rest;
     };
     const reqRows = payload.snapshots.map(strip);
+
+    // Default to the snapshot amount (minimum active nominal) so callers can
+    // get a meaningful queue preview without having to guess an amount.
+    const effectiveAmount =
+      amount !== undefined && Number.isFinite(amount) ? amount : payload.preview_amount;
+    const amountSource: 'requested' | 'snapshot_default' =
+      amount === undefined ? 'snapshot_default' : 'requested';
 
     const currencyRow = await this.prisma.currency.findUnique({
       where: { code: cur },
@@ -1832,7 +1970,7 @@ export class CascadeService {
     const previewOrdered = await this.buildOrderedRequisiteIdsForAmount(this.prisma, {
       currency: cur,
       currencyId: currencyRow.id,
-      amount,
+      amount: effectiveAmount,
       parserRate,
       enforceUsdtCapacity: enforceUsdt,
       settings,
@@ -1841,18 +1979,81 @@ export class CascadeService {
       levelCredits,
       nowMs: explainNowMs,
     });
+
+    // Hydrate ranks with trader/requisite labels so the UI can render
+    // queue cards without a second round-trip.
+    const reqIds = previewOrdered.ordered.map((o) => o.id);
+    const labelRows = reqIds.length
+      ? await this.prisma.requisite.findMany({
+          where: { id: { in: reqIds } },
+          select: {
+            id: true,
+            number: true,
+            trader: { select: { user: { select: { email: true } } } },
+          },
+        })
+      : [];
+    const labelById = new Map(
+      labelRows.map((r) => [
+        r.id,
+        {
+          requisite_masked: maskRequisiteNumber(r.number),
+          trader_label: r.trader.user.email ?? '',
+        },
+      ]),
+    );
+
     const ranked = previewOrdered.ordered.map((o, i) => ({
       rank: i + 1,
       requisite_id: o.id,
       trader_id: o.traderId,
+      trader_label: labelById.get(o.id)?.trader_label ?? '',
+      requisite_masked: labelById.get(o.id)?.requisite_masked ?? '',
       assignment_level: o.assignmentLevel,
       weighted_score: Math.round(o.score * 1e6) / 1e6,
     }));
 
+    // Group ranked rows by tier preserving the cascade attempt order.
+    const levelOrder = cascadeLevelAttemptOrder(previewOrdered.primaryCascadeLevel).filter(
+      (l): l is 'FORK' | 'CARD' => l !== 'PROVIDER',
+    );
+    const tiers = levelOrder.map((level) => ({
+      level,
+      primary: level === previewOrdered.primaryCascadeLevel,
+      ranks: ranked.filter((r) => r.assignment_level === level),
+    }));
+
+    const targetsPct = {
+      fork: Number(settings.forkTrafficPercent),
+      card: Number(settings.cardTrafficPercent),
+      provider: Number(settings.providerTrafficPercent),
+    };
+    const debtPrimary =
+      settings.levelPickMode === 'DEBT'
+        ? pickPrimaryCascadeLevelDebt(levelCredits, targetsPct)
+        : null;
+    const cascade_context = {
+      level_pick_mode: settings.levelPickMode,
+      fork_traffic_percent: targetsPct.fork,
+      card_traffic_percent: targetsPct.card,
+      provider_traffic_percent: targetsPct.provider,
+      autolimit_enabled: settings.autolimitEnabled,
+      autolimit_threshold: Number(settings.autolimitThreshold),
+      fork_credit: Math.round(levelCredits.fork * 1e6) / 1e6,
+      card_credit: Math.round(levelCredits.card * 1e6) / 1e6,
+      provider_credit: Math.round(levelCredits.provider * 1e6) / 1e6,
+      debt_primary_preview: debtPrimary,
+      redis_rank_preview_amount: payload.preview_amount,
+      fill_config_fingerprint: fillFingerprint,
+    };
+
     const base = {
       currency: cur,
-      amount,
+      amount: effectiveAmount,
+      amount_source: amountSource,
       primary_cascade_level: previewOrdered.primaryCascadeLevel,
+      cascade_context,
+      tiers,
       ranks: ranked,
     };
 
@@ -1863,15 +2064,37 @@ export class CascadeService {
     const { usdtBal, overdraft } = await this.getUsdtCapacityMaps(this.prisma);
     const snapshots = reqRows.filter((row) => {
       const remAmt = Number(row.limitTotalAmount) - Number(row.usedAmount);
-      return remAmt >= amount - 1e-9;
+      return remAmt >= effectiveAmount - 1e-9;
     });
+    const explainIdleMsById = await this.fetchRequisiteIdleMsFromDb(this.prisma, [
+      ...new Set(reqRows.map((r) => r.id)),
+    ]);
     const orderedIds = new Set(previewOrdered.ordered.map((o) => o.id));
 
-    const fillTiersExplain = parseFillMultiplierTiersJson(settings.fillMultipliersConfig);
+    const allLabelRows = await this.prisma.requisite.findMany({
+      where: { id: { in: reqRows.map((r) => r.id) } },
+      select: {
+        id: true,
+        number: true,
+        trader: { select: { user: { select: { email: true } } } },
+      },
+    });
+    const allLabelById = new Map(
+      allLabelRows.map((r) => [
+        r.id,
+        {
+          requisite_masked: maskRequisiteNumber(r.number),
+          trader_label: r.trader.user.email ?? '',
+        },
+      ]),
+    );
 
     const excluded: Array<{
       requisite_id: string;
       trader_id: string;
+      trader_label: string;
+      requisite_masked: string;
+      processing_method: string;
       code: string;
       detail: string;
     }> = [];
@@ -1880,12 +2103,19 @@ export class CascadeService {
       const lim = Number(row.limitTotalAmount);
       const ua = Number(row.usedAmount);
       const remAmt = lim - ua;
-      if (remAmt < amount - 1e-9) {
+      const lbl = allLabelById.get(row.id);
+      const baseLbl = {
+        requisite_id: row.id,
+        trader_id: row.traderId,
+        trader_label: lbl?.trader_label ?? '',
+        requisite_masked: lbl?.requisite_masked ?? '',
+        processing_method: row.processingMethod,
+      };
+      if (remAmt < effectiveAmount - 1e-9) {
         excluded.push({
-          requisite_id: row.id,
-          trader_id: row.traderId,
+          ...baseLbl,
           code: 'INSUFFICIENT_AMOUNT_HEADROOM',
-          detail: `Remaining amount ${remAmt.toFixed(2)} is less than order ${amount}.`,
+          detail: `Remaining amount ${remAmt.toFixed(2)} is less than order ${effectiveAmount}.`,
         });
         continue;
       }
@@ -1894,7 +2124,7 @@ export class CascadeService {
         row.processingMethod === 'FORK' ? 'FORK' : 'CARD';
       const ev = this.evaluateSnapshotForPayInAmount(
         row,
-        amount,
+        effectiveAmount,
         snapshots,
         nominalAmounts,
         settings,
@@ -1905,18 +2135,13 @@ export class CascadeService {
         explainNowMs,
         tier,
         fillTiersExplain,
+        explainIdleMsById,
       );
       if (!ev.ok) {
-        excluded.push({
-          requisite_id: row.id,
-          trader_id: row.traderId,
-          code: ev.code,
-          detail: ev.detail,
-        });
+        excluded.push({ ...baseLbl, code: ev.code, detail: ev.detail });
       } else if (!orderedIds.has(row.id)) {
         excluded.push({
-          requisite_id: row.id,
-          trader_id: row.traderId,
+          ...baseLbl,
           code: 'LOWER_CASCADE_ORDER',
           detail:
             'Passes checks but ranks after higher-priority candidates in method-level idle-time cascade ordering.',

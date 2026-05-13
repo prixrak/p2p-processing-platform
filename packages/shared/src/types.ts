@@ -273,3 +273,113 @@ export interface CascadeMethodPolicy {
   policy: string;
   assignment_note: string;
 }
+
+/**
+ * Global cascade snapshot bundled with staff requisite observability endpoints
+ * (DEBT / STOCHASTIC context, credits, Redis snapshot amount).
+ */
+export interface CascadeStaffRequisitesContext {
+  level_pick_mode: 'DEBT' | 'STOCHASTIC';
+  fork_traffic_percent: number;
+  card_traffic_percent: number;
+  provider_traffic_percent: number;
+  autolimit_enabled: boolean;
+  autolimit_threshold: number;
+  fork_credit: number;
+  card_credit: number;
+  provider_credit: number;
+  /** When `level_pick_mode` is DEBT: which Fork/Card bucket wins the next tier-1 pick. */
+  debt_primary_preview: 'FORK' | 'CARD' | null;
+  /** Amount used when materializing ranks / eligibility in the cached Redis payload. */
+  redis_rank_preview_amount: number;
+  fill_config_fingerprint: string;
+}
+
+/** Staff row from GET `/admin/cascade/requisite-ratings` (Pay-In idle-time race diagnostics). */
+export interface CascadeStaffRequisiteRatingRow {
+  requisite_id: string;
+  trader_id: string;
+  trader_label: string;
+  processing_method: string;
+  requisite_masked: string;
+  is_active: boolean;
+  is_in_cascade_pool: boolean;
+  fill_ratio: number;
+  fill_ratio_tx: number;
+  /** TZ fill display 0–100 (from amount fill), not race order */
+  rating: number;
+  weighted_score: number;
+  idle_ms: number;
+  confirmed_fill_ratio: number;
+  fill_ladder_multiplier: number | null;
+  fill_leg_multiplier: number | null;
+  trader_multiplier: number;
+  effective_race_multiplier: number;
+  used_amount: number;
+  limit_total_amount: number;
+  used_ops: number;
+  limit_total_ops: number;
+  remaining_amount: number;
+  manual_min_amount: number;
+  manual_max_amount: number;
+  effective_min: number | null;
+  effective_max: number | null;
+  autolimit_active: boolean;
+  auto_min_amount: number | null;
+  auto_max_amount: number | null;
+  cascade_rank: number | null;
+  is_eligible_preview: boolean;
+  is_locked: boolean;
+  last_assigned_at: string | null;
+  last_assignment_order_id: string | null;
+  assignments_count: number;
+  composite_status: 'ACTIVE' | 'LOCKED' | 'INELIGIBLE' | 'DISABLED';
+  autolimit_badge: boolean;
+  fill_high: boolean;
+}
+
+export interface CascadeStaffRequisiteRatingsResponse {
+  currency: string;
+  preview_amount: number | null;
+  cascade_context: CascadeStaffRequisitesContext;
+  rows: CascadeStaffRequisiteRatingRow[];
+}
+
+/** One slot in the ordered Pay-In cascade queue at a given amount. */
+export interface CascadeAssignmentRankRow {
+  rank: number;
+  requisite_id: string;
+  trader_id: string;
+  trader_label: string;
+  requisite_masked: string;
+  assignment_level: 'FORK' | 'CARD';
+  weighted_score: number;
+}
+
+export interface CascadeAssignmentTierGroup {
+  level: 'FORK' | 'CARD';
+  primary: boolean;
+  ranks: CascadeAssignmentRankRow[];
+}
+
+export interface CascadeAssignmentExcludedRow {
+  requisite_id: string;
+  trader_id: string;
+  trader_label: string;
+  requisite_masked: string;
+  processing_method: string;
+  code: string;
+  detail: string;
+}
+
+/** GET `/admin/cascade/assignment-explain` (detailed=true). */
+export interface CascadeAssignmentExplainResponse {
+  currency: string;
+  amount: number;
+  amount_source: 'requested' | 'snapshot_default';
+  primary_cascade_level: 'FORK' | 'CARD';
+  cascade_context: CascadeStaffRequisitesContext;
+  tiers: CascadeAssignmentTierGroup[];
+  ranks: CascadeAssignmentRankRow[];
+  excluded?: CascadeAssignmentExcludedRow[];
+}

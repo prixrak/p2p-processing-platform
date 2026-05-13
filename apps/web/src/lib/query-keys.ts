@@ -267,6 +267,8 @@ export const cascadeKeys = {
   coverage: (currency: string) => [...cascadeRoot, 'coverage', currency] as const,
   requisiteRatings: (currency: string, qs: string) =>
     [...cascadeRoot, 'requisite-ratings', currency, qs] as const,
+  assignmentExplain: (currency: string, amountKey: string) =>
+    [...cascadeRoot, 'assignment-explain', currency, amountKey] as const,
 };
 
 export const treasuryKeys = {

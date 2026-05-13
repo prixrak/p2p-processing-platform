@@ -167,16 +167,23 @@ export class AdminCascadeController {
   @Get('assignment-explain')
   @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
   @ApiOperation({
-    summary: 'Hypothetical cascade assignment order for an amount (observability)',
+    summary:
+      'Hypothetical cascade assignment order for an amount (observability). ' +
+      'When `amount` is omitted, defaults to the cached Redis snapshot amount (min nominal). ' +
+      '`amount=0` evaluates gates at zero (explicit preview).',
   })
   async assignmentExplain(
     @Query('currency', new DefaultValuePipe('UAH')) currency: string,
     @Query('amount') amountRaw?: string,
     @Query('detailed') detailedRaw?: string,
   ) {
-    const amount = amountRaw !== undefined ? Number(amountRaw) : NaN;
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new BadRequestException('amount must be a positive number');
+    let amount: number | undefined;
+    if (amountRaw !== undefined && amountRaw !== '') {
+      const n = Number(amountRaw);
+      if (!Number.isFinite(n) || n < 0) {
+        throw new BadRequestException('amount must be a non-negative number');
+      }
+      amount = n;
     }
     const detailed = detailedRaw !== 'false' && detailedRaw !== '0';
     return this.cascadeService.explainAssignmentOrder(currency.trim(), amount, {

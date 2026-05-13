@@ -3,60 +3,28 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { GitFork, AlertTriangle, ListFilter } from 'lucide-react';
+import { GitFork, AlertTriangle, Info, ListFilter } from 'lucide-react';
+import type {
+  CascadeAssignmentExplainResponse,
+  CascadeStaffRequisiteRatingRow,
+  CascadeStaffRequisiteRatingsResponse,
+} from '@p2p/shared';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { adminKeys, cascadeKeys, currencyKeys, fetchCurrencyList } from '@/lib/query-keys';
 import { Select, type SelectOption } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
 import { LimitUsageBar } from '@/components/ui/limit-usage-bar';
+import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 type StaffCabinetPrefix = 'admin' | 'owner' | 'support';
 
-export type RequisiteRatingApiRow = {
-  requisite_id: string;
-  trader_id: string;
-  trader_label: string;
-  processing_method: string;
-  requisite_masked: string;
-  is_active: boolean;
-  is_in_cascade_pool: boolean;
-  fill_ratio: number;
-  fill_ratio_tx: number;
-  rating: number;
-  weighted_score: number;
-  used_amount: number;
-  limit_total_amount: number;
-  used_ops: number;
-  limit_total_ops: number;
-  remaining_amount: number;
-  manual_min_amount: number;
-  manual_max_amount: number;
-  effective_min: number | null;
-  effective_max: number | null;
-  autolimit_active: boolean;
-  auto_min_amount: number | null;
-  auto_max_amount: number | null;
-  cascade_rank: number | null;
-  is_eligible_preview: boolean;
-  is_locked: boolean;
-  last_assigned_at: string | null;
-  last_assignment_order_id: string | null;
-  assignments_count: number;
-  composite_status: 'ACTIVE' | 'LOCKED' | 'INELIGIBLE' | 'DISABLED';
-  autolimit_badge: boolean;
-  fill_high: boolean;
-};
-
-type RatingResponse = {
-  currency: string;
-  /** Present when the client requested amount-based rank/eligibility preview. */
-  preview_amount: number | null;
-  rows: RequisiteRatingApiRow[];
-};
+/** @deprecated Use `CascadeStaffRequisiteRatingRow` from `@p2p/shared`. */
+export type RequisiteRatingApiRow = CascadeStaffRequisiteRatingRow;
 
 function compactAmt(n: number): string {
   const abs = Math.abs(n);
@@ -65,11 +33,54 @@ function compactAmt(n: number): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
+function formatIdleMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  if (ms >= 86400000) return `${Math.floor(ms / 86400000)}d`;
+  if (ms >= 3600000) return `${Math.floor(ms / 3600000)}h`;
+  if (ms >= 60000) return `${Math.floor(ms / 60000)}m`;
+  if (ms >= 1000) return `${Math.floor(ms / 1000)}s`;
+  if (ms > 0) return '<1s';
+  return '0s';
+}
+
+function formatWeightedScore(n: number): string {
+  if (!Number.isFinite(n)) return '—';
+  const abs = Math.abs(n);
+  // Keep full grouped integers for millions; compact only for billions+ so wide tables stay readable.
+  if (abs >= 1_000_000_000) {
+    return new Intl.NumberFormat(undefined, {
+      notation: 'compact',
+      maximumFractionDigits: 2,
+    }).format(n);
+  }
+  if (abs >= 1_000_000) {
+    return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }
+  return n.toLocaleString(undefined, { maximumFractionDigits: 3 });
+}
+
+function excludedReasonLabel(code: string): string {
+  switch (code) {
+    case 'INSUFFICIENT_AMOUNT_HEADROOM':
+      return 'Headroom';
+    case 'AMOUNT_OUTSIDE_EFFECTIVE_RANGE':
+      return 'Effective range';
+    case 'USDT_CAPACITY_INSUFFICIENT':
+      return 'USDT capacity';
+    case 'EFFECTIVE_BOUNDS_UNAVAILABLE':
+      return 'Bounds';
+    case 'LOWER_CASCADE_ORDER':
+      return 'Lower priority';
+    default:
+      return code;
+  }
+}
+
 function CascadeUsageRangeBlock({
   row,
   currencyCode,
 }: {
-  row: RequisiteRatingApiRow;
+  row: CascadeStaffRequisiteRatingRow;
   currencyCode: string;
 }) {
   const lim = Math.max(0, row.limit_total_amount);
@@ -98,9 +109,7 @@ function CascadeUsageRangeBlock({
           {remainingAmt.toLocaleString(undefined, { maximumFractionDigits: 2 })}
         </span>
       </div>
-      <div className="text-text-muted">
-        Fill (amount): {(row.fill_ratio * 100).toFixed(1)}%
-      </div>
+      <div className="text-text-muted">Fill (amount): {(row.fill_ratio * 100).toFixed(1)}%</div>
       {row.fill_high ? (
         <div className="text-amber-200">Fill ratio exceeds 80% — monitor headroom.</div>
       ) : null}
@@ -126,7 +135,7 @@ function CascadeUsageRangeBlock({
   );
 }
 
-function CascadeOperationsLimitCell({ row }: { row: RequisiteRatingApiRow }) {
+function CascadeOperationsLimitCell({ row }: { row: CascadeStaffRequisiteRatingRow }) {
   const limOps = Math.max(1, row.limit_total_ops);
   const usedOpsClamped = Math.max(0, Math.min(row.used_ops, limOps));
   const remOps = Math.max(0, limOps - usedOpsClamped);
@@ -165,11 +174,10 @@ function CascadeOperationsLimitCell({ row }: { row: RequisiteRatingApiRow }) {
   );
 }
 
-/** Keeps filter controls from stretching to full row (Select defaults to w-full). */
 const FILTER_SELECT_ROOT = 'w-auto min-w-0 shrink-0';
 const FILTER_SELECT_TRIGGER = '!h-9 !min-h-9 !py-0 !text-xs';
 
-function statusBadgeClass(s: RequisiteRatingApiRow['composite_status']): string {
+function statusBadgeClass(s: CascadeStaffRequisiteRatingRow['composite_status']): string {
   switch (s) {
     case 'ACTIVE':
       return 'bg-emerald-500/15 text-emerald-200 border-emerald-500/40';
@@ -181,6 +189,56 @@ function statusBadgeClass(s: RequisiteRatingApiRow['composite_status']): string 
     default:
       return 'bg-zinc-500/15 text-zinc-300 border-zinc-500/40';
   }
+}
+
+function EngineContextBlock({
+  ctx,
+  currencyUpper,
+  primaryLevel,
+}: {
+  ctx: CascadeAssignmentExplainResponse['cascade_context'];
+  currencyUpper: string;
+  primaryLevel: 'FORK' | 'CARD';
+}) {
+  return (
+    <div className="space-y-2 text-xs leading-relaxed text-text-secondary">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="info" className="font-mono">
+          {ctx.level_pick_mode}
+        </Badge>
+        <span>
+          Targets: Fork {ctx.fork_traffic_percent}% / Card {ctx.card_traffic_percent}% / Provider{' '}
+          {ctx.provider_traffic_percent}%
+        </span>
+      </div>
+      <p>
+        Autolimits: {ctx.autolimit_enabled ? 'on' : 'off'} @ {ctx.autolimit_threshold}
+      </p>
+      <p>
+        DEBT credits: fork {ctx.fork_credit}, card {ctx.card_credit}, provider {ctx.provider_credit}
+        {ctx.level_pick_mode === 'DEBT' && ctx.debt_primary_preview ? (
+          <>
+            {' '}
+            → next tier-1 <strong className="text-text-primary">{ctx.debt_primary_preview}</strong>
+          </>
+        ) : null}
+        {ctx.level_pick_mode === 'STOCHASTIC' ? (
+          <span className="text-text-muted">
+            {' '}
+            · STOCHASTIC: first Fork vs Card tier is random per assignment (weighted by targets).
+          </span>
+        ) : null}
+      </p>
+      <p className="font-mono text-[11px] text-text-muted break-all">
+        Redis snapshot amount: {ctx.redis_rank_preview_amount} {currencyUpper} · ladder fingerprint{' '}
+        {ctx.fill_config_fingerprint.slice(0, 14)}…
+      </p>
+      <p className="text-text-muted">
+        Tier-1 attempt order for this preview:{' '}
+        <strong className="text-accent-blue">{primaryLevel}</strong>.
+      </p>
+    </div>
+  );
 }
 
 export function CascadeRequisiteRatingsPanel({
@@ -237,6 +295,8 @@ export function CascadeRequisiteRatingsPanel({
   const [traderIdFilter, setTraderIdFilter] = useState('');
   const [detailRequisiteId, setDetailRequisiteId] = useState<string | null>(null);
 
+  const currencyUpper = currency.trim().toUpperCase();
+
   const currenciesQ = useQuery({
     queryKey: currencyKeys.list(),
     queryFn: fetchCurrencyList,
@@ -254,7 +314,7 @@ export function CascadeRequisiteRatingsPanel({
 
   const qs = useMemo(() => {
     const p = new URLSearchParams();
-    p.set('currency', currency);
+    p.set('currency', currencyUpper);
     const pa = previewAmount.trim();
     if (pa !== '' && !Number.isNaN(Number(pa))) p.set('preview_amount', pa);
     if (method !== 'ALL') p.set('method', method);
@@ -267,7 +327,7 @@ export function CascadeRequisiteRatingsPanel({
     return p.toString();
   }, [
     autolimit,
-    currency,
+    currencyUpper,
     method,
     previewAmount,
     q,
@@ -276,6 +336,15 @@ export function CascadeRequisiteRatingsPanel({
     statusFilter,
     traderIdFilter,
   ]);
+
+  const explainAmountKey = useMemo(() => {
+    const t = previewAmount.trim();
+    if (t === '' || Number.isNaN(Number(t))) return 'default';
+    return String(Number(t));
+  }, [previewAmount]);
+
+  const explainAmount =
+    explainAmountKey === 'default' ? undefined : Number(explainAmountKey);
 
   const tradersQ = useQuery({
     queryKey: adminKeys.tradersOptions(),
@@ -299,15 +368,28 @@ export function CascadeRequisiteRatingsPanel({
   );
 
   const ratingsQ = useQuery({
-    queryKey: cascadeKeys.requisiteRatings(currency, qs),
+    queryKey: cascadeKeys.requisiteRatings(currencyUpper, qs),
     queryFn: () =>
-      api.get<RatingResponse>(
+      api.get<CascadeStaffRequisiteRatingsResponse>(
         `${internalPaths.adminCascadeRequisiteRatingsBase}?${qs}`,
       ),
     refetchInterval: 4000,
   });
 
+  const explainQ = useQuery({
+    queryKey: cascadeKeys.assignmentExplain(currencyUpper, explainAmountKey),
+    queryFn: () =>
+      api.get<CascadeAssignmentExplainResponse>(
+        internalPaths.adminCascadeAssignmentExplain(currencyUpper, {
+          amount: explainAmount,
+          detailed: true,
+        }),
+      ),
+    refetchInterval: 4000,
+  });
+
   const data = ratingsQ.data;
+  const explain = explainQ.data;
 
   const requisiteDetailQ = useQuery({
     queryKey: ['requisite-detail', detailRequisiteId],
@@ -332,40 +414,78 @@ export function CascadeRequisiteRatingsPanel({
   });
 
   return (
-    <div className="mx-auto max-w-[1800px] space-y-3 p-4 sm:space-y-4 sm:p-6">
-      <div className="flex items-center gap-3">
-        <GitFork className="h-8 w-8 text-accent" />
-        <div>
-          <h1 className="text-2xl font-semibold text-text-primary">Cascade requisites</h1>
-          <p className="text-sm text-text-secondary">
-            {subtitle ??
-              'Live requisite metrics, cascade rank preview, and assignment telemetry (polls every 4s).'}
-          </p>
+    <div className="mx-auto max-w-[1800px] space-y-4 p-4 sm:space-y-5 sm:p-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3">
+          <GitFork className="h-8 w-8 shrink-0 text-accent" />
+          <div>
+            <h1 className="text-2xl font-semibold text-text-primary">Cascade requisites</h1>
+            <p className="text-sm text-text-secondary">
+              {subtitle ??
+                'Pay-In cascade engine state, assignment queue preview, and per-requisite telemetry (polls every 4s).'}
+            </p>
+          </div>
         </div>
       </div>
+
+      <Card title="How Pay-In cascade assigns" tone="neutral" className="bg-surface-secondary/80">
+        <ul className="list-inside list-disc space-y-1.5 text-sm text-text-secondary">
+          <li>
+            <strong className="text-text-primary">Tier-1</strong> is Fork or Card: DEBT mode picks the
+            under-served bucket from credits + target shares; STOCHASTIC mode rolls weighted dice each
+            assignment.
+          </li>
+          <li>
+            The engine tries <strong className="text-text-primary">primary tier first</strong>, then
+            the other Fork/Card tier, then Provider (only if provider traffic is enabled and integrated).
+          </li>
+          <li>
+            <strong className="text-text-primary">Inside each tier</strong>, eligible requisites are
+            ordered by idle-time race score (higher idle × multipliers wins). Ties break by requisite id.
+          </li>
+          <li>
+            <strong className="text-text-primary">Preview amount</strong> is optional: leave it{' '}
+            <strong className="text-text-primary">empty</strong> to use the Redis snapshot ranking (same as
+            production cache for the currency, no custom simulation). Enter a Pay-In amount (including{' '}
+            <strong className="text-text-primary">0</strong>) to recompute ranks, eligibility, and the queue
+            for that amount only.
+          </li>
+        </ul>
+      </Card>
+
+      {explain ? (
+        <Card title="Live engine (same rules as assignment)" tone="blue" className="bg-bg-tertiary/20">
+          <EngineContextBlock
+            ctx={explain.cascade_context}
+            currencyUpper={currencyUpper}
+            primaryLevel={explain.primary_cascade_level}
+          />
+        </Card>
+      ) : explainQ.isLoading ? (
+        <p className="text-sm text-text-muted">Loading assignment preview…</p>
+      ) : null}
 
       <section className="rounded-xl border border-border-primary bg-surface-secondary px-3 py-2.5 sm:px-4">
         <div className="mb-2 flex flex-wrap items-center gap-2 border-b border-border-primary/50 pb-2">
           <ListFilter className="h-4 w-4 shrink-0 text-text-muted" aria-hidden />
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-            Filters
-          </h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Filters</h2>
           {data ? (
             <span className="text-[11px] text-text-muted">
               {data.preview_amount != null ? (
                 <>
-                  Cascade rank and eligibility preview at{' '}
+                  Table ranks / eligibility at{' '}
                   <span className="font-mono text-text-secondary">
-                    {data.preview_amount} {currency.trim().toUpperCase()}
+                    {data.preview_amount} {currencyUpper}
                   </span>
-                  {' '}
-                  (table defaults to assignment order — rank 1 first).
+                  .
                 </>
               ) : (
                 <>
-                  No preview amount — all cascade pool requisites are listed. Enter Preview amt.
-                  to see rank and eligibility for that amount (rank column uses the cached snapshot
-                  order until then).
+                  No custom preview — ranks match Redis snapshot at{' '}
+                  <span className="font-mono text-text-secondary">
+                    {data.cascade_context?.redis_rank_preview_amount ?? '—'} {currencyUpper}
+                  </span>{' '}
+                  (min nominal). Enter Preview amt. to simulate another amount.
                 </>
               )}
             </span>
@@ -378,7 +498,7 @@ export function CascadeRequisiteRatingsPanel({
             label="Currency"
             labelClassName="sr-only"
             options={currencyOptions}
-            value={currency}
+            value={currencyUpper}
             onChange={(e) => setCurrency(e.target.value)}
             disabled={currencyOptions.length === 0}
             placeholder={currenciesQ.isLoading ? 'Loading…' : '—'}
@@ -392,7 +512,9 @@ export function CascadeRequisiteRatingsPanel({
               id="cascade-preview-amt"
               className="h-9 min-w-0 text-xs"
               placeholder={
-                data ? (data.preview_amount != null ? String(data.preview_amount) : 'Optional') : '…'
+                data?.cascade_context
+                  ? `Optional — snapshot ${data.cascade_context.redis_rank_preview_amount}`
+                  : 'Optional'
               }
               value={previewAmount}
               onChange={(e) => setPreviewAmount(e.target.value)}
@@ -474,17 +596,141 @@ export function CascadeRequisiteRatingsPanel({
         </div>
       </section>
 
+      {explainQ.isError ? (
+        <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          Could not load assignment preview. Check the API and try again.
+        </p>
+      ) : null}
+
+      {explain ? (
+        <Card
+          title="Assignment queue"
+          action={
+            <Tooltip
+              content="Order the engine would try before Redis locks and provider fallback. Matches tryAssignBatchTx tier order."
+              wide
+            >
+              <button
+                type="button"
+                className="inline-flex text-text-muted hover:text-text-secondary"
+                aria-label="Queue help"
+              >
+                <Info className="h-4 w-4" />
+              </button>
+            </Tooltip>
+          }
+          tone="neutral"
+          className="bg-surface-secondary/80"
+        >
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-text-secondary">
+            <span>
+              Amount evaluated:{' '}
+              <strong className="tabular-nums text-text-primary">
+                {explain.amount} {currencyUpper}
+              </strong>
+            </span>
+            {explain.amount_source === 'snapshot_default' ? (
+              <Badge variant="muted">Snapshot default (min nominal)</Badge>
+            ) : (
+              <Badge variant="info">From preview field</Badge>
+            )}
+            {explainQ.isFetching ? (
+              <span className="text-[11px] text-text-muted">Refreshing…</span>
+            ) : null}
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {explain.tiers.map((tier) => (
+              <div
+                key={tier.level}
+                className={cn(
+                  'rounded-lg border p-3',
+                  tier.primary
+                    ? 'border-accent-blue/50 bg-accent-blue/5'
+                    : 'border-border-primary bg-bg-tertiary/20',
+                )}
+              >
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-sm font-semibold text-text-primary">
+                    {tier.level}
+                  </span>
+                  {tier.primary ? (
+                    <Badge variant="info">Tried first</Badge>
+                  ) : (
+                    <Badge variant="muted">Fallback tier</Badge>
+                  )}
+                  <span className="text-xs text-text-muted">{tier.ranks.length} candidate(s)</span>
+                </div>
+                {tier.ranks.length === 0 ? (
+                  <p className="text-xs text-text-muted">No eligible requisites in this tier.</p>
+                ) : (
+                  <ol className="space-y-2">
+                    {tier.ranks.map((r) => (
+                      <li
+                        key={r.requisite_id}
+                        className="flex flex-wrap items-baseline justify-between gap-2 rounded-md border border-border-primary/40 bg-surface-secondary/50 px-2 py-1.5 text-xs"
+                      >
+                        <div className="min-w-0">
+                          <span className="font-mono font-semibold text-accent">#{r.rank}</span>{' '}
+                          <span className="text-text-primary">{r.trader_label || r.trader_id}</span>
+                          <span className="text-text-muted"> · </span>
+                          <button
+                            type="button"
+                            className="font-mono text-accent-blue hover:underline"
+                            onClick={() => setDetailRequisiteId(r.requisite_id)}
+                          >
+                            {r.requisite_masked}
+                          </button>
+                        </div>
+                        <span
+                          className="shrink-0 tabular-nums text-text-muted"
+                          title="Race score for this tier"
+                        >
+                          score {formatWeightedScore(r.weighted_score)}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
       <section className="overflow-x-auto rounded-xl border border-border-primary bg-surface-secondary">
-        <table className="w-full min-w-[920px] text-left text-sm">
+        <h2 className="border-b border-border-primary px-3 py-2 text-sm font-semibold text-text-primary">
+          All requisites (filtered)
+        </h2>
+        <table className="w-full min-w-[1280px] text-left text-sm">
           <thead>
             <tr className="border-b border-border-primary text-text-muted">
               <th className="px-3 py-2">Rank</th>
               <th className="px-3 py-2">Trader</th>
               <th className="px-3 py-2">Requisite</th>
               <th className="min-w-[6.5rem] px-3 py-2">Amount range</th>
-              <th className="min-w-[180px] px-3 py-2">Amount limit & assignment range</th>
-              <th className="min-w-[7.5rem] px-3 py-2">Operation limit</th>
-              <th className="px-3 py-2">Race score</th>
+              <th className="min-w-[180px] px-3 py-2">Amount limit</th>
+              <th className="min-w-[7.5rem] px-3 py-2">Ops limit</th>
+              <th
+                className="px-2 py-2 text-[11px]"
+                title="TZ display from amount fill (capacity bar)"
+              >
+                TZ %
+              </th>
+              <th className="px-2 py-2 text-[11px]" title="Idle ms since cascade anchor">
+                Idle
+              </th>
+              <th className="px-2 py-2 text-[11px]" title="Confirmed Pay-In / limit">
+                Cf%
+              </th>
+              <th
+                className="min-w-[6.5rem] px-2 py-2 text-[11px]"
+                title="Fork: ladder / leg / trader / effective. Card: —/—/trader/effective."
+              >
+                Race × chain
+              </th>
+              <th className="px-3 py-2" title="idle_ms × effective multiplier">
+                Race score
+              </th>
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Autolimit</th>
               <th className="px-3 py-2">Last assign</th>
@@ -493,13 +739,13 @@ export function CascadeRequisiteRatingsPanel({
           <tbody>
             {ratingsQ.isLoading ? (
               <tr>
-                <td colSpan={10} className="px-3 py-8 text-center text-text-muted">
+                <td colSpan={14} className="px-3 py-8 text-center text-text-muted">
                   Loading…
                 </td>
               </tr>
             ) : ratingsQ.isError ? (
               <tr>
-                <td colSpan={10} className="px-3 py-8 text-center text-red-400">
+                <td colSpan={14} className="px-3 py-8 text-center text-red-400">
                   Failed to load
                 </td>
               </tr>
@@ -535,21 +781,50 @@ export function CascadeRequisiteRatingsPanel({
                   <td className="px-3 py-2 align-middle font-mono text-xs text-text-secondary">
                     <span
                       className="tabular-nums whitespace-nowrap"
-                      title="Configured min / max amounts on requisite (manual limits)"
+                      title="Configured min / max (manual)"
                     >
                       {compactAmt(row.manual_min_amount)} ↔ {compactAmt(row.manual_max_amount)}
                     </span>
                   </td>
                   <td className="px-3 py-2 align-middle">
-                    <CascadeUsageRangeBlock
-                      row={row}
-                      currencyCode={currency.trim().toUpperCase()}
-                    />
+                    <CascadeUsageRangeBlock row={row} currencyCode={currencyUpper} />
                   </td>
                   <td className="px-3 py-2 align-middle">
                     <CascadeOperationsLimitCell row={row} />
                   </td>
-                  <td className="px-3 py-2 align-middle font-mono">{row.rating}</td>
+                  <td className="px-2 py-2 align-middle font-mono text-xs tabular-nums text-text-secondary">
+                    {row.rating}
+                  </td>
+                  <td
+                    className="px-2 py-2 align-middle font-mono text-xs tabular-nums text-text-secondary"
+                    title={`${row.idle_ms.toLocaleString()} ms`}
+                  >
+                    {formatIdleMs(row.idle_ms)}
+                  </td>
+                  <td className="px-2 py-2 align-middle font-mono text-xs tabular-nums text-text-secondary">
+                    {(row.confirmed_fill_ratio * 100).toFixed(1)}%
+                  </td>
+                  <td
+                    className="px-2 py-2 align-middle font-mono text-[11px] leading-tight text-text-muted"
+                    title="Ladder / fill leg / trader mult / effective mult"
+                  >
+                    {row.processing_method === 'FORK' ? (
+                      <>
+                        {row.fill_ladder_multiplier ?? '—'}/{row.fill_leg_multiplier ?? '—'}/
+                        {row.trader_multiplier}/{row.effective_race_multiplier}
+                      </>
+                    ) : (
+                      <>
+                        —/—/{row.trader_multiplier}/{row.effective_race_multiplier}
+                      </>
+                    )}
+                  </td>
+                  <td
+                    className="px-3 py-2 align-middle font-mono text-xs tabular-nums text-text-primary"
+                    title={`Race score (full): ${Number.isFinite(row.weighted_score) ? row.weighted_score.toLocaleString(undefined, { maximumFractionDigits: 6 }) : '—'}`}
+                  >
+                    {formatWeightedScore(row.weighted_score)}
+                  </td>
                   <td className="px-3 py-2 align-middle">
                     <div className="flex flex-wrap gap-1">
                       <span
@@ -561,6 +836,9 @@ export function CascadeRequisiteRatingsPanel({
                         {row.composite_status}
                         {row.is_locked ? ' · lock' : ''}
                       </span>
+                      {!row.is_in_cascade_pool ? (
+                        <Badge variant="muted">outside pool</Badge>
+                      ) : null}
                       {row.autolimit_badge ? (
                         <span className="rounded border border-violet-500/50 bg-violet-500/10 px-2 py-0.5 text-[11px] text-violet-200">
                           autolimit
@@ -606,6 +884,54 @@ export function CascadeRequisiteRatingsPanel({
         </table>
       </section>
 
+      {explain && explain.excluded && explain.excluded.length > 0 ? (
+        <Card title="Not assignable at this amount (from pool)" tone="amber">
+          <p className="mb-3 text-xs text-text-muted">
+            Pool requisites that fail gates or are strictly after the ordered queue. Real assignment also
+            respects Redis locks and provider routing.
+          </p>
+          <div className="max-h-[320px] overflow-auto rounded-lg border border-border-primary">
+            <table className="w-full min-w-[640px] text-left text-xs">
+              <thead className="sticky top-0 bg-surface-secondary">
+                <tr className="border-b border-border-primary text-text-muted">
+                  <th className="px-2 py-2">Reason</th>
+                  <th className="px-2 py-2">Trader</th>
+                  <th className="px-2 py-2">Requisite</th>
+                  <th className="px-2 py-2">Method</th>
+                  <th className="px-2 py-2">Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {explain.excluded.map((row) => (
+                  <tr key={row.requisite_id} className="border-b border-border-primary/40">
+                    <td className="px-2 py-1.5 align-top">
+                      <Badge variant="warning">{excludedReasonLabel(row.code)}</Badge>
+                      <div className="mt-0.5 font-mono text-[10px] text-text-muted">{row.code}</div>
+                    </td>
+                    <td className="px-2 py-1.5 align-top text-text-primary">
+                      {row.trader_label || row.trader_id}
+                    </td>
+                    <td className="px-2 py-1.5 align-top">
+                      <button
+                        type="button"
+                        className="font-mono text-accent-blue hover:underline"
+                        onClick={() => setDetailRequisiteId(row.requisite_id)}
+                      >
+                        {row.requisite_masked}
+                      </button>
+                    </td>
+                    <td className="px-2 py-1.5 align-top font-mono text-text-secondary">
+                      {row.processing_method}
+                    </td>
+                    <td className="px-2 py-1.5 align-top text-text-secondary">{row.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : null}
+
       <Modal
         open={!!detailRequisiteId}
         onClose={() => setDetailRequisiteId(null)}
@@ -641,8 +967,12 @@ export function CascadeRequisiteRatingsPanel({
               </div>
             ) : null}
             <div className="grid grid-cols-2 gap-2 font-mono text-xs text-text-secondary">
-              <span>Used / limit: {requisiteDetailQ.data.usedAmount} / {requisiteDetailQ.data.limitTotalAmount}</span>
-              <span>Ops: {requisiteDetailQ.data.usedOps} / {requisiteDetailQ.data.limitTotalOps}</span>
+              <span>
+                Used / limit: {requisiteDetailQ.data.usedAmount} / {requisiteDetailQ.data.limitTotalAmount}
+              </span>
+              <span>
+                Ops: {requisiteDetailQ.data.usedOps} / {requisiteDetailQ.data.limitTotalOps}
+              </span>
             </div>
           </div>
         ) : (

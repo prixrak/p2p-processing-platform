@@ -20,8 +20,19 @@ export const internalPaths = {
   adminCascadeNominal: (id: string) => `/api/admin/cascade/nominals/${id}`,
   /** Base path — append query string for filters */
   adminCascadeRequisiteRatingsBase: '/api/admin/cascade/requisite-ratings',
-  adminCascadeAssignmentExplain: (currency: string, amount: number, detailed = true) =>
-    `/api/admin/cascade/assignment-explain?currency=${encodeURIComponent(currency)}&amount=${encodeURIComponent(String(amount))}&detailed=${detailed ? 'true' : 'false'}`,
+  adminCascadeAssignmentExplain: (currency: string, options?: { amount?: number; detailed?: boolean }) => {
+    const params = new URLSearchParams();
+    params.set('currency', currency);
+    if (
+      options?.amount != null &&
+      Number.isFinite(options.amount) &&
+      options.amount >= 0
+    ) {
+      params.set('amount', String(options.amount));
+    }
+    params.set('detailed', options?.detailed === false ? 'false' : 'true');
+    return `/api/admin/cascade/assignment-explain?${params.toString()}`;
+  },
 
   adminOrdersStream: '/api/admin/orders/stream',
   adminOrders: (qs: string) => `/api/admin/orders?${qs}`,
