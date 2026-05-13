@@ -130,15 +130,21 @@ export class TronDepositPollerService implements OnModuleInit, OnModuleDestroy {
       select: { traderId: true, address: true },
     });
     for (const w of custodial) {
-      map.set(w.address, w.traderId);
+      const a = w.address.trim();
+      if (a) map.set(a, w.traderId);
     }
     const profileInlineTrc20 = await this.prisma.traderProfile.findMany({
-      where: { isActive: true, usdtTrc20DepositAddress: { not: null } },
+      where: {
+        isActive: true,
+        usdtTrc20DepositAddress: { not: null },
+        NOT: { usdtTrc20DepositAddress: '' },
+      },
       select: { id: true, usdtTrc20DepositAddress: true },
     });
     for (const t of profileInlineTrc20) {
-      const a = t.usdtTrc20DepositAddress!;
-      if (!map.has(a)) map.set(a, t.id);
+      const a = t.usdtTrc20DepositAddress!.trim();
+      if (!a || map.has(a)) continue;
+      map.set(a, t.id);
     }
     return map;
   }
@@ -201,6 +207,7 @@ export class TronDepositPollerService implements OnModuleInit, OnModuleDestroy {
     const traders = await this.prisma.traderProfile.findMany({
       where: {
         usdtTrc20DepositAddress: { not: null },
+        NOT: { usdtTrc20DepositAddress: '' },
         isActive: true,
       },
       select: { id: true, usdtTrc20DepositAddress: true },
@@ -219,7 +226,8 @@ export class TronDepositPollerService implements OnModuleInit, OnModuleDestroy {
     const blockCache = new Map<string, number | null>();
 
     for (const t of traders) {
-      const addr = t.usdtTrc20DepositAddress!;
+      const addr = t.usdtTrc20DepositAddress!.trim();
+      if (!addr) continue;
       const rows = await this.trongrid.listRecentUsdtTrc20(addr);
       for (const row of rows) {
         const txId = row.transaction_id;

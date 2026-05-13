@@ -161,9 +161,13 @@ export class TrongridClient {
    * Confirmed TRC-20 transfers involving `address` (mainnet USDT contract).
    */
   async listRecentUsdtTrc20(address: string): Promise<Trc20Row[]> {
+    const account = address?.trim() ?? '';
+    if (!account) {
+      return [];
+    }
     const contract = config.tron.usdtTrc20Contract;
     const limit = Math.min(200, Math.max(5, config.tron.trc20FetchLimit));
-    const url = new URL(`${config.tron.baseUrl}/v1/accounts/${address}/transactions/trc20`);
+    const url = new URL(`${config.tron.baseUrl}/v1/accounts/${account}/transactions/trc20`);
     url.searchParams.set('only_confirmed', 'true');
     url.searchParams.set('limit', String(limit));
     url.searchParams.set('contract_address', contract);
@@ -180,7 +184,7 @@ export class TrongridClient {
           operation: 'v1/accounts/.../transactions/trc20',
           context: {
             baseUrl: config.tron.baseUrl,
-            addressPrefix: `${address.slice(0, 6)}…${address.slice(-4)}`,
+            addressPrefix: `${account.slice(0, 6)}…${account.slice(-4)}`,
           },
           status: res.status,
           statusText: res.statusText,
@@ -196,7 +200,7 @@ export class TrongridClient {
         operation: 'v1/accounts/.../transactions/trc20',
         context: {
           baseUrl: config.tron.baseUrl,
-          addressPrefix: `${address.slice(0, 6)}…${address.slice(-4)}`,
+          addressPrefix: `${account.slice(0, 6)}…${account.slice(-4)}`,
         },
         error: e,
         level: 'warn',
@@ -287,7 +291,11 @@ export class TrongridClient {
 
   /** Native TRX balance for `address` (human units, 6 dp). */
   async getAccountTrxBalance(address: string): Promise<number | null> {
-    const url = new URL(`${config.tron.baseUrl}/v1/accounts/${address}`);
+    const account = address?.trim() ?? '';
+    if (!account) {
+      return null;
+    }
+    const url = new URL(`${config.tron.baseUrl}/v1/accounts/${account}`);
     try {
       const res = await fetch(url.toString(), {
         method: 'GET',
@@ -383,7 +391,11 @@ export class TrongridClient {
 
   /** On-chain USDT TRC-20 balance for `address` (human units, 6 dp). */
   async getAccountUsdtTrc20Balance(address: string): Promise<number | null> {
-    const url = new URL(`${config.tron.baseUrl}/v1/accounts/${address}/tokens`);
+    const account = address?.trim() ?? '';
+    if (!account) {
+      return null;
+    }
+    const url = new URL(`${config.tron.baseUrl}/v1/accounts/${account}/tokens`);
     try {
       const res = await fetch(url.toString(), {
         method: 'GET',
@@ -423,7 +435,7 @@ export class TrongridClient {
         level: 'warn',
       });
     }
-    return this.getUsdtTrc20BalanceViaBalanceOfCall(address);
+    return this.getUsdtTrc20BalanceViaBalanceOfCall(account);
   }
 
   /**

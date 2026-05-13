@@ -10,6 +10,18 @@ function optional(key: string, fallback: string): string {
   return process.env[key] || fallback;
 }
 
+/**
+ * TronGrid expects the HTTP origin only; callers append `/v1/...` and `/wallet/...`.
+ * If `TRONGRID_BASE_URL` ends with `/v1`, URLs become `/v1/v1/...` and Nile/mainnet return HTTP 404.
+ */
+function normalizeTrongridBaseUrl(raw: string): string {
+  let u = raw.trim().replace(/\/+$/, '');
+  if (/\/v1$/i.test(u)) {
+    u = u.replace(/\/v1$/i, '').replace(/\/+$/, '');
+  }
+  return u;
+}
+
 /** Trimmed custom base URL; when unset, the SDK uses standard AWS partition endpoints. */
 const customS3Endpoint = process.env.S3_ENDPOINT?.trim() || undefined;
 
@@ -51,7 +63,7 @@ export const config = {
     depositPollEnabled: optional('TRON_DEPOSIT_POLL_ENABLED', 'true') === 'true',
     depositPollMs: parseInt(optional('TRON_DEPOSIT_POLL_MS', '25000'), 10),
     apiKey: optional('TRONGRID_API_KEY', ''),
-    baseUrl: optional('TRONGRID_BASE_URL', 'https://api.trongrid.io'),
+    baseUrl: normalizeTrongridBaseUrl(optional('TRONGRID_BASE_URL', 'https://api.trongrid.io')),
     usdtTrc20Contract: optional(
       'TRON_USDT_TRC20_CONTRACT',
       'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
