@@ -11,6 +11,7 @@ import { PrismaService } from '../../config/prisma.service';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
 import type { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
+import { enumerateDaysUTC, statusRecordToLowercase } from '../../common/utils/stats.util';
 import type { UpdateTraderBalanceModelDto } from './dto/update-trader-balance-model.dto';
 import type { UpdateTraderCascadeDto } from './dto/update-trader-cascade.dto';
 import { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
@@ -29,29 +30,6 @@ import {
   enumerateBucketStartsUtc,
   type TraderCabinetAnalyticsGranularity,
 } from './trader-cabinet-analytics.util';
-
-function enumerateDaysUTC(from: Date, to: Date): string[] {
-  const out: string[] = [];
-  const d = new Date(from);
-  d.setUTCHours(0, 0, 0, 0);
-  const end = new Date(to);
-  end.setUTCHours(0, 0, 0, 0);
-  while (d <= end) {
-    out.push(d.toISOString().slice(0, 10));
-    d.setUTCDate(d.getUTCDate() + 1);
-  }
-  return out;
-}
-
-function statusRecordToLowercase(
-  rows: Array<{ status: string; _count: { _all: number } }>,
-): Record<string, number> {
-  const r: Record<string, number> = {};
-  for (const row of rows) {
-    r[row.status.toLowerCase()] = row._count._all;
-  }
-  return r;
-}
 
 /** Tron base58check addresses are 34 chars and start with T. */
 export function isValidTronTrc20Address(addr: string): boolean {
@@ -251,12 +229,6 @@ export class TradersService {
       assignment_note: CASCADE_METHOD_LEVEL_ASSIGNMENT_NOTE,
     };
   }
-
-  /** Legacy hook preserved — cascade TZ v3.1 removed cohort traffic_percent rebalancing on trader creation. */
-  async rebalanceCohortBeforeCreatingTrader(
-    _newTraderTrafficPercent: number,
-    _tx: Prisma.TransactionClient,
-  ): Promise<void> {}
 
   /** Invalidates cascade snapshot cache after traffic-related profile fields change. */
   invalidateCascadeCoverageCaches(): void {

@@ -7,7 +7,7 @@ import type { PayOutOrderApiDto } from '@p2p/shared';
 import { PayOutOrderStatus } from '@p2p/shared';
 import { formatCurrency, formatDateFull } from '@/lib/utils';
 import { internalPaths } from '@/lib/internal-api';
-import { PayoutDetailRow } from './payout-detail-row';
+import { DetailRow } from '@/components/ui/detail-row';
 import type { PayoutCompleteVars } from './trader-payout-columns';
 import {
   TraderPayoutWorkflowActions,
@@ -15,6 +15,7 @@ import {
 } from './trader-payout-workflow-actions';
 import { TraderPayoutTakeFromPoolButton } from './trader-payout-take-from-pool-button';
 import { AuthorizedFilePreview } from '@/components/files/authorized-file-preview';
+import { payoutCompletionProofFileIds } from './payout-completion-proof-ids';
 
 export function TraderPayoutOrderDetailModal({
   selectedOrder,
@@ -36,7 +37,7 @@ export function TraderPayoutOrderDetailModal({
   attachCompletionProofMutation?: UseMutationResult<
     PayOutOrderApiDto,
     unknown,
-    { orderId: string; fileId: string }
+    { orderId: string; fileIds: string[] }
   >;
 }) {
   const showFullOrderMeta = selectedOrder?.requisites_visible !== false;
@@ -51,49 +52,54 @@ export function TraderPayoutOrderDetailModal({
       {selectedOrder && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <PayoutDetailRow label="Order ID" value={selectedOrder.id} mono />
+            <DetailRow label="Order ID" value={selectedOrder.id} mono />
             {showFullOrderMeta && (
-              <PayoutDetailRow label="Request ID" value={selectedOrder.request_id} mono />
+              <DetailRow label="Request ID" value={selectedOrder.request_id} mono />
             )}
-            <PayoutDetailRow
+            <DetailRow
               label="Amount"
               value={formatCurrency(selectedOrder.amount, selectedOrder.currency)}
             />
-            <PayoutDetailRow label="Currency" value={selectedOrder.currency} />
-            <PayoutDetailRow label="Status">
+            <DetailRow label="Currency" value={selectedOrder.currency} />
+            <DetailRow label="Status">
               <PayoutOrderStatusBadge status={selectedOrder.status} />
-            </PayoutDetailRow>
+            </DetailRow>
             {selectedOrder.pool_close_deadline_at != null && (
-              <PayoutDetailRow
+              <DetailRow
                 label="Pool deadline"
                 value={formatDateFull(selectedOrder.pool_close_deadline_at)}
               />
             )}
             {showFullOrderMeta && (
               <>
-                <PayoutDetailRow label="Rate" value={String(selectedOrder.rate)} />
-                <PayoutDetailRow label="Partner Amount" value={String(selectedOrder.partner_amount)} />
-                <PayoutDetailRow label="Fee" value={`${selectedOrder.percent_fee}%`} />
+                <DetailRow label="Rate" value={String(selectedOrder.rate)} />
+                <DetailRow label="Partner Amount" value={String(selectedOrder.partner_amount)} />
+                <DetailRow label="Fee" value={`${selectedOrder.percent_fee}%`} />
               </>
             )}
-            <PayoutDetailRow label="Created" value={formatDateFull(selectedOrder.created_at)} />
+            <DetailRow label="Created" value={formatDateFull(selectedOrder.created_at)} />
             {showFullOrderMeta && selectedOrder.start_at != null && (
-              <PayoutDetailRow label="Started" value={formatDateFull(selectedOrder.start_at)} />
+              <DetailRow label="Started" value={formatDateFull(selectedOrder.start_at)} />
             )}
             {showFullOrderMeta && selectedOrder.end_at != null && (
-              <PayoutDetailRow label="Completed" value={formatDateFull(selectedOrder.end_at)} />
+              <DetailRow label="Completed" value={formatDateFull(selectedOrder.end_at)} />
             )}
           </div>
 
           {/* Not gated on `requisites_visible`: pool rows hide requisites but may still carry a proof id after assign/sync. */}
-          {selectedOrder.completion_proof_file_id != null && (
+          {payoutCompletionProofFileIds(selectedOrder).length > 0 && (
             <div className="rounded-lg border border-border-primary p-4">
               <h3 className="mb-3 text-sm font-medium text-text-secondary">Completion proof</h3>
-              <AuthorizedFilePreview
-                path={internalPaths.fileById(selectedOrder.completion_proof_file_id)}
-                alt="Pay-out completion proof"
-                className="max-h-80"
-              />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {payoutCompletionProofFileIds(selectedOrder).map((fileId) => (
+                  <AuthorizedFilePreview
+                    key={fileId}
+                    path={internalPaths.fileById(fileId)}
+                    alt="Pay-out completion proof"
+                    className="max-h-80"
+                  />
+                ))}
+              </div>
             </div>
           )}
 
@@ -107,10 +113,10 @@ export function TraderPayoutOrderDetailModal({
             <div className="rounded-lg border border-border-primary p-4">
               <h3 className="mb-3 text-sm font-medium text-text-secondary">Recipient Details</h3>
               <div className="grid grid-cols-2 gap-3">
-                <PayoutDetailRow label="Type" value={selectedOrder.details.type} />
-                <PayoutDetailRow label="Number" value={selectedOrder.details.number} mono />
-                <PayoutDetailRow label="Owner" value={selectedOrder.details.owner ?? '-'} />
-                <PayoutDetailRow label="Code" value={selectedOrder.details.code ?? '-'} />
+                <DetailRow label="Type" value={selectedOrder.details.type} />
+                <DetailRow label="Number" value={selectedOrder.details.number} mono />
+                <DetailRow label="Owner" value={selectedOrder.details.owner ?? '-'} />
+                <DetailRow label="Code" value={selectedOrder.details.code ?? '-'} />
               </div>
             </div>
           )}

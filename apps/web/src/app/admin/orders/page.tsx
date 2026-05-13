@@ -1,8 +1,8 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useOrderIdUrlParam } from '@/lib/hooks/use-order-id-url-param';
 import { ArrowLeftRight, Eye } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -21,7 +21,9 @@ import {
 } from '@/components/ui/list-page-tools';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal } from '@/components/ui/modal';
+import { StatusHistoryList } from '@/components/ui/status-history-list';
 import { format } from 'date-fns';
+import { buildQueryString, formatCurrency } from '@/lib/utils';
 import {
   ORDER_LIST_UI_TAB,
   isOrderListPayOutTab,
@@ -37,13 +39,8 @@ import {
 
 const ADMIN_ORDERS_PAGE_SIZE = 20;
 
-const ORDER_ID_QUERY = 'orderId';
-
-function looksLikeOrderIdUuid(s: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    s.trim(),
-  );
-}
+const ORDER_ID_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface Order {
   id: string;
@@ -83,9 +80,6 @@ interface OrderDetails {
 
 function AdminOrdersPageContent() {
   const queryClient = useQueryClient();
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [tab, setTab] = useState<OrderListUiTab>(ORDER_LIST_UI_TAB.PAY_IN);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
@@ -96,32 +90,10 @@ function AdminOrdersPageContent() {
   const [showFilters, setShowFilters] = useState(false);
   const [assigningOrder, setAssigningOrder] = useState<string | null>(null);
   const [selectedTrader, setSelectedTrader] = useState('');
-  const [detailOrder, setDetailOrder] = useState<string | null>(null);
 
-  const openOrderDetail = useCallback(
-    (id: string) => {
-      const p = new URLSearchParams(searchParams.toString());
-      p.set(ORDER_ID_QUERY, id);
-      router.replace(`${pathname}?${p.toString()}`, { scroll: false });
-    },
-    [pathname, router, searchParams],
-  );
-
-  const closeOrderDetail = useCallback(() => {
-    const p = new URLSearchParams(searchParams.toString());
-    p.delete(ORDER_ID_QUERY);
-    const q = p.toString();
-    router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
-  }, [pathname, router, searchParams]);
-
-  useEffect(() => {
-    const raw = searchParams.get(ORDER_ID_QUERY)?.trim() ?? '';
-    if (looksLikeOrderIdUuid(raw)) {
-      setDetailOrder(raw);
-      return;
-    }
-    setDetailOrder(null);
-  }, [searchParams]);
+  const { orderId: detailOrder, openOrderDetail, closeOrderDetail } = useOrderIdUrlParam({
+    validate: (s) => ORDER_ID_UUID_RE.test(s),
+  });
 
   const direction = orderListUiTabToDirection(tab);
 
@@ -152,17 +124,17 @@ function AdminOrdersPageContent() {
       page,
     }),
     queryFn: () => {
-      const params = new URLSearchParams({
+      const qs = buildQueryString({
         direction,
-        page: String(page),
-        limit: String(ADMIN_ORDERS_PAGE_SIZE),
+        page,
+        limit: ADMIN_ORDERS_PAGE_SIZE,
+        status: statusFilter,
+        merchant: merchantFilter,
+        trader: traderFilter,
+        dateFrom,
+        dateTo,
       });
-      if (statusFilter) params.set('status', statusFilter);
-      if (merchantFilter) params.set('merchant', merchantFilter);
-      if (traderFilter) params.set('trader', traderFilter);
-      if (dateFrom) params.set('dateFrom', dateFrom);
-      if (dateTo) params.set('dateTo', dateTo);
-      return api.get<AdminOrdersResponse>(internalPaths.adminOrders(params.toString()));
+      return api.get<AdminOrdersResponse>(internalPaths.adminOrders(qs));
     },
   });
   const orders = ordersData?.data ?? [];
@@ -446,7 +418,7 @@ function AdminOrdersPageContent() {
               <div>
                 <p className="text-xs text-text-muted">Amount</p>
                 <p className="font-mono font-medium text-text-primary">
-                  {details.amount.toLocaleString()} {details.currency}
+                  {formatCurrency(details.amount, details.currency)}
                 </p>
               </div>
               <div>
@@ -500,25 +472,7 @@ function AdminOrdersPageContent() {
             ) : null}
 
             {details.statusHistory?.length > 0 ? (
-              <div>
-                <h4 className="mb-2 text-sm font-medium text-text-secondary">Status History</h4>
-                <div className="space-y-2">
-                  {details.statusHistory.map((h, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary px-3 py-2"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Badge variant="muted">{h.status}</Badge>
-                        <span className="text-xs text-text-muted">by {h.actor}</span>
-                      </div>
-                      <span className="text-xs text-text-muted">
-                        {new Date(h.timestamp).toLocaleString()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <StatusHistoryList entries={details.statusHistory} />
             ) : null}
           </div>
         )}

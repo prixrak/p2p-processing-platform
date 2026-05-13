@@ -61,3 +61,24 @@ export function formatCountdownRemaining(totalSeconds: number): string {
   }
   return formatDurationShort(s);
 }
+
+/**
+ * Builds an URL-encoded query string from an object, **skipping** entries that are
+ * `undefined`, `null`, or an empty/whitespace-only string. Numbers and booleans are
+ * stringified. Returns the encoded body (no leading "?").
+ *
+ * Used by list pages so callers don't need to gate each filter with `if (foo) params.set(...)`.
+ */
+export function buildQueryString(
+  entries: Record<string, string | number | boolean | null | undefined>,
+): string {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(entries)) {
+    if (v === undefined || v === null) continue;
+    const s = typeof v === 'string' ? v : String(v);
+    if (s.length === 0) continue;
+    if (typeof v === 'string' && s.trim().length === 0) continue;
+    sp.set(k, s);
+  }
+  return sp.toString();
+}

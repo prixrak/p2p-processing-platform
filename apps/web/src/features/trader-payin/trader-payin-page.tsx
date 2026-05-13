@@ -9,6 +9,7 @@ import { PayinOrderStatusBadge } from '@/components/ui/order-status-badge';
 import { IconButton } from '@/components/ui/icon-button';
 import { Table } from '@/components/ui/table';
 import { ListPageHeader, SearchStatusRow } from '@/components/ui/list-page-tools';
+import { PaginationControls } from '@/components/ui/pagination-controls';
 import { Tabs } from '@/components/ui/tabs';
 import { toast } from '@/components/ui/toast';
 import { api } from '@/lib/api';
@@ -39,26 +40,32 @@ import {
   PayInReceiptGalleryModal,
 } from './payin-receipt-modals';
 import { PayInOrderDetailModal } from './payin-order-detail-modal';
+import { usePaginatedListState } from '@/lib/hooks/use-paginated-list-state';
+import { useSelectedRowSync } from '@/lib/hooks/use-selected-row-sync';
 
 const PAYIN_LIST_PAGE_SIZE = 20;
 
 export function TraderPayInPage() {
   const queryClient = useQueryClient();
   const [listTab, setListTab] = useState<'current' | 'history'>('current');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [searchInput, setSearchInput] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const {
+    page,
+    setPage,
+    searchInput,
+    setSearchInput,
+    debouncedSearch,
+    statusFilter,
+    setStatusFilter,
+    useClampToTotalPages,
+  } = usePaginatedListState({
+    pageSize: PAYIN_LIST_PAGE_SIZE,
+    resetWhen: [listTab],
+  });
   const [selectedOrder, setSelectedOrder] = useState<OrderDto | null>(null);
   const [receiptOrder, setReceiptOrder] = useState<OrderDto | null>(null);
   const [viewingProofFileId, setViewingProofFileId] = useState<string | null>(null);
   const [finalizeMenu, setFinalizeMenu] = useState<OrderFinalizeMenuState>(null);
   const [finalizeDialog, setFinalizeDialog] = useState<FinalizeDialogState | null>(null);
-  const [page, setPage] = useState(1);
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(searchInput.trim()), 350);
-    return () => clearTimeout(t);
-  }, [searchInput]);
 
   useEffect(() => {
     if (!finalizeMenu) return;
@@ -71,10 +78,6 @@ export function TraderPayInPage() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [finalizeMenu]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [listTab, statusFilter, debouncedSearch]);
 
   const queryParams: Record<string, string> = {
     list: listTab,
@@ -104,22 +107,9 @@ export function TraderPayInPage() {
     },
   });
 
-  useEffect(() => {
-    if (!data?.totalPages) return;
-    if (page > data.totalPages) setPage(data.totalPages);
-  }, [data?.totalPages, page]);
-
-  useEffect(() => {
-    if (!selectedOrder || !data?.orders) return;
-    const fresh = data.orders.find((o) => o.id === selectedOrder.id);
-    if (fresh) setSelectedOrder(fresh);
-  }, [data?.orders, selectedOrder?.id]);
-
-  useEffect(() => {
-    if (!receiptOrder || !data?.orders) return;
-    const fresh = data.orders.find((o) => o.id === receiptOrder.id);
-    if (fresh) setReceiptOrder(fresh);
-  }, [data?.orders, receiptOrder?.id]);
+  useClampToTotalPages(data?.totalPages);
+  useSelectedRowSync(data?.orders, selectedOrder, setSelectedOrder);
+  useSelectedRowSync(data?.orders, receiptOrder, setReceiptOrder);
 
   function openFinalize(kind: FinalizeKind, order: OrderDto) {
     setFinalizeDialog({
@@ -364,33 +354,15 @@ export function TraderPayInPage() {
         emptyMessage="No pay-in orders found"
       />
 
-      {(data?.totalPages ?? 0) > 1 && (
-        <div className="flex items-center justify-between text-sm text-text-muted">
-          <span>
-            Showing page {page} of {data?.totalPages} ({data?.total ?? 0} orders)
-          </span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-            >
-              ← Previous
-            </button>
-            <button
-              type="button"
-              className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
-              onClick={() =>
-                setPage((p) => Math.min(data?.totalPages ?? 1, p + 1))
-              }
-              disabled={page >= (data?.totalPages ?? 1)}
-            >
-              Next →
-            </button>
-          </div>
-        </div>
-      )}
+      <PaginationControls
+        page={page}
+        totalPages={data?.totalPages ?? 1}
+        onPageChange={setPage}
+        totalItems={data?.total ?? 0}
+        itemLabel="orders"
+        variant="minimal"
+      />
+
 
       <PayInReceiptGalleryModal
         receiptOrder={receiptOrder}

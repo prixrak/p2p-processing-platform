@@ -3,7 +3,11 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-export function PayinDetailRow({
+/**
+ * Two-line "label / value" pair used inside detail modals (pay-in, pay-out, appeals, staff).
+ * Pass either a primitive `value` or arbitrary `children` for non-text content (e.g. a `Badge`).
+ */
+export function DetailRow({
   label,
   value,
   mono,

@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { SettlementCreateModal } from '@/features/settlements/settlement-create-modal';
 import { DataTable } from '@/components/ui/data-table';
+import { PaginationControls } from '@/components/ui/pagination-controls';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FiltersToggleButton, ListPageHeader } from '@/components/ui/list-page-tools';
@@ -451,30 +452,12 @@ export default function SettlementsPage() {
         emptyMessage="No settlements match filters"
       />
 
-      <div className="flex items-center justify-between text-sm text-text-muted">
-        <span>Total: {total}</span>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            Previous
-          </Button>
-          <span className="px-3 py-1 tabular-nums">
-            Page {page} / {totalPages}
-          </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      <PaginationControls
+        page={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        captionOverride={`Total: ${total} · page ${page} / ${totalPages}`}
+      />
 
       <SettlementCreateModal
         open={showForm}

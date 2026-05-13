@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import {
   Plus,
   Users,
@@ -191,20 +192,14 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
 
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(searchInput, 350, (v) => v.trim());
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(searchInput.trim()), 350);
-    return () => clearTimeout(t);
-  }, [searchInput]);
 
   useEffect(() => {
     setPage(1);
     setRoleFilter('');
     setSearchInput('');
-    setDebouncedSearch('');
   }, [queryKeyPrefix]);
 
   useEffect(() => {

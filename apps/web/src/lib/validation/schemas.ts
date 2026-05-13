@@ -318,6 +318,50 @@ function validateRequisiteNumber(type: RequisiteType, raw: string, ctx: z.Refine
   }
 }
 
+/**
+ * Validates the shared 4-tuple of requisite numeric limits:
+ * `min_amount`, `max_amount`, `limit_amount`, `limit_operations`.
+ *
+ * Used by both create and partial limits-update schemas to keep error messages and
+ * threshold checks (non-negative, integer for ops, max ≥ min) in a single place.
+ */
+function applyRequisiteLimitsRefinements(
+  data: {
+    min_amount: number;
+    max_amount: number;
+    limit_amount: number;
+    limit_operations: number;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  finiteNonNegative(data.min_amount, 'min_amount', ctx);
+  finiteNonNegative(data.max_amount, 'max_amount', ctx);
+  finiteNonNegative(data.limit_amount, 'limit_amount', ctx);
+  if (
+    !Number.isFinite(data.limit_operations) ||
+    data.limit_operations < 0 ||
+    !Number.isInteger(data.limit_operations)
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['limit_operations'],
+      message: 'Enter a whole number zero or greater',
+    });
+  }
+  if (
+    Number.isFinite(data.min_amount) &&
+    Number.isFinite(data.max_amount) &&
+    data.max_amount > 0 &&
+    data.min_amount > data.max_amount
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['max_amount'],
+      message: 'Max amount must be greater than or equal to min',
+    });
+  }
+}
+
 export const requisiteCreateSchema = z
   .object({
     type: z.nativeEnum(RequisiteType),
@@ -337,28 +381,7 @@ export const requisiteCreateSchema = z
   })
   .superRefine((data, ctx) => {
     validateRequisiteNumber(data.type, data.number, ctx);
-    finiteNonNegative(data.min_amount, 'min_amount', ctx);
-    finiteNonNegative(data.max_amount, 'max_amount', ctx);
-    finiteNonNegative(data.limit_amount, 'limit_amount', ctx);
-    if (!Number.isFinite(data.limit_operations) || data.limit_operations < 0 || !Number.isInteger(data.limit_operations)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['limit_operations'],
-        message: 'Enter a whole number zero or greater',
-      });
-    }
-    if (
-      Number.isFinite(data.min_amount) &&
-      Number.isFinite(data.max_amount) &&
-      data.max_amount > 0 &&
-      data.min_amount > data.max_amount
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['max_amount'],
-        message: 'Max amount must be greater than or equal to min',
-      });
-    }
+    applyRequisiteLimitsRefinements(data, ctx);
   });
 
 export const requisiteLimitsSchema = z
@@ -370,26 +393,5 @@ export const requisiteLimitsSchema = z
     limit_operations: z.number(),
   })
   .superRefine((data, ctx) => {
-    finiteNonNegative(data.min_amount, 'min_amount', ctx);
-    finiteNonNegative(data.max_amount, 'max_amount', ctx);
-    finiteNonNegative(data.limit_amount, 'limit_amount', ctx);
-    if (!Number.isFinite(data.limit_operations) || data.limit_operations < 0 || !Number.isInteger(data.limit_operations)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['limit_operations'],
-        message: 'Enter a whole number zero or greater',
-      });
-    }
-    if (
-      Number.isFinite(data.min_amount) &&
-      Number.isFinite(data.max_amount) &&
-      data.max_amount > 0 &&
-      data.min_amount > data.max_amount
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['max_amount'],
-        message: 'Max amount must be greater than or equal to min',
-      });
-    }
+    applyRequisiteLimitsRefinements(data, ctx);
   });

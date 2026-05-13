@@ -901,6 +901,7 @@ model PayoutOrder {
   /// External merchant API path that created this row (e.g. /api/external/v1/payout/order_upload).
   externalApiPath String?           @map("external_api_path") @db.VarChar(512)
   webhookOutbox   WebhookOutbox[]
+  completionProofAttachments PayoutCompletionProofAttachment[]
 
   @@unique([merchantId, requestId])
   @@index([status])
@@ -910,6 +911,21 @@ model PayoutOrder {
   @@index([currencyId])
   @@index([createdAt])
   @@map("payout_orders")
+}
+
+/// Pay-Out cabinet: one or more receipt files linked when completing or after completion (like appeal proofs).
+model PayoutCompletionProofAttachment {
+  id              String   @id @default(uuid()) @db.Uuid
+  payoutOrderId   String   @map("payout_order_id") @db.Uuid
+  fileId          String   @map("file_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  payoutOrder PayoutOrder @relation(fields: [payoutOrderId], references: [id], onDelete: Cascade)
+  file        File        @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@unique([payoutOrderId, fileId])
+  @@index([payoutOrderId])
+  @@map("payout_completion_proof_attachments")
 }
 
 // ─── Appeals ───
@@ -976,6 +992,7 @@ model File {
   payinForkChatProofs PayinForkChatProof[]
   bankLogos    Bank[]
   payoutOrderCompletionProofs PayoutOrder[] @relation("PayoutOrderCompletionProof")
+  payoutCompletionProofAttachments PayoutCompletionProofAttachment[]
 
   @@map("files")
 }

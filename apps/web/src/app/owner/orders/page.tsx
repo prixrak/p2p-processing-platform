@@ -1,17 +1,20 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useOrderIdUrlParam } from '@/lib/hooks/use-order-id-url-param';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { Eye } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { ownerKeys } from '@/lib/query-keys';
+import { buildQueryString } from '@/lib/utils';
 import { IconButton } from '@/components/ui/icon-button';
 import { ListPageHeader, SearchStatusRow } from '@/components/ui/list-page-tools';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
+import { StatusHistoryList } from '@/components/ui/status-history-list';
 import { Tabs } from '@/components/ui/tabs';
 import { DataTable } from '@/components/ui/data-table';
 import {
@@ -58,55 +61,20 @@ interface OrderDetails {
   statusHistory: { status: string; timestamp: string; actor: string }[];
 }
 
-const ORDER_ID_QUERY = 'orderId';
-
-function looksLikeOrderIdUuid(s: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    s.trim(),
-  );
-}
+const ORDER_ID_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function OwnerOrdersPageContent() {
   const queryClient = useQueryClient();
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [tab, setTab] = useState('PAYIN');
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [detailOrder, setDetailOrder] = useState<string | null>(null);
+  const debouncedSearch = useDebouncedValue(searchInput, 350, (v) => v.trim());
 
-  const openOrderDetail = useCallback(
-    (id: string) => {
-      const p = new URLSearchParams(searchParams.toString());
-      p.set(ORDER_ID_QUERY, id);
-      router.replace(`${pathname}?${p.toString()}`, { scroll: false });
-    },
-    [pathname, router, searchParams],
-  );
-
-  const closeOrderDetail = useCallback(() => {
-    const p = new URLSearchParams(searchParams.toString());
-    p.delete(ORDER_ID_QUERY);
-    const q = p.toString();
-    router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
-  }, [pathname, router, searchParams]);
-
-  useEffect(() => {
-    const raw = searchParams.get(ORDER_ID_QUERY)?.trim() ?? '';
-    if (looksLikeOrderIdUuid(raw)) {
-      setDetailOrder(raw);
-      return;
-    }
-    setDetailOrder(null);
-  }, [searchParams]);
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(searchInput.trim()), 350);
-    return () => clearTimeout(t);
-  }, [searchInput]);
+  const { orderId: detailOrder, openOrderDetail, closeOrderDetail } = useOrderIdUrlParam({
+    validate: (s) => ORDER_ID_UUID_RE.test(s),
+  });
 
   const statusFilterOptions = useMemo(
     () => (tab === 'PAYIN' ? payinStatusFilterOptions : payoutStatusFilterOptions),
@@ -116,16 +84,14 @@ function OwnerOrdersPageContent() {
   const { data, isLoading } = useQuery({
     queryKey: ownerKeys.orders(tab, page, statusFilter, debouncedSearch),
     queryFn: () => {
-      const params = new URLSearchParams({
+      const qs = buildQueryString({
         type: tab,
-        page: String(page),
-        limit: '20',
+        page,
+        limit: 20,
+        status: statusFilter,
+        search: debouncedSearch,
       });
-      if (statusFilter) params.set('status', statusFilter);
-      if (debouncedSearch) params.set('search', debouncedSearch);
-      return api.get<OrdersResponse>(
-        internalPaths.adminOrders(params.toString()),
-      );
+      return api.get<OrdersResponse>(internalPaths.adminOrders(qs));
     },
   });
 
@@ -363,25 +329,7 @@ function OwnerOrdersPageContent() {
             )}
 
             {details.statusHistory?.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-sm font-medium text-text-secondary">Status History</h4>
-                <div className="space-y-2">
-                  {details.statusHistory.map((h, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary px-3 py-2"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Badge variant="muted">{h.status}</Badge>
-                        <span className="text-xs text-text-muted">by {h.actor}</span>
-                      </div>
-                      <span className="text-xs text-text-muted">
-                        {new Date(h.timestamp).toLocaleString()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <StatusHistoryList entries={details.statusHistory} />
             )}
           </div>
         )}

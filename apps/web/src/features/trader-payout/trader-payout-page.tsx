@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { PaginationControls } from '@/components/ui/pagination-controls';
 import { Table } from '@/components/ui/table';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -30,6 +31,7 @@ import {
   payoutCabinetKeys,
   type PayoutCabinetScope,
 } from '@/lib/query-keys';
+import { payoutCompletionProofFileIds } from './payout-completion-proof-ids';
 
 interface PayOutListResponse {
   orders: PayOutOrderApiDto[];
@@ -178,10 +180,14 @@ export function TraderPayoutPage({
     if (!fresh) return;
     setSelectedOrder((prev) => {
       if (!prev || prev.id !== fresh.id) return fresh;
-      const prevProof = prev.completion_proof_file_id;
-      const freshProof = fresh.completion_proof_file_id;
-      if (prevProof && !freshProof) {
-        return { ...fresh, completion_proof_file_id: prevProof };
+      const prevIds = payoutCompletionProofFileIds(prev);
+      const freshIds = payoutCompletionProofFileIds(fresh);
+      if (prevIds.length > 0 && freshIds.length === 0) {
+        return {
+          ...fresh,
+          completion_proof_file_ids: prevIds,
+          completion_proof_file_id: prevIds[0],
+        };
       }
       return fresh;
     });
@@ -205,9 +211,11 @@ export function TraderPayoutPage({
   const completeMutation = useMutation({
     mutationFn: async (payload: PayoutCompleteVars) =>
       api.post(`${apiBase}/orders/${payload.orderId}/complete`, {
-        ...(payload.completionProofFileId
-          ? { completion_proof_file_id: payload.completionProofFileId }
-          : {}),
+        ...(payload.completionProofFileIds != null && payload.completionProofFileIds.length > 0
+          ? { completion_proof_file_ids: payload.completionProofFileIds }
+          : payload.completionProofFileId != null
+            ? { completion_proof_file_id: payload.completionProofFileId }
+            : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
@@ -246,9 +254,9 @@ export function TraderPayoutPage({
   });
 
   const attachCompletionProofMutation = useMutation({
-    mutationFn: async ({ orderId, fileId }: { orderId: string; fileId: string }) =>
+    mutationFn: async ({ orderId, fileIds }: { orderId: string; fileIds: string[] }) =>
       api.post<PayOutOrderApiDto>(`${apiBase}/orders/${orderId}/completion-proof`, {
-        completion_proof_file_id: fileId,
+        completion_proof_file_ids: fileIds,
       }),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
@@ -467,33 +475,15 @@ export function TraderPayoutPage({
                 : 'No orders in pool matching your limits'
             }
           />
-          {poolTotalPages > 1 && (
-            <div className="mt-4 flex items-center justify-between text-sm text-text-muted">
-              <span>
-                Page {poolPage} of {poolTotalPages} ({poolData?.total ?? 0} orders)
-              </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
-                  onClick={() => setPoolPage((p) => Math.max(1, p - 1))}
-                  disabled={poolPage <= 1}
-                >
-                  ← Previous
-                </button>
-                <button
-                  type="button"
-                  className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
-                  onClick={() =>
-                    setPoolPage((p) => Math.min(poolTotalPages, p + 1))
-                  }
-                  disabled={poolPage >= poolTotalPages}
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
-          )}
+          <PaginationControls
+            page={poolPage}
+            totalPages={poolTotalPages}
+            onPageChange={setPoolPage}
+            totalItems={poolData?.total ?? 0}
+            itemLabel="orders"
+            variant="minimal"
+            className="mt-4"
+          />
         </Card>
       )}
 
@@ -514,38 +504,15 @@ export function TraderPayoutPage({
             onRowClick={(row) => setSelectedOrder(row)}
             emptyMessage="No orders in your queue — take one from New"
           />
-          {inProgressTotalPages > 1 && (
-            <div className="mt-4 flex items-center justify-between text-sm text-text-muted">
-              <span>
-                Page {inProgressPage} of {inProgressTotalPages} ({inProgressData?.total ?? 0}{' '}
-                orders)
-              </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
-                  onClick={() =>
-                    setInProgressPage((p) => Math.max(1, p - 1))
-                  }
-                  disabled={inProgressPage <= 1}
-                >
-                  ← Previous
-                </button>
-                <button
-                  type="button"
-                  className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
-                  onClick={() =>
-                    setInProgressPage((p) =>
-                      Math.min(inProgressTotalPages, p + 1),
-                    )
-                  }
-                  disabled={inProgressPage >= inProgressTotalPages}
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
-          )}
+          <PaginationControls
+            page={inProgressPage}
+            totalPages={inProgressTotalPages}
+            onPageChange={setInProgressPage}
+            totalItems={inProgressData?.total ?? 0}
+            itemLabel="orders"
+            variant="minimal"
+            className="mt-4"
+          />
         </Card>
       )}
 
@@ -565,37 +532,15 @@ export function TraderPayoutPage({
             onRowClick={(row) => setSelectedOrder(row)}
             emptyMessage="No completed pay-out orders yet"
           />
-          {historyTotalPages > 1 && (
-            <div className="mt-4 flex items-center justify-between text-sm text-text-muted">
-              <span>
-                Page {historyPage} of {historyTotalPages} ({historyData?.total ?? 0} orders)
-              </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
-                  onClick={() =>
-                    setHistoryPage((p) => Math.max(1, p - 1))
-                  }
-                  disabled={historyPage <= 1}
-                >
-                  ← Previous
-                </button>
-                <button
-                  type="button"
-                  className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
-                  onClick={() =>
-                    setHistoryPage((p) =>
-                      Math.min(historyTotalPages, p + 1),
-                    )
-                  }
-                  disabled={historyPage >= historyTotalPages}
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
-          )}
+          <PaginationControls
+            page={historyPage}
+            totalPages={historyTotalPages}
+            onPageChange={setHistoryPage}
+            totalItems={historyData?.total ?? 0}
+            itemLabel="orders"
+            variant="minimal"
+            className="mt-4"
+          />
         </Card>
       )}
 

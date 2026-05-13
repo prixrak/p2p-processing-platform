@@ -155,17 +155,6 @@ export function computeForkAssignBounds(
   return { effMin, effMax };
 }
 
-/** fill_ratio × weight — higher receives next assignment on Level 2 */
-export function requisiteRating(
-  usedAmount: number,
-  limitTotalAmount: number,
-  methodWeight: number,
-): number {
-  if (limitTotalAmount <= 0) return 0;
-  const fillRatio = usedAmount / limitTotalAmount;
-  return fillRatio * methodWeight;
-}
-
 /**
  * "Soft" bounds for *other* requisites when estimating platform coverage (Fork uses auto_min when active).
  */
@@ -222,15 +211,6 @@ export function effectiveIdleMs(nowMs: number, idleAnchorMs: number): number {
 
 export function newcomerRatingBoostMultiplier(assignmentsCount: number): number {
   return assignmentsCount === 0 ? NEWCOMER_RATING_BOOST : 1;
-}
-
-/** Idle-time race score (legacy CARD-oriented): idle × trader multiplier × newcomer boost. */
-export function cascadeRaceScore(input: {
-  idleMs: number;
-  traderMultiplier: number;
-  newcomerBoost: number;
-}): number {
-  return input.idleMs * input.traderMultiplier * input.newcomerBoost;
 }
 
 /** Confirmed Pay-In fill ratio in [0, 1] vs total requisite limit (TZ fork fill multiplier). */

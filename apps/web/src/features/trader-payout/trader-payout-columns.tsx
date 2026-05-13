@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Eye, Copy } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
+import { OrderIdCopyCell } from '@/components/ui/order-id-copy-cell';
 import { PayoutOrderStatusBadge } from '@/components/ui/order-status-badge';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { PayOutOrderStatus } from '@p2p/shared';
@@ -61,20 +62,7 @@ function LiveElapsed({
 }
 
 function CopyOrderIdCell({ id }: { id: string }) {
-  return (
-    <div className="flex items-center justify-end gap-1">
-      <span className="font-mono text-xs text-text-muted">{shortId(id)}</span>
-      <IconButton
-        label="Copy full order ID"
-        onClick={(e) => {
-          e.stopPropagation();
-          void navigator.clipboard.writeText(id);
-        }}
-      >
-        <Copy className="h-4 w-4" />
-      </IconButton>
-    </div>
-  );
+  return <OrderIdCopyCell id={id} variant="inline" />;
 }
 
 function PoolCloseCountdown({ untilUnix }: { untilUnix: number | null | undefined }) {
@@ -158,7 +146,11 @@ export function buildPayoutPoolColumns(opts: {
   ];
 }
 
-export type PayoutCompleteVars = { orderId: string; completionProofFileId?: string };
+export type PayoutCompleteVars = {
+  orderId: string;
+  completionProofFileId?: string;
+  completionProofFileIds?: string[];
+};
 
 export function buildPayoutOrdersColumns(opts: {
   variant?: PayoutTableVariant;
@@ -169,7 +161,7 @@ export function buildPayoutOrdersColumns(opts: {
   attachCompletionProofMutation?: UseMutationResult<
     PayOutOrderApiDto,
     unknown,
-    { orderId: string; fileId: string }
+    { orderId: string; fileIds: string[] }
   >;
   onView: (row: PayOutOrderApiDto) => void;
 }) {

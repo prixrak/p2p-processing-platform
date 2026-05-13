@@ -64,9 +64,3 @@ export class TraderConfirmPaidDto {
   @IsPositive()
   actualAmount?: number;
 }
-
-export class TraderCancelOrderDto {
-  @ApiProperty({ description: 'Order UUID' })
-  @IsString()
-  orderId!: string;
-}

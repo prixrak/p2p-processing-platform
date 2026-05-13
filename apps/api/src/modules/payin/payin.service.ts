@@ -53,6 +53,7 @@ import {
 import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
 import { validateCallbackUrl } from '../../common/utils/url-validator';
 import { assertAmountWithinDirectionMinMax } from '../../common/utils/direction-amount-limits.util';
+import { buildMerchantProfileDto } from '../../common/utils/merchant-profile.helper';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
 import {
   PlatformSettingsService,
@@ -68,7 +69,6 @@ import {
   BanksQueryDto,
   AppealSendDto,
   TraderOrderFiltersDto,
-  TraderConfirmPaidDto,
 } from './dto';
 import { PayinRealtimeService } from './payin-realtime.service';
 import { validate as uuidValidate } from 'uuid';
@@ -431,51 +431,10 @@ export class PayinService {
 
   async updateOrder(merchantId: string, dto: UpdateOrderDto): Promise<OrderDto> {
     const order = await this.resolveOrder(merchantId, dto.id, dto.request_id);
-
-    const nextStatus = dto.status;
-    if (!nextStatus) {
+    if (!dto.status) {
       throw new BadRequestException('Status is required');
     }
-
-    const allowedMerchantStatuses = [PayInOrderStatus.VERIFIED, PayInOrderStatus.CANCELED];
-    if (!allowedMerchantStatuses.includes(nextStatus)) {
-      throw new BadRequestException(`Merchants can only set VERIFIED or CANCELED`);
-    }
-
-    if (!isValidPayInTransition(order.status as PayInOrderStatus, nextStatus)) {
-      throw new BadRequestException(
-        `Invalid status transition: ${order.status} -> ${nextStatus}`,
-      );
-    }
-
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const result = await tx.payinOrder.update({
-        where: { id: order.id },
-        data: {
-          status: nextStatus,
-          ...(nextStatus === PayInOrderStatus.VERIFIED ? { confirmedAt: new Date() } : {}),
-          ...payinCompletedAtForHistoryStatus(nextStatus),
-        },
-        include: ORDER_INCLUDE,
-      });
-
-      await this.createPayinWebhookEntry(tx, result);
-
-      return result;
-    });
-
-    if (nextStatus === PayInOrderStatus.CANCELED && order.requisiteId) {
-      await this.requisitesService.releaseUsage(order.requisiteId, Number(order.amount));
-    }
-
-    this.emitPayinOrderRealtime({
-      id: updated.id,
-      traderId: updated.traderId,
-      merchantId: updated.merchantId,
-      status: updated.status as PayInOrderStatus,
-    });
-
-    return payinOrderToOrderDto(updated);
+    return this.applyMerchantStatusUpdate(order, dto.status);
   }
 
   // ─── External: update_order_with_proofs ───
@@ -488,37 +447,57 @@ export class PayinService {
   ): Promise<OrderDto> {
     const order = await this.resolveOrder(merchantId, orderId, undefined);
 
-    const allowedStatuses = [PayInOrderStatus.VERIFIED, PayInOrderStatus.CANCELED];
-    if (!allowedStatuses.includes(status)) {
-      throw new BadRequestException(`Status must be VERIFIED or CANCELED`);
-    }
-
-    if (!isValidPayInTransition(order.status as PayInOrderStatus, status)) {
-      throw new BadRequestException(
-        `Invalid status transition: ${order.status} -> ${status}`,
-      );
-    }
-
     if (files.length > MAX_MULTIPART_FILES_PER_REQUEST) {
       throw new BadRequestException(
         `At most ${MAX_MULTIPART_FILES_PER_REQUEST} proof files allowed per request`,
       );
     }
 
-    const fileIds = await this.filesService.saveFiles(files);
+    const fileIds = files.length > 0 ? await this.filesService.saveFiles(files) : [];
+
+    return this.applyMerchantStatusUpdate(order, status, { appealProofFileIds: fileIds });
+  }
+
+  /**
+   * Shared merchant-side status update kernel for `update_order` (no proofs) and
+   * `update_order_with_proofs` (optional appeal attachment).
+   *
+   * Validates allowed transitions, persists status + `confirmedAt`, opens an appeal with proofs
+   * when file ids are supplied, emits the merchant webhook, and releases requisite usage on
+   * CANCELED. Behavior is byte-equivalent to the previous two flows when `appealProofFileIds`
+   * is empty / undefined.
+   */
+  private async applyMerchantStatusUpdate(
+    order: OrderWithRelations,
+    nextStatus: PayInOrderStatus,
+    opts: { appealProofFileIds?: string[] } = {},
+  ): Promise<OrderDto> {
+    const allowedMerchantStatuses = [PayInOrderStatus.VERIFIED, PayInOrderStatus.CANCELED];
+    if (!allowedMerchantStatuses.includes(nextStatus)) {
+      throw new BadRequestException(`Merchants can only set VERIFIED or CANCELED`);
+    }
+
+    if (!isValidPayInTransition(order.status as PayInOrderStatus, nextStatus)) {
+      throw new BadRequestException(
+        `Invalid status transition: ${order.status} -> ${nextStatus}`,
+      );
+    }
+
+    const fileIds = opts.appealProofFileIds ?? [];
+    const hasProofs = fileIds.length > 0;
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.payinOrder.update({
         where: { id: order.id },
         data: {
-          status,
-          ...(status === PayInOrderStatus.VERIFIED ? { confirmedAt: new Date() } : {}),
-          ...payinCompletedAtForHistoryStatus(status),
+          status: nextStatus,
+          ...(nextStatus === PayInOrderStatus.VERIFIED ? { confirmedAt: new Date() } : {}),
+          ...payinCompletedAtForHistoryStatus(nextStatus),
         },
         include: ORDER_INCLUDE,
       });
 
-      if (fileIds.length > 0) {
+      if (hasProofs) {
         const appeal = await tx.appeal.create({
           data: {
             payinOrderId: order.id,
@@ -538,23 +517,26 @@ export class PayinService {
       return result;
     });
 
-    if (status === PayInOrderStatus.CANCELED && order.requisiteId) {
+    if (nextStatus === PayInOrderStatus.CANCELED && order.requisiteId) {
       await this.requisitesService.releaseUsage(order.requisiteId, Number(order.amount));
     }
 
-    const refreshed = await this.prisma.payinOrder.findUniqueOrThrow({
-      where: { id: updated.id },
-      include: ORDER_INCLUDE,
-    });
+    // Re-read after the transaction so freshly created appeals/proofs are included in the DTO.
+    const finalRow = hasProofs
+      ? await this.prisma.payinOrder.findUniqueOrThrow({
+          where: { id: updated.id },
+          include: ORDER_INCLUDE,
+        })
+      : updated;
 
     this.emitPayinOrderRealtime({
-      id: refreshed.id,
-      traderId: refreshed.traderId,
-      merchantId: refreshed.merchantId,
-      status: refreshed.status as PayInOrderStatus,
+      id: finalRow.id,
+      traderId: finalRow.traderId,
+      merchantId: finalRow.merchantId,
+      status: finalRow.status as PayInOrderStatus,
     });
 
-    return payinOrderToOrderDto(refreshed);
+    return payinOrderToOrderDto(finalRow);
   }
 
   // ─── External: order_info ───
@@ -567,42 +549,7 @@ export class PayinService {
   // ─── External: info ───
 
   async getInfo(merchantId: string): Promise<ProfileDto> {
-    const merchant = await this.prisma.merchant.findUniqueOrThrow({
-      where: { id: merchantId },
-      include: { balances: { include: { currency: true } } },
-    });
-
-    const direction = await this.prisma.direction.findFirst({
-      where: { type: DirectionType.PAYIN, isOnline: true },
-    });
-
-    const balances: Record<string, number> = {};
-    for (const b of merchant.balances) {
-      balances[b.currency.code] = Number(b.amount);
-    }
-
-    return {
-      name: merchant.name,
-      is_lock: merchant.isLock,
-      balances,
-      direction: direction
-        ? {
-            direction_name: direction.name,
-            min_amount: Number(direction.minAmount),
-            max_amount: Number(direction.maxAmount),
-            rate: 1,
-            percent: Number(direction.percentFee),
-            online: direction.isOnline,
-          }
-        : {
-            direction_name: '',
-            min_amount: 0,
-            max_amount: 0,
-            rate: 0,
-            percent: 0,
-            online: false,
-          },
-    };
+    return buildMerchantProfileDto(this.prisma, merchantId, DirectionType.PAYIN);
   }
 
   // ─── External: h2h_init ───
@@ -1191,9 +1138,8 @@ export class PayinService {
     });
     if (!order) throw new NotFoundException('Order not found');
 
-    let targetStatus: PayInOrderStatus;
     const orderAmount = Number(order.amount);
-
+    let targetStatus: PayInOrderStatus;
     if (actualAmount === undefined || actualAmount === orderAmount) {
       targetStatus = PayInOrderStatus.PAID;
     } else if (actualAmount < orderAmount) {
@@ -1208,69 +1154,11 @@ export class PayinService {
       );
     }
 
-    const fromStatus = order.status as PayInOrderStatus;
-    const paidOutcomes: PayInOrderStatus[] = [
-      PayInOrderStatus.PAID,
-      PayInOrderStatus.UNDERPAID,
-      PayInOrderStatus.OVERPAID,
-    ];
+    const paidCredit = actualAmount !== undefined ? actualAmount : orderAmount;
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const wasPaid = PAYIN_PAID_OUTCOME_STATUSES.includes(fromStatus);
-      const willPaid = paidOutcomes.includes(targetStatus);
-      const prevReceived =
-        order.receivedFiatAmount != null ? Number(order.receivedFiatAmount) : 0;
-      const paidCredit =
-        actualAmount !== undefined ? actualAmount : orderAmount;
-
-      if (order.requisiteId) {
-        if (wasPaid && !willPaid && prevReceived > 0) {
-          await this.requisitesService.adjustConfirmedPayinVolumeInTransaction(
-            tx,
-            order.requisiteId,
-            -prevReceived,
-          );
-        }
-        if (!wasPaid && willPaid && paidCredit > 0) {
-          await this.requisitesService.adjustConfirmedPayinVolumeInTransaction(
-            tx,
-            order.requisiteId,
-            paidCredit,
-          );
-        }
-      }
-
-      const result = await tx.payinOrder.update({
-        where: { id: order.id },
-        data: {
-          status: targetStatus,
-          receivedFiatAmount: willPaid ? paidCredit : null,
-          ...payinCompletedAtForHistoryStatus(targetStatus),
-        },
-        include: ORDER_INCLUDE,
-      });
-
-      if (
-        fromStatus === PayInOrderStatus.CANCELED &&
-        order.requisiteId &&
-        paidOutcomes.includes(targetStatus)
-      ) {
-        await this.requisitesService.incrementUsageInTransaction(
-          tx,
-          order.requisiteId,
-          Number(order.amount),
-        );
-      }
-
-      if (paidOutcomes.includes(targetStatus)) {
-        const paidLocal = actualAmount !== undefined ? actualAmount : orderAmount;
-        await this.creditBalancesOnPaid(tx, order, paidLocal);
-      }
-
-      await this.createPayinWebhookEntry(tx, result);
-
-      return result;
-    });
+    const updated = await this.prisma.$transaction((tx) =>
+      this.applyPayinPaidTransitionTx(tx, { order, targetStatus, paidCredit }),
+    );
 
     this.emitPayinOrderRealtime({
       id: updated.id,
@@ -1303,80 +1191,11 @@ export class PayinService {
       throw new BadRequestException(`Invalid status transition: ${from} -> ${targetStatus}`);
     }
 
-    const paidOutcomes: PayInOrderStatus[] = [
-      PayInOrderStatus.PAID,
-      PayInOrderStatus.UNDERPAID,
-      PayInOrderStatus.OVERPAID,
-    ];
+    const paidCredit = Number(order.amount);
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const wasPaid = PAYIN_PAID_OUTCOME_STATUSES.includes(from);
-      const willPaid = paidOutcomes.includes(targetStatus);
-      const prevReceived =
-        order.receivedFiatAmount != null ? Number(order.receivedFiatAmount) : 0;
-      const paidCredit = Number(order.amount);
-
-      if (order.requisiteId) {
-        if (wasPaid && !willPaid && prevReceived > 0) {
-          await this.requisitesService.adjustConfirmedPayinVolumeInTransaction(
-            tx,
-            order.requisiteId,
-            -prevReceived,
-          );
-        }
-        if (!wasPaid && willPaid && paidCredit > 0) {
-          await this.requisitesService.adjustConfirmedPayinVolumeInTransaction(
-            tx,
-            order.requisiteId,
-            paidCredit,
-          );
-        }
-      }
-
-      const result = await tx.payinOrder.update({
-        where: { id: order.id },
-        data: {
-          status: targetStatus as never,
-          receivedFiatAmount: willPaid ? paidCredit : null,
-          ...payinCompletedAtForHistoryStatus(targetStatus),
-        },
-      });
-
-      if (
-        from === PayInOrderStatus.CANCELED &&
-        order.requisiteId &&
-        paidOutcomes.includes(targetStatus)
-      ) {
-        await this.requisitesService.incrementUsageInTransaction(
-          tx,
-          order.requisiteId,
-          Number(order.amount),
-        );
-      }
-
-      if (paidOutcomes.includes(targetStatus)) {
-        const paidLocal = Number(order.amount);
-        await this.creditBalancesOnPaid(tx, order, paidLocal);
-      }
-
-      if (result.callbackUrl) {
-        await tx.webhookOutbox.create({
-          data: {
-            payinOrderId: result.id,
-            method: WebhookMethod.PAYIN_UPDATE_STATUS_ORDER as any,
-            payloadJson: {
-              id: result.id,
-              order_id: result.requestId,
-              order_status: result.status,
-              amount: Number(result.amount),
-            },
-            callbackUrl: result.callbackUrl,
-          },
-        });
-      }
-
-      return result;
-    });
+    const updated = await this.prisma.$transaction((tx) =>
+      this.applyPayinPaidTransitionTx(tx, { order, targetStatus, paidCredit }),
+    );
 
     this.logger.log(`Admin updated pay-in order ${order.id}: ${from} -> ${targetStatus}`);
     this.emitPayinOrderRealtime({
@@ -1387,6 +1206,81 @@ export class PayinService {
     });
 
     return updated;
+  }
+
+  /**
+   * Shared transactional kernel for any Pay-In status transition that may cross the "paid"
+   * outcome boundary (trader confirmation + admin override).
+   *
+   * RISK NOTE: this is the single place that mutates `received_fiat_amount`, adjusts cascade
+   * `confirmed_payin_amount`, increments requisite usage on CANCELED → paid recovery, credits
+   * balances via `creditBalancesOnPaid`, and emits the merchant webhook. Behavioral parity with
+   * the original trader/admin flows is preserved (admin webhook now goes through
+   * `createPayinWebhookEntry`, which also forwards `trader_processing_method` when set on the
+   * order — this is an enrichment, not a removal).
+   */
+  private async applyPayinPaidTransitionTx(
+    tx: Prisma.TransactionClient,
+    opts: {
+      order: OrderWithRelations;
+      targetStatus: PayInOrderStatus;
+      /** Local-currency amount used for `received_fiat_amount`, requisite credit, and trader balance crediting. */
+      paidCredit: number;
+    },
+  ): Promise<OrderWithRelations> {
+    const { order, targetStatus, paidCredit } = opts;
+    const fromStatus = order.status as PayInOrderStatus;
+    const wasPaid = PAYIN_PAID_OUTCOME_STATUSES.includes(fromStatus);
+    const willPaid = PAYIN_PAID_OUTCOME_STATUSES.includes(targetStatus);
+    const prevReceived =
+      order.receivedFiatAmount != null ? Number(order.receivedFiatAmount) : 0;
+
+    if (order.requisiteId) {
+      if (wasPaid && !willPaid && prevReceived > 0) {
+        await this.requisitesService.adjustConfirmedPayinVolumeInTransaction(
+          tx,
+          order.requisiteId,
+          -prevReceived,
+        );
+      }
+      if (!wasPaid && willPaid && paidCredit > 0) {
+        await this.requisitesService.adjustConfirmedPayinVolumeInTransaction(
+          tx,
+          order.requisiteId,
+          paidCredit,
+        );
+      }
+    }
+
+    const result = await tx.payinOrder.update({
+      where: { id: order.id },
+      data: {
+        status: targetStatus,
+        receivedFiatAmount: willPaid ? paidCredit : null,
+        ...payinCompletedAtForHistoryStatus(targetStatus),
+      },
+      include: ORDER_INCLUDE,
+    });
+
+    if (
+      fromStatus === PayInOrderStatus.CANCELED &&
+      order.requisiteId &&
+      willPaid
+    ) {
+      await this.requisitesService.incrementUsageInTransaction(
+        tx,
+        order.requisiteId,
+        Number(order.amount),
+      );
+    }
+
+    if (willPaid) {
+      await this.creditBalancesOnPaid(tx, order, paidCredit);
+    }
+
+    await this.createPayinWebhookEntry(tx, result);
+
+    return result;
   }
 
   // ─── Internal (Trader): cancel ───

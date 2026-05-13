@@ -29,7 +29,8 @@ function trafficSumHintPct(fork: number, card: number): string | null {
   return `Fork and Card should total ~100% for the documented tier-1 split (currently ${sum.toFixed(sum % 1 === 0 ? 0 : 1)}%).`;
 }
 
-function Badge({
+/** Small tag chip used for method tier labels (Fork / Card / Provider). */
+function MethodChip({
   children,
   className,
 }: {
@@ -227,9 +228,9 @@ export function CascadeGlobalSettingsSection({
 
               <div className="space-y-3">
                 <article className="flex flex-wrap items-start gap-4 rounded-xl border border-border-primary bg-surface-primary p-4 shadow-sm">
-                  <Badge className="border border-violet-200 bg-violet-100 text-violet-900 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-100">
+                  <MethodChip className="border border-violet-200 bg-violet-100 text-violet-900 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-100">
                     Fork
-                  </Badge>
+                  </MethodChip>
                   <div className="min-w-[200px] flex-1 space-y-1">
                     <h4 className="text-sm font-semibold text-text-primary">
                       Level 1 — priority
@@ -251,9 +252,9 @@ export function CascadeGlobalSettingsSection({
                 </article>
 
                 <article className="flex flex-wrap items-start gap-4 rounded-xl border border-border-primary bg-surface-primary p-4 shadow-sm">
-                  <Badge className="border border-emerald-200 bg-emerald-100 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100">
+                  <MethodChip className="border border-emerald-200 bg-emerald-100 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100">
                     Card
-                  </Badge>
+                  </MethodChip>
                   <div className="min-w-[200px] flex-1 space-y-1">
                     <h4 className="text-sm font-semibold text-text-primary">
                       Level 2 — reserved tier

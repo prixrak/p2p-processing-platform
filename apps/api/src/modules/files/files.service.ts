@@ -219,8 +219,11 @@ export class FilesService {
 
       const payoutOwned = await this.prisma.payoutOrder.findFirst({
         where: {
-          completionProofFileId: file.id,
           traderId: actor.traderId,
+          OR: [
+            { completionProofFileId: file.id },
+            { completionProofAttachments: { some: { fileId: file.id } } },
+          ],
         },
       });
       if (payoutOwned) return;
@@ -250,8 +253,11 @@ export class FilesService {
 
       const payoutCompletionProof = await this.prisma.payoutOrder.findFirst({
         where: {
-          completionProofFileId: file.id,
           merchantId: actor.merchantId,
+          OR: [
+            { completionProofFileId: file.id },
+            { completionProofAttachments: { some: { fileId: file.id } } },
+          ],
         },
       });
       if (payoutCompletionProof) return;
@@ -265,8 +271,11 @@ export class FilesService {
       }
       const payout = await this.prisma.payoutOrder.findFirst({
         where: {
-          completionProofFileId: file.id,
           payoutTraderId: actor.payoutTraderId,
+          OR: [
+            { completionProofFileId: file.id },
+            { completionProofAttachments: { some: { fileId: file.id } } },
+          ],
         },
       });
       if (payout) return;

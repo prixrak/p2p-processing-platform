@@ -2,22 +2,21 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  AlertTriangle,
-  Eye,
-  ExternalLink,
-} from 'lucide-react';
+import { AlertTriangle, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Table } from '@/components/ui/table';
 import { Tabs } from '@/components/ui/tabs';
 import { Modal } from '@/components/ui/modal';
+import { DetailRow } from '@/components/ui/detail-row';
+import { ProofThumbnailGrid } from '@/components/ui/proof-thumbnail-grid';
+import { PaginationControls } from '@/components/ui/pagination-controls';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { traderKeys } from '@/lib/query-keys';
 import { AuthorizedFilePreview } from '@/components/files/authorized-file-preview';
-import { formatCurrency, formatDate, formatDateFull, shortId, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, formatDateFull, shortId } from '@/lib/utils';
 import { AppealStatus } from '@p2p/shared';
 import type { AppealDto } from '@p2p/shared';
 
@@ -247,33 +246,14 @@ export default function AppealsPage() {
         emptyMessage={listTab === 'current' ? 'No open appeals' : 'No completed appeals yet'}
       />
 
-      {activeTotalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-text-muted">
-          <span>
-            Page {activePage} of {activeTotalPages} ({activeBucket?.total ?? 0} appeals)
-          </span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
-              onClick={() => setActivePage((p) => Math.max(1, p - 1))}
-              disabled={activePage <= 1}
-            >
-              ← Previous
-            </button>
-            <button
-              type="button"
-              className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
-              onClick={() =>
-                setActivePage((p) => Math.min(activeTotalPages, p + 1))
-              }
-              disabled={activePage >= activeTotalPages}
-            >
-              Next →
-            </button>
-          </div>
-        </div>
-      )}
+      <PaginationControls
+        page={activePage}
+        totalPages={activeTotalPages}
+        onPageChange={setActivePage}
+        totalItems={activeBucket?.total ?? 0}
+        itemLabel="appeals"
+        variant="minimal"
+      />
 
       <Modal
         open={!!selectedAppeal}
@@ -308,27 +288,13 @@ export default function AppealsPage() {
             {selectedAppeal.proofs_of_payment.length > 0 && (
               <div className="space-y-3">
                 <h3 className="text-sm font-medium text-text-secondary">Proof files</h3>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {selectedAppeal.proofs_of_payment.map((fileId) => (
-                    <button
-                      key={fileId}
-                      type="button"
-                      onClick={() => setViewingProof(fileId)}
-                      className="group relative cursor-pointer overflow-hidden rounded-lg border border-border-primary bg-bg-secondary text-left transition-colors hover:border-accent-blue"
-                    >
-                      <div className="pointer-events-none aspect-video max-h-36">
-                        <AuthorizedFilePreview
-                          path={internalPaths.fileById(fileId)}
-                          alt="Proof of payment"
-                          className="h-full max-h-36"
-                        />
-                      </div>
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
-                        <ExternalLink className="h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                <ProofThumbnailGrid
+                  fileIds={selectedAppeal.proofs_of_payment}
+                  alt="Proof of payment"
+                  onOpen={setViewingProof}
+                  columnsClass="grid-cols-1 sm:grid-cols-3"
+                  tileMaxHeightClass="max-h-36"
+                />
               </div>
             )}
 
@@ -392,27 +358,4 @@ function requisiteShort(row: AppealDto): string {
 
 function requisiteLabel(row: AppealDto): string {
   return requisiteShort(row);
-}
-
-function DetailRow({
-  label,
-  value,
-  mono,
-  children,
-}: {
-  label: string;
-  value?: string;
-  mono?: boolean;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-xs text-text-muted">{label}</span>
-      {children ?? (
-        <span className={cn('text-sm text-text-primary', mono && 'font-mono text-xs')}>
-          {value}
-        </span>
-      )}
-    </div>
-  );
 }

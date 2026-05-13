@@ -9,6 +9,7 @@ import { internalPaths } from '@/lib/internal-api';
 import { traderKeys } from '@/lib/query-keys';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
+import { PaginationControls } from '@/components/ui/pagination-controls';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { Select } from '@/components/ui/select';
 
@@ -390,30 +391,13 @@ export default function BalanceHistoryPage() {
         emptyMessage="No transactions found"
       />
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-text-muted">
-          <span>Total: {total}</span>
-          <div className="flex gap-2">
-            <button
-              className="px-3 py-1 rounded bg-bg-secondary disabled:opacity-40"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-            >
-              ← Previous
-            </button>
-            <span className="px-3 py-1">
-              {page} / {totalPages}
-            </span>
-            <button
-              className="px-3 py-1 rounded bg-bg-secondary disabled:opacity-40"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-            >
-              Next →
-            </button>
-          </div>
-        </div>
-      )}
+      <PaginationControls
+        page={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        captionOverride={`Total: ${total} · page ${page} / ${totalPages}`}
+        variant="minimal"
+      />
     </div>
   );
 }

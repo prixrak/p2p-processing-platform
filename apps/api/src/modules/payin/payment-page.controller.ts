@@ -7,34 +7,27 @@ import {
   UseInterceptors,
   ParseUUIDPipe,
   NotFoundException,
-  Sse,
-  Header,
   MessageEvent,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
-import { SkipThrottle } from '@nestjs/throttler';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiConsumes, ApiProduces } from '@nestjs/swagger';
-import { MAX_FILE_SIZE_BYTES } from '@p2p/shared';
+import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import { MAX_FILE_SIZE_BYTES, MAX_MULTIPART_FILES_PER_REQUEST } from '@p2p/shared';
 import { PayinService } from './payin.service';
 import { PayinRealtimeService } from './payin-realtime.service';
-import { FilesService, UploadedFile as UploadedFileType } from '../files/files.service';
+import { mapUploadedFiles } from '../../common/files/multer-mapper';
+import { SseStream } from '../../common/decorators/sse-stream.decorator';
 
 @ApiTags('Payment Page')
 @Controller('pay')
 export class PaymentPageController {
   constructor(
     private readonly payinService: PayinService,
-    private readonly filesService: FilesService,
     private readonly payinRealtime: PayinRealtimeService,
   ) {}
 
-  @SkipThrottle()
-  @Sse(':id/stream')
-  @Header('X-Accel-Buffering', 'no')
-  @Header('Cache-Control', 'no-cache')
+  @SseStream(':id/stream')
   @ApiOperation({ summary: 'SSE stream for Pay-In order updates for this order' })
-  @ApiProduces('text/event-stream')
   streamOrderPayin(@Param('id', ParseUUIDPipe) id: string): Observable<MessageEvent> {
     return this.payinRealtime.streamForOrder(id);
   }
@@ -52,17 +45,15 @@ export class PaymentPageController {
   @Post(':id/confirm')
   @ApiOperation({ summary: 'Confirm payment from payment page' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FilesInterceptor('files', 5, { limits: { fileSize: MAX_FILE_SIZE_BYTES } }))
+  @UseInterceptors(
+    FilesInterceptor('files', MAX_MULTIPART_FILES_PER_REQUEST, {
+      limits: { fileSize: MAX_FILE_SIZE_BYTES },
+    }),
+  )
   async confirmPayment(
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFiles() files?: Express.Multer.File[],
   ) {
-    const mappedFiles: UploadedFileType[] = (files ?? []).map((f) => ({
-      originalname: f.originalname,
-      mimetype: f.mimetype,
-      size: f.size,
-      buffer: f.buffer,
-    }));
-    return this.payinService.confirmFromPaymentPage(id, mappedFiles);
+    return this.payinService.confirmFromPaymentPage(id, mapUploadedFiles(files));
   }
 }

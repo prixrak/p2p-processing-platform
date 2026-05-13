@@ -57,25 +57,7 @@ export class AdminCascadeController {
   @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
   @ApiOperation({ summary: 'Cascade routing global settings' })
   async getSettings() {
-    const s = await this.cascadeService.getSettings();
-    const integration = await this.platformSettings.findOne(
-      PLATFORM_SETTING_PAYIN_PROVIDER_INTEGRATION_ENABLED,
-    );
-    return {
-      sliding_window_hours: s.slidingWindowHours,
-      autolimit_threshold: Number(s.autolimitThreshold),
-      autolimit_enabled: s.autolimitEnabled,
-      card_rating_weight: s.cardRatingWeight,
-      fork_rating_weight: s.forkRatingWeight,
-      fork_traffic_percent: Number(s.forkTrafficPercent),
-      card_traffic_percent: Number(s.cardTrafficPercent),
-      provider_traffic_percent: Number(s.providerTrafficPercent),
-      level_pick_mode: s.levelPickMode,
-      fill_multipliers_config: s.fillMultipliersConfig ?? null,
-      updated_at: s.updatedAt,
-      payin_provider_integration_enabled:
-        integration.value.trim().toLowerCase() === 'true',
-    };
+    return this.buildCascadeSettingsResponse();
   }
 
   @Patch('settings')
@@ -101,6 +83,11 @@ export class AdminCascadeController {
       userId,
     );
     await this.cascadeCoverageCache.invalidateAll();
+    return this.buildCascadeSettingsResponse();
+  }
+
+  /** Snapshot of cascade settings combined with the platform `payin_provider_integration_enabled` flag. */
+  private async buildCascadeSettingsResponse() {
     const s = await this.cascadeService.getSettings();
     const integration = await this.platformSettings.findOne(
       PLATFORM_SETTING_PAYIN_PROVIDER_INTEGRATION_ENABLED,

@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink } from 'lucide-react';
 import { PayinOrderStatusBadge } from '@/components/ui/order-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { AuthorizedFilePreview } from '@/components/files/authorized-file-preview';
+import { FileUpload } from '@/components/ui/file-upload';
+import { ProofThumbnailGrid } from '@/components/ui/proof-thumbnail-grid';
 import { PayInOrderStatus, MAX_MULTIPART_FILES_PER_REQUEST } from '@p2p/shared';
 import type { OrderDto } from '@p2p/shared';
 import { formatCurrency, formatDateFull } from '@/lib/utils';
@@ -22,7 +23,7 @@ import {
   OrderFinalizeDropdown,
   type OrderFinalizeMenuState,
 } from './order-finalize-dropdown';
-import { PayinDetailRow } from './payin-detail-row';
+import { DetailRow } from '@/components/ui/detail-row';
 import type { FinalizeKind } from './payin-types';
 import { CountdownTimer } from './payin-order-cells';
 
@@ -85,22 +86,22 @@ export function PayInOrderDetailModal({
         {selectedOrder && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <PayinDetailRow label="Order ID" value={selectedOrder.id} mono />
-              <PayinDetailRow label="Request ID" value={selectedOrder.request_id} mono />
-              <PayinDetailRow
+              <DetailRow label="Order ID" value={selectedOrder.id} mono />
+              <DetailRow label="Request ID" value={selectedOrder.request_id} mono />
+              <DetailRow
                 label="Amount"
                 value={formatCurrency(selectedOrder.amount, selectedOrder.currency)}
               />
-              <PayinDetailRow label="Currency" value={selectedOrder.currency || '—'} />
-              <PayinDetailRow
+              <DetailRow label="Currency" value={selectedOrder.currency || '—'} />
+              <DetailRow
                 label="Merchant fee"
                 value={`${formatCurrency(selectedOrder.commission, selectedOrder.currency)} (${formatPercentPoints(selectedOrder.commission_percent)})`}
               />
-              <PayinDetailRow
+              <DetailRow
                 label="Partner amount"
                 value={formatCurrency(selectedOrder.partner_amount, selectedOrder.currency)}
               />
-              <PayinDetailRow
+              <DetailRow
                 label="Your Pay-In markup"
                 value={
                   selectedOrder.payin_trader_markup_percent != null
@@ -108,28 +109,28 @@ export function PayInOrderDetailModal({
                     : '—'
                 }
               />
-              <PayinDetailRow label="Direction" value={payinDirectionLabel(selectedOrder)} />
+              <DetailRow label="Direction" value={payinDirectionLabel(selectedOrder)} />
               {selectedOrder.trader_processing_method ? (
-                <PayinDetailRow
+                <DetailRow
                   label="Pay-In routing"
                   value={selectedOrder.trader_processing_method}
                 />
               ) : null}
-              <PayinDetailRow label="Status">
+              <DetailRow label="Status">
                 <PayinOrderStatusBadge status={selectedOrder.status} />
-              </PayinDetailRow>
-              <PayinDetailRow label="Created" value={formatDateFull(selectedOrder.created_at)} />
-              <PayinDetailRow label="Bank" value={selectedOrder.bank || '-'} />
-              <PayinDetailRow label="Requisite" value={selectedOrder.requisite_number || '-'} mono />
-              <PayinDetailRow label="Owner" value={selectedOrder.requisite_owner || '-'} />
-              <PayinDetailRow label="Time to complete">
+              </DetailRow>
+              <DetailRow label="Created" value={formatDateFull(selectedOrder.created_at)} />
+              <DetailRow label="Bank" value={selectedOrder.bank || '-'} />
+              <DetailRow label="Requisite" value={selectedOrder.requisite_number || '-'} mono />
+              <DetailRow label="Owner" value={selectedOrder.requisite_owner || '-'} />
+              <DetailRow label="Time to complete">
                 <CountdownTimer
                   autocloseAt={selectedOrder.autoclose_at}
                   createdAt={selectedOrder.created_at}
                   status={selectedOrder.status}
                   clockOffsetMs={clockOffsetMs}
                 />
-              </PayinDetailRow>
+              </DetailRow>
             </div>
 
             {selectedOrder.trader_processing_method === 'FORK' &&
@@ -148,27 +149,11 @@ export function PayInOrderDetailModal({
                 {(selectedOrder.fork_chat_proof_file_ids?.length ?? 0) > 0 ? (
                   <div className="space-y-2">
                     <p className="text-xs text-text-muted">Chat screenshots</p>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      {(selectedOrder.fork_chat_proof_file_ids ?? []).map((fileId) => (
-                        <button
-                          key={fileId}
-                          type="button"
-                          onClick={() => setProofFileId(fileId)}
-                          className="group relative cursor-pointer overflow-hidden rounded-lg border border-border-primary bg-bg-secondary text-left transition-colors hover:border-accent-blue"
-                        >
-                          <div className="pointer-events-none aspect-video max-h-28">
-                            <AuthorizedFilePreview
-                              path={internalPaths.fileById(fileId)}
-                              alt="Fork chat proof"
-                              className="h-full max-h-28"
-                            />
-                          </div>
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/35">
-                            <ExternalLink className="h-4 w-4 text-white opacity-0 transition-opacity group-hover:opacity-100" />
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                    <ProofThumbnailGrid
+                      fileIds={selectedOrder.fork_chat_proof_file_ids ?? []}
+                      alt="Fork chat proof"
+                      onOpen={setProofFileId}
+                    />
                   </div>
                 ) : null}
               </div>
@@ -192,12 +177,10 @@ export function PayInOrderDetailModal({
                   <label className="mb-1 block text-sm font-medium text-text-secondary">
                     Chat screenshots (optional)
                   </label>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/jpg,application/pdf"
-                    multiple
-                    className="block w-full text-sm text-text-muted file:mr-3 file:rounded-md file:border-0 file:bg-bg-tertiary file:px-3 file:py-1.5 file:text-text-primary"
-                    onChange={(e) => setForkUploadFiles(Array.from(e.target.files ?? []))}
+                  <FileUpload
+                    compact
+                    maxFiles={MAX_MULTIPART_FILES_PER_REQUEST}
+                    onChange={(files) => setForkUploadFiles(files)}
                   />
                 </div>
                 <Button
@@ -241,27 +224,11 @@ export function PayInOrderDetailModal({
                         <p className="text-xs text-text-muted">
                           Proof files ({appeal.proofs_of_payment.length})
                         </p>
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                          {(appeal.proofs_of_payment ?? []).map((fileId) => (
-                            <button
-                              key={fileId}
-                              type="button"
-                              onClick={() => setProofFileId(fileId)}
-                              className="group relative cursor-pointer overflow-hidden rounded-lg border border-border-primary bg-bg-secondary text-left transition-colors hover:border-accent-blue"
-                            >
-                              <div className="pointer-events-none aspect-video max-h-28">
-                                <AuthorizedFilePreview
-                                  path={internalPaths.fileById(fileId)}
-                                  alt="Appeal proof"
-                                  className="h-full max-h-28"
-                                />
-                              </div>
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/35">
-                                <ExternalLink className="h-4 w-4 text-white opacity-0 transition-opacity group-hover:opacity-100" />
-                              </div>
-                            </button>
-                          ))}
-                        </div>
+                        <ProofThumbnailGrid
+                          fileIds={appeal.proofs_of_payment}
+                          alt="Appeal proof"
+                          onOpen={setProofFileId}
+                        />
                       </div>
                     )}
                   </div>

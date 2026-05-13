@@ -17,6 +17,7 @@ import { merchantKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Badge } from '@/components/ui/badge';
+import { useCopyToClipboard } from '@/lib/hooks/use-copy-to-clipboard';
 import { ORDER_LIST_DIRECTION, type OrderListDirection } from '@p2p/shared';
 
 interface ApiKeyPair {
@@ -39,7 +40,7 @@ export default function ApiKeysPage() {
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [regeneratingDirection, setRegeneratingDirection] = useState<string>('');
   const [newSecret, setNewSecret] = useState<string | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
+  const { copied, copy: copyToClipboardRaw } = useCopyToClipboard();
 
   const { data: keys = [], isLoading } = useQuery<ApiKeyPair[]>({
     queryKey: merchantKeys.apiKeys(),
@@ -66,9 +67,7 @@ export default function ApiKeysPage() {
   });
 
   function copyToClipboard(text: string, label: string) {
-    navigator.clipboard.writeText(text);
-    setCopied(label);
-    setTimeout(() => setCopied(null), 2000);
+    void copyToClipboardRaw(text, label);
   }
 
   const payInKeys = keys.filter((k) => k.direction === ORDER_LIST_DIRECTION.PAY_IN);
@@ -114,7 +113,7 @@ export default function ApiKeysPage() {
               setRegeneratingDirection(key.direction);
             }}
             onCopy={copyToClipboard}
-            copied={copied}
+            copied={typeof copied === 'string' ? copied : null}
           />
           <KeySection
             title="Pay-Out Keys"
@@ -129,7 +128,7 @@ export default function ApiKeysPage() {
               setRegeneratingDirection(key.direction);
             }}
             onCopy={copyToClipboard}
-            copied={copied}
+            copied={typeof copied === 'string' ? copied : null}
           />
         </>
       )}

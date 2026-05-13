@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Copy, Scale, CheckCircle2, XCircle } from 'lucide-react';
+import { Scale, CheckCircle2, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { toast } from '@/components/ui/toast';
+import { OrderIdCopyCell } from '@/components/ui/order-id-copy-cell';
 import { AppealStatus, PayInOrderStatus } from '@p2p/shared';
 import type { OrderDto } from '@p2p/shared';
-import { shortId, cn } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { payinDeadlineElapsedShowsCanceled } from './payin-countdown-utils';
 
 type CountdownUrgency = 'canceled' | 'critical' | 'low' | 'moderate' | 'comfortable';
@@ -107,33 +107,7 @@ export function CountdownTimer({
 }
 
 export function CopyOrderIdCell({ id }: { id: string }) {
-  const [copied, setCopied] = useState(false);
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(id);
-      toast.success('Order ID copied');
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      toast.error('Could not copy to clipboard');
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      title={id}
-      onClick={(e) => {
-        e.stopPropagation();
-        void copy();
-      }}
-      className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border-primary bg-surface-tertiary/40 px-2 py-1 text-left transition-colors hover:border-accent-blue hover:bg-surface-tertiary"
-    >
-      <span className="truncate font-mono text-xs text-text-primary">{shortId(id)}</span>
-      <Copy className={cn('h-4 w-4 shrink-0 text-text-muted', copied && 'text-accent-green')} />
-    </button>
-  );
+  return <OrderIdCopyCell id={id} variant="chip" withToast />;
 }
 
 export function AppealCell({ row }: { row: OrderDto }) {

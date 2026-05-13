@@ -5,6 +5,8 @@ export const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
 export const ALLOWED_FILE_TYPES = ['image/png', 'image/jpg', 'image/jpeg', 'application/pdf'];
 /** Max files per multipart upload for merchant proofs and internal batch upload (`POST /files/upload/batch`). */
 export const MAX_MULTIPART_FILES_PER_REQUEST = 10;
+/** Max completion receipt files stored on a single Pay-Out order (trader / specialist cabinet). */
+export const MAX_PAYOUT_COMPLETION_PROOF_FILES = MAX_MULTIPART_FILES_PER_REQUEST;
 export const WEBHOOK_MAX_RETRIES = 8;
 export const WEBHOOK_RETRY_DELAYS_MS = [
   5_000,      // 5s
@@ -17,7 +19,6 @@ export const WEBHOOK_RETRY_DELAYS_MS = [
   3_600_000,  // 1h
 ];
 export const MAX_PAGE_SIZE = 100;
-export const AUTO_REFRESH_INTERVALS = [5, 10, 20] as const;
 
 /** Pay-In orders still in the trader workflow (not settled or closed). */
 export const PAYIN_TRADER_CURRENT_STATUSES: readonly PayInOrderStatus[] = [

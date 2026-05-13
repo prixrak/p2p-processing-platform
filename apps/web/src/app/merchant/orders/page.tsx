@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { ArrowLeftRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -13,6 +14,7 @@ import {
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { merchantKeys } from '@/lib/query-keys';
+import { buildQueryString } from '@/lib/utils';
 import { DataTable } from '@/components/ui/data-table';
 import { StatusBadge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
@@ -53,15 +55,10 @@ export default function MerchantOrdersPage() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(searchInput, 350, (v) => v.trim());
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(searchInput.trim()), 350);
-    return () => clearTimeout(t);
-  }, [searchInput]);
 
   const direction = orderListUiTabToDirection(tab);
 
@@ -84,16 +81,16 @@ export default function MerchantOrdersPage() {
       page,
     }),
     queryFn: async () => {
-      const params = new URLSearchParams({
+      const qs = buildQueryString({
         direction,
-        page: String(page),
-        limit: String(MERCHANT_ORDER_PAGE_SIZE),
+        page,
+        limit: MERCHANT_ORDER_PAGE_SIZE,
+        status: statusFilter,
+        search: debouncedSearch,
+        dateFrom,
+        dateTo,
       });
-      if (statusFilter) params.set('status', statusFilter);
-      if (debouncedSearch) params.set('search', debouncedSearch);
-      if (dateFrom) params.set('dateFrom', dateFrom);
-      if (dateTo) params.set('dateTo', dateTo);
-      return api.get<MerchantOrdersResponse>(internalPaths.merchantOrders(params.toString()));
+      return api.get<MerchantOrdersResponse>(internalPaths.merchantOrders(qs));
     },
   });
 

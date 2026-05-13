@@ -5,25 +5,35 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PaymentMethodAvailability, PayinStatus, Prisma, RequisiteDisabledReason } from '@prisma/client';
+import {
+  PAYIN_PIPELINE_IN_FLIGHT_STATUSES,
+  PAYIN_REQUISITE_COMPLETED_STATUSES,
+  type PayInOrderStatus,
+} from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
 import { CreateRequisiteGroupDto } from './dto/create-requisite-group.dto';
 import { UpdateRequisiteGroupDto } from './dto/update-requisite-group.dto';
 import { CurrenciesService } from '../currencies/currencies.service';
 import { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
 
-/** Status groups for requisite volume breakdown (aligned with PayinStatus / PayInOrderStatus strings). */
-const REQUISITE_VOLUME_PIPELINE: PayinStatus[] = [
-  PayinStatus.PENDING,
-  PayinStatus.NEW,
-  PayinStatus.VERIFIED,
-  PayinStatus.APPEAL,
-];
+/**
+ * Status enums match by value across the Prisma client (`PayinStatus`) and the shared API enum
+ * (`PayInOrderStatus`). This adapter narrows shared readonly arrays into the Prisma enum array
+ * type so we can keep a single source of truth in `@p2p/shared/payin-volume.ts`.
+ */
+function mapPayInStatusToPrisma(
+  statuses: readonly PayInOrderStatus[],
+): PayinStatus[] {
+  return statuses.map((s) => s as unknown as PayinStatus);
+}
 
-const REQUISITE_VOLUME_COMPLETED: PayinStatus[] = [
-  PayinStatus.PAID,
-  PayinStatus.UNDERPAID,
-  PayinStatus.OVERPAID,
-];
+const REQUISITE_VOLUME_PIPELINE: PayinStatus[] = mapPayInStatusToPrisma(
+  PAYIN_PIPELINE_IN_FLIGHT_STATUSES,
+);
+
+const REQUISITE_VOLUME_COMPLETED: PayinStatus[] = mapPayInStatusToPrisma(
+  PAYIN_REQUISITE_COMPLETED_STATUSES,
+);
 
 /** Clamp stored totals for API/UI so negative duplicates never leak downstream. */
 function clampUsedTotals(

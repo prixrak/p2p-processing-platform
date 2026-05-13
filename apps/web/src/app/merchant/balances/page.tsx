@@ -8,6 +8,7 @@ import { internalPaths } from '@/lib/internal-api';
 import { merchantKeys } from '@/lib/query-keys';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { DataTable } from '@/components/ui/data-table';
+import { PaginationControls } from '@/components/ui/pagination-controls';
 import { Badge } from '@/components/ui/badge';
 import { currencyCodeFromUnknown } from '@/lib/currency-code';
 
@@ -349,32 +350,13 @@ export default function MerchantBalancesPage() {
           isLoading={txLoading}
           emptyMessage="No transactions"
         />
-        {txTotalPages > 1 && (
-          <div className="flex justify-between text-xs text-text-muted">
-            <span>Total: {txTotal}</span>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="px-2 py-1 rounded bg-bg-primary disabled:opacity-40"
-                disabled={txPage <= 1}
-                onClick={() => setTxPage((p) => Math.max(1, p - 1))}
-              >
-                Prev
-              </button>
-              <span>
-                {txPage} / {txTotalPages}
-              </span>
-              <button
-                type="button"
-                className="px-2 py-1 rounded bg-bg-primary disabled:opacity-40"
-                disabled={txPage >= txTotalPages}
-                onClick={() => setTxPage((p) => Math.min(txTotalPages, p + 1))}
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
+        <PaginationControls
+          page={txPage}
+          totalPages={txTotalPages}
+          onPageChange={setTxPage}
+          captionOverride={`Total: ${txTotal} · ${txPage} / ${txTotalPages}`}
+          variant="minimal"
+        />
       </section>
     </div>
   );

@@ -30,39 +30,24 @@ export function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
     }
   }, [isLoading, isAuthenticated, user, router, allowedRoles]);
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0a0a0f]">
-        <div
-          className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white/80"
-          aria-hidden
-        />
-      </div>
-    );
+  if (isLoading || !isAuthenticated || !user) {
+    return <FullScreenSpinner />;
   }
 
-  if (!isAuthenticated || !user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0a0a0f]">
-        <div
-          className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white/80"
-          aria-hidden
-        />
-      </div>
-    );
-  }
-
-  const roles = allowedRoles;
-  if (roles.length > 0 && !roles.includes(user.role)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0a0a0f]">
-        <div
-          className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white/80"
-          aria-hidden
-        />
-      </div>
-    );
+  if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+    return <FullScreenSpinner />;
   }
 
   return <>{children}</>;
+}
+
+function FullScreenSpinner() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#0a0a0f]">
+      <div
+        className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white/80"
+        aria-hidden
+      />
+    </div>
+  );
 }

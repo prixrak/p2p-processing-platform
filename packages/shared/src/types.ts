@@ -147,7 +147,9 @@ export interface PayOutOrderApiDto {
   percent_fee: number;
   /** Pool routing: standard traders vs Pay-Out specialists (pool B). */
   pool_type?: 'STANDARD' | 'PAYOUT_SPECIALIST';
-  /** Optional proof file uploaded when completing (cabinet). */
+  /** Optional proof files when completing (cabinet). First id is mirrored in `completion_proof_file_id`. */
+  completion_proof_file_ids?: string[];
+  /** @deprecated Prefer `completion_proof_file_ids`; kept as first id when present. */
   completion_proof_file_id?: string;
   /** Unix seconds — when the order was routed to its current pool (A or B). */
   pool_assigned_at?: number | null;
@@ -225,4 +227,52 @@ export interface ErrorDetails {
   message: string;
   code: string;
   details: Record<string, unknown>;
+}
+
+// --- Cascade admin / staff cabinet ---
+
+/**
+ * Snapshot of cascade routing settings, mirroring the JSON returned from
+ * `GET/PATCH /api/internal/admin/cascade/settings`.
+ *
+ * Shared between BE (controller response) and FE (admin/owner dashboards) so the
+ * field names cannot drift apart.
+ */
+export interface CascadeSettings {
+  sliding_window_hours: number;
+  autolimit_threshold: number;
+  autolimit_enabled: boolean;
+  card_rating_weight: number;
+  fork_rating_weight: number;
+  fork_traffic_percent: number;
+  card_traffic_percent: number;
+  provider_traffic_percent: number;
+  level_pick_mode: 'DEBT' | 'STOCHASTIC';
+  payin_provider_integration_enabled: boolean;
+  /** Optional Fork fill ladder; null = defaults in shared `cascade-logic`. */
+  fill_multipliers_config: unknown | null;
+}
+
+/** Single row of the coverage nominal grid (TZ — admin manages this grid). */
+export interface NominalRow {
+  id: string;
+  amount: number;
+  sort_order: number;
+  is_active: boolean;
+}
+
+/**
+ * Tier-1 method-share policy summary returned by `/admin/cascade/method-policy`.
+ * `policy` and `assignment_note` are human-readable explanations of the share rule.
+ */
+export interface CascadeMethodPolicy {
+  fork_traffic_percent: number;
+  card_traffic_percent: number;
+  provider_traffic_percent: number;
+  method_share_sum_percent: number;
+  matches_rule: boolean;
+  fork_card_sum_percent: number;
+  fork_card_split_matches_spec: boolean;
+  policy: string;
+  assignment_note: string;
 }

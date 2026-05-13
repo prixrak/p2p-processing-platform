@@ -2,23 +2,20 @@ import {
     Body,
     Controller,
     Get,
-    Header,
     MessageEvent,
     Param,
     ParseUUIDPipe,
     Post,
     Query,
     Req,
-    Sse,
     UploadedFiles,
     UseGuards,
     UseInterceptors,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { Observable } from 'rxjs';
-import { SkipThrottle } from '@nestjs/throttler';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiProduces, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import {
   MAX_FILE_SIZE_BYTES,
@@ -46,6 +43,8 @@ import {
 import { PayinService } from './payin.service';
 import { PayinRealtimeService } from './payin-realtime.service';
 import { buildExternalOrderCreationMeta } from '../../common/utils/partner-request-meta';
+import { mapUploadedFiles } from '../../common/files/multer-mapper';
+import { SseStream } from '../../common/decorators/sse-stream.decorator';
 
 @ApiTags('Pay-In (External)')
 @ApiSecurity('hmac-auth')
@@ -88,13 +87,7 @@ export class PayinController {
     @Body('status') status: PayInOrderStatus,
     @UploadedFiles() files: Express.Multer.File[],
   ) {
-    const mapped = (files ?? []).map((f) => ({
-      originalname: f.originalname,
-      mimetype: f.mimetype,
-      size: f.size,
-      buffer: f.buffer,
-    }));
-    return this.payinService.updateOrderWithProofs(merchantId, id, status, mapped);
+    return this.payinService.updateOrderWithProofs(merchantId, id, status, mapUploadedFiles(files));
   }
 
   @Post('order_info')
@@ -153,13 +146,7 @@ export class PayinController {
     @Body() dto: AppealSendDto,
     @UploadedFiles() files: Express.Multer.File[],
   ) {
-    const mapped = (files ?? []).map((f) => ({
-      originalname: f.originalname,
-      mimetype: f.mimetype,
-      size: f.size,
-      buffer: f.buffer,
-    }));
-    return this.payinService.appealSend(merchantId, dto, mapped);
+    return this.payinService.appealSend(merchantId, dto, mapUploadedFiles(files));
   }
 }
 
@@ -173,13 +160,9 @@ export class PayinInternalController {
     private readonly payinRealtime: PayinRealtimeService,
   ) {}
 
-  @SkipThrottle()
-  @Sse('stream')
-  @Header('X-Accel-Buffering', 'no')
-  @Header('Cache-Control', 'no-cache')
+  @SseStream('stream')
   @Roles(UserRole.TRADER)
   @ApiOperation({ summary: 'SSE stream for Pay-In order updates for this trader' })
-  @ApiProduces('text/event-stream')
   streamTraderPayin(
     @CurrentUser('traderId') traderId: string,
   ): Observable<MessageEvent> {
@@ -241,18 +224,12 @@ export class PayinInternalController {
     @Body('exchange_reference') exchangeReference: string,
     @UploadedFiles() files: Express.Multer.File[],
   ) {
-    const mapped = (files ?? []).map((f) => ({
-      originalname: f.originalname,
-      mimetype: f.mimetype,
-      size: f.size,
-      buffer: f.buffer,
-    }));
     return this.payinService.traderSubmitForkVerification(
       traderId,
       userId,
       orderId,
       exchangeReference ?? '',
-      mapped,
+      mapUploadedFiles(files),
     );
   }
 }

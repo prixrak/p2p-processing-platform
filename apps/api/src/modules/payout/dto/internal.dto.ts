@@ -18,18 +18,6 @@ export class AssignToTraderDto {
   payoutTraderId?: string;
 }
 
-export class TraderTakeOrderDto {
-  @ApiProperty({ description: 'Order UUID' })
-  @IsString()
-  orderId!: string;
-}
-
-export class TraderCompleteDto {
-  @ApiProperty({ description: 'Order UUID' })
-  @IsString()
-  orderId!: string;
-}
-
 export class TraderFailDto {
   /** Legacy field from older clients; the path parameter is authoritative. */
   @ApiPropertyOptional()

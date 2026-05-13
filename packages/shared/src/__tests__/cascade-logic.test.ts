@@ -6,11 +6,9 @@ import {
   tzRequisiteRatingPercent,
   isForkAutolimitActive,
   nominalCoveredByRange,
-  requisiteRating,
   approximateOthersEffectiveRange,
   effectiveIdleMs,
   newcomerRatingBoostMultiplier,
-  cascadeRaceScore,
   fillMultiplierFromConfirmedFill,
   forkCascadeRaceScore,
   cardCascadeRaceScore,
@@ -107,13 +105,6 @@ describe('computeForkAssignBounds', () => {
   });
 });
 
-describe('requisiteRating', () => {
-  it('orders fuller requisites higher when weights equal', () => {
-    const w = 100;
-    expect(requisiteRating(8000, 10000, w)).toBeGreaterThan(requisiteRating(2000, 10000, w));
-  });
-});
-
 describe('approximateOthersEffectiveRange', () => {
   it('returns null when capacity exhausted', () => {
     expect(
@@ -187,16 +178,6 @@ describe('TZ v3.1 cascade idle race & level picking', () => {
   it('newcomer boost applies only before first assignment', () => {
     expect(newcomerRatingBoostMultiplier(0)).toBe(NEWCOMER_RATING_BOOST);
     expect(newcomerRatingBoostMultiplier(1)).toBe(1);
-  });
-
-  it('cascadeRaceScore combines idle, multiplier, boost', () => {
-    expect(
-      cascadeRaceScore({
-        idleMs: 100,
-        traderMultiplier: 2,
-        newcomerBoost: NEWCOMER_RATING_BOOST,
-      }),
-    ).toBe(400);
   });
 
   it('normalizeCascadeMethodPercents sums to ~100', () => {

@@ -11,7 +11,7 @@ import {
 import { createPortal } from 'react-dom';
 import { AlertTriangle, ChevronDown, ExternalLink, ImagePlus, Play } from 'lucide-react';
 import type { UseMutationResult } from '@tanstack/react-query';
-import { PayOutOrderStatus, PayoutTraderRejectReason } from '@p2p/shared';
+import { PayOutOrderStatus, PayoutTraderRejectReason, MAX_PAYOUT_COMPLETION_PROOF_FILES } from '@p2p/shared';
 import type { PayOutOrderApiDto } from '@p2p/shared';
 import { Button } from '@/components/ui/button';
 import { FileUpload } from '@/components/ui/file-upload';
@@ -25,6 +25,7 @@ import { AuthorizedFilePreview } from '@/components/files/authorized-file-previe
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import type { PayoutCompleteVars } from './trader-payout-columns';
+import { payoutCompletionProofFileIds } from './payout-completion-proof-ids';
 
 export type PayoutRejectVars = {
   orderId: string;
@@ -105,15 +106,15 @@ export function TraderPayoutWorkflowActions({
   completeMutation: UseMutationResult<unknown, unknown, PayoutCompleteVars>;
   cancelMutation: UseMutationResult<unknown, unknown, string>;
   rejectMutation: UseMutationResult<unknown, unknown, PayoutRejectVars>;
-  /** When set, COMPLETED orders can upload/replace proof via POST .../completion-proof. */
+  /** When set, COMPLETED orders can append proof files via POST .../completion-proof. */
   attachCompletionProofMutation?: UseMutationResult<
     PayOutOrderApiDto,
     unknown,
-    { orderId: string; fileId: string }
+    { orderId: string; fileIds: string[] }
   >;
   layout?: 'cell' | 'toolbar';
 }) {
-  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptFiles, setReceiptFiles] = useState<File[]>([]);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [receiptUploadKey, setReceiptUploadKey] = useState(0);
   const [receiptScratch, setReceiptScratch] = useState<File[]>([]);
@@ -154,14 +155,26 @@ export function TraderPayoutWorkflowActions({
         setReceiptModalOpen(false);
         return;
       }
-      const file = receiptScratch[0];
-      const fd = new FormData();
-      fd.append('file', file);
+      const maxAdd = Math.max(
+        0,
+        MAX_PAYOUT_COMPLETION_PROOF_FILES - payoutCompletionProofFileIds(order).length,
+      );
+      if (maxAdd === 0) {
+        setReceiptModalOpen(false);
+        return;
+      }
+      const toUpload = receiptScratch.slice(0, maxAdd);
       try {
-        const meta = await api.upload<{ id: string }>(internalPaths.fileUpload, fd);
+        const uploadedIds: string[] = [];
+        for (const file of toUpload) {
+          const fd = new FormData();
+          fd.append('file', file);
+          const meta = await api.upload<{ id: string }>(internalPaths.fileUpload, fd);
+          uploadedIds.push(meta.id);
+        }
         await attachCompletionProofMutation!.mutateAsync({
           orderId: order.id,
-          fileId: meta.id,
+          fileIds: uploadedIds,
         });
       } catch {
         return;
@@ -173,7 +186,9 @@ export function TraderPayoutWorkflowActions({
     }
 
     if (receiptScratch.length > 0) {
-      setReceiptFile(receiptScratch[0]);
+      setReceiptFiles((prev) =>
+        [...prev, ...receiptScratch].slice(0, MAX_PAYOUT_COMPLETION_PROOF_FILES),
+      );
     }
     setReceiptModalOpen(false);
   }, [
@@ -184,7 +199,7 @@ export function TraderPayoutWorkflowActions({
   ]);
 
   const removeReceiptAttachment = useCallback(() => {
-    setReceiptFile(null);
+    setReceiptFiles([]);
     setReceiptScratch([]);
     setReceiptUploadKey((k) => k + 1);
     setReceiptModalOpen(false);
@@ -196,7 +211,7 @@ export function TraderPayoutWorkflowActions({
   }, []);
 
   useEffect(() => {
-    setReceiptFile(null);
+    setReceiptFiles([]);
     setReceiptModalOpen(false);
     setReceiptScratch([]);
     setReceiptUploadKey((k) => k + 1);
@@ -251,19 +266,25 @@ export function TraderPayoutWorkflowActions({
       setCompleteConfirmFiles([]);
       setCompleteConfirmUploadKey((k) => k + 1);
       void (async () => {
-        const pickFile = filesFromDialog[0] ?? receiptFile;
-        let completionProofFileId: string | undefined;
-        if (pickFile) {
+        const fromDialog = [...filesFromDialog];
+        const pickFiles =
+          fromDialog.length > 0 ? fromDialog : [...receiptFiles];
+        const capped = pickFiles.slice(0, MAX_PAYOUT_COMPLETION_PROOF_FILES);
+        const uploadedIds: string[] = [];
+        for (const file of capped) {
           const fd = new FormData();
-          fd.append('file', pickFile);
+          fd.append('file', file);
           try {
             const meta = await api.upload<{ id: string }>(internalPaths.fileUpload, fd);
-            completionProofFileId = meta.id;
+            uploadedIds.push(meta.id);
           } catch {
             return;
           }
         }
-        completeMutation.mutate({ orderId: order.id, completionProofFileId });
+        completeMutation.mutate({
+          orderId: order.id,
+          ...(uploadedIds.length > 0 ? { completionProofFileIds: uploadedIds } : {}),
+        });
       })();
       return;
     }
@@ -278,7 +299,7 @@ export function TraderPayoutWorkflowActions({
     completeMutation,
     confirmKind,
     order.id,
-    receiptFile,
+    receiptFiles,
   ]);
 
   const handleRejectSubmit = useCallback(() => {
@@ -350,6 +371,11 @@ export function TraderPayoutWorkflowActions({
   const maskedNumber =
     order.requisites_visible === false ? '—' : maskRequisite(order.details.number);
 
+  const existingProofIds = payoutCompletionProofFileIds(order);
+  const proofSlotsRemaining = persistHistoryProof
+    ? Math.max(0, MAX_PAYOUT_COMPLETION_PROOF_FILES - existingProofIds.length)
+    : Math.max(0, MAX_PAYOUT_COMPLETION_PROOF_FILES - receiptFiles.length);
+
   return (
     <>
       <div
@@ -401,12 +427,12 @@ export function TraderPayoutWorkflowActions({
               {order.requisites_visible !== false && (
                 <IconButton
                   label={
-                    receiptFile
-                      ? 'Edit payment receipt — file will upload when you mark completed'
-                      : 'Attach payment receipt (optional)'
+                    receiptFiles.length > 0
+                      ? 'Edit payment receipts — files upload when you mark completed'
+                      : 'Attach payment receipts (optional)'
                   }
                   tooltipWide
-                  variant={receiptFile ? 'secondary' : 'ghost'}
+                  variant={receiptFiles.length > 0 ? 'secondary' : 'ghost'}
                   disabled={loadingComplete || loadingCancel || loadingReject}
                   onClick={openReceiptModal}
                 >
@@ -470,12 +496,12 @@ export function TraderPayoutWorkflowActions({
           >
             <IconButton
               label={
-                order.completion_proof_file_id
-                  ? 'Add or replace payment receipt for this completed order'
-                  : 'Attach payment receipt to this completed order'
+                existingProofIds.length > 0
+                  ? 'Add more payment receipts for this completed order'
+                  : 'Attach payment receipts to this completed order'
               }
               tooltipWide
-              variant={order.completion_proof_file_id ? 'secondary' : 'ghost'}
+              variant={existingProofIds.length > 0 ? 'secondary' : 'ghost'}
               disabled={loadingAttachProof}
               onClick={openReceiptModal}
             >
@@ -505,12 +531,12 @@ export function TraderPayoutWorkflowActions({
         {confirmOpen && confirmKind === 'complete' ? (
           <div className="space-y-2">
             <p className="text-xs text-text-muted">
-              Optional receipt (PNG, JPG, PDF). Attach here or use the file you already selected with the image
-              button next to Change status.
+              Optional receipts (PNG, JPG, PDF), up to {MAX_PAYOUT_COMPLETION_PROOF_FILES} files. Attach here or use
+              the image button next to Change status.
             </p>
             <FileUpload
               compact
-              maxFiles={1}
+              maxFiles={MAX_PAYOUT_COMPLETION_PROOF_FILES}
               key={completeConfirmUploadKey}
               disabled={loadingComplete}
               onChange={setCompleteConfirmFiles}
@@ -529,50 +555,68 @@ export function TraderPayoutWorkflowActions({
       >
         <p className="text-sm text-text-secondary">
           {persistHistoryProof
-            ? 'Upload a transfer receipt for your records. You can add one later or replace an existing file.'
+            ? 'Upload transfer receipts for your records. You can add more files (up to ten per order) after completion.'
             : (
                 <>
-                  Optional proof of the transfer — same idea as pay-in appeal attachments. The file is sent when
-                  you choose <span className="font-medium text-text-primary">Mark completed</span>.
+                  Optional proof of the transfer — same idea as pay-in appeal attachments. Files are sent when you
+                  choose <span className="font-medium text-text-primary">Mark completed</span> (up to{' '}
+                  {MAX_PAYOUT_COMPLETION_PROOF_FILES} files).
                 </>
               )}
         </p>
-        {receiptFile != null && !persistHistoryProof && (
+        {receiptFiles.length > 0 && !persistHistoryProof && (
           <p className="mt-3 rounded-lg border border-border-primary bg-bg-secondary/60 px-3 py-2 text-xs text-text-secondary">
             Saved for this order:{' '}
-            <span className="font-medium text-text-primary">{receiptFile.name}</span>
+            <span className="font-medium text-text-primary">
+              {receiptFiles.length} file{receiptFiles.length === 1 ? '' : 's'}
+              {receiptFiles.length <= 3
+                ? ` (${receiptFiles.map((f) => f.name).join(', ')})`
+                : ''}
+            </span>
           </p>
         )}
-        {persistHistoryProof && order.completion_proof_file_id != null && (
+        {persistHistoryProof && existingProofIds.length > 0 && (
           <div className="mt-3 space-y-2">
             <p className="text-xs text-text-secondary">
-              Current receipt — click to enlarge. Upload below to replace.
+              Current receipts — click a thumbnail to enlarge. Upload below to add more (max{' '}
+              {MAX_PAYOUT_COMPLETION_PROOF_FILES} per order).
             </p>
-            <button
-              type="button"
-              onClick={() => setViewingPayoutReceiptId(order.completion_proof_file_id!)}
-              className="group relative w-full cursor-pointer overflow-hidden rounded-lg border border-border-primary bg-bg-secondary text-left transition-colors hover:border-accent-blue"
-            >
-              <div className="pointer-events-none aspect-video max-h-40">
-                <AuthorizedFilePreview
-                  path={internalPaths.fileById(order.completion_proof_file_id)}
-                  alt="Pay-out payment receipt"
-                  className="h-full max-h-40"
-                />
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
-                <ExternalLink className="h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
-              </div>
-            </button>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {existingProofIds.map((fileId) => (
+                <button
+                  key={fileId}
+                  type="button"
+                  onClick={() => setViewingPayoutReceiptId(fileId)}
+                  className="group relative cursor-pointer overflow-hidden rounded-lg border border-border-primary bg-bg-secondary text-left transition-colors hover:border-accent-blue"
+                >
+                  <div className="pointer-events-none aspect-video max-h-36">
+                    <AuthorizedFilePreview
+                      path={internalPaths.fileById(fileId)}
+                      alt="Pay-out payment receipt"
+                      className="h-full max-h-36"
+                    />
+                  </div>
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
+                    <ExternalLink className="h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         )}
         <div className="mt-4">
-          <FileUpload
-            key={receiptUploadKey}
-            maxFiles={1}
-            disabled={loadingAttachProof}
-            onChange={setReceiptScratch}
-          />
+          {proofSlotsRemaining > 0 ? (
+            <FileUpload
+              key={receiptUploadKey}
+              maxFiles={proofSlotsRemaining}
+              disabled={loadingAttachProof}
+              onChange={setReceiptScratch}
+            />
+          ) : (
+            <p className="rounded-lg border border-border-primary bg-bg-secondary/40 px-3 py-2 text-xs text-text-secondary">
+              Maximum of {MAX_PAYOUT_COMPLETION_PROOF_FILES} receipts for this order.
+            </p>
+          )}
         </div>
         <div className="mt-6 flex flex-col gap-3 border-t border-border-primary pt-4 sm:flex-row sm:items-center sm:justify-between">
           {!persistHistoryProof ? (
@@ -581,7 +625,7 @@ export function TraderPayoutWorkflowActions({
               variant="ghost"
               size="sm"
               className="sm:mr-auto"
-              disabled={receiptFile == null && receiptScratch.length === 0}
+              disabled={receiptFiles.length === 0 && receiptScratch.length === 0}
               onClick={removeReceiptAttachment}
             >
               Remove attachment

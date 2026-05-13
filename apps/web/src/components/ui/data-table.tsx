@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { Tooltip } from '@/components/ui/tooltip';
+import { PaginationControls } from '@/components/ui/pagination-controls';
 import { cn } from '@/lib/utils';
 
 interface Column<T> {
@@ -126,38 +127,8 @@ export function DataTable<T>({
         </div>
       </div>
 
-      {page !== undefined && totalPages !== undefined && totalPages > 1 && onPageChange && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-text-muted">
-            Page {page} of {totalPages}
-          </p>
-          <div className="flex gap-2">
-            <Tooltip content="Previous page" side="top">
-              <span className="inline-flex">
-                <button
-                  type="button"
-                  onClick={() => onPageChange(page - 1)}
-                  disabled={page <= 1}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-border-primary bg-bg-secondary px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <ChevronLeft className="h-4 w-4" /> Previous
-                </button>
-              </span>
-            </Tooltip>
-            <Tooltip content="Next page" side="top">
-              <span className="inline-flex">
-                <button
-                  type="button"
-                  onClick={() => onPageChange(page + 1)}
-                  disabled={page >= totalPages}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-border-primary bg-bg-secondary px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Next <ChevronRightIcon className="h-4 w-4" />
-                </button>
-              </span>
-            </Tooltip>
-          </div>
-        </div>
+      {page !== undefined && totalPages !== undefined && onPageChange && (
+        <PaginationControls page={page} totalPages={totalPages} onPageChange={onPageChange} />
       )}
     </div>
   );

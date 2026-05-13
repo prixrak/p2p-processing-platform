@@ -1,8 +1,8 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useOrderIdUrlParam } from '@/lib/hooks/use-order-id-url-param';
 import { Eye } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -12,6 +12,7 @@ import { FilterInput, FilterSelect } from '@/components/ui/filters';
 import { FilterFieldsRow, ListPageHeader } from '@/components/ui/list-page-tools';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
+import { StatusHistoryList } from '@/components/ui/status-history-list';
 import { Tabs } from '@/components/ui/tabs';
 import { DataTable } from '@/components/ui/data-table';
 import {
@@ -20,6 +21,7 @@ import {
   payinStatusFilterOptions,
   payoutStatusFilterOptions,
 } from '@/lib/order-status-ui';
+import { buildQueryString } from '@/lib/utils';
 
 interface Order {
   id: string;
@@ -56,49 +58,19 @@ interface OrderDetails {
   statusHistory: { status: string; timestamp: string; actor: string }[];
 }
 
-const ORDER_ID_QUERY = 'orderId';
-
-function looksLikeOrderIdUuid(s: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    s.trim(),
-  );
-}
+const ORDER_ID_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function SupportOrdersPageContent() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [tab, setTab] = useState('PAYIN');
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
   const [merchantFilter, setMerchantFilter] = useState('');
   const [traderFilter, setTraderFilter] = useState('');
-  const [detailOrder, setDetailOrder] = useState<string | null>(null);
 
-  const openOrderDetail = useCallback(
-    (id: string) => {
-      const p = new URLSearchParams(searchParams.toString());
-      p.set(ORDER_ID_QUERY, id);
-      router.replace(`${pathname}?${p.toString()}`, { scroll: false });
-    },
-    [pathname, router, searchParams],
-  );
-
-  const closeOrderDetail = useCallback(() => {
-    const p = new URLSearchParams(searchParams.toString());
-    p.delete(ORDER_ID_QUERY);
-    const q = p.toString();
-    router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
-  }, [pathname, router, searchParams]);
-
-  useEffect(() => {
-    const raw = searchParams.get(ORDER_ID_QUERY)?.trim() ?? '';
-    if (looksLikeOrderIdUuid(raw)) {
-      setDetailOrder(raw);
-      return;
-    }
-    setDetailOrder(null);
-  }, [searchParams]);
+  const { orderId: detailOrder, openOrderDetail, closeOrderDetail } = useOrderIdUrlParam({
+    validate: (s) => ORDER_ID_UUID_RE.test(s),
+  });
 
   const statusFilterOptions = useMemo(
     () => (tab === 'PAYIN' ? payinStatusFilterOptions : payoutStatusFilterOptions),
@@ -108,15 +80,15 @@ function SupportOrdersPageContent() {
   const { data, isLoading } = useQuery({
     queryKey: supportKeys.orders(tab, page, statusFilter, merchantFilter, traderFilter),
     queryFn: () => {
-      const params = new URLSearchParams({
+      const qs = buildQueryString({
         type: tab,
-        page: String(page),
-        limit: '20',
+        page,
+        limit: 20,
+        status: statusFilter,
+        merchant: merchantFilter,
+        trader: traderFilter,
       });
-      if (statusFilter) params.set('status', statusFilter);
-      if (merchantFilter) params.set('merchant', merchantFilter);
-      if (traderFilter) params.set('trader', traderFilter);
-      return api.get<OrdersResponse>(internalPaths.supportOrders(params.toString()));
+      return api.get<OrdersResponse>(internalPaths.supportOrders(qs));
     },
   });
 
@@ -344,25 +316,7 @@ function SupportOrdersPageContent() {
             )}
 
             {details.statusHistory?.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-sm font-medium text-text-secondary">Status History</h4>
-                <div className="space-y-2">
-                  {details.statusHistory.map((h, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary px-3 py-2"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Badge variant="muted">{h.status}</Badge>
-                        <span className="text-xs text-text-muted">by {h.actor}</span>
-                      </div>
-                      <span className="text-xs text-text-muted">
-                        {new Date(h.timestamp).toLocaleString()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <StatusHistoryList entries={details.statusHistory} />
             )}
           </div>
         )}

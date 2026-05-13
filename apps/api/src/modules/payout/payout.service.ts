@@ -24,6 +24,7 @@ import {
   PAYOUT_TRADER_IN_PROGRESS_STATUSES,
   PAYOUT_TRADER_HISTORY_STATUSES,
   PayoutTraderRejectReason as PayoutTraderRejectReasonApi,
+  MAX_PAYOUT_COMPLETION_PROOF_FILES,
 } from '@p2p/shared';
 import type { PayOutOrderApiDto, ProfileDto, DetailsDto } from '@p2p/shared';
 import {
@@ -51,6 +52,8 @@ import { TelegramService } from '../telegram/telegram.service';
 import { CurrenciesService } from '../currencies/currencies.service';
 import type { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
+import { csvEscape, enumerateDaysUTC, statusRecordToLowercase } from '../../common/utils/stats.util';
+import { buildMerchantProfileDto } from '../../common/utils/merchant-profile.helper';
 import {
   OrderUploadDto,
   PayoutOrderInfoDto,
@@ -67,17 +70,80 @@ import {
 import { computePayoutPoolCloseDeadline } from './payout-pool-close-deadline.util';
 import type { ExternalOrderCreationMeta } from '../../common/utils/partner-request-meta';
 
+const COMPLETION_PROOF_ATTACHMENTS_INCLUDE = {
+  select: { fileId: true, createdAt: true },
+  orderBy: { createdAt: 'asc' as const },
+} as const;
+
 const CABINET_ORDER_INCLUDE = {
   paymentMethod: { select: { displayName: true } },
   currency: { select: { code: true } },
+  completionProofAttachments: COMPLETION_PROOF_ATTACHMENTS_INCLUDE,
 } as const;
 
 const ORDER_INCLUDE = {
   currency: { select: { code: true } },
+  completionProofAttachments: COMPLETION_PROOF_ATTACHMENTS_INCLUDE,
 } as const;
 
 /** Singleton row for global pool B share (see migration seed). */
 const PAYOUT_POOL_SETTINGS_ROW_ID = '00000000-0000-0000-0000-000000000001';
+
+/**
+ * Discriminated identity of a Pay-Out order assignee — standard trader (pool A) vs
+ * pay-out specialist (pool B). Used to share list/refund/proof logic between the two
+ * cabinets without changing the public URLs each side calls.
+ */
+export type PayoutAssigneeScope =
+  | { kind: 'TRADER'; traderId: string }
+  | { kind: 'PAYOUT_TRADER'; payoutTraderId: string };
+
+function payoutAssigneeWhereKey(
+  scope: PayoutAssigneeScope,
+): Pick<Prisma.PayoutOrderWhereInput, 'traderId' | 'payoutTraderId'> {
+  return scope.kind === 'TRADER'
+    ? { traderId: scope.traderId }
+    : { payoutTraderId: scope.payoutTraderId };
+}
+
+/**
+ * Common queue/status filter logic used by trader list, specialist list, and CSV export.
+ * Returns the assembled `where` (assignee + status) so callers can add custom amount/date filters.
+ */
+function buildAssignedListWhere(
+  scope: PayoutAssigneeScope,
+  filters: PayoutListFiltersDto,
+): Prisma.PayoutOrderWhereInput {
+  const parsedStatus =
+    filters.status &&
+    (Object.values(PayoutStatus) as string[]).includes(filters.status)
+      ? (filters.status as PayoutStatus)
+      : undefined;
+
+  let statusFilter: Prisma.PayoutOrderWhereInput['status'];
+  if (filters.queue === 'in_progress') {
+    const allowed = PAYOUT_TRADER_IN_PROGRESS_STATUSES as unknown as PayoutStatus[];
+    statusFilter = parsedStatus
+      ? allowed.includes(parsedStatus)
+        ? parsedStatus
+        : { in: [] }
+      : { in: allowed };
+  } else if (filters.queue === 'history') {
+    const allowed = PAYOUT_TRADER_HISTORY_STATUSES as unknown as PayoutStatus[];
+    statusFilter = parsedStatus
+      ? allowed.includes(parsedStatus)
+        ? parsedStatus
+        : { in: [] }
+      : { in: allowed };
+  } else if (parsedStatus) {
+    statusFilter = parsedStatus;
+  }
+
+  return {
+    ...payoutAssigneeWhereKey(scope),
+    ...(statusFilter !== undefined ? { status: statusFilter } : {}),
+  };
+}
 
 type _CabinetPayload = Prisma.PayoutOrderGetPayload<{ include: typeof CABINET_ORDER_INCLUDE }>;
 type PayoutOrderRow = Prisma.PayoutOrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
@@ -85,35 +151,6 @@ type PayoutOrderApiSource = PayoutOrderRow | _CabinetPayload;
 /** Full payout order row for v2 settlement (no required relation beyond scalars). */
 type PayoutOrderScalars = PayoutOrder;
 
-function enumerateDaysUTC(from: Date, to: Date): string[] {
-  const out: string[] = [];
-  const d = new Date(from);
-  d.setUTCHours(0, 0, 0, 0);
-  const end = new Date(to);
-  end.setUTCHours(0, 0, 0, 0);
-  while (d <= end) {
-    out.push(d.toISOString().slice(0, 10));
-    d.setUTCDate(d.getUTCDate() + 1);
-  }
-  return out;
-}
-
-function statusRecordToLowercase(
-  rows: Array<{ status: string; _count: { _all: number } }>,
-): Record<string, number> {
-  const rec: Record<string, number> = {};
-  for (const r of rows) {
-    rec[r.status.toLowerCase()] = r._count._all;
-  }
-  return rec;
-}
-
-function csvEscape(value: string): string {
-  if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-}
 
 @Injectable()
 export class PayoutService {
@@ -152,6 +189,46 @@ export class PayoutService {
       where: { id },
       include: CABINET_ORDER_INCLUDE,
     });
+  }
+
+  private normalizeCompletionProofIds(dto?: {
+    completion_proof_file_id?: string;
+    completion_proof_file_ids?: string[];
+  } | null): string[] {
+    if (!dto) return [];
+    const fromArr = dto.completion_proof_file_ids?.filter(Boolean) ?? [];
+    const fromOne = dto.completion_proof_file_id ? [dto.completion_proof_file_id] : [];
+    return [...new Set([...fromOne, ...fromArr])];
+  }
+
+  private completionProofIdsFromOrder(order: {
+    completionProofFileId: string | null;
+    completionProofAttachments?: { fileId: string }[];
+  }): string[] {
+    if (order.completionProofAttachments && order.completionProofAttachments.length > 0) {
+      return order.completionProofAttachments.map((a) => a.fileId);
+    }
+    if (order.completionProofFileId) return [order.completionProofFileId];
+    return [];
+  }
+
+  private async syncPayoutCompletionProofHeadColumn(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+  ): Promise<void> {
+    const first = await tx.payoutCompletionProofAttachment.findFirst({
+      where: { payoutOrderId: orderId },
+      orderBy: { createdAt: 'asc' },
+      select: { fileId: true },
+    });
+    await tx.payoutOrder.update({
+      where: { id: orderId },
+      data: { completionProofFileId: first?.fileId ?? null },
+    });
+  }
+
+  private async assertCompletionProofFilesOwned(ids: string[], userId: string): Promise<void> {
+    await Promise.all(ids.map((id) => this.assertCompletionProofFileOwned(id, userId)));
   }
 
   private applyPayoutListFilters(
@@ -402,42 +479,7 @@ export class PayoutService {
   // ─── External: info ───
 
   async getInfo(merchantId: string): Promise<ProfileDto> {
-    const merchant = await this.prisma.merchant.findUniqueOrThrow({
-      where: { id: merchantId },
-      include: { balances: { include: { currency: true } } },
-    });
-
-    const direction = await this.prisma.direction.findFirst({
-      where: { type: DirectionType.PAYOUT, isOnline: true },
-    });
-
-    const balances: Record<string, number> = {};
-    for (const b of merchant.balances) {
-      balances[b.currency.code] = Number(b.amount);
-    }
-
-    return {
-      name: merchant.name,
-      is_lock: merchant.isLock,
-      balances,
-      direction: direction
-        ? {
-            direction_name: direction.name,
-            min_amount: Number(direction.minAmount),
-            max_amount: Number(direction.maxAmount),
-            rate: 1,
-            percent: Number(direction.percentFee),
-            online: direction.isOnline,
-          }
-        : {
-            direction_name: '',
-            min_amount: 0,
-            max_amount: 0,
-            rate: 0,
-            percent: 0,
-            online: false,
-          },
-    };
+    return buildMerchantProfileDto(this.prisma, merchantId, DirectionType.PAYOUT);
   }
 
   // ─── Internal: getPool ─── (PENDING orders without a trader; filtered by trader's payout limits)
@@ -842,94 +884,24 @@ export class PayoutService {
   // ─── Internal: getTraderOrders ───
 
   async getTraderOrders(traderId: string, filters: PayoutListFiltersDto) {
-    const page = filters.page ?? 1;
-    const limit = Math.min(filters.limit ?? 20, MAX_PAGE_SIZE);
-
-    const parsedStatus =
-      filters.status &&
-      (Object.values(PayoutStatus) as string[]).includes(filters.status)
-        ? (filters.status as PayoutStatus)
-        : undefined;
-
-    let statusFilter: Prisma.PayoutOrderWhereInput['status'];
-    if (filters.queue === 'in_progress') {
-      const allowed = PAYOUT_TRADER_IN_PROGRESS_STATUSES as unknown as PayoutStatus[];
-      if (parsedStatus) {
-        statusFilter = allowed.includes(parsedStatus) ? parsedStatus : { in: [] };
-      } else {
-        statusFilter = { in: allowed };
-      }
-    } else if (filters.queue === 'history') {
-      const allowed = PAYOUT_TRADER_HISTORY_STATUSES as unknown as PayoutStatus[];
-      if (parsedStatus) {
-        statusFilter = allowed.includes(parsedStatus) ? parsedStatus : { in: [] };
-      } else {
-        statusFilter = { in: allowed };
-      }
-    } else if (parsedStatus) {
-      statusFilter = parsedStatus;
-    }
-
-    const where: Prisma.PayoutOrderWhereInput = {
-      traderId,
-      ...(statusFilter !== undefined ? { status: statusFilter } : {}),
-    };
-
-    this.applyPayoutListFilters(where, filters);
-
-    const [items, total] = await Promise.all([
-      this.prisma.payoutOrder.findMany({
-        where,
-        include: CABINET_ORDER_INCLUDE,
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      this.prisma.payoutOrder.count({ where }),
-    ]);
-
-    return {
-      orders: items.map((o) => this.toPayOutOrderApiDto(o)),
-      total,
-      page,
-      limit,
-    };
+    return this.listAssignedOrders({ kind: 'TRADER', traderId }, filters);
   }
 
   async getSpecialistOrders(payoutTraderId: string, filters: PayoutListFiltersDto) {
+    return this.listAssignedOrders(
+      { kind: 'PAYOUT_TRADER', payoutTraderId },
+      filters,
+    );
+  }
+
+  private async listAssignedOrders(
+    scope: PayoutAssigneeScope,
+    filters: PayoutListFiltersDto,
+  ) {
     const page = filters.page ?? 1;
     const limit = Math.min(filters.limit ?? 20, MAX_PAGE_SIZE);
 
-    const parsedStatus =
-      filters.status &&
-      (Object.values(PayoutStatus) as string[]).includes(filters.status)
-        ? (filters.status as PayoutStatus)
-        : undefined;
-
-    let statusFilter: Prisma.PayoutOrderWhereInput['status'];
-    if (filters.queue === 'in_progress') {
-      const allowed = PAYOUT_TRADER_IN_PROGRESS_STATUSES as unknown as PayoutStatus[];
-      if (parsedStatus) {
-        statusFilter = allowed.includes(parsedStatus) ? parsedStatus : { in: [] };
-      } else {
-        statusFilter = { in: allowed };
-      }
-    } else if (filters.queue === 'history') {
-      const allowed = PAYOUT_TRADER_HISTORY_STATUSES as unknown as PayoutStatus[];
-      if (parsedStatus) {
-        statusFilter = allowed.includes(parsedStatus) ? parsedStatus : { in: [] };
-      } else {
-        statusFilter = { in: allowed };
-      }
-    } else if (parsedStatus) {
-      statusFilter = parsedStatus;
-    }
-
-    const where: Prisma.PayoutOrderWhereInput = {
-      payoutTraderId,
-      ...(statusFilter !== undefined ? { status: statusFilter } : {}),
-    };
-
+    const where = buildAssignedListWhere(scope, filters);
     this.applyPayoutListFilters(where, filters);
 
     const [items, total] = await Promise.all([
@@ -1344,36 +1316,10 @@ export class PayoutService {
   }
 
   async exportSpecialistOrdersCsv(payoutTraderId: string, filters: PayoutListFiltersDto): Promise<string> {
-    const parsedStatus =
-      filters.status &&
-      (Object.values(PayoutStatus) as string[]).includes(filters.status)
-        ? (filters.status as PayoutStatus)
-        : undefined;
-
-    let statusFilter: Prisma.PayoutOrderWhereInput['status'];
-    if (filters.queue === 'in_progress') {
-      const allowed = PAYOUT_TRADER_IN_PROGRESS_STATUSES as unknown as PayoutStatus[];
-      if (parsedStatus) {
-        statusFilter = allowed.includes(parsedStatus) ? parsedStatus : { in: [] };
-      } else {
-        statusFilter = { in: allowed };
-      }
-    } else if (filters.queue === 'history') {
-      const allowed = PAYOUT_TRADER_HISTORY_STATUSES as unknown as PayoutStatus[];
-      if (parsedStatus) {
-        statusFilter = allowed.includes(parsedStatus) ? parsedStatus : { in: [] };
-      } else {
-        statusFilter = { in: allowed };
-      }
-    } else if (parsedStatus) {
-      statusFilter = parsedStatus;
-    }
-
-    const where: Prisma.PayoutOrderWhereInput = {
-      payoutTraderId,
-      ...(statusFilter !== undefined ? { status: statusFilter } : {}),
-    };
-
+    const where = buildAssignedListWhere(
+      { kind: 'PAYOUT_TRADER', payoutTraderId },
+      filters,
+    );
     this.applyPayoutListFilters(where, filters);
 
     const rows = await this.prisma.payoutOrder.findMany({
@@ -1439,14 +1385,14 @@ export class PayoutService {
     userId: string,
     dto?: SpecialistCompleteDto,
   ): Promise<PayOutOrderApiDto> {
-    const proofId = dto?.completion_proof_file_id;
-    if (proofId) {
-      const file = await this.prisma.file.findFirst({
-        where: { id: proofId, uploadedBy: userId },
-      });
-      if (!file) {
-        throw new BadRequestException('Proof file not found or was uploaded by another user');
-      }
+    const proofIds = this.normalizeCompletionProofIds(dto);
+    if (proofIds.length > MAX_PAYOUT_COMPLETION_PROOF_FILES) {
+      throw new BadRequestException(
+        `At most ${MAX_PAYOUT_COMPLETION_PROOF_FILES} proof files per order`,
+      );
+    }
+    if (proofIds.length > 0) {
+      await this.assertCompletionProofFilesOwned(proofIds, userId);
     }
 
     const order = await this.prisma.payoutOrder.findFirst({
@@ -1466,7 +1412,6 @@ export class PayoutService {
         data: {
           status: 'COMPLETED',
           endAt: new Date(),
-          ...(proofId ? { completionProofFileId: proofId } : {}),
         },
       });
 
@@ -1491,6 +1436,7 @@ export class PayoutService {
       }
 
       await this.createPayoutWebhookEntry(tx, result);
+      await this.appendCompletionProofAttachments(tx, orderId, proofIds);
 
       return result;
     });
@@ -1498,6 +1444,73 @@ export class PayoutService {
     this.emitPayoutOrderRealtime(updated, false);
 
     return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+  }
+
+  /**
+   * Refund the merchant the locally-debited amount when a Pay-Out is marked FAILED.
+   * Symmetric for trader vs specialist failure paths (TZ — settlement on completion only).
+   */
+  private async refundMerchantOnPayoutFail(
+    tx: Prisma.TransactionClient,
+    order: Pick<PayoutOrder, 'id' | 'merchantId' | 'currencyId' | 'merchantDebitLocal'>,
+  ): Promise<void> {
+    if (order.merchantDebitLocal == null) return;
+    const refund = Number(order.merchantDebitLocal);
+    await tx.merchantBalance.upsert({
+      where: {
+        merchantId_currencyId: {
+          merchantId: order.merchantId,
+          currencyId: order.currencyId,
+        },
+      },
+      create: {
+        merchantId: order.merchantId,
+        currencyId: order.currencyId,
+        amount: refund,
+      },
+      update: { amount: { increment: refund } },
+    });
+    await tx.merchantBalanceTransaction.create({
+      data: {
+        merchantId: order.merchantId,
+        type: MerchantBalanceTransactionType.PAYOUT_REFUND,
+        amount: refund,
+        currencyId: order.currencyId,
+        referenceId: order.id,
+        comment: `Pay-out failed refund for order ${order.id}`,
+      },
+    });
+  }
+
+  /**
+   * Append completion-proof attachments idempotently and keep the legacy head column in sync.
+   * Returns the merge result so callers can short-circuit on no-ops.
+   */
+  private async appendCompletionProofAttachments(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    fileIds: string[],
+  ): Promise<{ added: string[] }> {
+    if (fileIds.length === 0) return { added: [] };
+    const existing = await tx.payoutCompletionProofAttachment.findMany({
+      where: { payoutOrderId: orderId },
+      select: { fileId: true },
+    });
+    const existingIds = new Set(existing.map((r) => r.fileId));
+    const toAdd = fileIds.filter((id) => !existingIds.has(id));
+    if (existing.length + toAdd.length > MAX_PAYOUT_COMPLETION_PROOF_FILES) {
+      throw new BadRequestException(
+        `At most ${MAX_PAYOUT_COMPLETION_PROOF_FILES} proof files per order`,
+      );
+    }
+    if (toAdd.length > 0) {
+      await tx.payoutCompletionProofAttachment.createMany({
+        data: toAdd.map((fileId) => ({ payoutOrderId: orderId, fileId })),
+        skipDuplicates: true,
+      });
+      await this.syncPayoutCompletionProofHeadColumn(tx, orderId);
+    }
+    return { added: toAdd };
   }
 
   private async assertCompletionProofFileOwned(fileId: string, userId: string): Promise<void> {
@@ -1510,7 +1523,7 @@ export class PayoutService {
   }
 
   /**
-   * Standard trader: set or replace completion proof after the order is already COMPLETED.
+   * Standard trader: append completion proof files after the order is already COMPLETED.
    */
   async traderAttachCompletionProof(
     traderId: string,
@@ -1518,27 +1531,16 @@ export class PayoutService {
     orderId: string,
     dto: AttachCompletionProofDto,
   ): Promise<PayOutOrderApiDto> {
-    await this.assertCompletionProofFileOwned(dto.completion_proof_file_id, userId);
-    const order = await this.prisma.payoutOrder.findFirst({
-      where: { id: orderId, traderId, status: 'COMPLETED' },
-    });
-    if (!order) {
-      throw new NotFoundException(
-        'Order not found, not assigned to this trader, or not in COMPLETED status',
-      );
-    }
-
-    const updated = await this.prisma.payoutOrder.update({
-      where: { id: orderId },
-      data: { completionProofFileId: dto.completion_proof_file_id },
-    });
-
-    this.emitPayoutOrderRealtime(updated, false);
-    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+    return this.attachCompletionProofs(
+      { kind: 'TRADER', traderId },
+      userId,
+      orderId,
+      dto,
+    );
   }
 
   /**
-   * Pay-out specialist: set or replace completion proof after the order is already COMPLETED.
+   * Pay-out specialist: append completion proof files after the order is already COMPLETED.
    */
   async specialistAttachCompletionProof(
     payoutTraderId: string,
@@ -1546,19 +1548,44 @@ export class PayoutService {
     orderId: string,
     dto: AttachCompletionProofDto,
   ): Promise<PayOutOrderApiDto> {
-    await this.assertCompletionProofFileOwned(dto.completion_proof_file_id, userId);
-    const order = await this.prisma.payoutOrder.findFirst({
-      where: { id: orderId, payoutTraderId, status: 'COMPLETED' },
-    });
-    if (!order) {
-      throw new NotFoundException(
-        'Order not found, not assigned to this specialist, or not in COMPLETED status',
-      );
-    }
+    return this.attachCompletionProofs(
+      { kind: 'PAYOUT_TRADER', payoutTraderId },
+      userId,
+      orderId,
+      dto,
+    );
+  }
 
-    const updated = await this.prisma.payoutOrder.update({
-      where: { id: orderId },
-      data: { completionProofFileId: dto.completion_proof_file_id },
+  private async attachCompletionProofs(
+    scope: PayoutAssigneeScope,
+    userId: string,
+    orderId: string,
+    dto: AttachCompletionProofDto,
+  ): Promise<PayOutOrderApiDto> {
+    const ids = this.normalizeCompletionProofIds(dto);
+    if (ids.length === 0) {
+      throw new BadRequestException('At least one proof file id is required');
+    }
+    await this.assertCompletionProofFilesOwned(ids, userId);
+
+    const notFoundMessage =
+      scope.kind === 'TRADER'
+        ? 'Order not found, not assigned to this trader, or not in COMPLETED status'
+        : 'Order not found, not assigned to this specialist, or not in COMPLETED status';
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const order = await tx.payoutOrder.findFirst({
+        where: {
+          id: orderId,
+          ...payoutAssigneeWhereKey(scope),
+          status: 'COMPLETED',
+        },
+      });
+      if (!order) throw new NotFoundException(notFoundMessage);
+
+      await this.appendCompletionProofAttachments(tx, orderId, ids);
+
+      return tx.payoutOrder.findUniqueOrThrow({ where: { id: orderId } });
     });
 
     this.emitPayoutOrderRealtime(updated, false);
@@ -1600,34 +1627,7 @@ export class PayoutService {
         },
       });
 
-      if (order.merchantDebitLocal != null) {
-        const refund = Number(order.merchantDebitLocal);
-        await tx.merchantBalance.upsert({
-          where: {
-            merchantId_currencyId: {
-              merchantId: order.merchantId,
-              currencyId: order.currencyId,
-            },
-          },
-          create: {
-            merchantId: order.merchantId,
-            currencyId: order.currencyId,
-            amount: refund,
-          },
-          update: { amount: { increment: refund } },
-        });
-        await tx.merchantBalanceTransaction.create({
-          data: {
-            merchantId: order.merchantId,
-            type: MerchantBalanceTransactionType.PAYOUT_REFUND,
-            amount: refund,
-            currencyId: order.currencyId,
-            referenceId: order.id,
-            comment: `Pay-out failed refund for order ${order.id}`,
-          },
-        });
-      }
-
+      await this.refundMerchantOnPayoutFail(tx, order);
       await this.createPayoutWebhookEntry(tx, result);
 
       return result;
@@ -1786,14 +1786,14 @@ export class PayoutService {
     specialistUserId: string,
     dto?: SpecialistCompleteDto,
   ): Promise<PayOutOrderApiDto> {
-    const proofId = dto?.completion_proof_file_id;
-    if (proofId) {
-      const file = await this.prisma.file.findFirst({
-        where: { id: proofId, uploadedBy: specialistUserId },
-      });
-      if (!file) {
-        throw new BadRequestException('Proof file not found or was uploaded by another user');
-      }
+    const proofIds = this.normalizeCompletionProofIds(dto);
+    if (proofIds.length > MAX_PAYOUT_COMPLETION_PROOF_FILES) {
+      throw new BadRequestException(
+        `At most ${MAX_PAYOUT_COMPLETION_PROOF_FILES} proof files per order`,
+      );
+    }
+    if (proofIds.length > 0) {
+      await this.assertCompletionProofFilesOwned(proofIds, specialistUserId);
     }
 
     const order = await this.prisma.payoutOrder.findFirst({
@@ -1815,7 +1815,6 @@ export class PayoutService {
         data: {
           status: 'COMPLETED',
           endAt: new Date(),
-          ...(proofId ? { completionProofFileId: proofId } : {}),
         },
       });
 
@@ -1838,6 +1837,7 @@ export class PayoutService {
       }
 
       await this.createPayoutWebhookEntry(tx, result);
+      await this.appendCompletionProofAttachments(tx, orderId, proofIds);
 
       return result;
     });
@@ -1937,34 +1937,7 @@ export class PayoutService {
         },
       });
 
-      if (order.merchantDebitLocal != null) {
-        const refund = Number(order.merchantDebitLocal);
-        await tx.merchantBalance.upsert({
-          where: {
-            merchantId_currencyId: {
-              merchantId: order.merchantId,
-              currencyId: order.currencyId,
-            },
-          },
-          create: {
-            merchantId: order.merchantId,
-            currencyId: order.currencyId,
-            amount: refund,
-          },
-          update: { amount: { increment: refund } },
-        });
-        await tx.merchantBalanceTransaction.create({
-          data: {
-            merchantId: order.merchantId,
-            type: MerchantBalanceTransactionType.PAYOUT_REFUND,
-            amount: refund,
-            currencyId: order.currencyId,
-            referenceId: order.id,
-            comment: `Pay-out failed refund for order ${order.id}`,
-          },
-        });
-      }
-
+      await this.refundMerchantOnPayoutFail(tx, order);
       await this.createPayoutWebhookEntry(tx, result);
 
       return result;
@@ -2192,6 +2165,8 @@ export class PayoutService {
       ? Math.floor(order.poolAssignedAt.getTime() / 1000)
       : null;
 
+    const proofIdsOrdered = this.completionProofIdsFromOrder(order);
+
     const base: PayOutOrderApiDto = {
       id: order.id,
       request_id: order.requestId,
@@ -2206,7 +2181,12 @@ export class PayoutService {
       partner_amount: Number(order.partnerAmount),
       percent_fee: Number(order.percentFee),
       pool_type: order.poolType,
-      completion_proof_file_id: order.completionProofFileId ?? undefined,
+      ...(proofIdsOrdered.length > 0
+        ? {
+            completion_proof_file_ids: proofIdsOrdered,
+            completion_proof_file_id: proofIdsOrdered[0],
+          }
+        : {}),
       pool_assigned_at: poolAssignedUnix,
       parser_rate: parserRateVal,
       amount_usdt_estimate: amountUsdtEstimate,

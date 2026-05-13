@@ -106,14 +106,7 @@ export const internalPaths = {
   adminPayoutPoolMerchantAssignmentByMerchant: (merchantId: string) =>
     `/api/admin/payout-pool/merchants/assignment/${merchantId}`,
 
-  // Pay-Out pool (trader cabinet)
-  payoutPool: '/api/trader/payout/pool',
-  payoutOrders: '/api/trader/payout/orders',
   payoutAssign: '/api/trader/payout/assign',
-  payoutOrderTake: (orderId: string) => `/api/trader/payout/orders/${orderId}/take`,
-  payoutOrderProcess: (orderId: string) => `/api/trader/payout/orders/${orderId}/process`,
-  payoutOrderComplete: (orderId: string) => `/api/trader/payout/orders/${orderId}/complete`,
-  payoutOrderFail: (orderId: string) => `/api/trader/payout/orders/${orderId}/fail`,
 
   /** Pay-Out specialist — recorded settlements (operator books off-chain USDT payouts) */
   payoutSpecialistSettlements: (qs = '') =>

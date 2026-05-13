@@ -7,8 +7,6 @@ import {
   Query,
   UseGuards,
   ParseUUIDPipe,
-  Sse,
-  Header,
   MessageEvent,
   Res,
   Req,
@@ -17,8 +15,8 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { Response, type Request } from 'express';
-import { SkipThrottle, Throttle } from '@nestjs/throttler';
-import { ApiTags, ApiOperation, ApiSecurity, ApiBearerAuth, ApiProduces, ApiQuery } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { ApiTags, ApiOperation, ApiSecurity, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { UserRole } from '@p2p/shared';
 import { HmacAuthGuard } from '../../common/guards/hmac-auth.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -30,6 +28,7 @@ import { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { PayoutService } from './payout.service';
 import { PayoutRealtimeService } from './payout-realtime.service';
 import { buildExternalOrderCreationMeta } from '../../common/utils/partner-request-meta';
+import { SseStream } from '../../common/decorators/sse-stream.decorator';
 import {
   OrderUploadDto,
   PayoutOrderInfoDto,
@@ -84,13 +83,9 @@ export class PayoutInternalController {
     private readonly payoutRealtime: PayoutRealtimeService,
   ) {}
 
-  @SkipThrottle()
-  @Sse('stream')
-  @Header('X-Accel-Buffering', 'no')
-  @Header('Cache-Control', 'no-cache')
+  @SseStream('stream')
   @Roles(UserRole.TRADER)
   @ApiOperation({ summary: 'SSE stream for Pay-Out orders and pool updates for this trader' })
-  @ApiProduces('text/event-stream')
   streamTraderPayout(
     @CurrentUser('traderId') traderId: string,
   ): Observable<MessageEvent> {
@@ -190,7 +185,7 @@ export class PayoutInternalController {
   @ApiOperation({
     summary: 'Trader marks order as completed (PROCESSING → COMPLETED)',
     description:
-      'Optional JSON body: `completion_proof_file_id` (UUID of a file uploaded via POST /api/files/upload by this user).',
+      'Optional JSON body: `completion_proof_file_id` (single UUID) and/or `completion_proof_file_ids` (array), files uploaded via POST /api/files/upload by this user. Capped per order (see platform limits).',
   })
   async traderComplete(
     @CurrentUser('traderId') traderId: string,
@@ -204,9 +199,9 @@ export class PayoutInternalController {
   @Post('orders/:orderId/completion-proof')
   @Roles(UserRole.TRADER)
   @ApiOperation({
-    summary: 'Attach or replace payment receipt on a completed pay-out',
+    summary: 'Append payment receipts on a completed pay-out',
     description:
-      'For COMPLETED orders assigned to this trader. File must be uploaded first via POST /api/files/upload.',
+      'For COMPLETED orders assigned to this trader. Body: `completion_proof_file_ids` and/or `completion_proof_file_id`. Files must be uploaded first via POST /api/files/upload. Respects per-order max; duplicates ignored.',
   })
   async traderAttachCompletionProof(
     @CurrentUser('traderId') traderId: string,
@@ -242,13 +237,9 @@ export class PayoutSpecialistInternalController {
     private readonly payoutRealtime: PayoutRealtimeService,
   ) {}
 
-  @SkipThrottle()
-  @Sse('stream')
-  @Header('X-Accel-Buffering', 'no')
-  @Header('Cache-Control', 'no-cache')
+  @SseStream('stream')
   @Roles(UserRole.PAYOUT_TRADER)
   @ApiOperation({ summary: 'SSE stream for specialist pool and assigned Pay-Out orders' })
-  @ApiProduces('text/event-stream')
   streamPayoutSpecialist(
     @CurrentUser('payoutTraderId') payoutTraderId: string,
   ): Observable<MessageEvent> {
@@ -375,7 +366,7 @@ export class PayoutSpecialistInternalController {
 
   @Post('orders/:orderId/complete')
   @Roles(UserRole.PAYOUT_TRADER)
-  @ApiOperation({ summary: 'Confirm payout completed (optional completion proof file id)' })
+  @ApiOperation({ summary: 'Confirm payout completed (optional completion proof file id or ids)' })
   async complete(
     @CurrentUser('payoutTraderId') payoutTraderId: string,
     @CurrentUser('id') userId: string,
@@ -388,9 +379,9 @@ export class PayoutSpecialistInternalController {
   @Post('orders/:orderId/completion-proof')
   @Roles(UserRole.PAYOUT_TRADER)
   @ApiOperation({
-    summary: 'Attach or replace payment receipt on a completed pay-out',
+    summary: 'Append payment receipts on a completed pay-out',
     description:
-      'For COMPLETED orders assigned to this specialist. File must be uploaded first via POST /api/files/upload.',
+      'For COMPLETED orders assigned to this specialist. Body: `completion_proof_file_ids` and/or `completion_proof_file_id`. Files must be uploaded first via POST /api/files/upload. Respects per-order max; duplicates ignored.',
   })
   async specialistAttachCompletionProof(
     @CurrentUser('payoutTraderId') payoutTraderId: string,
