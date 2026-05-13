@@ -4,6 +4,7 @@ import {
   debitFiatMerchantPayout,
   debitUsdtPayin,
   creditUsdtPayout,
+  payinTraderMarkupPercentPoints,
   percentToFraction,
   platformMarginLocal,
   platformMarginUsdtPayin,
@@ -23,6 +24,8 @@ describe('balance-v2 (spec Block 5)', () => {
 
   it('Pay-In example: trader debit & platform margin', () => {
     const rt = rateTraderIn(P, traderPayin);
+    expect(payinTraderMarkupPercentPoints(P, rt)).toBeCloseTo(1, 5);
+    expect(payinTraderMarkupPercentPoints(0, rt)).toBeNull();
     const ra = rateAdminIn(P, merchPayin);
     expect(rt).toBeCloseTo(44.7632, 4);
     const debit = debitUsdtPayin(10_000, rt);

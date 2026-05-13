@@ -7,7 +7,7 @@ import { LimitUsageBar } from '@/components/ui/limit-usage-bar';
 import { Table } from '@/components/ui/table';
 import type { UseMutationResult } from '@tanstack/react-query';
 import type { PayinAssignRangeRow, RequisiteApiRow } from './types';
-import { compactAmount, num } from './utils';
+import { compactAmount, num, remainingFromLimitAndConsumed, volumePart } from './utils';
 
 export function TraderRequisitesGroupTable({
   groupId,
@@ -60,23 +60,39 @@ export function TraderRequisitesGroupTable({
       header: 'Current amount',
       className: 'min-w-[140px]',
       render: (r: RequisiteApiRow) => {
+        const lim = num(r.limitTotalAmount);
+        const usedAmt = Math.max(
+          0,
+          Number.isFinite(lim) && lim > 0
+            ? Math.min(num(r.usedAmount), lim)
+            : num(r.usedAmount),
+        );
+        const hasVolumeBreakdown = r.volume != null;
         const v = r.volume ?? {
           amountInProcessing: 0,
           amountCompleted: 0,
-          amountRemaining: Math.max(0, num(r.limitTotalAmount) - num(r.usedAmount)),
+          amountRemaining: Math.max(0, lim - usedAmt),
+          opsInProcessing: 0,
+          opsCompleted: 0,
+          opsRemaining: Math.max(0, r.limitTotalOps - r.usedOps),
         };
-        const lim = num(r.limitTotalAmount);
-        const usedRaw = Math.max(0, num(r.usedAmount));
-        const usedAmt =
-          Number.isFinite(lim) && lim > 0 ? Math.min(usedRaw, lim) : usedRaw;
-        const remainingAmt =
-          Number.isFinite(lim) && lim > 0 ? Math.max(0, lim - usedAmt) : Math.max(0, v.amountRemaining);
+        const completedAmt = volumePart(v.amountCompleted);
+        const processingAmt = volumePart(v.amountInProcessing);
+        const remainingAmt = hasVolumeBreakdown
+          ? remainingFromLimitAndConsumed(lim, completedAmt + processingAmt)
+          : volumePart(v.amountRemaining);
         const amountTooltip = (
           <div className="space-y-1 text-left">
             <div>
-              <span className="text-text-muted">Current amount: </span>
+              <span className="text-text-muted">Completed amount: </span>
               <span className="tabular-nums font-medium text-success">
-                {usedRaw.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                {completedAmt.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div>
+              <span className="text-text-muted">Amount in processing: </span>
+              <span className="tabular-nums font-medium text-amber-400">
+                {processingAmt.toLocaleString(undefined, { maximumFractionDigits: 2 })}
               </span>
             </div>
             <div>
@@ -91,33 +107,15 @@ export function TraderRequisitesGroupTable({
                 {remainingAmt.toLocaleString(undefined, { maximumFractionDigits: 2 })}
               </span>
             </div>
-            {(v.amountInProcessing > 0 || v.amountCompleted > 0) && (
-              <div className="space-y-0.5 border-t border-border-secondary pt-1.5 text-[11px] text-text-muted">
-                {v.amountInProcessing > 0 ? (
-                  <div>
-                    In processing:{' '}
-                    <span className="tabular-nums text-text-secondary">
-                      {v.amountInProcessing.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                ) : null}
-                {v.amountCompleted > 0 ? (
-                  <div>
-                    Completed:{' '}
-                    <span className="tabular-nums text-text-secondary">
-                      {v.amountCompleted.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                ) : null}
-              </div>
-            )}
           </div>
         );
         return (
           <LimitUsageBar
-            used={usedAmt}
+            used={completedAmt}
             limit={lim}
-            usedSegmentLabel={compactAmount(usedAmt)}
+            processing={processingAmt}
+            usedSegmentLabel={compactAmount(completedAmt)}
+            processingSegmentLabel={processingAmt > 0 ? compactAmount(processingAmt) : ''}
             remainingSegmentLabel={compactAmount(remainingAmt)}
             tooltip={amountTooltip}
           />
@@ -165,14 +163,35 @@ export function TraderRequisitesGroupTable({
       header: 'Operation limit',
       className: 'min-w-[100px]',
       render: (r: RequisiteApiRow) => {
-        const limOps = Math.max(1, r.limitTotalOps);
-        const usedOps = Math.max(0, Math.min(r.usedOps, limOps));
-        const remOps = Math.max(0, limOps - usedOps);
+        const limOpsRaw = Number(r.limitTotalOps);
+        const limOps = Number.isFinite(limOpsRaw) && limOpsRaw > 0 ? limOpsRaw : 1;
+        const usedOpsClamped = Math.max(
+          0,
+          Math.min(Math.floor(volumePart(r.usedOps)), limOps),
+        );
+        const hasVolumeBreakdown = r.volume != null;
+        const v = r.volume ?? {
+          amountInProcessing: 0,
+          amountCompleted: 0,
+          amountRemaining: 0,
+          opsInProcessing: 0,
+          opsCompleted: 0,
+          opsRemaining: Math.max(0, limOps - usedOpsClamped),
+        };
+        const completedOps = Math.floor(volumePart(v.opsCompleted));
+        const processingOps = Math.floor(volumePart(v.opsInProcessing));
+        const remOps = hasVolumeBreakdown
+          ? remainingFromLimitAndConsumed(limOps, completedOps + processingOps)
+          : Math.floor(volumePart(v.opsRemaining));
         const opsTooltip = (
           <div className="space-y-1 text-left">
             <div>
-              <span className="text-text-muted">Operations used: </span>
-              <span className="tabular-nums font-medium text-success">{usedOps}</span>
+              <span className="text-text-muted">Completed operations: </span>
+              <span className="tabular-nums font-medium text-success">{completedOps}</span>
+            </div>
+            <div>
+              <span className="text-text-muted">Operations in processing: </span>
+              <span className="tabular-nums font-medium text-amber-400">{processingOps}</span>
             </div>
             <div>
               <span className="text-text-muted">Operation limit: </span>
@@ -186,9 +205,11 @@ export function TraderRequisitesGroupTable({
         );
         return (
           <LimitUsageBar
-            used={usedOps}
+            used={completedOps}
             limit={limOps}
-            usedSegmentLabel={String(usedOps)}
+            processing={processingOps}
+            usedSegmentLabel={String(completedOps)}
+            processingSegmentLabel={processingOps > 0 ? String(processingOps) : ''}
             remainingSegmentLabel={String(remOps)}
             tooltip={opsTooltip}
             size="sm"

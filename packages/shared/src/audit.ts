@@ -30,6 +30,8 @@ export const AuditAction = {
   DEACTIVATE_USER: 'DEACTIVATE_USER',
   LOCK: 'LOCK',
   UNLOCK: 'UNLOCK',
+  /** Cascade idle anchor reset because requisite min/max nominal range changed (TZ observability). */
+  CASCADE_IDLE_ANCHOR_RESET: 'CASCADE_IDLE_ANCHOR_RESET',
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];

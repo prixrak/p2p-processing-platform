@@ -139,11 +139,11 @@ export class RequisitesController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRequisiteDto,
-    @CurrentUser() user: { role: string; traderId?: string },
+    @CurrentUser() user: { id: string; role: string; traderId?: string },
   ) {
     const requisite = await this.requisitesService.findById(id);
     this.assertOwnership(user, requisite.traderId);
-    return this.requisitesService.update(id, dto);
+    return this.requisitesService.update(id, dto, { id: user.id, role: user.role });
   }
 
   @Delete(':id')

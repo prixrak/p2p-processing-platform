@@ -25,6 +25,10 @@ import { TradersService } from '../traders/traders.service';
 import { UpdateCascadeSettingsDto } from './dto/update-cascade-settings.dto';
 import { CreateCoverageNominalDto } from './dto/create-coverage-nominal.dto';
 import { UpdateCoverageNominalDto } from './dto/update-coverage-nominal.dto';
+import {
+  PlatformSettingsService,
+  PLATFORM_SETTING_PAYIN_PROVIDER_INTEGRATION_ENABLED,
+} from '../platform-settings/platform-settings.service';
 
 @ApiTags('Admin — Cascade')
 @ApiBearerAuth()
@@ -36,16 +40,17 @@ export class AdminCascadeController {
     private readonly cascadeService: CascadeService,
     private readonly cascadeCoverageCache: CascadeRedisStateService,
     private readonly tradersService: TradersService,
+    private readonly platformSettings: PlatformSettingsService,
   ) {}
 
-  @Get('traffic-policy')
+  @Get('method-policy')
   @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.SUPPORT)
   @ApiOperation({
     summary:
-      'traffic_percent rules and current totals (active traders with accepting orders)',
+      'Fork / Card / Provider traffic share rules and current global percentages (TZ v3.1)',
   })
-  async trafficPolicy() {
-    return this.tradersService.getTrafficPercentPolicySummary();
+  async methodPolicy() {
+    return this.tradersService.getCascadeMethodPolicySummary();
   }
 
   @Get('settings')
@@ -53,13 +58,23 @@ export class AdminCascadeController {
   @ApiOperation({ summary: 'Cascade routing global settings' })
   async getSettings() {
     const s = await this.cascadeService.getSettings();
+    const integration = await this.platformSettings.findOne(
+      PLATFORM_SETTING_PAYIN_PROVIDER_INTEGRATION_ENABLED,
+    );
     return {
       sliding_window_hours: s.slidingWindowHours,
       autolimit_threshold: Number(s.autolimitThreshold),
       autolimit_enabled: s.autolimitEnabled,
       card_rating_weight: s.cardRatingWeight,
       fork_rating_weight: s.forkRatingWeight,
+      fork_traffic_percent: Number(s.forkTrafficPercent),
+      card_traffic_percent: Number(s.cardTrafficPercent),
+      provider_traffic_percent: Number(s.providerTrafficPercent),
+      level_pick_mode: s.levelPickMode,
+      fill_multipliers_config: s.fillMultipliersConfig ?? null,
       updated_at: s.updatedAt,
+      payin_provider_integration_enabled:
+        integration.value.trim().toLowerCase() === 'true',
     };
   }
 
@@ -77,18 +92,33 @@ export class AdminCascadeController {
         autolimitEnabled: dto.autolimit_enabled,
         cardRatingWeight: dto.card_rating_weight,
         forkRatingWeight: dto.fork_rating_weight,
+        forkTrafficPercent: dto.fork_traffic_percent,
+        cardTrafficPercent: dto.card_traffic_percent,
+        providerTrafficPercent: dto.provider_traffic_percent,
+        levelPickMode: dto.level_pick_mode,
+        fillMultipliersConfig: dto.fill_multipliers_config,
       },
       userId,
     );
     await this.cascadeCoverageCache.invalidateAll();
     const s = await this.cascadeService.getSettings();
+    const integration = await this.platformSettings.findOne(
+      PLATFORM_SETTING_PAYIN_PROVIDER_INTEGRATION_ENABLED,
+    );
     return {
       sliding_window_hours: s.slidingWindowHours,
       autolimit_threshold: Number(s.autolimitThreshold),
       autolimit_enabled: s.autolimitEnabled,
       card_rating_weight: s.cardRatingWeight,
       fork_rating_weight: s.forkRatingWeight,
+      fork_traffic_percent: Number(s.forkTrafficPercent),
+      card_traffic_percent: Number(s.cardTrafficPercent),
+      provider_traffic_percent: Number(s.providerTrafficPercent),
+      level_pick_mode: s.levelPickMode,
+      fill_multipliers_config: s.fillMultipliersConfig ?? null,
       updated_at: s.updatedAt,
+      payin_provider_integration_enabled:
+        integration.value.trim().toLowerCase() === 'true',
     };
   }
 

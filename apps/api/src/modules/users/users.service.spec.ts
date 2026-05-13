@@ -57,7 +57,6 @@ describe('UsersService', () => {
     };
     const tradersService = {
       deactivate: jest.fn().mockResolvedValue({}),
-      rebalanceCohortBeforeCreatingTrader: jest.fn().mockResolvedValue(undefined),
       invalidateCascadeCoverageCaches: jest.fn(),
     };
     const service = new UsersService(
@@ -183,16 +182,12 @@ describe('UsersService', () => {
               payoutMinLimit: 10,
               payoutMaxLimit: 5000,
               processingMethod: 'CARD',
-              trafficPercent: 0,
+              cascadeRatingMultiplier: 1,
             },
           },
         }),
         select: expect.any(Object),
       });
-      expect(tradersService.rebalanceCohortBeforeCreatingTrader).toHaveBeenCalledWith(
-        0,
-        expect.anything(),
-      );
       expect(traderWallets.ensureProvisioned).toHaveBeenCalledWith('tp-1');
       expect(tradersService.invalidateCascadeCoverageCaches).toHaveBeenCalled();
     });
@@ -212,19 +207,15 @@ describe('UsersService', () => {
 
       await service.create('t2@example.com', 'password12345', UserRole.TRADER, {
         processingMethod: 'FORK' as any,
-        trafficPercent: 0,
+        cascadeRatingMultiplier: 2,
       });
 
-      expect(tradersService.rebalanceCohortBeforeCreatingTrader).toHaveBeenCalledWith(
-        0,
-        expect.anything(),
-      );
       expect(prisma.user.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           traderProfile: {
             create: expect.objectContaining({
               processingMethod: 'FORK',
-              trafficPercent: 0,
+              cascadeRatingMultiplier: 2,
             }),
           },
         }),
@@ -232,20 +223,6 @@ describe('UsersService', () => {
       });
       expect(traderWallets.ensureProvisioned).toHaveBeenCalledWith('tp-2');
       expect(tradersService.invalidateCascadeCoverageCaches).toHaveBeenCalled();
-    });
-
-    it('rejects TRADER when cascade cohort rebalance fails', async () => {
-      const { service, prisma, tradersService } = createService();
-      prisma.user.findUnique.mockResolvedValue(null);
-      tradersService.rebalanceCohortBeforeCreatingTrader.mockRejectedValueOnce(
-        new BadRequestException('traffic_percent invalid'),
-      );
-
-      await expect(
-        service.create('t@example.com', 'password12345', UserRole.TRADER, { trafficPercent: 50 }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-
-      expect(prisma.user.create).not.toHaveBeenCalled();
     });
 
     it('rejects TRADER when pool min exceeds max', async () => {

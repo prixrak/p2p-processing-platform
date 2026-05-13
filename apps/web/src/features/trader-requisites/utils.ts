@@ -28,7 +28,26 @@ export function num(v: unknown): number {
   return Number(v);
 }
 
+/**
+ * Parses a volume/breakdown numeric field: non-finite or negative values become 0.
+ * Avoids NaN when API or cached payloads omit fields on a present `volume` object.
+ */
+export function volumePart(v: unknown): number {
+  const n = num(v);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
+}
+
+/** Headroom from limit and summed segments (completed + in processing). */
+export function remainingFromLimitAndConsumed(limit: number, consumed: number): number {
+  if (!(Number.isFinite(limit) && limit > 0)) return 0;
+  const c = Number(consumed);
+  const safeConsumed = Number.isFinite(c) && c >= 0 ? c : 0;
+  return Math.max(0, limit - Math.min(safeConsumed, limit));
+}
+
 export function compactAmount(n: number): string {
+  if (!Number.isFinite(n)) return '0';
   const abs = Math.abs(n);
   if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (abs >= 1000) return `${(n / 1000).toFixed(1)}k`;

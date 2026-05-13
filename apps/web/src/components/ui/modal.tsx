@@ -26,6 +26,8 @@ interface ModalProps {
   bodyClassName?: string;
   /** Overlay z-index when stacking dialogs (e.g. confirm above another modal). */
   overlayClassName?: string;
+  /** When false, clicking the dimmed backdrop does not close the dialog (header X / explicit actions still call onClose). */
+  closeOnBackdropClick?: boolean;
 }
 
 const sizeStyles: Record<ModalSize, string> = {
@@ -46,6 +48,7 @@ export function Modal({
   className,
   bodyClassName,
   overlayClassName,
+  closeOnBackdropClick = true,
 }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -78,7 +81,7 @@ export function Modal({
         overlayClassName,
       )}
       onClick={(e) => {
-        if (e.target === overlayRef.current) onClose();
+        if (closeOnBackdropClick && e.target === overlayRef.current) onClose();
       }}
     >
       <div

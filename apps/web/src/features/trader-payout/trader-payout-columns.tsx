@@ -1,11 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  Play,
-  Eye,
-  Copy,
-} from 'lucide-react';
+import { Eye, Copy } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { PayoutOrderStatusBadge } from '@/components/ui/order-status-badge';
 import type { UseMutationResult } from '@tanstack/react-query';
@@ -13,6 +9,7 @@ import { PayOutOrderStatus } from '@p2p/shared';
 import type { PayOutOrderApiDto } from '@p2p/shared';
 import { formatCurrency, formatDate, shortId, formatDurationShort, formatCountdownRemaining, cn } from '@/lib/utils';
 import { TraderPayoutWorkflowActions, type PayoutRejectVars } from './trader-payout-workflow-actions';
+import { TraderPayoutTakeFromPoolButton } from './trader-payout-take-from-pool-button';
 
 export type PayoutTableVariant = 'standard' | 'specialist';
 
@@ -150,16 +147,11 @@ export function buildPayoutPoolColumns(opts: {
       className: 'text-end',
       render: (row: PayOutOrderApiDto) => (
         <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-          <IconButton
-            label="Take order from pool"
-            variant="primary"
-            onClick={() => takeFromPoolMutation.mutate(row.id)}
-            loading={
-              takeFromPoolMutation.isPending && takeFromPoolMutation.variables === row.id
-            }
-          >
-            <Play className="h-4 w-4" />
-          </IconButton>
+          <TraderPayoutTakeFromPoolButton
+            order={row}
+            takeFromPoolMutation={takeFromPoolMutation}
+            layout="icon"
+          />
         </div>
       ),
     },
@@ -174,6 +166,11 @@ export function buildPayoutOrdersColumns(opts: {
   completeMutation: UseMutationResult<unknown, unknown, PayoutCompleteVars>;
   cancelMutation: UseMutationResult<unknown, unknown, string>;
   rejectMutation: UseMutationResult<unknown, unknown, PayoutRejectVars>;
+  attachCompletionProofMutation?: UseMutationResult<
+    PayOutOrderApiDto,
+    unknown,
+    { orderId: string; fileId: string }
+  >;
   onView: (row: PayOutOrderApiDto) => void;
 }) {
   const {
@@ -182,6 +179,7 @@ export function buildPayoutOrdersColumns(opts: {
     completeMutation,
     cancelMutation,
     rejectMutation,
+    attachCompletionProofMutation,
     onView,
   } = opts;
   const isSpecialist = variant === 'specialist';
@@ -285,6 +283,7 @@ export function buildPayoutOrdersColumns(opts: {
             completeMutation={completeMutation}
             cancelMutation={cancelMutation}
             rejectMutation={rejectMutation}
+            attachCompletionProofMutation={attachCompletionProofMutation}
             layout="cell"
           />
           <IconButton label="View order details" onClick={() => onView(row)}>

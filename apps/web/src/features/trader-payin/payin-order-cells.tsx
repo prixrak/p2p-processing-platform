@@ -79,7 +79,7 @@ export function CountdownTimer({
   if (!autocloseAt) return <span className="text-text-muted">-</span>;
 
   const displayRemainingMs = Math.max(0, remainingMs);
-  const showCanceled = payinDeadlineElapsedShowsCanceled({ remainingMs, status });
+  const showCanceled = payinDeadlineElapsedShowsCanceled(status);
   const minutes = Math.floor(displayRemainingMs / 60000);
   const seconds = Math.floor((displayRemainingMs % 60000) / 1000);
   const urgency: CountdownUrgency = showCanceled
@@ -88,12 +88,18 @@ export function CountdownTimer({
       ? 'critical'
       : computeUrgency(displayRemainingMs, createdAt, autocloseAt);
 
+  /** Past `autoclose_at` while still active: slightly stronger than “critical”, without heavy glow. */
+  const overdueActive = !showCanceled && displayRemainingMs <= 0;
+
   return (
     <span
       className={cn(
         'inline-flex min-w-[4.25rem] justify-end rounded-md border px-2 py-0.5 font-mono text-sm font-semibold tabular-nums transition-colors duration-500',
-        urgencyClass[urgency],
+        overdueActive
+          ? 'border border-red-400/55 bg-red-950/25 !text-red-400/90'
+          : urgencyClass[urgency],
       )}
+      title={overdueActive ? 'Payment deadline passed — resolve or cancel explicitly' : undefined}
     >
       {showCanceled ? 'Canceled' : `${minutes}:${seconds.toString().padStart(2, '0')}`}
     </span>

@@ -12,9 +12,17 @@ import { WalletDepositsModule } from '../wallet-deposits/wallet-deposits.module'
 import { CascadeModule } from '../cascade/cascade.module';
 import { TradersModule } from '../traders/traders.module';
 import { PayoutModule } from '../payout/payout.module';
+import { PlatformSettingsModule } from '../platform-settings/platform-settings.module';
 
 @Module({
-  imports: [PayinModule, WalletDepositsModule, CascadeModule, TradersModule, PayoutModule],
+  imports: [
+    PayinModule,
+    WalletDepositsModule,
+    CascadeModule,
+    TradersModule,
+    PayoutModule,
+    PlatformSettingsModule,
+  ],
   controllers: [
     AdminDashboardController,
     AdminOrdersController,

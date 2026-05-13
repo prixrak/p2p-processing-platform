@@ -104,7 +104,9 @@ export function Tooltip({
             }}
             className={clsx(
               'pointer-events-none rounded-lg border border-border-secondary bg-surface-elevated px-2.5 py-1.5 text-xs leading-snug text-text-primary shadow-xl',
-              wide ? 'max-w-xs whitespace-normal' : 'max-w-[min(20rem,calc(100vw-2rem))] whitespace-nowrap',
+              wide
+                ? 'max-w-md whitespace-normal text-left break-words'
+                : 'max-w-[min(20rem,calc(100vw-2rem))] whitespace-nowrap',
             )}
           >
             {content}

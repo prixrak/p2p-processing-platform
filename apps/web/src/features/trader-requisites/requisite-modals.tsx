@@ -69,7 +69,13 @@ export function TraderAddGroupModal({
   }, [open]);
 
   return (
-    <Modal open={open} onClose={onClose} title="Add payment method group" size="md">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add payment method group"
+      size="md"
+      closeOnBackdropClick={false}
+    >
       <form
         className="space-y-4"
         onSubmit={(e) => {
@@ -165,7 +171,13 @@ export function TraderEditGroupModal({
   }, [editingGroup]);
 
   return (
-    <Modal open={!!editingGroup} onClose={onClose} title="Edit payment method group" size="md">
+    <Modal
+      open={!!editingGroup}
+      onClose={onClose}
+      title="Edit payment method group"
+      size="md"
+      closeOnBackdropClick={false}
+    >
       {editingGroup && (
         <form
           className="space-y-4"
@@ -270,7 +282,13 @@ export function TraderAddRequisiteModal({
   }
 
   return (
-    <Modal open={!!addRequisiteGroupId} onClose={onClose} title="Add requisite" size="md">
+    <Modal
+      open={!!addRequisiteGroupId}
+      onClose={onClose}
+      title="Add requisite"
+      size="md"
+      closeOnBackdropClick={false}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -438,7 +456,13 @@ export function TraderEditRequisiteLimitsModal({
   }, [editingRequisite]);
 
   return (
-    <Modal open={!!editingRequisite} onClose={onClose} title="Edit requisite limits" size="md">
+    <Modal
+      open={!!editingRequisite}
+      onClose={onClose}
+      title="Edit requisite limits"
+      size="md"
+      closeOnBackdropClick={false}
+    >
       {editingRequisite && (
         <form
           onSubmit={(e) => {
@@ -622,6 +646,7 @@ export function TraderRequisiteHistoryModal({
       title="Requisite history"
       subtitle={historyRequisiteId ? `Requisite ID: ${historyRequisiteId}` : undefined}
       size="xl"
+      closeOnBackdropClick={false}
     >
       <div className="max-h-[min(70vh,720px)] overflow-y-auto space-y-3">
         {historyLoading ? (

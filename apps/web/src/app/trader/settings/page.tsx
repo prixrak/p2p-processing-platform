@@ -11,7 +11,7 @@ import { traderKeys } from '@/lib/query-keys';
 
 type TraderMeProfile = {
   processingMethod?: 'CARD' | 'FORK';
-  trafficPercent?: unknown;
+  cascadeRatingMultiplier?: unknown;
 };
 
 export default function SettingsPage() {
@@ -23,7 +23,7 @@ export default function SettingsPage() {
   });
 
   const method = profile?.processingMethod === 'FORK' ? 'FORK' : 'CARD';
-  const traffic = Number(profile?.trafficPercent ?? 0);
+  const multiplier = Number(profile?.cascadeRatingMultiplier ?? 1);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -61,20 +61,35 @@ export default function SettingsPage() {
           <GitBranch className="h-5 w-5 text-text-muted" />
           <h2 className="text-lg font-semibold text-text-primary">Pay-In routing</h2>
         </div>
-        <p className="mb-4 text-sm text-text-muted">
-          Your assigned processing method is set by platform administrators. It determines how Pay-In
-          assignments are ranked and which amount rules apply (FORK includes smart autolimits when
-          enabled globally). You cannot change this yourself—contact support if you need a different
-          routing mode.
-        </p>
+        <div className="mb-4 space-y-3 text-sm text-text-muted">
+          <p>
+            Your assigned processing method (<span className="font-mono text-text-primary">CARD</span>{' '}
+            or <span className="font-mono text-text-primary">FORK</span>) is configured by platform staff.
+            Incoming Pay-Ins first route to Fork vs Card by global traffic %; inside your tier, idle time
+            and your cascade rating multiplier decide who gets the next assignment. You cannot switch
+            tiers yourself—contact support if you need a different mode.
+          </p>
+          <ul className="list-inside list-disc space-y-1 text-text-secondary">
+            <li>
+              Fork: <code className="text-xs">idle × max(fill_mult, trader_mult)</code>
+              (fill_mult scales with confirmed volume; new requisites get a short start boost on the fill
+              ladder).
+            </li>
+            <li>Card: idle × trader multiplier only (no fill ladder).</li>
+            <li>
+              If nothing matches on one tier, orders can fall back to the other tier and then to an
+              external provider.
+            </li>
+          </ul>
+        </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="rounded-lg border border-border-primary bg-bg-tertiary/40 px-4 py-3">
             <span className="text-xs text-text-muted">Method</span>
             <p className="mt-1 font-mono text-sm font-medium text-text-primary">{method}</p>
           </div>
           <div className="rounded-lg border border-border-primary bg-bg-tertiary/40 px-4 py-3">
-            <span className="text-xs text-text-muted">Traffic target (%)</span>
-            <p className="mt-1 font-mono text-sm font-medium text-text-primary">{traffic}</p>
+            <span className="text-xs text-text-muted">Cascade rating multiplier</span>
+            <p className="mt-1 font-mono text-sm font-medium text-text-primary">{multiplier}</p>
           </div>
         </div>
         {method === 'FORK' ? (

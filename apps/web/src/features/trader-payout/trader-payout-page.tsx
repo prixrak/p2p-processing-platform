@@ -20,7 +20,7 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { cn } from '@/lib/utils';
 import { getToken } from '@/lib/auth';
-import { PAYOUT_TRADER_HISTORY_STATUSES } from '@p2p/shared';
+import { PAYOUT_TRADER_HISTORY_STATUSES, PayoutTraderRejectReason } from '@p2p/shared';
 import type { PayOutOrderApiDto } from '@p2p/shared';
 import { buildPayoutOrdersColumns, buildPayoutPoolColumns, type PayoutCompleteVars } from './trader-payout-columns';
 import type { PayoutRejectVars } from './trader-payout-workflow-actions';
@@ -175,7 +175,16 @@ export function TraderPayoutPage({
     const fromHistory = historyData?.orders?.find((o) => o.id === selectedOrder.id);
     const fromPool = poolData?.orders?.find((o) => o.id === selectedOrder.id);
     const fresh = fromInProgress ?? fromHistory ?? fromPool;
-    if (fresh) setSelectedOrder(fresh);
+    if (!fresh) return;
+    setSelectedOrder((prev) => {
+      if (!prev || prev.id !== fresh.id) return fresh;
+      const prevProof = prev.completion_proof_file_id;
+      const freshProof = fresh.completion_proof_file_id;
+      if (prevProof && !freshProof) {
+        return { ...fresh, completion_proof_file_id: prevProof };
+      }
+      return fresh;
+    });
   }, [inProgressData?.orders, historyData?.orders, poolData?.orders, selectedOrder?.id]);
 
   const takeFromPoolMutation = useMutation({
@@ -194,15 +203,12 @@ export function TraderPayoutPage({
   });
 
   const completeMutation = useMutation({
-    mutationFn: async (payload: PayoutCompleteVars) => {
-      const body =
-        isSpecialist && payload.completionProofFileId
+    mutationFn: async (payload: PayoutCompleteVars) =>
+      api.post(`${apiBase}/orders/${payload.orderId}/complete`, {
+        ...(payload.completionProofFileId
           ? { completion_proof_file_id: payload.completionProofFileId }
-          : isSpecialist
-            ? {}
-            : undefined;
-      return api.post(`${apiBase}/orders/${payload.orderId}/complete`, body);
-    },
+          : {}),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
       setSelectedOrder(null);
@@ -221,14 +227,32 @@ export function TraderPayoutPage({
   });
 
   const rejectMutation = useMutation({
-    mutationFn: ({ orderId, reason }: PayoutRejectVars) =>
-      api.post(`${apiBase}/orders/${orderId}/fail`, { reason }),
+    mutationFn: ({ orderId, reason, reason_other_note }: PayoutRejectVars) =>
+      api.post(`${apiBase}/orders/${orderId}/fail`, {
+        reason,
+        ...(reason === PayoutTraderRejectReason.OTHER &&
+        reason_other_note != null &&
+        reason_other_note !== ''
+          ? { reason_other_note }
+          : {}),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
       if (isSpecialist) {
         queryClient.invalidateQueries({ queryKey: [qk, 'payout-pool'] });
       }
       setSelectedOrder(null);
+    },
+  });
+
+  const attachCompletionProofMutation = useMutation({
+    mutationFn: async ({ orderId, fileId }: { orderId: string; fileId: string }) =>
+      api.post<PayOutOrderApiDto>(`${apiBase}/orders/${orderId}/completion-proof`, {
+        completion_proof_file_id: fileId,
+      }),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
+      setSelectedOrder((prev) => (prev?.id === updated.id ? updated : prev));
     },
   });
 
@@ -248,6 +272,7 @@ export function TraderPayoutPage({
     completeMutation,
     cancelMutation,
     rejectMutation,
+    attachCompletionProofMutation,
     onView: setSelectedOrder,
   });
 
@@ -575,7 +600,6 @@ export function TraderPayoutPage({
       )}
 
       <TraderPayoutOrderDetailModal
-        variant={variant}
         selectedOrder={selectedOrder}
         onClose={() => setSelectedOrder(null)}
         takeFromPoolMutation={takeFromPoolMutation}
@@ -583,6 +607,7 @@ export function TraderPayoutPage({
         completeMutation={completeMutation}
         cancelMutation={cancelMutation}
         rejectMutation={rejectMutation}
+        attachCompletionProofMutation={attachCompletionProofMutation}
       />
     </div>
   );

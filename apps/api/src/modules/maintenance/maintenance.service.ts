@@ -1,73 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../config/prisma.service';
-import { WebhookMethod } from '@p2p/shared';
-import { RequisitesService } from '../requisites/requisites.service';
 
 @Injectable()
 export class MaintenanceService {
   private readonly logger = new Logger(MaintenanceService.name);
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly requisites: RequisitesService,
-  ) {}
-
-  /** Every 10s so Pay-In `autocloseAt` aligns quickly with POST cancel + webhook side effects after the deadline. */
-  @Cron('*/10 * * * * *')
-  async handleExpiredOrders() {
-    const now = new Date();
-
-    const expiredOrders = await this.prisma.payinOrder.findMany({
-      where: {
-        status: { in: ['NEW', 'PENDING'] },
-        autocloseAt: { lte: now },
-      },
-      select: { id: true, requestId: true, amount: true, callbackUrl: true, requisiteId: true },
-    });
-
-    if (expiredOrders.length === 0) return;
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.payinOrder.updateMany({
-        where: { id: { in: expiredOrders.map((o) => o.id) } },
-        data: { status: 'CANCELED', completedAt: now },
-      });
-
-      const webhookEntries = expiredOrders
-        .filter((o) => o.callbackUrl)
-        .map((o) => ({
-          payinOrderId: o.id,
-          method: WebhookMethod.PAYIN_UPDATE_STATUS_ORDER as any,
-          payloadJson: {
-            id: o.id,
-            order_id: o.requestId,
-            order_status: 'CANCELED',
-            amount: Number(o.amount),
-          },
-          callbackUrl: o.callbackUrl!,
-        }));
-
-      if (webhookEntries.length > 0) {
-        for (const entry of webhookEntries) {
-          await tx.webhookOutbox.create({ data: entry });
-        }
-      }
-
-      // Release requisite usage for canceled orders (clamped; see RequisitesService)
-      for (const o of expiredOrders) {
-        if (o.requisiteId) {
-          await this.requisites.releaseUsageInTransaction(
-            tx,
-            o.requisiteId,
-            Number(o.amount),
-          );
-        }
-      }
-    });
-
-    this.logger.log(`Auto-canceled ${expiredOrders.length} expired pay-in orders (${expiredOrders.filter((o) => o.callbackUrl).length} webhooks enqueued)`);
-  }
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Groups whose master switch stayed off for 7+ days move to the archive tab

@@ -5,4 +5,8 @@ describe('platform setting keys', () => {
     expect(PLATFORM_SETTING_KEYS).toContain('payin_autoclose_minutes');
     expect(PLATFORM_SETTING_KEYS).toContain('payin_autoclose_minutes_fork');
   });
+
+  it('includes pay-in provider integration toggle for cascade provider traffic guard', () => {
+    expect(PLATFORM_SETTING_KEYS).toContain('payin_provider_integration_enabled');
+  });
 });

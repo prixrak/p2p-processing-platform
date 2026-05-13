@@ -316,7 +316,7 @@ export class UsersService {
       payoutMinLimit?: number;
       payoutMaxLimit?: number;
       processingMethod?: TraderProcessingMethod;
-      trafficPercent?: number;
+      cascadeRatingMultiplier?: number;
       referralPercent?: number;
       referralCurrency?: string;
       merchantName?: string;
@@ -364,15 +364,8 @@ export class UsersService {
     const passwordHash = await hashPassword(password);
 
     try {
-      const user = await this.prisma.$transaction(async (tx) => {
-        if (role === UserRole.TRADER) {
-          await this.tradersService.rebalanceCohortBeforeCreatingTrader(
-            opts?.trafficPercent ?? 0,
-            tx,
-          );
-        }
-
-        return tx.user.create({
+      const user = await this.prisma.$transaction(async (tx) =>
+        tx.user.create({
           data: {
             email,
             passwordHash,
@@ -387,7 +380,10 @@ export class UsersService {
                       payoutMinLimit: opts?.payoutMinLimit ?? 0,
                       payoutMaxLimit: opts?.payoutMaxLimit ?? 0,
                       processingMethod: opts?.processingMethod ?? TraderProcessingMethod.CARD,
-                      trafficPercent: opts?.trafficPercent ?? 0,
+                      cascadeRatingMultiplier:
+                        opts?.cascadeRatingMultiplier !== undefined
+                          ? opts.cascadeRatingMultiplier
+                          : 1,
                     },
                   },
                 }
@@ -421,8 +417,8 @@ export class UsersService {
               : {}),
           },
           select: USER_SELECT,
-        });
-      });
+        }),
+      );
 
       this.logger.log(`User ${email} created with role ${role}`);
 

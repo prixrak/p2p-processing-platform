@@ -13,7 +13,7 @@ export const internalPaths = {
   adminStatistics: '/api/admin/statistics',
 
   adminCascadeSettings: '/api/admin/cascade/settings',
-  adminCascadeTrafficPolicy: '/api/admin/cascade/traffic-policy',
+  adminCascadeMethodPolicy: '/api/admin/cascade/method-policy',
   adminCascadeCoverage: (currency = 'UAH') =>
     `/api/admin/cascade/coverage?currency=${encodeURIComponent(currency)}`,
   adminCascadeNominals: '/api/admin/cascade/nominals',
@@ -55,7 +55,7 @@ export const internalPaths = {
   traderActivate: (id: string) => `/api/traders/${id}/activate`,
   traderDeactivate: (id: string) => `/api/traders/${id}/deactivate`,
   traderPayoutLimits: (id: string) => `/api/traders/${id}/payout-limits`,
-  /** Admin/Owner: Pay-In cascade CARD/FORK and traffic_percent */
+  /** Admin/Owner: Pay-In cascade processing_method and cascade_rating_multiplier */
   traderCascadeRouting: (id: string) => `/api/traders/${id}/cascade-routing`,
   traderBalanceModel: (id: string) => `/api/traders/${id}/balance-model`,
   tradersMeAcceptingOrders: '/api/traders/me/accepting-orders',

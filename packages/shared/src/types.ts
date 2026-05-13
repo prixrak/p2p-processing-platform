@@ -66,6 +66,17 @@ export interface OrderDto {
   amount: number;
   commission: number;
   partner_amount: number;
+  /**
+   * Merchant Pay-In fee percent for this order (basis for `commission` and `partner_amount`).
+   * Not the trader pay-in markup over the parser rate.
+   */
+  commission_percent: number;
+  /**
+   * Trader pay-in markup over parser P at assignment, in percent points (1 = 1%).
+   * Null when snapshots were not recorded (legacy / non-parser flows).
+   */
+  payin_trader_markup_percent: number | null;
+  /** Legacy field; do not use as trader or merchant fee — prefer `commission_percent` and `payin_trader_markup_percent`. */
   rate: number;
   status: PayInOrderStatus;
   requisite_number: string;
@@ -157,6 +168,8 @@ export interface PayOutOrderApiDto {
   payment_method_name?: string | null;
   /** Set when the order was rejected by the trader/specialist (FAILED). */
   trader_reject_reason?: PayoutTraderRejectReason | null;
+  /** Populated when rejection reason is OTHER. */
+  trader_reject_other_note?: string | null;
 }
 
 // --- Common Models ---

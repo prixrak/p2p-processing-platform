@@ -1,19 +1,21 @@
 /**
- * Documented rules for Pay-In cascade traffic_percent (admin UX + API metadata).
- * English copy only (see AGENTS.md).
+ * Documented rules for Pay-In cascade method-level shares (TZ v3.1). English copy only (see AGENTS.md).
  */
 
-export const CASCADE_TRAFFIC_PERCENT_POLICY_TEXT =
-  'For every active trader with accepting orders enabled, configured traffic_percent values must sum to 100%, or all be 0 (the cascade then applies an equal split). Updating one trader’s share or creating a trader with a non-default share adjusts peer targets when needed so the rule stays satisfied.';
+export const CASCADE_METHOD_LEVEL_POLICY_TEXT =
+  'Each Pay-In first rolls only between Fork and Card using the configured Fork% and Card% (they should total ~100%). Inside the chosen tier, the requisite with the highest idle-time race score wins. If no requisite fits on that tier, the flow tries the other trader tier, then the external provider bridge as a last resort. Fork score uses confirmed-fill multipliers and a newcomer floor; Card uses the trader multiplier only.';
 
-export const CASCADE_TRAFFIC_PERCENT_ASSIGNMENT_NOTE =
-  'When assigning a Pay-In, only traders with at least one eligible requisite for the requested amount compete; their configured shares are normalized within that eligible subset.';
+export const CASCADE_METHOD_LEVEL_ASSIGNMENT_NOTE =
+  'DEBT mode tracks Fork/Card credits from the normalized Fork+Card split (Provider share does not pick the first tier). STOCHASTIC mode draws Fork vs Card per request. Level credits are debited from the primary Fork/Card bucket for that assignment, even when a fallback requisite on the other tier is used. Provider traffic percentage is bookkeeping only—it does not bypass Fork/Card for the primary attempt when integration is enabled.';
 
-export type TrafficPercentPolicySummary = {
-  /** Sum of traffic_percent for traders where is_active and accepting_orders (platform-wide targets). */
-  active_traders_sum_percent: number;
-  /** Whether the sum satisfies the 100% or all-zero rule (same check as PATCH validation). */
+export type CascadeMethodPolicySummary = {
+  fork_traffic_percent: number;
+  card_traffic_percent: number;
+  provider_traffic_percent: number;
+  method_share_sum_percent: number;
   matches_rule: boolean;
+  fork_card_sum_percent: number;
+  fork_card_split_matches_spec: boolean;
   policy: string;
   assignment_note: string;
 };

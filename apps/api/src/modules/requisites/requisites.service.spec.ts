@@ -5,8 +5,11 @@ import type { PrismaService } from '../../config/prisma.service';
 import type { CascadeService } from '../cascade/cascade.service';
 import type { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
 import type { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
+import type { AuditService } from '../audit/audit.service';
 import { CreateRequisiteDto } from './dto/create-requisite.dto';
 import { RequisitesService } from './requisites.service';
+
+const auditStub = { log: jest.fn() } as unknown as AuditService;
 
 describe('RequisitesService.activate', () => {
   const requisiteId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
@@ -17,6 +20,7 @@ describe('RequisitesService.activate', () => {
       {} as CascadeService,
       {} as ExchangeRateService,
       { invalidateCurrency: jest.fn() } as unknown as CascadeRedisStateService,
+      auditStub,
     );
   }
 
@@ -85,6 +89,75 @@ describe('RequisitesService.activate', () => {
   });
 });
 
+describe('RequisitesService.incrementUsageInTransaction', () => {
+  const requisiteId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+  function svc(prisma: PrismaService) {
+    return new RequisitesService(
+      prisma,
+      {} as CascadeService,
+      {} as ExchangeRateService,
+      { invalidateCurrency: jest.fn() } as unknown as CascadeRedisStateService,
+      auditStub,
+    );
+  }
+
+  it('throws BadRequest when the atomic update caps (no row updated)', async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      requisite: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: requisiteId,
+          usedAmount: new Prisma.Decimal(7000),
+          limitTotalAmount: new Prisma.Decimal(7000),
+          usedOps: 10,
+          limitTotalOps: 100,
+        }),
+      },
+    } as unknown as Prisma.TransactionClient;
+
+    await expect(
+      svc({} as PrismaService).incrementUsageInTransaction(tx, requisiteId, 500),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        message: expect.stringContaining('REQUISITE_LIMIT_EXCEEDED'),
+      }),
+    });
+    expect(tx.requisite.findUnique).toHaveBeenCalled();
+  });
+
+  it('applies increment and auto-disables when amount limit is reached', async () => {
+    const updateMock = jest.fn().mockResolvedValue({});
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: requisiteId,
+          used_amount: new Prisma.Decimal(7000),
+          limit_total_amount: new Prisma.Decimal(7000),
+          used_ops: 5,
+          limit_total_ops: 100,
+          currency_id: '33333333-3333-3333-3333-333333333333',
+        },
+      ]),
+      requisite: { findUnique: jest.fn(), update: updateMock },
+      currency: {
+        findUnique: jest.fn().mockResolvedValue({ code: 'UAH' }),
+      },
+    } as unknown as Prisma.TransactionClient;
+
+    await svc({} as PrismaService).incrementUsageInTransaction(tx, requisiteId, 100);
+
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: requisiteId },
+        data: expect.objectContaining({
+          isActive: false,
+        }),
+      }),
+    );
+  });
+});
+
 describe('RequisitesService.create', () => {
   const traderId = '11111111-1111-1111-1111-111111111111';
   const groupId = '22222222-2222-2222-2222-222222222222';
@@ -96,6 +169,7 @@ describe('RequisitesService.create', () => {
       {} as CascadeService,
       {} as ExchangeRateService,
       { invalidateCurrency: jest.fn() } as unknown as CascadeRedisStateService,
+      auditStub,
     );
   }
 

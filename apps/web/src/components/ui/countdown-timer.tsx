@@ -99,7 +99,13 @@ export function CountdownTimer({
       )}
     >
       {expired ? (
-        <span>Canceled</span>
+        <>
+          <span>{pad(0)}</span>
+          <span className="opacity-60">:</span>
+          <span>{pad(0)}</span>
+          <span className="opacity-60">:</span>
+          <span>{pad(0)}</span>
+        </>
       ) : (
         <>
           <span>{pad(timeLeft.hours)}</span>

@@ -125,6 +125,8 @@ describe('isValidPayInTransition', () => {
 
   it('matches PAYIN_TRANSITIONS for sample valid paths', () => {
     expect(isValidPayInTransition(PayInOrderStatus.PENDING, PayInOrderStatus.NEW)).toBe(true);
+    expect(isValidPayInTransition(PayInOrderStatus.PENDING, PayInOrderStatus.PAID)).toBe(true);
+    expect(isValidPayInTransition(PayInOrderStatus.PENDING, PayInOrderStatus.CANCELED)).toBe(true);
     expect(isValidPayInTransition(PayInOrderStatus.NEW, PayInOrderStatus.VERIFIED)).toBe(true);
     expect(isValidPayInTransition(PayInOrderStatus.NEW, PayInOrderStatus.PAID)).toBe(true);
     expect(isValidPayInTransition(PayInOrderStatus.VERIFIED, PayInOrderStatus.PAID)).toBe(true);

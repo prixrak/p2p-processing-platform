@@ -262,7 +262,7 @@ const cascadeRoot = [...adminRoot, 'cascade'] as const;
 export const cascadeKeys = {
   scope: cascadeRoot,
   settings: () => [...cascadeRoot, 'settings'] as const,
-  trafficPolicy: () => [...cascadeRoot, 'traffic-policy'] as const,
+  methodPolicy: () => [...cascadeRoot, 'method-policy'] as const,
   nominals: () => [...cascadeRoot, 'nominals'] as const,
   coverage: (currency: string) => [...cascadeRoot, 'coverage', currency] as const,
   requisiteRatings: (currency: string, qs: string) =>

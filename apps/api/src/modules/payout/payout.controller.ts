@@ -37,6 +37,7 @@ import {
   TraderFailDto,
   PayoutListFiltersDto,
   SpecialistCompleteDto,
+  AttachCompletionProofDto,
 } from './dto';
 
 @ApiTags('Pay-Out (External)')
@@ -186,26 +187,48 @@ export class PayoutInternalController {
 
   @Post('orders/:orderId/complete')
   @Roles(UserRole.TRADER)
-  @ApiOperation({ summary: 'Trader marks order as completed (PROCESSING → COMPLETED)' })
+  @ApiOperation({
+    summary: 'Trader marks order as completed (PROCESSING → COMPLETED)',
+    description:
+      'Optional JSON body: `completion_proof_file_id` (UUID of a file uploaded via POST /api/files/upload by this user).',
+  })
   async traderComplete(
     @CurrentUser('traderId') traderId: string,
+    @CurrentUser('id') userId: string,
     @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body() body: SpecialistCompleteDto,
   ) {
-    return this.payoutService.traderComplete(traderId, orderId);
+    return this.payoutService.traderComplete(traderId, orderId, userId, body);
+  }
+
+  @Post('orders/:orderId/completion-proof')
+  @Roles(UserRole.TRADER)
+  @ApiOperation({
+    summary: 'Attach or replace payment receipt on a completed pay-out',
+    description:
+      'For COMPLETED orders assigned to this trader. File must be uploaded first via POST /api/files/upload.',
+  })
+  async traderAttachCompletionProof(
+    @CurrentUser('traderId') traderId: string,
+    @CurrentUser('id') userId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body() body: AttachCompletionProofDto,
+  ) {
+    return this.payoutService.traderAttachCompletionProof(traderId, userId, orderId, body);
   }
 
   @Post('orders/:orderId/fail')
   @Roles(UserRole.TRADER)
   @ApiOperation({
     summary:
-      'Reject payout: mark FAILED, refund merchant when applicable (PROCESSING only); optional structured reason',
+      'Reject payout: mark FAILED, refund merchant when applicable (PROCESSING only). `reason_other_note` is required when `reason` is OTHER or omitted.',
   })
   async traderFail(
     @CurrentUser('traderId') traderId: string,
     @Param('orderId', ParseUUIDPipe) orderId: string,
     @Body() dto: TraderFailDto,
   ) {
-    return this.payoutService.traderFail(traderId, orderId, dto.reason);
+    return this.payoutService.traderFail(traderId, orderId, dto);
   }
 }
 
@@ -362,6 +385,22 @@ export class PayoutSpecialistInternalController {
     return this.payoutService.specialistComplete(payoutTraderId, orderId, userId, body);
   }
 
+  @Post('orders/:orderId/completion-proof')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({
+    summary: 'Attach or replace payment receipt on a completed pay-out',
+    description:
+      'For COMPLETED orders assigned to this specialist. File must be uploaded first via POST /api/files/upload.',
+  })
+  async specialistAttachCompletionProof(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @CurrentUser('id') userId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body() body: AttachCompletionProofDto,
+  ) {
+    return this.payoutService.specialistAttachCompletionProof(payoutTraderId, userId, orderId, body);
+  }
+
   @Post('orders/:orderId/cancel')
   @Roles(UserRole.PAYOUT_TRADER)
   @ApiOperation({
@@ -378,13 +417,13 @@ export class PayoutSpecialistInternalController {
   @Roles(UserRole.PAYOUT_TRADER)
   @ApiOperation({
     summary:
-      'Reject payout: mark FAILED, refund merchant when applicable (PROCESSING only); optional structured reason',
+      'Reject payout: mark FAILED, refund merchant when applicable (PROCESSING only). `reason_other_note` is required when `reason` is OTHER or omitted.',
   })
   async fail(
     @CurrentUser('payoutTraderId') payoutTraderId: string,
     @Param('orderId', ParseUUIDPipe) orderId: string,
     @Body() dto: TraderFailDto,
   ) {
-    return this.payoutService.specialistFail(payoutTraderId, orderId, dto.reason);
+    return this.payoutService.specialistFail(payoutTraderId, orderId, dto);
   }
 }

@@ -11,12 +11,13 @@ export class UpdateTraderCascadeDto {
 
   @ApiPropertyOptional({
     description:
-      'Target traffic share among active traders with accepting orders enabled (0–100). Saves must keep that cohort at 100% total or all 0% (equal split). When PATCH applies to a member of that cohort, peer targets are adjusted automatically so the rule holds. See GET /api/admin/cascade/traffic-policy.',
+      'Idle-time race speed multiplier for this trader (1 = default). Applies within Fork/Card tiers (TZ v3.1).',
+    example: 1,
   })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  @Min(0)
+  @Min(0.01)
   @Max(100)
-  traffic_percent?: number;
+  cascade_rating_multiplier?: number;
 }

@@ -50,10 +50,10 @@ import {
 } from '@/features/traders';
 import { MerchantDirectionsModal } from './merchant-directions-modal';
 import { ReferralAgentManageModal } from './referral-agent-manage-modal';
-import type { TrafficPercentPolicy } from '@/features/cascade/cascade-types';
+import type { CascadeMethodPolicy } from '@/features/cascade/cascade-types';
 
-const CASCADE_TRAFFIC_HINT =
-  'For active traders with accepting orders, configured traffic_percent values must sum to 100% or all be 0 (equal split). Invalid saves are rejected.';
+const CASCADE_METHOD_HINT =
+  'Fork, Card, and Provider targets are configured on the global cascade dashboard (must sum to 100%). Trader multiplier adjusts idle-time race speed within each tier.';
 
 export interface DirectoryUser {
   id: string;
@@ -232,7 +232,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
     payoutMinLimit: 0,
     payoutMaxLimit: 0,
     processingMethod: 'CARD' as 'CARD' | 'FORK',
-    trafficPercent: 0,
+    cascadeRatingMultiplier: 1,
     referralPercent: 0,
     referralCurrency: 'UAH',
     merchantName: '',
@@ -273,9 +273,9 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
     enabled: showCreate,
   });
 
-  const { data: trafficPolicy } = useQuery({
-    queryKey: cascadeKeys.trafficPolicy(),
-    queryFn: () => api.get<TrafficPercentPolicy>(internalPaths.adminCascadeTrafficPolicy),
+  const { data: methodPolicy } = useQuery({
+    queryKey: cascadeKeys.methodPolicy(),
+    queryFn: () => api.get<CascadeMethodPolicy>(internalPaths.adminCascadeMethodPolicy),
     enabled: showCreate && form.role === UserRole.TRADER,
   });
 
@@ -317,7 +317,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         body.payoutMinLimit = payload.payoutMinLimit;
         body.payoutMaxLimit = payload.payoutMaxLimit;
         body.processingMethod = payload.processingMethod;
-        body.trafficPercent = payload.trafficPercent;
+        body.cascadeRatingMultiplier = payload.cascadeRatingMultiplier;
       }
       const row = await api.post<UsersApiRow>(internalPaths.users, body);
       const merchantProfile =
@@ -342,7 +342,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         payoutMinLimit: 0,
         payoutMaxLimit: 0,
         processingMethod: 'CARD',
-        trafficPercent: 0,
+        cascadeRatingMultiplier: 1,
         referralPercent: 0,
         referralCurrency: 'UAH',
         merchantName: '',
@@ -354,7 +354,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         });
       }
       if (result.createdRole === UserRole.TRADER) {
-        void queryClient.invalidateQueries({ queryKey: cascadeKeys.trafficPolicy() });
+        void queryClient.invalidateQueries({ queryKey: cascadeKeys.methodPolicy() });
       }
     },
   });
@@ -451,7 +451,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
           return (
             <div className="text-xs text-text-secondary space-y-0.5">
               <span className={p.isActive ? 'text-success' : 'text-text-muted'}>
-                Pay-In: {p.isActive ? 'Accepting' : 'Paused'}
+                Pay-In & Pay-Out: {p.isActive ? 'enabled' : 'blocked'}
               </span>
               <span className="block font-mono text-text-muted">
                 {p.payoutMinLimit === 0 && p.payoutMaxLimit === 0
@@ -551,7 +551,12 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                 <Settings className="h-4 w-4" />
               </IconButton>
               <IconButton
-                label={u.traderProfile.isActive ? 'Pause Pay-In trader' : 'Resume Pay-In trader'}
+                tooltipWide
+                label={
+                  u.traderProfile.isActive
+                    ? 'Deactivate trader profile (blocks new Pay-In and Pay-Out assignments; returns payout tasks to the pool)'
+                    : 'Activate trader profile (allows new Pay-In and Pay-Out assignments)'
+                }
                 variant="ghost"
                 onClick={() =>
                   traderToggle.mutate({
@@ -642,7 +647,8 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                 {form.payoutMinLimit === 0 && form.payoutMaxLimit === 0
                   ? 'unlimited'
                   : `${form.payoutMinLimit} – ${form.payoutMaxLimit}`}
-                . Pay-In cascade: method {form.processingMethod}, traffic {form.trafficPercent}%.
+                . Pay-In cascade: method {form.processingMethod}, race multiplier{' '}
+                {form.cascadeRatingMultiplier}.
               </span>
             ) : null}
             {form.role === UserRole.REFERRAL ? (
@@ -844,8 +850,8 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                 <div>
                   <p className="text-xs font-medium text-text-primary">Pay-In cascade routing</p>
                   <p className="mt-1 text-xs text-text-muted">
-                    Processing method (CARD vs FORK) controls Fork autolimits and rating weight in the Pay-In
-                    cascade. Traders cannot change this themselves.
+                    Processing method (CARD vs FORK) controls Fork autolimits and which tier a requisite
+                    joins in the Pay-In cascade. Traders cannot change this themselves.
                   </p>
                 </div>
                 <Select
@@ -861,28 +867,30 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
                   error={createFieldErrors.processingMethod}
                 />
                 <NumberInput
-                  label="Traffic percent (0–100)"
+                  label="Cascade rating multiplier (0.01–100)"
                   variant="amount"
-                  min={0}
+                  min={0.01}
                   max={100}
-                  value={form.trafficPercent}
+                  value={form.cascadeRatingMultiplier}
                   onChange={(e) =>
-                    setForm({ ...form, trafficPercent: parseDecimalInput(e.target.value) || 0 })
+                    setForm({
+                      ...form,
+                      cascadeRatingMultiplier: parseDecimalInput(e.target.value) || 1,
+                    })
                   }
-                  error={createFieldErrors.trafficPercent}
+                  error={createFieldErrors.cascadeRatingMultiplier}
                 />
-                {trafficPolicy ? (
+                {methodPolicy ? (
                   <p
-                    className={`text-xs ${trafficPolicy.matches_rule ? 'text-text-muted' : 'text-accent-yellow'}`}
+                    className={`text-xs ${methodPolicy.matches_rule ? 'text-text-muted' : 'text-accent-yellow'}`}
                   >
-                    Active traders (accepting orders) traffic sum:{' '}
-                    {trafficPolicy.active_traders_sum_percent.toFixed(2)}%.{' '}
-                    {trafficPolicy.matches_rule
-                      ? 'Within policy (before adding this user).'
-                      : 'Does not match policy yet — adjust other traders or use the cascade traffic dashboard.'}
+                    Method targets sum: {methodPolicy.method_share_sum_percent.toFixed(2)}%.{' '}
+                    {methodPolicy.matches_rule
+                      ? 'Within policy.'
+                      : 'Does not match policy yet — fix Fork / Card / Provider percentages on the cascade dashboard.'}
                   </p>
                 ) : null}
-                <p className="text-xs text-text-muted">{CASCADE_TRAFFIC_HINT}</p>
+                <p className="text-xs text-text-muted">{CASCADE_METHOD_HINT}</p>
               </div>
               <div className="rounded-lg border border-border-subtle/70 bg-bg-secondary/20 py-3 space-y-3">
                 <div>

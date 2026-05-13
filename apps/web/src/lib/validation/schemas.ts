@@ -59,7 +59,7 @@ export const ownerCreateUserFormSchema = z
     payoutMinLimit: z.number(),
     payoutMaxLimit: z.number(),
     processingMethod: z.enum(['CARD', 'FORK']),
-    trafficPercent: z.number(),
+    cascadeRatingMultiplier: z.number(),
     referralPercent: z.number(),
     referralCurrency: z.string(),
     merchantName: z.string(),
@@ -117,14 +117,14 @@ export const ownerCreateUserFormSchema = z
         });
       }
       if (
-        !Number.isFinite(data.trafficPercent) ||
-        data.trafficPercent < 0 ||
-        data.trafficPercent > 100
+        !Number.isFinite(data.cascadeRatingMultiplier) ||
+        data.cascadeRatingMultiplier < 0.01 ||
+        data.cascadeRatingMultiplier > 100
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['trafficPercent'],
-          message: 'Traffic percent must be between 0 and 100',
+          path: ['cascadeRatingMultiplier'],
+          message: 'Cascade rating multiplier must be between 0.01 and 100',
         });
       }
     }

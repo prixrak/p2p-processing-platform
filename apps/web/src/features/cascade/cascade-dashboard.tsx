@@ -7,11 +7,11 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { parseDecimalInput } from '@/lib/decimal-input';
 import { cascadeKeys, currencyKeys, fetchCurrencyList } from '@/lib/query-keys';
-import type { CascadeSettings, NominalRow, TrafficPercentPolicy } from './cascade-types';
+import type { CascadeMethodPolicy, CascadeSettings, NominalRow } from './cascade-types';
 import { CascadeCoverageSection } from './cascade-coverage-section';
 import { CascadeGlobalSettingsSection } from './cascade-global-settings-section';
+import { CascadeMethodPolicySection } from './cascade-method-policy-section';
 import { CascadeNominalGridSection } from './cascade-nominal-grid-section';
-import { CascadeTrafficPolicySection } from './cascade-traffic-policy-section';
 
 export type CascadeDashboardProps = {
   /** Support role: coverage/settings/nominals read-only */
@@ -25,30 +25,44 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
   const [newAmount, setNewAmount] = useState('');
   const [newSort, setNewSort] = useState('');
 
-  const [draftHours, setDraftHours] = useState('');
   const [draftThreshold, setDraftThreshold] = useState('');
   const [draftAutolimits, setDraftAutolimits] = useState(true);
+  const [draftForkPct, setDraftForkPct] = useState('');
+  const [draftCardPct, setDraftCardPct] = useState('');
+  const [draftProviderPct, setDraftProviderPct] = useState('');
+  const [draftLevelPickMode, setDraftLevelPickMode] = useState('DEBT');
   const [draftCardW, setDraftCardW] = useState('');
   const [draftForkW, setDraftForkW] = useState('');
+  const [draftFillMultipliersJson, setDraftFillMultipliersJson] = useState('');
+  const [fillMultipliersJsonError, setFillMultipliersJsonError] = useState<string | null>(null);
 
   const settingsQ = useQuery({
     queryKey: cascadeKeys.settings(),
     queryFn: () => api.get<CascadeSettings>(internalPaths.adminCascadeSettings),
   });
 
-  const trafficPolicyQ = useQuery({
-    queryKey: cascadeKeys.trafficPolicy(),
-    queryFn: () => api.get<TrafficPercentPolicy>(internalPaths.adminCascadeTrafficPolicy),
+  const methodPolicyQ = useQuery({
+    queryKey: cascadeKeys.methodPolicy(),
+    queryFn: () => api.get<CascadeMethodPolicy>(internalPaths.adminCascadeMethodPolicy),
   });
 
   useEffect(() => {
     const s = settingsQ.data;
     if (!s) return;
-    setDraftHours(String(s.sliding_window_hours));
     setDraftThreshold(String(s.autolimit_threshold));
     setDraftAutolimits(s.autolimit_enabled);
+    setDraftForkPct(String(s.fork_traffic_percent));
+    setDraftCardPct(String(s.card_traffic_percent));
+    setDraftProviderPct(String(s.provider_traffic_percent));
+    setDraftLevelPickMode(s.level_pick_mode);
     setDraftCardW(String(s.card_rating_weight));
     setDraftForkW(String(s.fork_rating_weight));
+    setDraftFillMultipliersJson(
+      s.fill_multipliers_config == null
+        ? ''
+        : JSON.stringify(s.fill_multipliers_config, null, 2),
+    );
+    setFillMultipliersJsonError(null);
   }, [settingsQ.data]);
 
   const nominalsQ = useQuery({
@@ -129,25 +143,64 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
   const s = settingsQ.data;
 
   const submitSettings = () => {
-    const sliding_window_hours = parseInt(draftHours, 10);
+    setFillMultipliersJsonError(null);
     const autolimit_threshold = parseDecimalInput(draftThreshold);
+    const fork_traffic_percent = parseDecimalInput(draftForkPct);
+    const card_traffic_percent = parseDecimalInput(draftCardPct);
+    const provider_traffic_percent = parseDecimalInput(draftProviderPct);
     const card_rating_weight = parseInt(draftCardW, 10);
     const fork_rating_weight = parseInt(draftForkW, 10);
     if (
-      Number.isNaN(sliding_window_hours) ||
-      sliding_window_hours < 1 ||
       Number.isNaN(autolimit_threshold) ||
+      Number.isNaN(fork_traffic_percent) ||
+      Number.isNaN(card_traffic_percent) ||
+      Number.isNaN(provider_traffic_percent) ||
       Number.isNaN(card_rating_weight) ||
       Number.isNaN(fork_rating_weight)
     ) {
       return;
     }
+    if (
+      s &&
+      !s.payin_provider_integration_enabled &&
+      provider_traffic_percent > 1e-9
+    ) {
+      return;
+    }
+    const level_pick_mode =
+      draftLevelPickMode === 'STOCHASTIC' ? 'STOCHASTIC' : 'DEBT';
+
+    const serverFill =
+      s?.fill_multipliers_config == null
+        ? ''
+        : JSON.stringify(s.fill_multipliers_config, null, 2);
+    const draftTrim = draftFillMultipliersJson.trim();
+    const serverTrim = serverFill.trim();
+
+    let fill_multipliers_config: unknown | undefined;
+    if (draftTrim !== serverTrim) {
+      if (draftTrim === '') {
+        fill_multipliers_config = null;
+      } else {
+        try {
+          fill_multipliers_config = JSON.parse(draftTrim) as unknown;
+        } catch {
+          setFillMultipliersJsonError('Invalid JSON');
+          return;
+        }
+      }
+    }
+
     patchSettings.mutate({
-      sliding_window_hours,
       autolimit_threshold,
       autolimit_enabled: draftAutolimits,
+      fork_traffic_percent,
+      card_traffic_percent,
+      provider_traffic_percent,
+      level_pick_mode,
       card_rating_weight,
       fork_rating_weight,
+      ...(fill_multipliers_config !== undefined ? { fill_multipliers_config } : {}),
     });
   };
 
@@ -156,30 +209,39 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
       <div className="flex items-center gap-3">
         <GitFork className="h-8 w-8 text-accent" />
         <div>
-          <h1 className="text-2xl font-semibold text-text-primary">Cascade routing</h1>
+          <h1 className="text-2xl font-semibold text-text-primary">Cascade settings</h1>
           <p className="text-sm text-text-secondary">
             {subtitle ??
-              'Coverage nominals, Redis-backed coverage cache, and global cascade settings.'}
+              'Tier traffic, Fork fill ladder, coverage nominals, and Redis-backed cascade state.'}
           </p>
         </div>
       </div>
 
-      <CascadeTrafficPolicySection data={trafficPolicyQ.data} isLoading={trafficPolicyQ.isLoading} />
+      <CascadeMethodPolicySection data={methodPolicyQ.data} isLoading={methodPolicyQ.isLoading} />
 
       <CascadeGlobalSettingsSection
         readOnly={readOnly}
         settings={s}
         isLoading={settingsQ.isLoading}
-        draftHours={draftHours}
-        setDraftHours={setDraftHours}
         draftThreshold={draftThreshold}
         setDraftThreshold={setDraftThreshold}
         draftAutolimits={draftAutolimits}
         setDraftAutolimits={setDraftAutolimits}
+        draftForkPct={draftForkPct}
+        setDraftForkPct={setDraftForkPct}
+        draftCardPct={draftCardPct}
+        setDraftCardPct={setDraftCardPct}
+        draftProviderPct={draftProviderPct}
+        setDraftProviderPct={setDraftProviderPct}
+        draftLevelPickMode={draftLevelPickMode}
+        setDraftLevelPickMode={setDraftLevelPickMode}
         draftCardW={draftCardW}
         setDraftCardW={setDraftCardW}
         draftForkW={draftForkW}
         setDraftForkW={setDraftForkW}
+        draftFillMultipliersJson={draftFillMultipliersJson}
+        setDraftFillMultipliersJson={setDraftFillMultipliersJson}
+        fillMultipliersJsonError={fillMultipliersJsonError}
         onSave={() => submitSettings()}
         savePending={patchSettings.isPending}
       />

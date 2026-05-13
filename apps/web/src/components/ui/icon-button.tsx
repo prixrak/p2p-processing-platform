@@ -8,6 +8,8 @@ import { Tooltip } from '@/components/ui/tooltip';
 export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
   /** Shown in tooltip and aria-label */
   label: string;
+  /** Multi-line tooltip (long hints); maps to Tooltip `wide` */
+  tooltipWide?: boolean;
   children: ReactNode;
   variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
@@ -19,6 +21,7 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
  */
 export function IconButton({
   label,
+  tooltipWide = false,
   children,
   className,
   variant = 'ghost',
@@ -29,7 +32,7 @@ export function IconButton({
   ...props
 }: IconButtonProps) {
   return (
-    <Tooltip content={label}>
+    <Tooltip content={label} wide={tooltipWide}>
       <span className="inline-flex shrink-0">
         <Button
           type={type}

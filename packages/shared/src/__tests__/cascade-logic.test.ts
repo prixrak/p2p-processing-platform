@@ -8,6 +8,20 @@ import {
   nominalCoveredByRange,
   requisiteRating,
   approximateOthersEffectiveRange,
+  effectiveIdleMs,
+  newcomerRatingBoostMultiplier,
+  cascadeRaceScore,
+  fillMultiplierFromConfirmedFill,
+  forkCascadeRaceScore,
+  cardCascadeRaceScore,
+  confirmedPayinFillRatio,
+  normalizeCascadeMethodPercents,
+  pickPrimaryCascadeLevelDebt,
+  pickPrimaryCascadeLevelStochastic,
+  normalizeCascadeForkCardSplitPercent,
+  cascadeLevelAttemptOrder,
+  applyCascadeCreditsAfterAssignment,
+  NEWCOMER_RATING_BOOST,
   type ForkAutolimitInputs,
 } from '../cascade-logic';
 
@@ -161,5 +175,138 @@ describe('observability metrics', () => {
     if (bounds && maxN !== undefined) {
       expect(bounds.effMax).toBeLessThanOrEqual(maxN + 1e-6);
     }
+  });
+});
+
+describe('TZ v3.1 cascade idle race & level picking', () => {
+  it('effectiveIdleMs is non-negative', () => {
+    expect(effectiveIdleMs(1000, 500)).toBe(500);
+    expect(effectiveIdleMs(100, 200)).toBe(0);
+  });
+
+  it('newcomer boost applies only before first assignment', () => {
+    expect(newcomerRatingBoostMultiplier(0)).toBe(NEWCOMER_RATING_BOOST);
+    expect(newcomerRatingBoostMultiplier(1)).toBe(1);
+  });
+
+  it('cascadeRaceScore combines idle, multiplier, boost', () => {
+    expect(
+      cascadeRaceScore({
+        idleMs: 100,
+        traderMultiplier: 2,
+        newcomerBoost: NEWCOMER_RATING_BOOST,
+      }),
+    ).toBe(400);
+  });
+
+  it('normalizeCascadeMethodPercents sums to ~100', () => {
+    const n = normalizeCascadeMethodPercents({ fork: 70, card: 30, provider: 0 });
+    expect(n.fork + n.card + n.provider).toBeCloseTo(100, 5);
+  });
+
+  it('normalizeCascadeForkCardSplitPercent ignores denominator other than Fork+Card', () => {
+    expect(normalizeCascadeForkCardSplitPercent(80, 20)).toEqual({ fork: 80, card: 20 });
+    const m = normalizeCascadeForkCardSplitPercent(40, 40);
+    expect(m.fork).toBeCloseTo(50, 5);
+    expect(m.card).toBeCloseTo(50, 5);
+    const z = normalizeCascadeForkCardSplitPercent(0, 0);
+    expect(z).toEqual({ fork: 50, card: 50 });
+  });
+
+  it('pickPrimaryCascadeLevelDebt tie-break prefers FORK', () => {
+    expect(
+      pickPrimaryCascadeLevelDebt(
+        { fork: 0, card: 0, provider: 0 },
+        { fork: 50, card: 50, provider: 0 },
+      ),
+    ).toBe('FORK');
+  });
+
+  it('pickPrimaryCascadeLevelStochastic is deterministic with fixed RNG', () => {
+    expect(
+      pickPrimaryCascadeLevelStochastic({ fork: 50, card: 50, provider: 0 }, () => 0.2),
+    ).toBe('FORK');
+    expect(
+      pickPrimaryCascadeLevelStochastic({ fork: 50, card: 50, provider: 0 }, () => 0.7),
+    ).toBe('CARD');
+  });
+
+  it('pickPrimaryCascadeLevel never chooses PROVIDER (provider share ignored for primary tier)', () => {
+    expect(
+      pickPrimaryCascadeLevelDebt({ fork: 0, card: 0, provider: 1_000 }, { fork: 0, card: 0, provider: 100 }),
+    ).toBe('FORK');
+    expect(pickPrimaryCascadeLevelStochastic({ fork: 0, card: 0, provider: 100 }, () => 0.999)).toBe(
+      'CARD',
+    );
+    expect(pickPrimaryCascadeLevelStochastic({ fork: 10, card: 10, provider: 100 }, () => 0)).toBe('FORK');
+  });
+
+  it('cascadeLevelAttemptOrder rotates primary', () => {
+    expect(cascadeLevelAttemptOrder('CARD')).toEqual(['CARD', 'FORK', 'PROVIDER']);
+  });
+
+  it('cascadeLevelAttemptOrder lists primary then other tiers (TZ §5.3 fallback order)', () => {
+    expect(cascadeLevelAttemptOrder('FORK')).toEqual(['FORK', 'CARD', 'PROVIDER']);
+    expect(cascadeLevelAttemptOrder('PROVIDER')).toEqual(['PROVIDER', 'FORK', 'CARD']);
+  });
+
+  it('applyCascadeCreditsAfterAssignment debits the primary tier (not landed fallback tier)', () => {
+    const targets = { fork: 70, card: 30, provider: 0 };
+    const landedCard = applyCascadeCreditsAfterAssignment({ fork: 0, card: 0, provider: 0 }, targets, 'FORK');
+    expect(landedCard.fork).toBeCloseTo(0.7 - 1, 10);
+    expect(landedCard.card).toBeCloseTo(0.3, 10);
+
+    const primaryCard = applyCascadeCreditsAfterAssignment({ fork: 0, card: 0, provider: 0 }, targets, 'CARD');
+    expect(primaryCard.fork).toBeCloseTo(0.7, 10);
+    expect(primaryCard.card).toBeCloseTo(0.3 - 1, 10);
+  });
+
+  it('applyCascadeCreditsAfterAssignment steps Fork+Card credits with Fork+Card normalization', () => {
+    const targets = { fork: 40, card: 40, provider: 20 };
+    const out = applyCascadeCreditsAfterAssignment({ fork: 0, card: 0, provider: 0 }, targets, 'FORK');
+    expect(out.fork).toBeCloseTo(0.5 - 1, 10);
+    expect(out.card).toBeCloseTo(0.5, 10);
+    expect(out.provider).toBeCloseTo(0.2, 10);
+  });
+
+  it('fillMultiplierFromConfirmedFill steps at TZ thresholds', () => {
+    expect(fillMultiplierFromConfirmedFill(0)).toBe(1);
+    expect(fillMultiplierFromConfirmedFill(0.65)).toBe(1.5);
+    expect(fillMultiplierFromConfirmedFill(0.95)).toBe(5);
+  });
+
+  it('confirmedPayinFillRatio clamps', () => {
+    expect(confirmedPayinFillRatio(0, 100)).toBe(0);
+    expect(confirmedPayinFillRatio(50, 100)).toBe(0.5);
+    expect(confirmedPayinFillRatio(200, 100)).toBe(1);
+  });
+
+  it('forkCascadeRaceScore uses max of fill multiplier, newcomer floor, and trader mult', () => {
+    const idle = 10;
+    expect(
+      forkCascadeRaceScore({
+        idleMs: idle,
+        confirmedFill01: 0,
+        traderMultiplier: 3,
+        payinAssignmentsCount: 1,
+      }),
+    ).toBeCloseTo(idle * 3, 10);
+    expect(
+      forkCascadeRaceScore({
+        idleMs: idle,
+        confirmedFill01: 0,
+        traderMultiplier: 1,
+        payinAssignmentsCount: 0,
+      }),
+    ).toBeCloseTo(idle * NEWCOMER_RATING_BOOST, 10);
+  });
+
+  it('cardCascadeRaceScore ignores newcomer and confirmed fill', () => {
+    expect(
+      cardCascadeRaceScore({
+        idleMs: 100,
+        traderMultiplier: 2,
+      }),
+    ).toBe(200);
   });
 });

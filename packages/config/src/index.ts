@@ -213,6 +213,16 @@ export const config = {
     nodeEnv: optional('NODE_ENV', 'development'),
     encryptionKey: optional('ENCRYPTION_KEY', 'dev-encryption-key-change-me-in-prod'),
   },
+  /** Optional external Pay-In provider bridge (TZ §5–6). */
+  payinProvider: {
+    baseUrl: optional('PAYIN_PROVIDER_BASE_URL', ''),
+    apiKey: optional('PAYIN_PROVIDER_API_KEY', ''),
+    /** POST path appended to base URL (leading slash required). */
+    reservePath: optional('PAYIN_PROVIDER_RESERVE_PATH', '/v1/payin/reserve'),
+    timeoutMs: parseInt(optional('PAYIN_PROVIDER_TIMEOUT_MS', '8000'), 10),
+    /** HMAC-SHA256 secret for `POST /api/internal/payin-provider/webhook` body verification (hex digest in header). */
+    webhookSecret: optional('PAYIN_PROVIDER_WEBHOOK_SECRET', ''),
+  },
   http: {
     /** JSON and urlencoded body size (Express body-parser limit), e.g. 1mb */
     jsonBodyLimit: optional('HTTP_JSON_BODY_LIMIT', '1mb'),

@@ -1,6 +1,10 @@
 import { Prisma } from '@prisma/client';
 import type { AppealDto, OrderDto, PayInOrderStatus } from '@p2p/shared';
-import { AppealStatus, PAYIN_TRADER_HISTORY_STATUSES } from '@p2p/shared';
+import {
+  AppealStatus,
+  payinTraderMarkupPercentPoints,
+  PAYIN_TRADER_HISTORY_STATUSES,
+} from '@p2p/shared';
 
 const PAYIN_HISTORY_STATUS_SET = new Set<PayInOrderStatus>(PAYIN_TRADER_HISTORY_STATUSES);
 
@@ -28,6 +32,14 @@ export type OrderWithRelations = Prisma.PayinOrderGetPayload<{
 }>;
 
 export function payinOrderToOrderDto(order: OrderWithRelations): OrderDto {
+  const parserSnap =
+    order.parserRate != null ? Number(order.parserRate) : null;
+  const rtInSnap = order.rateTraderIn != null ? Number(order.rateTraderIn) : null;
+  const payinTraderMarkupPercent =
+    parserSnap != null && rtInSnap != null
+      ? payinTraderMarkupPercentPoints(parserSnap, rtInSnap)
+      : null;
+
   return {
     id: order.id,
     request_id: order.requestId,
@@ -43,6 +55,8 @@ export function payinOrderToOrderDto(order: OrderWithRelations): OrderDto {
     amount: Number(order.amount),
     commission: Number(order.commission),
     partner_amount: Number(order.partnerAmount),
+    commission_percent: Number(order.commissionPercent),
+    payin_trader_markup_percent: payinTraderMarkupPercent,
     rate: Number(order.rate),
     status: order.status as PayInOrderStatus,
     requisite_number: order.requisite?.number ?? '',

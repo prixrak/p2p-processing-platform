@@ -208,8 +208,8 @@ export function CascadeRequisiteRatingsPanel({
     () => [
       { label: 'Cascade rank · low first', value: 'rank|asc' },
       { label: 'Cascade rank · high first', value: 'rank|desc' },
-      { label: 'Rating · high first', value: 'rating|desc' },
-      { label: 'Rating · low first', value: 'rating|asc' },
+      { label: 'Race score · high first', value: 'rating|desc' },
+      { label: 'Race score · low first', value: 'rating|asc' },
       { label: 'Trader A → Z', value: 'trader|asc' },
       { label: 'Trader Z → A', value: 'trader|desc' },
       { label: 'Remainder · small first', value: 'remainder|asc' },
@@ -484,7 +484,7 @@ export function CascadeRequisiteRatingsPanel({
               <th className="min-w-[6.5rem] px-3 py-2">Amount range</th>
               <th className="min-w-[180px] px-3 py-2">Amount limit & assignment range</th>
               <th className="min-w-[7.5rem] px-3 py-2">Operation limit</th>
-              <th className="px-3 py-2">Rating</th>
+              <th className="px-3 py-2">Race score</th>
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Autolimit</th>
               <th className="px-3 py-2">Last assign</th>

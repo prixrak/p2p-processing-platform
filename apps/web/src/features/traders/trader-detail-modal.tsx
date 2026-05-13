@@ -14,19 +14,19 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Select } from '@/components/ui/select';
 import type { StaffRolePrefix } from '@/lib/query-keys';
 import { cascadeKeys, staffKeys, staffTraderKeys } from '@/lib/query-keys';
-import type { TrafficPercentPolicy } from '@/features/cascade/cascade-types';
+import type { CascadeMethodPolicy } from '@/features/cascade/cascade-types';
 import type { StaffTraderRow } from './staff-trader-types';
 import { parseDecimalInput } from '@/lib/decimal-input';
 import { currencyCodeFromUnknown } from '@/lib/currency-code';
 
-const CASCADE_TRAFFIC_HINT =
-  'For active traders with accepting orders, targets must total 100% or all be 0% (equal split). Saving here updates this trader and, when needed, auto-adjusts other traders in that group so the total stays valid.';
+const CASCADE_METHOD_HINT =
+  'Fork / Card / Provider targets are set globally on the cascade dashboard (must sum to 100%). The multiplier below adjusts how fast this trader rises in the idle-time race within their tier.';
 
 interface TraderDetail {
   id: string;
   email: string;
   processingMethod: 'CARD' | 'FORK';
-  trafficPercent: number;
+  cascadeRatingMultiplier: number;
   payoutMinLimit: number;
   payoutMaxLimit: number;
   overdraftLimit?: number;
@@ -78,7 +78,7 @@ export function TraderDetailModal({
   const payoutLimitsSeededRef = useRef(false);
 
   const [cascadeMethod, setCascadeMethod] = useState<'CARD' | 'FORK'>('CARD');
-  const [cascadeTraffic, setCascadeTraffic] = useState('');
+  const [cascadeMultiplier, setCascadeMultiplier] = useState('');
   const cascadeFormSeededRef = useRef(false);
 
   useEffect(() => {
@@ -87,9 +87,9 @@ export function TraderDetailModal({
     cascadeFormSeededRef.current = false;
   }, [traderId]);
 
-  const { data: trafficPolicy } = useQuery({
-    queryKey: cascadeKeys.trafficPolicy(),
-    queryFn: () => api.get<TrafficPercentPolicy>(internalPaths.adminCascadeTrafficPolicy),
+  const { data: methodPolicy } = useQuery({
+    queryKey: cascadeKeys.methodPolicy(),
+    queryFn: () => api.get<CascadeMethodPolicy>(internalPaths.adminCascadeMethodPolicy),
     enabled: open && canEditStaff,
   });
 
@@ -108,7 +108,7 @@ export function TraderDetailModal({
         usdtTrc20DepositAddress?: string | null;
         usdtErc20DepositAddress?: string | null;
         processingMethod?: 'CARD' | 'FORK';
-        trafficPercent?: unknown;
+        cascadeRatingMultiplier?: unknown;
         balances: Array<{ currency: string | { code: string }; amount: unknown }>;
         requisites: Array<{
           id: string;
@@ -123,7 +123,7 @@ export function TraderDetailModal({
         id: raw.id,
         email: raw.user.email,
         processingMethod: raw.processingMethod === 'FORK' ? 'FORK' : 'CARD',
-        trafficPercent: Number(raw.trafficPercent ?? 0),
+        cascadeRatingMultiplier: Number(raw.cascadeRatingMultiplier ?? 1),
         payoutMinLimit: Number(raw.payoutMinLimit ?? 0),
         payoutMaxLimit: Number(raw.payoutMaxLimit ?? 0),
         overdraftLimit: Number(raw.overdraftLimit ?? 0),
@@ -192,7 +192,7 @@ export function TraderDetailModal({
       return;
     }
     setCascadeMethod(traderDetail.processingMethod);
-    setCascadeTraffic(String(traderDetail.trafficPercent ?? 0));
+    setCascadeMultiplier(String(traderDetail.cascadeRatingMultiplier ?? 1));
     cascadeFormSeededRef.current = true;
   }, [open, traderId, traderDetail, canEditStaff]);
 
@@ -254,15 +254,15 @@ export function TraderDetailModal({
     mutationFn: () =>
       api.patch<{
         processingMethod: string;
-        trafficPercent: unknown;
-        _meta?: { traffic_percent: TrafficPercentPolicy };
+        cascadeRatingMultiplier: unknown;
+        _meta?: { method_policy: CascadeMethodPolicy };
       }>(internalPaths.traderCascadeRouting(traderId!), {
         processing_method: cascadeMethod,
-        traffic_percent: parseDecimalInput(cascadeTraffic) || 0,
+        cascade_rating_multiplier: parseDecimalInput(cascadeMultiplier) || 1,
       }),
     onSuccess: () => {
       cascadeFormSeededRef.current = false;
-      void queryClient.invalidateQueries({ queryKey: cascadeKeys.trafficPolicy() });
+      void queryClient.invalidateQueries({ queryKey: cascadeKeys.methodPolicy() });
       invalidateDetail();
     },
   });
@@ -382,8 +382,8 @@ export function TraderDetailModal({
             <div>
               <h3 className="text-base font-semibold text-text-primary">Pay-In cascade routing</h3>
               <p className="mt-1 text-xs text-text-muted">
-                Processing method (CARD vs FORK) controls Fork autolimits and rating weight in the
-                Pay-In cascade. Traders cannot change this themselves.
+                Processing method (CARD vs FORK) controls Fork autolimits and which tier competes in
+                the Pay-In cascade. Traders cannot change this themselves.
               </p>
             </div>
             <div className="flex flex-wrap items-end gap-4">
@@ -394,9 +394,9 @@ export function TraderDetailModal({
                 </p>
               </div>
               <div className="min-w-[10rem]">
-                <p className="text-xs text-text-muted">Traffic target (%)</p>
+                <p className="text-xs text-text-muted">Cascade rating multiplier</p>
                 <p className="mt-1 text-sm font-medium text-text-primary">
-                  {traderDetail.trafficPercent}
+                  {traderDetail.cascadeRatingMultiplier}
                 </p>
               </div>
             </div>
@@ -412,25 +412,24 @@ export function TraderDetailModal({
                   onChange={(e) => setCascadeMethod(e.target.value as 'CARD' | 'FORK')}
                 />
                 <NumberInput
-                  label="Traffic percent (0–100)"
+                  label="Cascade rating multiplier (0.01–100)"
                   variant="amount"
-                  min={0}
+                  min={0.01}
                   max={100}
-                  value={cascadeTraffic}
-                  onChange={(e) => setCascadeTraffic(e.target.value)}
+                  value={cascadeMultiplier}
+                  onChange={(e) => setCascadeMultiplier(e.target.value)}
                 />
-                {trafficPolicy ? (
+                {methodPolicy ? (
                   <p
-                    className={`text-xs ${trafficPolicy.matches_rule ? 'text-text-muted' : 'text-accent-yellow'}`}
+                    className={`text-xs ${methodPolicy.matches_rule ? 'text-text-muted' : 'text-accent-yellow'}`}
                   >
-                    Active traders (accepting orders) traffic sum:{' '}
-                    {trafficPolicy.active_traders_sum_percent.toFixed(2)}%.{' '}
-                    {trafficPolicy.matches_rule
+                    Method targets sum: {methodPolicy.method_share_sum_percent.toFixed(2)}%.{' '}
+                    {methodPolicy.matches_rule
                       ? 'Within policy.'
-                      : 'Does not match policy yet — edit a trader’s cascade routing (peers adjust automatically) or use the CASCADE traffic dashboard.'}
+                      : 'Does not match policy yet — adjust Fork / Card / Provider shares on the cascade dashboard.'}
                   </p>
                 ) : null}
-                <p className="text-xs text-text-muted">{CASCADE_TRAFFIC_HINT}</p>
+                <p className="text-xs text-text-muted">{CASCADE_METHOD_HINT}</p>
                 <Button
                   type="button"
                   size="sm"

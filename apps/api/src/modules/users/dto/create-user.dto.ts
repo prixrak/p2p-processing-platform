@@ -127,16 +127,16 @@ export class CreateUserDto {
 
   @ApiPropertyOptional({
     description:
-      'Pay-In cascade traffic target percent (0–100) when role is TRADER; must keep platform-wide sum valid for active accepting traders',
-    example: 0,
+      'Trader-only Pay-In cascade idle-race multiplier (1 = default; TZ v3.1)',
+    example: 1,
   })
   @ValidateIf((o) => o.role === UserRole.TRADER)
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  @Min(0)
+  @Min(0.01)
   @Max(100)
-  trafficPercent?: number;
+  cascadeRatingMultiplier?: number;
 
   @ApiPropertyOptional({
     description: 'Referral commission percent (0–100) when role is REFERRAL',

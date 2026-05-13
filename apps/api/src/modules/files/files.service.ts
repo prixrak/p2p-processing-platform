@@ -247,6 +247,15 @@ export class FilesService {
         },
       });
       if (forkMerchantLinked) return;
+
+      const payoutCompletionProof = await this.prisma.payoutOrder.findFirst({
+        where: {
+          completionProofFileId: file.id,
+          merchantId: actor.merchantId,
+        },
+      });
+      if (payoutCompletionProof) return;
+
       throw new ForbiddenException('File access denied');
     }
 

@@ -16,10 +16,13 @@ describe('payinOrderToOrderDto', () => {
       completedAt: null,
       updatedAt: baseDate,
       autocloseAt: baseDate,
-      currency: 'UAH',
+      currency: { code: 'UAH' } as never,
       amount: 100 as any,
       commission: 5 as any,
+      commissionPercent: 5 as any,
       partnerAmount: 95 as any,
+      parserRate: null as any,
+      rateTraderIn: null as any,
       rate: 41 as any,
       status: PayInOrderStatus.NEW,
       redirectUrl: null,
@@ -43,6 +46,8 @@ describe('payinOrderToOrderDto', () => {
     expect(dto.request_id).toBe('req-1');
     expect(dto.status).toBe(PayInOrderStatus.NEW);
     expect(dto.amount).toBe(100);
+    expect(dto.commission_percent).toBe(5);
+    expect(dto.payin_trader_markup_percent).toBeNull();
     expect(dto.payment_detail).toEqual({
       id: 'req-num',
       type: 'CARD',
@@ -111,6 +116,18 @@ describe('payinOrderToOrderDto', () => {
     expect(dto.trader_processing_method).toBe('FORK');
     expect(dto.fork_exchange_reference).toBe('exchange-ref-1');
     expect(dto.fork_chat_proof_file_ids).toEqual(['chat-file-1']);
+  });
+
+  it('maps trader pay-in markup from parser snapshots when present', () => {
+    const P = 44.32;
+    const rt = P * 1.01;
+    const dto = payinOrderToOrderDto(
+      minimalOrder({
+        parserRate: P as any,
+        rateTraderIn: rt as any,
+      }),
+    );
+    expect(dto.payin_trader_markup_percent).toBeCloseTo(1, 5);
   });
 
   it('sets completed_at null for in-progress statuses without completedAt', () => {

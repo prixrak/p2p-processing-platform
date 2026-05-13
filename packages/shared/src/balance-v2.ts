@@ -12,6 +12,18 @@ export function rateTraderIn(parserRate: number, traderPayinRateFraction: number
   return parserRate * (1 + traderPayinRateFraction);
 }
 
+/**
+ * Inverse of {@link rateTraderIn}: markup over parser P as human percent points (1 => 1%).
+ * Used for transparent Pay-In UI; returns null when inputs are unusable.
+ */
+export function payinTraderMarkupPercentPoints(
+  parserRateFiatPerUsdt: number,
+  rateTraderInVal: number,
+): number | null {
+  if (!(parserRateFiatPerUsdt > 0) || !Number.isFinite(rateTraderInVal)) return null;
+  return (rateTraderInVal / parserRateFiatPerUsdt - 1) * 100;
+}
+
 export function rateTraderOut(parserRate: number, traderPayoutRateFraction: number): number {
   return parserRate * (1 - traderPayoutRateFraction);
 }

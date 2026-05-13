@@ -23,6 +23,7 @@ import {
   PAYIN_TRADER_HISTORY_STATUSES,
   ALLOWED_FILE_TYPES,
   MAX_FILE_SIZE_BYTES,
+  PAYIN_PAID_OUTCOME_STATUSES,
 } from '@p2p/shared';
 import type {
   OrderDto,
@@ -34,6 +35,7 @@ import type {
 } from '@p2p/shared';
 import {
   BalanceTransactionType,
+  CascadeAssignmentLevel,
   MerchantBalanceTransactionType,
   PlatformIncomeOrderType,
   TraderProcessingMethod,
@@ -81,6 +83,8 @@ import {
 } from './payin-order.mapper';
 import { payinCompletedAtForHistoryStatus } from './payin-history-completion';
 import type { ExternalOrderCreationMeta } from '../../common/utils/partner-request-meta';
+import { randomUUID } from 'node:crypto';
+import { PayinProviderService } from '../payin-provider/payin-provider.service';
 
 @Injectable()
 export class PayinService {
@@ -100,6 +104,7 @@ export class PayinService {
     private readonly cascadeCoverageCache: CascadeRedisStateService,
     private readonly telegram: TelegramService,
     private readonly currencies: CurrenciesService,
+    private readonly payinProviderService: PayinProviderService,
   ) {}
 
   private emitPayinOrderRealtime(order: {
@@ -183,6 +188,7 @@ export class PayinService {
     }
 
     let redisCascadeLockId: string | undefined;
+    const providerIdempotencyKey = randomUUID();
     try {
       const txStarted = Date.now();
       const order = await this.prisma.$transaction(async (tx) => {
@@ -191,9 +197,13 @@ export class PayinService {
           currency: dto.currency,
           parserRate,
           enforceUsdtCapacity: payinUsesBinanceParserRate,
+          providerIdempotencyKey,
+          attemptProviderTier: this.makePayinProviderTierCallback(),
         });
 
         if (!picked) {
+          await this.logProviderTierStub(tx, dto.currency, dto.amount);
+
           const merchantFracNr = percentToFraction(commissionPercent);
           const raInNr =
             payinUsesBinanceParserRate && parserRate !== undefined
@@ -236,7 +246,58 @@ export class PayinService {
           return createdNr;
         }
 
-        if (picked.redisLockHeld) {
+        if (picked.kind === 'provider') {
+          const merchantFracPv = percentToFraction(commissionPercent);
+          const raInPv =
+            payinUsesBinanceParserRate && parserRate !== undefined
+              ? rateAdminIn(parserRate, merchantFracPv)
+              : null;
+          const autocloseMsPv = await this.getAutocloseMsForProcessingMethod(null);
+          const autocloseAtPv = new Date(Date.now() + autocloseMsPv);
+
+          const createdPv = await tx.payinOrder.create({
+            data: {
+              requestId: dto.request_id,
+              merchantId,
+              traderId: null,
+              requisiteId: null,
+              providerExternalRef: picked.providerExternalRef,
+              amount: dto.amount,
+              currencyId: fiatCurrencyId,
+              commissionPercent,
+              commission,
+              partnerAmount,
+              rate: 1,
+              parserRate:
+                payinUsesBinanceParserRate && parserRate !== undefined ? parserRate : undefined,
+              rateTraderIn: undefined,
+              rateAdminIn: raInPv ?? undefined,
+              status: 'PENDING',
+              userFullName: dto.user_full_name,
+              userIdExternal: dto.user_id,
+              callbackUrl: dto.callback_url,
+              traderProcessingMethod: null,
+              autocloseAt: autocloseAtPv,
+              isH2h: false,
+              partnerIp: meta?.partnerIp ?? undefined,
+              externalApiPath: meta?.externalApiPath ?? undefined,
+            },
+            include: ORDER_INCLUDE,
+          });
+
+          await this.writePayinOrderAssignmentLog(tx, {
+            payinOrderId: createdPv.id,
+            amount: dto.amount,
+            currencyCode: dto.currency.trim().toUpperCase(),
+            primary: this.prismaCascadeAssignmentLevel(picked.primaryCascadeLevel),
+            final: CascadeAssignmentLevel.PROVIDER,
+          });
+
+          await this.createPayinWebhookEntry(tx, createdPv);
+          return createdPv;
+        }
+
+        if (picked.kind === 'trader' && picked.redisLockHeld) {
           redisCascadeLockId = picked.requisiteId;
         }
 
@@ -292,7 +353,9 @@ export class PayinService {
           include: ORDER_INCLUDE,
         });
 
-        await this.requisitesService.incrementUsageInTransaction(tx, requisite.id, dto.amount);
+        await this.requisitesService.incrementUsageInTransaction(tx, requisite.id, dto.amount, {
+          recordPayInCascadeAssignment: true,
+        });
 
         await tx.trafficDistributionLog.create({
           data: {
@@ -300,7 +363,19 @@ export class PayinService {
             payinOrderId: created.id,
             amount: created.amount,
             processingMethod: requisite.trader.processingMethod,
+            cascadeAssignmentLevel: this.prismaCascadeAssignmentLevel(picked.landedCascadeLevel),
+            cascadePrimaryAssignmentLevel: this.prismaCascadeAssignmentLevel(
+              picked.primaryCascadeLevel,
+            ),
           },
+        });
+
+        await this.writePayinOrderAssignmentLog(tx, {
+          payinOrderId: created.id,
+          amount: dto.amount,
+          currencyCode: dto.currency.trim().toUpperCase(),
+          primary: this.prismaCascadeAssignmentLevel(picked.primaryCascadeLevel),
+          final: this.prismaCascadeAssignmentLevel(picked.landedCascadeLevel),
         });
 
         await this.createPayinWebhookEntry(tx, created);
@@ -581,6 +656,7 @@ export class PayinService {
     }
 
     let redisCascadeLockIdH2h: string | undefined;
+    const providerIdempotencyKeyH2h = randomUUID();
     try {
       const txStarted = Date.now();
       const order = await this.prisma.$transaction(async (tx) => {
@@ -589,9 +665,13 @@ export class PayinService {
           currency: dto.currency,
           parserRate,
           enforceUsdtCapacity: payinUsesBinanceParserRate,
+          providerIdempotencyKey: providerIdempotencyKeyH2h,
+          attemptProviderTier: this.makePayinProviderTierCallback(),
         });
 
         if (!picked) {
+          await this.logProviderTierStub(tx, dto.currency, dto.amount);
+
           const merchantFracNr = percentToFraction(commissionPercent);
           const raInNr =
             payinUsesBinanceParserRate && parserRate !== undefined
@@ -635,7 +715,59 @@ export class PayinService {
           return createdNr;
         }
 
-        if (picked.redisLockHeld) {
+        if (picked.kind === 'provider') {
+          const merchantFracPv = percentToFraction(commissionPercent);
+          const raInPv =
+            payinUsesBinanceParserRate && parserRate !== undefined
+              ? rateAdminIn(parserRate, merchantFracPv)
+              : null;
+          const autocloseMsPv = await this.getAutocloseMsForProcessingMethod(null);
+          const autocloseAtPv = new Date(Date.now() + autocloseMsPv);
+
+          const createdPv = await tx.payinOrder.create({
+            data: {
+              requestId: dto.request_id,
+              merchantId,
+              traderId: null,
+              requisiteId: null,
+              providerExternalRef: picked.providerExternalRef,
+              amount: dto.amount,
+              currencyId: fiatCurrencyId,
+              commissionPercent,
+              commission,
+              partnerAmount,
+              rate: 1,
+              parserRate:
+                payinUsesBinanceParserRate && parserRate !== undefined ? parserRate : undefined,
+              rateTraderIn: undefined,
+              rateAdminIn: raInPv ?? undefined,
+              status: 'PENDING',
+              userFullName: dto.user_full_name,
+              userIdExternal: dto.user_id,
+              callbackUrl: dto.callback_url,
+              redirectUrl: dto.redirect_url,
+              traderProcessingMethod: null,
+              autocloseAt: autocloseAtPv,
+              isH2h: true,
+              partnerIp: meta?.partnerIp ?? undefined,
+              externalApiPath: meta?.externalApiPath ?? undefined,
+            },
+            include: ORDER_INCLUDE,
+          });
+
+          await this.writePayinOrderAssignmentLog(tx, {
+            payinOrderId: createdPv.id,
+            amount: dto.amount,
+            currencyCode: dto.currency.trim().toUpperCase(),
+            primary: this.prismaCascadeAssignmentLevel(picked.primaryCascadeLevel),
+            final: CascadeAssignmentLevel.PROVIDER,
+          });
+
+          await this.createPayinWebhookEntry(tx, createdPv);
+          return createdPv;
+        }
+
+        if (picked.kind === 'trader' && picked.redisLockHeld) {
           redisCascadeLockIdH2h = picked.requisiteId;
         }
 
@@ -692,7 +824,9 @@ export class PayinService {
           include: ORDER_INCLUDE,
         });
 
-        await this.requisitesService.incrementUsageInTransaction(tx, requisite.id, dto.amount);
+        await this.requisitesService.incrementUsageInTransaction(tx, requisite.id, dto.amount, {
+          recordPayInCascadeAssignment: true,
+        });
 
         await tx.trafficDistributionLog.create({
           data: {
@@ -700,7 +834,19 @@ export class PayinService {
             payinOrderId: created.id,
             amount: created.amount,
             processingMethod: requisite.trader.processingMethod,
+            cascadeAssignmentLevel: this.prismaCascadeAssignmentLevel(picked.landedCascadeLevel),
+            cascadePrimaryAssignmentLevel: this.prismaCascadeAssignmentLevel(
+              picked.primaryCascadeLevel,
+            ),
           },
+        });
+
+        await this.writePayinOrderAssignmentLog(tx, {
+          payinOrderId: created.id,
+          amount: dto.amount,
+          currencyCode: dto.currency.trim().toUpperCase(),
+          primary: this.prismaCascadeAssignmentLevel(picked.primaryCascadeLevel),
+          final: this.prismaCascadeAssignmentLevel(picked.landedCascadeLevel),
         });
 
         await this.createPayinWebhookEntry(tx, created);
@@ -792,6 +938,12 @@ export class PayinService {
 
     const fileIds = await this.filesService.saveFiles(files);
 
+    const fromAppealStatus = order.status as PayInOrderStatus;
+    const wasPaidBeforeAppeal =
+      PAYIN_PAID_OUTCOME_STATUSES.includes(fromAppealStatus);
+    const prevReceivedForAppeal =
+      order.receivedFiatAmount != null ? Number(order.receivedFiatAmount) : 0;
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const appeal = await tx.appeal.create({
         data: {
@@ -807,10 +959,23 @@ export class PayinService {
         });
       }
 
+      if (
+        order.requisiteId &&
+        wasPaidBeforeAppeal &&
+        prevReceivedForAppeal > 0
+      ) {
+        await this.requisitesService.adjustConfirmedPayinVolumeInTransaction(
+          tx,
+          order.requisiteId,
+          -prevReceivedForAppeal,
+        );
+      }
+
       const result = await tx.payinOrder.update({
         where: { id: order.id },
         data: {
           status: 'APPEAL',
+          receivedFiatAmount: null,
           ...payinCompletedAtForHistoryStatus(PayInOrderStatus.APPEAL),
         },
         include: ORDER_INCLUDE,
@@ -1051,10 +1216,35 @@ export class PayinService {
     ];
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      const wasPaid = PAYIN_PAID_OUTCOME_STATUSES.includes(fromStatus);
+      const willPaid = paidOutcomes.includes(targetStatus);
+      const prevReceived =
+        order.receivedFiatAmount != null ? Number(order.receivedFiatAmount) : 0;
+      const paidCredit =
+        actualAmount !== undefined ? actualAmount : orderAmount;
+
+      if (order.requisiteId) {
+        if (wasPaid && !willPaid && prevReceived > 0) {
+          await this.requisitesService.adjustConfirmedPayinVolumeInTransaction(
+            tx,
+            order.requisiteId,
+            -prevReceived,
+          );
+        }
+        if (!wasPaid && willPaid && paidCredit > 0) {
+          await this.requisitesService.adjustConfirmedPayinVolumeInTransaction(
+            tx,
+            order.requisiteId,
+            paidCredit,
+          );
+        }
+      }
+
       const result = await tx.payinOrder.update({
         where: { id: order.id },
         data: {
           status: targetStatus,
+          receivedFiatAmount: willPaid ? paidCredit : null,
           ...payinCompletedAtForHistoryStatus(targetStatus),
         },
         include: ORDER_INCLUDE,
@@ -1120,10 +1310,34 @@ export class PayinService {
     ];
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      const wasPaid = PAYIN_PAID_OUTCOME_STATUSES.includes(from);
+      const willPaid = paidOutcomes.includes(targetStatus);
+      const prevReceived =
+        order.receivedFiatAmount != null ? Number(order.receivedFiatAmount) : 0;
+      const paidCredit = Number(order.amount);
+
+      if (order.requisiteId) {
+        if (wasPaid && !willPaid && prevReceived > 0) {
+          await this.requisitesService.adjustConfirmedPayinVolumeInTransaction(
+            tx,
+            order.requisiteId,
+            -prevReceived,
+          );
+        }
+        if (!wasPaid && willPaid && paidCredit > 0) {
+          await this.requisitesService.adjustConfirmedPayinVolumeInTransaction(
+            tx,
+            order.requisiteId,
+            paidCredit,
+          );
+        }
+      }
+
       const result = await tx.payinOrder.update({
         where: { id: order.id },
         data: {
           status: targetStatus as never,
+          receivedFiatAmount: willPaid ? paidCredit : null,
           ...payinCompletedAtForHistoryStatus(targetStatus),
         },
       });
@@ -1549,5 +1763,244 @@ export class PayinService {
     });
 
     return payinOrderToOrderDto(updated);
+  }
+
+  private prismaCascadeAssignmentLevel(
+    level: 'FORK' | 'CARD' | 'PROVIDER',
+  ): CascadeAssignmentLevel {
+    switch (level) {
+      case 'FORK':
+        return CascadeAssignmentLevel.FORK;
+      case 'CARD':
+        return CascadeAssignmentLevel.CARD;
+      default:
+        return CascadeAssignmentLevel.PROVIDER;
+    }
+  }
+
+  private async writePayinOrderAssignmentLog(
+    tx: Prisma.TransactionClient,
+    args: {
+      payinOrderId: string;
+      amount: number;
+      currencyCode: string;
+      primary: CascadeAssignmentLevel;
+      final: CascadeAssignmentLevel;
+    },
+  ): Promise<void> {
+    await tx.payinOrderAssignmentLog.create({
+      data: {
+        payinOrderId: args.payinOrderId,
+        amount: new Prisma.Decimal(args.amount),
+        currencyCode: args.currencyCode,
+        primaryBucket: args.primary,
+        finalBucket: args.final,
+        isFallback: args.primary !== args.final,
+        providerTrafficPlanHit:
+          args.primary === CascadeAssignmentLevel.PROVIDER &&
+          args.final === CascadeAssignmentLevel.PROVIDER,
+      },
+    });
+  }
+
+  private makePayinProviderTierCallback(): (
+    db: Prisma.TransactionClient,
+    ctx: {
+      amount: number;
+      currency: string;
+      parserRate?: number;
+      idempotencyKey: string;
+    },
+  ) => Promise<
+    { kind: 'accepted'; externalRef: string } | { kind: 'declined' } | { kind: 'unavailable' }
+  > {
+    return async (_db, ctx) => {
+      const res = await this.payinProviderService.tryReserve({
+        idempotencyKey: ctx.idempotencyKey,
+        amount: ctx.amount,
+        currencyCode: ctx.currency,
+        parserRateFiatPerUsdt: ctx.parserRate,
+      });
+      if (res.kind === 'accepted') {
+        return { kind: 'accepted', externalRef: res.externalRef };
+      }
+      if (res.kind === 'unavailable') {
+        return { kind: 'unavailable' };
+      }
+      return { kind: 'declined' };
+    };
+  }
+
+  /**
+   * External Pay-In provider callback (TZ §F). Verifies HMAC on the controller; this method applies idempotent status updates.
+   * RISK NOTE: `paid` credits merchant fiat only (no trader USDT leg) until a full dual-leg settlement is specified for provider orders.
+   */
+  async applyExternalProviderWebhook(body: {
+    payin_order_id: string;
+    status: 'paid' | 'canceled';
+  }): Promise<{ ok: true; duplicate?: boolean } | { ok: false; error: string }> {
+    const orderId = String(body.payin_order_id ?? '').trim();
+    if (!uuidValidate(orderId)) {
+      return { ok: false, error: 'invalid_payin_order_id' };
+    }
+    const status = String(body.status ?? '').trim().toLowerCase();
+    if (status !== 'paid' && status !== 'canceled') {
+      return { ok: false, error: 'invalid_status' };
+    }
+
+    const order = await this.prisma.payinOrder.findUnique({
+      where: { id: orderId },
+      include: ORDER_INCLUDE,
+    });
+    if (!order || !order.providerExternalRef) {
+      return { ok: false, error: 'order_not_found' };
+    }
+    if (order.traderId) {
+      return { ok: false, error: 'not_provider_order' };
+    }
+
+    const target =
+      status === 'paid' ? PayInOrderStatus.PAID : PayInOrderStatus.CANCELED;
+    if (!isValidPayInTransition(order.status as PayInOrderStatus, target)) {
+      if (order.status === target) {
+        return { ok: true, duplicate: true };
+      }
+      return { ok: false, error: 'invalid_transition' };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const fresh = await tx.payinOrder.findUnique({
+        where: { id: orderId },
+        include: ORDER_INCLUDE,
+      });
+      if (!fresh || !fresh.providerExternalRef) {
+        return;
+      }
+      if (!isValidPayInTransition(fresh.status as PayInOrderStatus, target)) {
+        return;
+      }
+
+      const orderAmount = Number(fresh.amount);
+      if (target === PayInOrderStatus.PAID) {
+        const existingIncome = await tx.platformIncome.findUnique({
+          where: {
+            orderId_orderType: {
+              orderId: fresh.id,
+              orderType: PlatformIncomeOrderType.PAYIN,
+            },
+          },
+        });
+        if (!existingIncome) {
+          await this.creditMerchantOnlyOnProviderPaid(tx, fresh, orderAmount);
+        }
+      }
+
+      const result = await tx.payinOrder.update({
+        where: { id: orderId },
+        data: {
+          status: target,
+          ...(target === PayInOrderStatus.PAID
+            ? {
+                receivedFiatAmount: orderAmount,
+                ...payinCompletedAtForHistoryStatus(PayInOrderStatus.PAID),
+              }
+            : payinCompletedAtForHistoryStatus(PayInOrderStatus.CANCELED)),
+        },
+        include: ORDER_INCLUDE,
+      });
+      await this.createPayinWebhookEntry(tx, result);
+    });
+
+    return { ok: true };
+  }
+
+  private async creditMerchantOnlyOnProviderPaid(
+    tx: Prisma.TransactionClient,
+    order: OrderWithRelations,
+    paidAmountLocal: number,
+  ): Promise<void> {
+    if (
+      order.currency.code !== 'UAH' ||
+      order.parserRate == null ||
+      order.rateAdminIn == null
+    ) {
+      throw new BadRequestException(
+        'Provider Pay-In settlement requires UAH with parser and admin rate snapshots.',
+      );
+    }
+    const merchantFrac = percentToFraction(Number(order.commissionPercent));
+    const merchantCredit = creditFiatMerchantPayin(paidAmountLocal, merchantFrac);
+    const P = Number(order.parserRate);
+    const ra = Number(order.rateAdminIn);
+    const marginUsdt = platformMarginUsdtPayin(paidAmountLocal, ra, ra);
+    const marginLocal = platformMarginLocal(marginUsdt, P);
+
+    await tx.merchantBalance.upsert({
+      where: {
+        merchantId_currencyId: {
+          merchantId: order.merchantId,
+          currencyId: order.currencyId,
+        },
+      },
+      create: {
+        merchantId: order.merchantId,
+        currencyId: order.currencyId,
+        amount: merchantCredit,
+      },
+      update: { amount: { increment: merchantCredit } },
+    });
+
+    await tx.merchantBalanceTransaction.create({
+      data: {
+        merchantId: order.merchantId,
+        type: MerchantBalanceTransactionType.PAYIN_CREDIT,
+        amount: merchantCredit,
+        currencyId: order.currencyId,
+        referenceId: order.id,
+        comment: `Pay-in provider credit order ${order.id}`,
+      },
+    });
+
+    await tx.platformIncome.create({
+      data: {
+        orderId: order.id,
+        orderType: PlatformIncomeOrderType.PAYIN,
+        merchantId: order.merchantId,
+        traderId: null,
+        orderAmountLocal: paidAmountLocal,
+        parserRate: P,
+        rateTrader: ra,
+        rateAdmin: ra,
+        traderRatePct: 0,
+        merchantCommissionPct: merchantFrac,
+        incomeUsdt: marginUsdt,
+        incomeLocal: marginLocal,
+      },
+    });
+
+    this.logger.log({
+      msg: 'payin.provider_settlement.merchant_only',
+      order_id: order.id,
+      merchant_credit: merchantCredit,
+      currency: order.currency.code,
+    });
+  }
+
+  /** Observability when provider traffic share is non-zero but integration is absent. */
+  private async logProviderTierStub(
+    tx: Prisma.TransactionClient,
+    currency: string,
+    amount: number,
+  ): Promise<void> {
+    const cascadeCfg = await tx.cascadeSetting.findFirst({ orderBy: { updatedAt: 'desc' } });
+    const providerPct = cascadeCfg ? Number(cascadeCfg.providerTrafficPercent) : 0;
+    if (providerPct > 1e-9) {
+      this.logger.log({
+        msg: 'payin.provider_tier_stub',
+        currency: currency.trim().toUpperCase(),
+        amount,
+        provider_traffic_percent: providerPct,
+      });
+    }
   }
 }

@@ -37,6 +37,13 @@ export const PAYIN_TRADER_HISTORY_STATUSES: readonly PayInOrderStatus[] = [
   PayInOrderStatus.NO_REQUISITE,
 ];
 
+/** Merchant-paid terminal outcomes — drive requisite confirmed_payin_amount for cascade fill (TZ §3.4). */
+export const PAYIN_PAID_OUTCOME_STATUSES: readonly PayInOrderStatus[] = [
+  PayInOrderStatus.PAID,
+  PayInOrderStatus.UNDERPAID,
+  PayInOrderStatus.OVERPAID,
+];
+
 /** Pay-Out orders the trader took from the pool and is still working on. */
 export const PAYOUT_TRADER_IN_PROGRESS_STATUSES: readonly PayOutOrderStatus[] = [
   PayOutOrderStatus.NEW,

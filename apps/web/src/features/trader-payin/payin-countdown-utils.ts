@@ -1,22 +1,10 @@
 import { PayInOrderStatus } from '@p2p/shared';
 
-const AUTOCLOSE_PENDING_STATUSES = new Set([
-  PayInOrderStatus.NEW,
-  PayInOrderStatus.PENDING,
-]);
-
 /**
- * When the Pay-In deadline (`autocloseAt`) has passed, the UI matches the domain:
- * auto-close sets CANCELED for NEW/PENDING; show "Canceled" for those (or when already CANCELED).
- * Other statuses keep a numeric 0:00 countdown style until the state machine changes them.
+ * Use explicit "Canceled" timer styling only when the order is actually canceled.
+ * After `autocloseAt`, NEW/PENDING orders stay active and keep reserving the requisite;
+ * the trader UI shows 0:00 in the overdue (red) style instead of the canceled label.
  */
-export function payinDeadlineElapsedShowsCanceled(opts: {
-  remainingMs: number;
-  status?: PayInOrderStatus;
-}): boolean {
-  const { remainingMs, status } = opts;
-  if (status === PayInOrderStatus.CANCELED) return true;
-  if (remainingMs > 0) return false;
-  if (status === undefined) return true;
-  return AUTOCLOSE_PENDING_STATUSES.has(status);
+export function payinDeadlineElapsedShowsCanceled(status?: PayInOrderStatus): boolean {
+  return status === PayInOrderStatus.CANCELED;
 }

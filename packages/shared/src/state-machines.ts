@@ -1,7 +1,15 @@
 import { PayInOrderStatus, PayOutOrderStatus } from './enums';
 
 export const PAYIN_TRANSITIONS: Record<PayInOrderStatus, PayInOrderStatus[]> = {
-  [PayInOrderStatus.PENDING]: [PayInOrderStatus.NEW, PayInOrderStatus.UPLOAD_FAILED],
+  [PayInOrderStatus.PENDING]: [
+    PayInOrderStatus.NEW,
+    PayInOrderStatus.UPLOAD_FAILED,
+    // External provider tier: order may stay PENDING without a trader requisite until provider webhook settles.
+    PayInOrderStatus.PAID,
+    PayInOrderStatus.UNDERPAID,
+    PayInOrderStatus.OVERPAID,
+    PayInOrderStatus.CANCELED,
+  ],
   [PayInOrderStatus.NEW]: [
     PayInOrderStatus.VERIFIED,
     PayInOrderStatus.PAID,

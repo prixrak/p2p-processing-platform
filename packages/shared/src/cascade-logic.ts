@@ -1,7 +1,9 @@
 /**
- * Pay-In cascade routing — pure helpers (Levels 2–3 per cascade routing spec).
- * Tier-1 trader deficit ordering lives in the API service (DB aggregates).
+ * Pay-In cascade routing — pure helpers (Fork autolimits, coverage, TZ v3.1 idle race).
+ * Tier-1 method-level ordering and DB-backed credits live in the API service.
  */
+
+import { sha256HexUtf8 } from './sha256-hex';
 
 export type TraderCascadeMethod = 'CARD' | 'FORK';
 
@@ -203,4 +205,210 @@ export function approximateOthersEffectiveRange(inp: {
 /** Whether `amount` falls within [min,max] inclusive for assignment checks */
 export function nominalCoveredByRange(amount: number, min: number, max: number): boolean {
   return amount >= min - 1e-9 && amount <= max + 1e-9;
+}
+
+// ─── TZ v3.1 — idle-time race & method-level primary selection ───
+
+export type CascadeAssignmentLevel = 'FORK' | 'CARD' | 'PROVIDER';
+
+export type CascadeLevelPickMode = 'DEBT' | 'STOCHASTIC';
+
+/** Multiplier applied while a requisite has never received a Pay-In assignment (TZ newcomer boost). */
+export const NEWCOMER_RATING_BOOST = 2;
+
+export function effectiveIdleMs(nowMs: number, idleAnchorMs: number): number {
+  return Math.max(0, nowMs - idleAnchorMs);
+}
+
+export function newcomerRatingBoostMultiplier(assignmentsCount: number): number {
+  return assignmentsCount === 0 ? NEWCOMER_RATING_BOOST : 1;
+}
+
+/** Idle-time race score (legacy CARD-oriented): idle × trader multiplier × newcomer boost. */
+export function cascadeRaceScore(input: {
+  idleMs: number;
+  traderMultiplier: number;
+  newcomerBoost: number;
+}): number {
+  return input.idleMs * input.traderMultiplier * input.newcomerBoost;
+}
+
+/** Confirmed Pay-In fill ratio in [0, 1] vs total requisite limit (TZ fork fill multiplier). */
+export function confirmedPayinFillRatio(confirmedAmount: number, limitTotalAmount: number): number {
+  if (!(limitTotalAmount > 0)) return 0;
+  return Math.min(1, Math.max(0, confirmedAmount / limitTotalAmount));
+}
+
+/** One step in the Fork fill_multiplier ladder (TZ §7.3 `multipliers_config`). */
+export type FillMultiplierTier = { from: number; to: number; multiplier: number };
+
+/** Default TZ v3.1 ladder when DB `fill_multipliers_config` is unset. */
+export const DEFAULT_FILL_MULTIPLIER_TIERS: readonly FillMultiplierTier[] = [
+  { from: 0, to: 0.6, multiplier: 1 },
+  { from: 0.6, to: 0.7, multiplier: 1.5 },
+  { from: 0.7, to: 0.8, multiplier: 2 },
+  { from: 0.8, to: 0.9, multiplier: 3 },
+  { from: 0.9, to: 1, multiplier: 5 },
+];
+
+/**
+ * Parse optional `cascade_settings.fill_multipliers_config` JSON into validated tiers.
+ * Expects `[{ "from": 0, "to": 0.6, "multiplier": 1 }, ...]` covering [0,1] without gaps (best-effort).
+ */
+export function parseFillMultiplierTiersJson(raw: unknown): FillMultiplierTier[] | null {
+  if (raw == null) return null;
+  if (!Array.isArray(raw)) return null;
+  const out: FillMultiplierTier[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') return null;
+    const o = row as Record<string, unknown>;
+    const from = Number(o.from);
+    const to = Number(o.to);
+    const multiplier = Number(o.multiplier);
+    if (![from, to, multiplier].every((n) => Number.isFinite(n))) return null;
+    if (from < 0 || to > 1 + 1e-9 || from >= to - 1e-12) return null;
+    if (multiplier <= 0) return null;
+    out.push({ from, to, multiplier });
+  }
+  if (out.length === 0) return null;
+  out.sort((a, b) => a.from - b.from);
+  return out;
+}
+
+/** Fingerprint for Redis/cache invalidation when fill ladder JSON changes. */
+export function fillMultiplierConfigFingerprint(raw: unknown): string {
+  const s = JSON.stringify(raw ?? null);
+  return sha256HexUtf8(s).slice(0, 32);
+}
+
+/** Multiplier from confirmed fill ratio steps (TZ fork tier); optional DB-driven ladder. */
+export function fillMultiplierFromConfirmedFill(
+  confirmedFill01: number,
+  tiers?: readonly FillMultiplierTier[] | null,
+): number {
+  const x = Math.min(1, Math.max(0, confirmedFill01));
+  const steps = tiers && tiers.length > 0 ? tiers : DEFAULT_FILL_MULTIPLIER_TIERS;
+  for (const s of steps) {
+    if (x >= s.from - 1e-12 && x < s.to - 1e-12) {
+      return s.multiplier;
+    }
+  }
+  const last = steps[steps.length - 1]!;
+  if (x >= last.from - 1e-12 && x <= 1 + 1e-12) return last.multiplier;
+  return 1;
+}
+
+/** Fork tier idle race: idle × max(fill_mult, trader_mult); newcomer requisites bump fill_mult to at least NEWCOMER_RATING_BOOST. */
+export function forkCascadeRaceScore(input: {
+  idleMs: number;
+  confirmedFill01: number;
+  traderMultiplier: number;
+  payinAssignmentsCount: number;
+  fillTiers?: readonly FillMultiplierTier[] | null;
+}): number {
+  let fm = fillMultiplierFromConfirmedFill(input.confirmedFill01, input.fillTiers);
+  if (input.payinAssignmentsCount === 0) {
+    fm = Math.max(fm, NEWCOMER_RATING_BOOST);
+  }
+  const eff = Math.max(fm, Math.max(1e-9, input.traderMultiplier));
+  return input.idleMs * eff;
+}
+
+/** Card tier (TZ): idle × trader_mult only — no confirmed-fill ladder and no newcomer fill boost. */
+export function cardCascadeRaceScore(input: { idleMs: number; traderMultiplier: number }): number {
+  return input.idleMs * Math.max(1e-9, input.traderMultiplier);
+}
+
+export type CascadePrimaryAssignmentLevel = 'FORK' | 'CARD';
+
+/**
+ * Fork vs Card split for tier-1 routing (percentages sum to ~100%). Provider traffic is irrelevant here.
+ */
+export function normalizeCascadeForkCardSplitPercent(fork: number, card: number): {
+  fork: number;
+  card: number;
+} {
+  const f = Math.max(0, fork);
+  const c = Math.max(0, card);
+  const sum = f + c;
+  if (sum <= 1e-15) {
+    return { fork: 50, card: 50 };
+  }
+  return { fork: (f / sum) * 100, card: (c / sum) * 100 };
+}
+
+/** Normalize non-negative Fork / Card / Provider shares to sum 100. If all zero, equal thirds. */
+export function normalizeCascadeMethodPercents(input: {
+  fork: number;
+  card: number;
+  provider: number;
+}): { fork: number; card: number; provider: number } {
+  const f = Math.max(0, input.fork);
+  const c = Math.max(0, input.card);
+  const p = Math.max(0, input.provider);
+  const sum = f + c + p;
+  if (sum <= 0) {
+    const third = 100 / 3;
+    return { fork: third, card: third, provider: third };
+  }
+  return {
+    fork: (f / sum) * 100,
+    card: (c / sum) * 100,
+    provider: (p / sum) * 100,
+  };
+}
+
+/**
+ * Tier-1 primary level (Fork vs Card only). Provider is tried only later as a fallback; it is never
+ * chosen directly as primary (TZ cascade concept).
+ */
+export function pickPrimaryCascadeLevelDebt(
+  credits: { fork: number; card: number; provider: number },
+  targetsPct: { fork: number; card: number; provider: number },
+): CascadePrimaryAssignmentLevel {
+  const fc = normalizeCascadeForkCardSplitPercent(targetsPct.fork, targetsPct.card);
+  const eff: Array<{ level: CascadePrimaryAssignmentLevel; v: number }> = [
+    { level: 'FORK', v: credits.fork + fc.fork / 100 },
+    { level: 'CARD', v: credits.card + fc.card / 100 },
+  ];
+  const maxV = Math.max(eff[0]!.v, eff[1]!.v);
+  const tops = eff.filter((e) => Math.abs(e.v - maxV) < 1e-12);
+  tops.sort((a, b) => (a.level === 'FORK' ? 0 : 1) - (b.level === 'FORK' ? 0 : 1));
+  return tops[0]!.level;
+}
+
+/** Stochastic primary level (Fork vs Card only); `random01` in [0, 1). Provider share is ignored. */
+export function pickPrimaryCascadeLevelStochastic(
+  targetsPct: { fork: number; card: number; provider: number },
+  random01: () => number,
+): CascadePrimaryAssignmentLevel {
+  const fc = normalizeCascadeForkCardSplitPercent(targetsPct.fork, targetsPct.card);
+  const tf = fc.fork / 100;
+  const r = random01();
+  return r < tf ? 'FORK' : 'CARD';
+}
+
+/** Full fallback chain starting with the chosen primary level. */
+export function cascadeLevelAttemptOrder(primary: CascadeAssignmentLevel): CascadeAssignmentLevel[] {
+  const all: CascadeAssignmentLevel[] = ['FORK', 'CARD', 'PROVIDER'];
+  return [primary, ...all.filter((l) => l !== primary)];
+}
+
+/**
+ * Advance level credits after a successful assignment. Debit is applied to the **Fork/Card primary**
+ * picked for this Pay-In (not the landed fallback tier). Fork/Card accumulator steps use Fork+Card
+ * normalized percentages; provider credit receives `targetsPct.provider / 100` per assignment step.
+ */
+export function applyCascadeCreditsAfterAssignment(
+  credits: { fork: number; card: number; provider: number },
+  targetsPct: { fork: number; card: number; provider: number },
+  primaryLevel: CascadePrimaryAssignmentLevel,
+): { fork: number; card: number; provider: number } {
+  const fc = normalizeCascadeForkCardSplitPercent(targetsPct.fork, targetsPct.card);
+  let fork = credits.fork + fc.fork / 100;
+  let card = credits.card + fc.card / 100;
+  let provider = credits.provider + targetsPct.provider / 100;
+  if (primaryLevel === 'FORK') fork -= 1;
+  else card -= 1;
+  return { fork, card, provider };
 }

@@ -26,6 +26,11 @@ import { PayinDetailRow } from './payin-detail-row';
 import type { FinalizeKind } from './payin-types';
 import { CountdownTimer } from './payin-order-cells';
 
+function formatPercentPoints(n: number): string {
+  const trimmed = Math.round(n * 1e6) / 1e6;
+  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 }).format(trimmed)}%`;
+}
+
 const FORK_VERIFICATION_STATUSES: PayInOrderStatus[] = [
   PayInOrderStatus.PENDING,
   PayInOrderStatus.NEW,
@@ -88,14 +93,21 @@ export function PayInOrderDetailModal({
               />
               <PayinDetailRow label="Currency" value={selectedOrder.currency || '—'} />
               <PayinDetailRow
-                label="Commission"
-                value={formatCurrency(selectedOrder.commission, selectedOrder.currency)}
+                label="Merchant fee"
+                value={`${formatCurrency(selectedOrder.commission, selectedOrder.currency)} (${formatPercentPoints(selectedOrder.commission_percent)})`}
               />
               <PayinDetailRow
                 label="Partner amount"
                 value={formatCurrency(selectedOrder.partner_amount, selectedOrder.currency)}
               />
-              <PayinDetailRow label="Rate" value={String(selectedOrder.rate)} />
+              <PayinDetailRow
+                label="Your Pay-In markup"
+                value={
+                  selectedOrder.payin_trader_markup_percent != null
+                    ? formatPercentPoints(selectedOrder.payin_trader_markup_percent)
+                    : '—'
+                }
+              />
               <PayinDetailRow label="Direction" value={payinDirectionLabel(selectedOrder)} />
               {selectedOrder.trader_processing_method ? (
                 <PayinDetailRow

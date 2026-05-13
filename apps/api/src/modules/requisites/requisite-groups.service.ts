@@ -4,13 +4,26 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
-import { PaymentMethodAvailability, Prisma, RequisiteDisabledReason } from '@prisma/client';
+import { PaymentMethodAvailability, PayinStatus, Prisma, RequisiteDisabledReason } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
-import { PAYIN_IN_FLIGHT_STATUSES, PayInOrderStatus } from '@p2p/shared';
 import { CreateRequisiteGroupDto } from './dto/create-requisite-group.dto';
 import { UpdateRequisiteGroupDto } from './dto/update-requisite-group.dto';
 import { CurrenciesService } from '../currencies/currencies.service';
 import { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
+
+/** Status groups for requisite volume breakdown (aligned with PayinStatus / PayInOrderStatus strings). */
+const REQUISITE_VOLUME_PIPELINE: PayinStatus[] = [
+  PayinStatus.PENDING,
+  PayinStatus.NEW,
+  PayinStatus.VERIFIED,
+  PayinStatus.APPEAL,
+];
+
+const REQUISITE_VOLUME_COMPLETED: PayinStatus[] = [
+  PayinStatus.PAID,
+  PayinStatus.UNDERPAID,
+  PayinStatus.OVERPAID,
+];
 
 /** Clamp stored totals for API/UI so negative duplicates never leak downstream. */
 function clampUsedTotals(
@@ -122,10 +135,10 @@ export class RequisiteGroupsService {
           volume: volumeMap.get(r.id) ?? {
             amountInProcessing: 0,
             amountCompleted: 0,
-            amountRemaining: Math.max(
-              0,
-              Number(r.limitTotalAmount) - usedAmount,
-            ),
+            amountRemaining: Math.max(0, Number(r.limitTotalAmount) - usedAmount),
+            opsInProcessing: 0,
+            opsCompleted: 0,
+            opsRemaining: Math.max(0, Number(r.limitTotalOps) - usedOps),
           },
         };
       }),
@@ -141,6 +154,9 @@ export class RequisiteGroupsService {
         amountInProcessing: number;
         amountCompleted: number;
         amountRemaining: number;
+        opsInProcessing: number;
+        opsCompleted: number;
+        opsRemaining: number;
       }
     >
   > {
@@ -150,6 +166,9 @@ export class RequisiteGroupsService {
         amountInProcessing: number;
         amountCompleted: number;
         amountRemaining: number;
+        opsInProcessing: number;
+        opsCompleted: number;
+        opsRemaining: number;
       }
     >();
 
@@ -166,10 +185,13 @@ export class RequisiteGroupsService {
       },
     });
 
-    const limitById = new Map(
+    const limitAmtById = new Map(
       requisites.map((r) => [r.id, Number(r.limitTotalAmount)] as const),
     );
-    const usedById = new Map(
+    const limitOpsById = new Map(
+      requisites.map((r) => [r.id, Number(r.limitTotalOps)] as const),
+    );
+    const usedAmtById = new Map(
       requisites.map((r) => {
         const { usedAmount } = clampUsedTotals(
           r.usedAmount,
@@ -180,13 +202,24 @@ export class RequisiteGroupsService {
         return [r.id, usedAmount] as const;
       }),
     );
+    const usedOpsById = new Map(
+      requisites.map((r) => {
+        const { usedOps } = clampUsedTotals(
+          r.usedAmount,
+          r.limitTotalAmount,
+          r.usedOps,
+          r.limitTotalOps,
+        );
+        return [r.id, usedOps] as const;
+      }),
+    );
 
-    const [inFlight, paid] = await Promise.all([
+    const [inFlight, paid, inFlightOps, paidOps] = await Promise.all([
       this.prisma.payinOrder.groupBy({
         by: ['requisiteId'],
         where: {
           requisiteId: { in: requisiteIds },
-          status: { in: [...PAYIN_IN_FLIGHT_STATUSES] as PayInOrderStatus[] },
+          status: { in: REQUISITE_VOLUME_PIPELINE },
         },
         _sum: { amount: true },
       }),
@@ -194,30 +227,96 @@ export class RequisiteGroupsService {
         by: ['requisiteId'],
         where: {
           requisiteId: { in: requisiteIds },
-          status: PayInOrderStatus.PAID,
+          status: { in: REQUISITE_VOLUME_COMPLETED },
         },
         _sum: { amount: true },
+      }),
+      this.prisma.payinOrder.groupBy({
+        by: ['requisiteId'],
+        where: {
+          requisiteId: { in: requisiteIds },
+          status: { in: REQUISITE_VOLUME_PIPELINE },
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.payinOrder.groupBy({
+        by: ['requisiteId'],
+        where: {
+          requisiteId: { in: requisiteIds },
+          status: { in: REQUISITE_VOLUME_COMPLETED },
+        },
+        _count: { _all: true },
       }),
     ]);
 
-    const inFlightById = new Map(
+    const inFlightAmtById = new Map(
       inFlight
         .filter((row): row is typeof row & { requisiteId: string } => row.requisiteId != null)
         .map((row) => [row.requisiteId, Number(row._sum.amount ?? 0)] as const),
     );
-    const paidById = new Map(
+    const paidAmtById = new Map(
       paid
         .filter((row): row is typeof row & { requisiteId: string } => row.requisiteId != null)
         .map((row) => [row.requisiteId, Number(row._sum.amount ?? 0)] as const),
     );
 
+    const inFlightCountById = new Map(
+      inFlightOps
+        .filter((row): row is typeof row & { requisiteId: string } => row.requisiteId != null)
+        .map((row) => [row.requisiteId, row._count._all] as const),
+    );
+    const paidCountById = new Map(
+      paidOps
+        .filter((row): row is typeof row & { requisiteId: string } => row.requisiteId != null)
+        .map((row) => [row.requisiteId, row._count._all] as const),
+    );
+
     for (const id of requisiteIds) {
-      const limit = limitById.get(id) ?? 0;
-      const used = usedById.get(id) ?? 0;
+      const limitAmt = limitAmtById.get(id) ?? 0;
+      const limitOps = limitOpsById.get(id) ?? 0;
+      const completedAmt = paidAmtById.get(id) ?? 0;
+      const processingAmt = inFlightAmtById.get(id) ?? 0;
+      const completedOps = paidCountById.get(id) ?? 0;
+      const processingOps = inFlightCountById.get(id) ?? 0;
+
+      const clampedCompletedAmt =
+        Number.isFinite(limitAmt) && limitAmt > 0
+          ? Math.max(0, Math.min(completedAmt, limitAmt))
+          : Math.max(0, completedAmt);
+      const clampedProcessingAmt =
+        Number.isFinite(limitAmt) && limitAmt > 0
+          ? Math.max(0, Math.min(processingAmt, Math.max(0, limitAmt - clampedCompletedAmt)))
+          : Math.max(0, processingAmt);
+
+      const clampedCompletedOps =
+        Number.isFinite(limitOps) && limitOps > 0
+          ? Math.max(0, Math.min(completedOps, limitOps))
+          : Math.max(0, completedOps);
+      const clampedProcessingOps =
+        Number.isFinite(limitOps) && limitOps > 0
+          ? Math.max(0, Math.min(processingOps, Math.max(0, limitOps - clampedCompletedOps)))
+          : Math.max(0, processingOps);
+
+      const storedAmtClamped = usedAmtById.get(id) ?? 0;
+      const storedOpsClamped = usedOpsById.get(id) ?? 0;
+
       map.set(id, {
-        amountInProcessing: inFlightById.get(id) ?? 0,
-        amountCompleted: paidById.get(id) ?? 0,
-        amountRemaining: Math.max(0, limit - used),
+        amountInProcessing: clampedProcessingAmt,
+        amountCompleted: clampedCompletedAmt,
+        amountRemaining: Math.max(
+          0,
+          Number.isFinite(limitAmt) && limitAmt > 0
+            ? limitAmt - clampedCompletedAmt - clampedProcessingAmt
+            : Math.max(0, storedAmtClamped - clampedCompletedAmt - clampedProcessingAmt),
+        ),
+        opsInProcessing: clampedProcessingOps,
+        opsCompleted: clampedCompletedOps,
+        opsRemaining: Math.max(
+          0,
+          Number.isFinite(limitOps) && limitOps > 0
+            ? limitOps - clampedCompletedOps - clampedProcessingOps
+            : Math.max(0, storedOpsClamped - clampedCompletedOps - clampedProcessingOps),
+        ),
       });
     }
 

@@ -200,7 +200,7 @@ export class TradersController {
   @Patch(':id/cascade-routing')
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({
-    summary: 'Cascade routing: trader processing method (CARD/FORK) and traffic_percent',
+    summary: 'Cascade routing: trader processing method (CARD/FORK) and cascade_rating_multiplier',
   })
   updateCascadeRouting(
     @Param('id', ParseUUIDPipe) id: string,

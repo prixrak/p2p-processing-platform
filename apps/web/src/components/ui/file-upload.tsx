@@ -14,6 +14,8 @@ export interface FileUploadProps {
   className?: string;
   disabled?: boolean;
   error?: string;
+  /** Smaller padding and icon — for dense layouts (e.g. table cells). */
+  compact?: boolean;
 }
 
 interface FileWithPreview {
@@ -28,6 +30,7 @@ export function FileUpload({
   className,
   disabled,
   error,
+  compact = false,
 }: FileUploadProps) {
   const [files, setFiles] = useState<FileWithPreview[]>([]);
   const [dragActive, setDragActive] = useState(false);
@@ -61,7 +64,7 @@ export function FileUpload({
 
       setFiles((prev) => {
         const combined = [...prev, ...newFiles].slice(0, maxFiles);
-        onChange?.(combined.map((f) => f.file));
+        queueMicrotask(() => onChange?.(combined.map((f) => f.file)));
         return combined;
       });
     },
@@ -74,7 +77,7 @@ export function FileUpload({
         const file = prev.find((f) => f.id === id);
         if (file?.preview) URL.revokeObjectURL(file.preview);
         const next = prev.filter((f) => f.id !== id);
-        onChange?.(next.map((f) => f.file));
+        queueMicrotask(() => onChange?.(next.map((f) => f.file)));
         return next;
       });
     },
@@ -100,7 +103,7 @@ export function FileUpload({
   const displayError = error || validationError;
 
   return (
-    <div className={clsx('space-y-3', className)}>
+    <div className={clsx(compact ? 'space-y-2' : 'space-y-3', className)}>
       <div
         onDragEnter={handleDrag}
         onDragOver={handleDrag}
@@ -108,7 +111,8 @@ export function FileUpload({
         onDrop={handleDrop}
         onClick={() => !disabled && inputRef.current?.click()}
         className={clsx(
-          'flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-8',
+          'flex flex-col items-center justify-center rounded-xl border-2 border-dashed',
+          compact ? 'gap-1.5 px-3 py-4' : 'gap-2 p-8',
           'cursor-pointer transition-colors',
           disabled && 'pointer-events-none opacity-50',
           dragActive
@@ -120,16 +124,26 @@ export function FileUpload({
       >
         <Upload
           className={clsx(
-            'h-8 w-8',
+            compact ? 'h-6 w-6' : 'h-8 w-8',
             dragActive ? 'text-accent-blue' : 'text-text-muted',
           )}
         />
         <div className="text-center">
-          <p className="text-sm font-medium text-text-primary">
+          <p
+            className={clsx(
+              'font-medium text-text-primary',
+              compact ? 'text-xs' : 'text-sm',
+            )}
+          >
             Drop files here or{' '}
             <span className="text-accent-blue">browse</span>
           </p>
-          <p className="mt-1 text-xs text-text-muted">
+          <p
+            className={clsx(
+              'mt-1 text-text-muted',
+              compact ? 'text-[10px] leading-tight' : 'text-xs',
+            )}
+          >
             PNG, JPG, PDF up to 25 MB
           </p>
         </div>
@@ -137,7 +151,7 @@ export function FileUpload({
           ref={inputRef}
           type="file"
           accept={ACCEPTED_EXTENSIONS}
-          multiple
+          multiple={maxFiles > 1}
           className="hidden"
           disabled={disabled}
           onChange={(e) => e.target.files && processFiles(e.target.files)}
@@ -149,7 +163,12 @@ export function FileUpload({
       )}
 
       {files.length > 0 && (
-        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+        <ul
+          className={clsx(
+            'grid gap-2',
+            compact ? 'grid-cols-1' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4',
+          )}
+        >
           {files.map((f) => (
             <li
               key={f.id}

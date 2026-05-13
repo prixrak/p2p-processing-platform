@@ -3,6 +3,7 @@ import { PayinService } from './payin.service';
 import { PayinRealtimeService } from './payin-realtime.service';
 import { PayinController, PayinInternalController } from './payin.controller';
 import { PaymentPageController } from './payment-page.controller';
+import { PayinProviderWebhookController } from './payin-provider-webhook.controller';
 import { RequisitesModule } from '../requisites/requisites.module';
 import { BanksModule } from '../banks/banks.module';
 import { FilesModule } from '../files/files.module';
@@ -12,6 +13,7 @@ import { PlatformSettingsModule } from '../platform-settings/platform-settings.m
 import { CascadeModule } from '../cascade/cascade.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { CurrenciesModule } from '../currencies/currencies.module';
+import { PayinProviderModule } from '../payin-provider/payin-provider.module';
 
 @Module({
   imports: [
@@ -24,8 +26,9 @@ import { CurrenciesModule } from '../currencies/currencies.module';
     CascadeModule,
     TelegramModule,
     CurrenciesModule,
+    PayinProviderModule,
   ],
-  controllers: [PayinController, PayinInternalController, PaymentPageController],
+  controllers: [PayinController, PayinInternalController, PaymentPageController, PayinProviderWebhookController],
   providers: [PayinService, PayinRealtimeService],
   exports: [PayinService, PayinRealtimeService],
 })

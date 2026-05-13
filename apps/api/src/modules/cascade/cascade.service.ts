@@ -1,5 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Prisma, type CascadeSetting } from '@prisma/client';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Prisma, type CascadeLevelPickMode, type CascadeSetting } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { CurrenciesService } from '../currencies/currencies.service';
 import {
@@ -12,26 +12,61 @@ import {
 } from './cascade-redis-state.service';
 import {
   approximateOthersEffectiveRange,
+  applyCascadeCreditsAfterAssignment,
+  cardCascadeRaceScore,
+  cascadeLevelAttemptOrder,
   computeForkAssignBounds,
   computeForkAutolimitAutoMaxAmount,
+  confirmedPayinFillRatio,
+  effectiveIdleMs,
+  fillMultiplierConfigFingerprint,
+  fillMultiplierFromConfirmedFill,
   fillRatioAmount,
   fillRatioTx,
   forkAutolimitAutoMinPerTx,
+  forkCascadeRaceScore,
   isForkAutolimitActive,
+  newcomerRatingBoostMultiplier,
   nominalCoveredByRange,
-  requisiteRating,
+  normalizeCascadeMethodPercents,
+  parseFillMultiplierTiersJson,
+  pickPrimaryCascadeLevelDebt,
+  pickPrimaryCascadeLevelStochastic,
   tzRequisiteRatingPercent,
+  type CascadeAssignmentLevel,
+  type FillMultiplierTier,
   type TraderCascadeMethod,
 } from '@p2p/shared';
 import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
+import {
+  PlatformSettingsService,
+  PLATFORM_SETTING_PAYIN_PROVIDER_INTEGRATION_ENABLED,
+} from '../platform-settings/platform-settings.service';
 
-export interface CascadeResult {
+export type CascadeTraderAssignment = {
+  kind: 'trader';
   traderId: string;
   requisiteId: string;
   score: number;
+  /** Fork vs Card pool where this assignment landed (after fallback chain). */
+  assignmentLevel: 'FORK' | 'CARD';
+  /** Debt/stochastic primary tier for this Pay-In (drives cascade_level_debits). */
+  primaryCascadeLevel: CascadeAssignmentLevel;
+  landedCascadeLevel: CascadeAssignmentLevel;
   /** Distributed Redis lock held — release via CascadeRedisStateService after DB commit */
   redisLockHeld?: boolean;
-}
+};
+
+export type CascadeProviderAssignment = {
+  kind: 'provider';
+  providerExternalRef: string;
+  score: number;
+  assignmentLevel: 'PROVIDER';
+  primaryCascadeLevel: CascadeAssignmentLevel;
+  landedCascadeLevel: 'PROVIDER';
+};
+
+export type CascadeResult = CascadeTraderAssignment | CascadeProviderAssignment;
 
 /** Alias for cascade ranking rows (materialized mirror in Redis per spec §5–6). */
 type ReqSnapshot = CascadeReqSnapshotRow;
@@ -50,6 +85,7 @@ export class CascadeService {
     private readonly redisState: CascadeRedisStateService,
     private readonly currencies: CurrenciesService,
     private readonly exchangeRate: ExchangeRateService,
+    private readonly platformSettings: PlatformSettingsService,
   ) {}
 
   async getSettings(): Promise<CascadeSetting> {
@@ -82,11 +118,22 @@ export class CascadeService {
   }
 
   private snapshotSignature(
-    rows: Array<{ id: string; usedAmount: number; usedOps: number }>,
+    rows: Array<{
+      id: string;
+      usedAmount: number;
+      usedOps: number;
+      cascadeIdleAnchorAt: string;
+      payinAssignmentsCount: number;
+      cascadeRatingMultiplier: number;
+      confirmedPayinAmount: number;
+    }>,
   ): string {
     return [...rows]
       .sort((a, b) => a.id.localeCompare(b.id))
-      .map((r) => `${r.id}:${r.usedAmount}:${r.usedOps}`)
+      .map(
+        (r) =>
+          `${r.id}:${r.usedAmount}:${r.usedOps}:${r.cascadeIdleAnchorAt}:${r.payinAssignmentsCount}:${r.cascadeRatingMultiplier}:${r.confirmedPayinAmount}`,
+      )
       .join('|');
   }
 
@@ -102,6 +149,10 @@ export class CascadeService {
       minAmount: Prisma.Decimal;
       maxAmount: Prisma.Decimal;
       payinRate: Prisma.Decimal;
+      cascadeIdleAnchorAt: Date;
+      payinAssignmentsCount: number;
+      cascadeRatingMultiplier: Prisma.Decimal;
+      confirmedPayinAmount: Prisma.Decimal;
     }>,
   ): ReqSnapshot[] {
     return raw.map((r) => ({
@@ -110,11 +161,15 @@ export class CascadeService {
       processingMethod: r.processingMethod,
       usedAmount: Number(r.usedAmount),
       limitTotalAmount: Number(r.limitTotalAmount),
+      confirmedPayinAmount: Number(r.confirmedPayinAmount),
       usedOps: r.usedOps,
       limitTotalOps: r.limitTotalOps,
       minAmount: Number(r.minAmount),
       maxAmount: Number(r.maxAmount),
       payinRate: Number(r.payinRate),
+      cascadeIdleAnchorAt: r.cascadeIdleAnchorAt.toISOString(),
+      payinAssignmentsCount: r.payinAssignmentsCount,
+      cascadeRatingMultiplier: Number(r.cascadeRatingMultiplier),
     }));
   }
 
@@ -131,6 +186,9 @@ export class CascadeService {
     overdraft: Map<string, number>,
     parserRate: number | undefined,
     enforceUsdtCapacity: boolean,
+    nowMs: number,
+    assignmentTier: 'FORK' | 'CARD',
+    fillTiers: readonly FillMultiplierTier[] | null,
   ): { ok: true; score: number } | { ok: false; code: string; detail: string } {
     const coverageCounts = new Map<number, number>();
     for (const n of nominalAmounts) {
@@ -201,16 +259,78 @@ export class CascadeService {
       }
     }
 
-    const w =
-      row.processingMethod === 'FORK'
-        ? settings.forkRatingWeight
-        : settings.cardRatingWeight;
-    const score = requisiteRating(
-      Number(row.usedAmount),
-      Number(row.limitTotalAmount),
-      w,
-    );
+    const idleMs = effectiveIdleMs(nowMs, new Date(row.cascadeIdleAnchorAt).getTime());
+    const lim = Number(row.limitTotalAmount);
+    const confirmed = Number(row.confirmedPayinAmount);
+    const cf01 = confirmedPayinFillRatio(confirmed, lim);
+    const score =
+      assignmentTier === 'FORK'
+        ? forkCascadeRaceScore({
+            idleMs,
+            confirmedFill01: cf01,
+            traderMultiplier: Math.max(1e-9, row.cascadeRatingMultiplier),
+            payinAssignmentsCount: row.payinAssignmentsCount,
+            fillTiers,
+          })
+        : cardCascadeRaceScore({
+            idleMs,
+            traderMultiplier: Math.max(1e-9, row.cascadeRatingMultiplier),
+          });
     return { ok: true, score };
+  }
+
+  private rankCandidatesForPayInTier(
+    tier: 'FORK' | 'CARD',
+    snapshotsWithCapacity: ReqSnapshot[],
+    amount: number,
+    snapshotsForCoverage: ReqSnapshot[],
+    nominalAmounts: number[],
+    settings: CascadeSetting,
+    usdtBal: Map<string, number>,
+    overdraft: Map<string, number>,
+    parserRate: number | undefined,
+    enforceUsdtCapacity: boolean,
+    nowMs: number,
+    fillTiers: readonly FillMultiplierTier[] | null,
+  ): Array<{
+    id: string;
+    score: number;
+    traderId: string;
+    assignmentLevel: 'FORK' | 'CARD';
+  }> {
+    const pool = snapshotsWithCapacity.filter((row) => {
+      const pm = row.processingMethod as TraderCascadeMethod;
+      if (tier === 'FORK' && pm !== 'FORK') return false;
+      if (tier === 'CARD' && pm !== 'CARD') return false;
+      return true;
+    });
+
+    return pool
+      .map((row) => {
+        const ev = this.evaluateSnapshotForPayInAmount(
+          row,
+          amount,
+          snapshotsForCoverage,
+          nominalAmounts,
+          settings,
+          usdtBal,
+          overdraft,
+          parserRate,
+          enforceUsdtCapacity,
+          nowMs,
+          tier,
+          fillTiers,
+        );
+        if (!ev.ok) return null;
+        return {
+          id: row.id,
+          score: ev.score,
+          traderId: row.traderId,
+          assignmentLevel: tier,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
   }
 
   private async getUsdtCapacityMaps(
@@ -239,96 +359,60 @@ export class CascadeService {
   }
 
   /**
-   * Levels 1–3 ordering for a hypothetical Pay-In amount (same ordering as assignment; no Redis locks).
+   * Method-level cascade ordering for a hypothetical Pay-In amount (TZ v3.1): primary tier is always
+   * Fork or Card (traffic %), then the alternate tier, never Provider first. Global idle-time race
+   * ranks requisites within each tier (Provider stubbed for ordered preview).
    */
   private async buildOrderedRequisiteIdsForAmount(
     db: PrismaService | Prisma.TransactionClient,
     args: {
       currency: string;
+      currencyId: string;
       amount: number;
       parserRate?: number;
       enforceUsdtCapacity: boolean;
       settings: CascadeSetting;
       nominalAmounts: number[];
       reqRows: ReqSnapshot[];
+      levelCredits: { fork: number; card: number; provider: number };
+      nowMs: number;
+      rng?: () => number;
     },
-  ): Promise<Array<{ id: string; score: number; traderId: string }>> {
+  ): Promise<{
+    ordered: Array<{
+      id: string;
+      score: number;
+      traderId: string;
+      assignmentLevel: 'FORK' | 'CARD';
+    }>;
+    primaryCascadeLevel: CascadeAssignmentLevel;
+  }> {
     const {
-      currency,
       amount,
       parserRate,
       enforceUsdtCapacity,
       settings,
       nominalAmounts,
       reqRows,
+      levelCredits,
+      nowMs,
+      rng,
     } = args;
-    const cur = currency.trim().toUpperCase();
 
-    const eligibleTraderIds = new Set(
-      reqRows
-        .filter((row) => {
-          const remAmt = Number(row.limitTotalAmount) - Number(row.usedAmount);
-          return remAmt >= amount - 1e-9;
-        })
-        .map((r) => r.traderId),
-    );
+    const fillTiers = parseFillMultiplierTiersJson(settings.fillMultipliersConfig);
 
-    const traderRows =
-      eligibleTraderIds.size === 0
-        ? []
-        : await db.traderProfile.findMany({
-            where: {
-              id: { in: [...eligibleTraderIds] },
-              isActive: true,
-              acceptingOrders: true,
-            },
-            select: { id: true, trafficPercent: true },
-          });
+    const targetsPct = {
+      fork: Number(settings.forkTrafficPercent),
+      card: Number(settings.cardTrafficPercent),
+      provider: Number(settings.providerTrafficPercent),
+    };
 
-    const sumPct = traderRows.reduce((s, t) => s + Number(t.trafficPercent), 0);
-    const targets = new Map<string, number>();
-    if (traderRows.length > 0 && sumPct <= 0) {
-      const eq = 1 / traderRows.length;
-      for (const t of traderRows) targets.set(t.id, eq);
-    } else {
-      for (const t of traderRows) {
-        targets.set(t.id, Number(t.trafficPercent) / sumPct);
-      }
-    }
+    const primary =
+      settings.levelPickMode === 'STOCHASTIC'
+        ? pickPrimaryCascadeLevelStochastic(targetsPct, rng ?? Math.random)
+        : pickPrimaryCascadeLevelDebt(levelCredits, targetsPct);
 
-    const windowStart = new Date(
-      Date.now() - settings.slidingWindowHours * 60 * 60 * 1000,
-    );
-
-    const volumeRows = await db.$queryRaw<Array<{ traderId: string; vol: Prisma.Decimal }>>`
-      SELECT tdl.trader_id AS "traderId", COALESCE(SUM(tdl.amount), 0)::decimal AS vol
-      FROM traffic_distribution_logs tdl
-      INNER JOIN payin_orders po ON po.id = tdl.payin_order_id
-      INNER JOIN currencies poc ON poc.id = po.currency_id AND poc.code = ${cur}
-      WHERE tdl.created_at >= ${windowStart}
-      GROUP BY tdl.trader_id
-    `;
-
-    const volMap = new Map<string, number>();
-    let totalVol = 0;
-    for (const row of volumeRows) {
-      const v = Number(row.vol);
-      volMap.set(row.traderId, v);
-      totalVol += v;
-    }
-
-    const deficits: Array<{ traderId: string; deficit: number }> = [];
-    for (const t of traderRows) {
-      const tgt = targets.get(t.id) ?? 0;
-      const v = volMap.get(t.id) ?? 0;
-      const actual = totalVol > 0 ? v / totalVol : 0;
-      deficits.push({ traderId: t.id, deficit: tgt - actual });
-    }
-    deficits.sort((a, b) => {
-      const d = b.deficit - a.deficit;
-      if (Math.abs(d) > 1e-12) return d;
-      return a.traderId.localeCompare(b.traderId);
-    });
+    const levelOrder = cascadeLevelAttemptOrder(primary).filter((lvl) => lvl !== 'PROVIDER');
 
     const { usdtBal, overdraft } = await this.getUsdtCapacityMaps(db);
 
@@ -337,44 +421,33 @@ export class CascadeService {
       return remAmt >= amount - 1e-9;
     });
 
-    const orderedReqIds: Array<{ id: string; score: number; traderId: string }> = [];
+    const orderedReqIds: Array<{
+      id: string;
+      score: number;
+      traderId: string;
+      assignmentLevel: 'FORK' | 'CARD';
+    }> = [];
 
-    for (const { traderId } of deficits) {
-      const mine = snapshots.filter((s) => s.traderId === traderId);
-      const ranked = mine
-        .map((row) => {
-          const ev = this.evaluateSnapshotForPayInAmount(
-            row,
-            amount,
-            snapshots,
-            nominalAmounts,
-            settings,
-            usdtBal,
-            overdraft,
-            parserRate,
-            enforceUsdtCapacity,
-          );
-          if (!ev.ok) return null;
-          return {
-            id: row.id,
-            score: ev.score,
-            tie: Math.random(),
-            traderId: row.traderId,
-          };
-        })
-        .filter((x): x is NonNullable<typeof x> => x !== null)
-        .sort((a, b) => b.score - a.score || a.tie - b.tie);
-
-      for (const r of ranked) {
-        orderedReqIds.push({
-          id: r.id,
-          score: r.score,
-          traderId: r.traderId,
-        });
-      }
+    for (const level of levelOrder) {
+      if (level !== 'FORK' && level !== 'CARD') continue;
+      const ranked = this.rankCandidatesForPayInTier(
+        level,
+        snapshots,
+        amount,
+        snapshots,
+        nominalAmounts,
+        settings,
+        usdtBal,
+        overdraft,
+        parserRate,
+        enforceUsdtCapacity,
+        nowMs,
+        fillTiers,
+      );
+      orderedReqIds.push(...ranked);
     }
 
-    return orderedReqIds;
+    return { ordered: orderedReqIds, primaryCascadeLevel: primary };
   }
 
   /**
@@ -391,6 +464,9 @@ export class CascadeService {
     if (!settings) {
       throw new Error('cascade_settings row missing');
     }
+
+    const fillTiers = parseFillMultiplierTiersJson(settings.fillMultipliersConfig);
+    const fillConfigFingerprint = fillMultiplierConfigFingerprint(settings.fillMultipliersConfig);
 
     const nominalRows = await db.coverageNominalSetting.findMany({
       where: { isActive: true },
@@ -412,6 +488,10 @@ export class CascadeService {
         minAmount: Prisma.Decimal;
         maxAmount: Prisma.Decimal;
         payinRate: Prisma.Decimal;
+        cascadeIdleAnchorAt: Date;
+        payinAssignmentsCount: number;
+        cascadeRatingMultiplier: Prisma.Decimal;
+        confirmedPayinAmount: Prisma.Decimal;
       }>
     >`
       SELECT
@@ -420,11 +500,15 @@ export class CascadeService {
         tp.processing_method AS "processingMethod",
         r.used_amount::numeric AS "usedAmount",
         r.limit_total_amount::numeric AS "limitTotalAmount",
+        r.confirmed_payin_amount::numeric AS "confirmedPayinAmount",
         r.used_ops AS "usedOps",
         r.limit_total_ops AS "limitTotalOps",
         r.min_amount::numeric AS "minAmount",
         r.max_amount::numeric AS "maxAmount",
-        tp.payin_rate::numeric AS "payinRate"
+        tp.payin_rate::numeric AS "payinRate",
+        r.cascade_idle_anchor_at AS "cascadeIdleAnchorAt",
+        r.payin_assignments_count AS "payinAssignmentsCount",
+        tp.cascade_rating_multiplier::numeric AS "cascadeRatingMultiplier"
       FROM requisites r
       INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
         AND g.archived_at IS NULL
@@ -489,21 +573,45 @@ export class CascadeService {
 
     const enforceUsdt = cur === 'UAH' && parserRate !== undefined;
 
+    const currencyRow = await db.currency.findUnique({
+      where: { code: cur },
+      select: { id: true },
+    });
+    if (!currencyRow) {
+      throw new Error(`currency not found: ${cur}`);
+    }
+
+    const debtRow = await db.cascadeLevelDebt.findUnique({
+      where: { currencyId: currencyRow.id },
+    });
+    const levelCredits = debtRow
+      ? {
+          fork: Number(debtRow.forkCredit),
+          card: Number(debtRow.cardCredit),
+          provider: Number(debtRow.providerCredit),
+        }
+      : { fork: 0, card: 0, provider: 0 };
+
+    const builtNow = Date.now();
+
     const previewOrder = await this.buildOrderedRequisiteIdsForAmount(db, {
       currency: cur,
+      currencyId: currencyRow.id,
       amount: previewAmount,
       parserRate,
       enforceUsdtCapacity: enforceUsdt,
       settings,
       nominalAmounts,
       reqRows: reqs,
+      levelCredits,
+      nowMs: builtNow,
     });
 
     const rankById = new Map<string, number>();
-    for (let i = 0; i < previewOrder.length; i++) {
-      rankById.set(previewOrder[i]!.id, i + 1);
+    for (let i = 0; i < previewOrder.ordered.length; i++) {
+      rankById.set(previewOrder.ordered[i]!.id, i + 1);
     }
-    const eligiblePreview = new Set(previewOrder.map((x) => x.id));
+    const eligiblePreview = new Set(previewOrder.ordered.map((x) => x.id));
 
     const snapshots: CascadeStoredSnapshot[] = reqs.map((row) => {
       const lim = Number(row.limitTotalAmount);
@@ -553,11 +661,25 @@ export class CascadeService {
         (nominal) => coverageCounts.get(nominal) ?? 0,
       );
 
-      const w =
-        row.processingMethod === 'FORK'
-          ? settings.forkRatingWeight
-          : settings.cardRatingWeight;
-      const weighted = requisiteRating(ua, lim, w);
+      const idleMs = effectiveIdleMs(builtNow, new Date(row.cascadeIdleAnchorAt).getTime());
+      const newcomerBoost = newcomerRatingBoostMultiplier(row.payinAssignmentsCount);
+      const confirmedAmt = Number(row.confirmedPayinAmount);
+      const cf01 = confirmedPayinFillRatio(confirmedAmt, lim);
+      const fillMult = fillMultiplierFromConfirmedFill(cf01, fillTiers);
+      const pmRow = row.processingMethod as TraderCascadeMethod;
+      const raceSc =
+        pmRow === 'FORK'
+          ? forkCascadeRaceScore({
+              idleMs,
+              confirmedFill01: cf01,
+              traderMultiplier: Math.max(1e-9, row.cascadeRatingMultiplier),
+              payinAssignmentsCount: row.payinAssignmentsCount,
+              fillTiers,
+            })
+          : cardCascadeRaceScore({
+              idleMs,
+              traderMultiplier: Math.max(1e-9, row.cascadeRatingMultiplier),
+            });
 
       let autoMaxNominal: number | undefined = computeForkAutolimitAutoMaxAmount(
         forkInp,
@@ -576,12 +698,17 @@ export class CascadeService {
         fill_ratio: Math.round(fr * 1e6) / 1e6,
         fill_ratio_tx: Math.round(frTx * 1e6) / 1e6,
         rating: tzRequisiteRatingPercent(fr),
+        confirmed_fill_ratio: Math.round(cf01 * 1e6) / 1e6,
+        fill_multiplier: fillMult,
         remaining_amount: Math.round(remAmt * 1e4) / 1e4,
         remaining_transactions: remTx,
         effective_min: bounds ? bounds.effMin : null,
         effective_max: bounds ? bounds.effMax : null,
         fork_autolimit_active: activ,
-        weighted_score: Math.round(weighted * 1e6) / 1e6,
+        idle_ms: Math.round(idleMs),
+        newcomer_boost: newcomerBoost,
+        race_score: Math.round(raceSc * 1e6) / 1e6,
+        weighted_score: Math.round(raceSc * 1e6) / 1e6,
         is_eligible_preview: eligiblePreview.has(row.id),
         cascade_rank: rankById.get(row.id) ?? null,
         ...(fork_auto_min_estimate !== undefined
@@ -611,12 +738,17 @@ export class CascadeService {
         id: r.id,
         usedAmount: r.usedAmount,
         usedOps: r.usedOps,
+        cascadeIdleAnchorAt: r.cascadeIdleAnchorAt,
+        payinAssignmentsCount: r.payinAssignmentsCount,
+        cascadeRatingMultiplier: r.cascadeRatingMultiplier,
+        confirmedPayinAmount: r.confirmedPayinAmount,
       })),
     );
 
     return {
-      payload_version: 3,
+      payload_version: 6,
       snapshot_row_sig: sig,
+      fill_config_fingerprint: fillConfigFingerprint,
       nominal_amounts: nominalAmounts,
       nominals,
       snapshots,
@@ -630,12 +762,24 @@ export class CascadeService {
     currency: string,
   ): Promise<string> {
     const rows = await tx.$queryRaw<
-      Array<{ id: string; usedAmount: Prisma.Decimal; usedOps: number }>
+      Array<{
+        id: string;
+        usedAmount: Prisma.Decimal;
+        usedOps: number;
+        cascadeIdleAnchorAt: Date;
+        payinAssignmentsCount: number;
+        cascadeRatingMultiplier: Prisma.Decimal;
+        confirmedPayinAmount: Prisma.Decimal;
+      }>
     >`
       SELECT
         r.id,
         r.used_amount::numeric AS "usedAmount",
-        r.used_ops AS "usedOps"
+        r.used_ops AS "usedOps",
+        r.cascade_idle_anchor_at AS "cascadeIdleAnchorAt",
+        r.payin_assignments_count AS "payinAssignmentsCount",
+        tp.cascade_rating_multiplier::numeric AS "cascadeRatingMultiplier",
+        r.confirmed_payin_amount::numeric AS "confirmedPayinAmount"
       FROM requisites r
       INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
         AND g.archived_at IS NULL
@@ -654,13 +798,17 @@ export class CascadeService {
         id: r.id,
         usedAmount: Number(r.usedAmount),
         usedOps: r.usedOps,
+        cascadeIdleAnchorAt: r.cascadeIdleAnchorAt.toISOString(),
+        payinAssignmentsCount: r.payinAssignmentsCount,
+        cascadeRatingMultiplier: Number(r.cascadeRatingMultiplier),
+        confirmedPayinAmount: Number(r.confirmedPayinAmount),
       })),
     );
   }
 
   /**
-   * Cascade assignment for Pay-In creation: Level 1 trader deficit, Level 2 fill-ratio ranking,
-   * Level 3 Fork autolimits (global settings + coverage holes).
+   * Pay-In requisite selection (TZ v3.1): method-level primary bucket + global idle-time race;
+   * Fork autolimits still gate effective bounds. Updates `cascade_level_debts` on success (same tx).
    */
   async lockBestRequisiteForPayIn(
     tx: Prisma.TransactionClient,
@@ -670,10 +818,27 @@ export class CascadeService {
       /** Parser reference rate (local fiat per 1 USDT) when enforcing trader USDT capacity */
       parserRate?: number;
       enforceUsdtCapacity: boolean;
+      /** Idempotency key forwarded to external provider reserve API (stable per Pay-In attempt). */
+      providerIdempotencyKey: string;
+      attemptProviderTier?: (
+        db: Prisma.TransactionClient,
+        ctx: {
+          amount: number;
+          currency: string;
+          parserRate?: number;
+          idempotencyKey: string;
+        },
+      ) => Promise<
+        | { kind: 'accepted'; externalRef: string }
+        | { kind: 'declined' }
+        | { kind: 'unavailable' }
+      >;
+      rng?: () => number;
     },
   ): Promise<CascadeResult | null> {
     const cascadeStarted = Date.now();
     let redisLockContentionEvents = 0;
+    let candidatesTried = 0;
 
     const settings = await tx.cascadeSetting.findFirst({
       orderBy: { updatedAt: 'desc' },
@@ -681,6 +846,9 @@ export class CascadeService {
     if (!settings) {
       throw new Error('cascade_settings row missing');
     }
+
+    const fillTiers = parseFillMultiplierTiersJson(settings.fillMultipliersConfig);
+    const fillFingerprint = fillMultiplierConfigFingerprint(settings.fillMultipliersConfig);
 
     const nominalRows = await tx.coverageNominalSetting.findMany({
       where: { isActive: true },
@@ -690,6 +858,25 @@ export class CascadeService {
 
     const cur = params.currency.trim().toUpperCase();
 
+    const currencyRow = await tx.currency.findUnique({
+      where: { code: cur },
+      select: { id: true },
+    });
+    if (!currencyRow) {
+      throw new Error(`currency not found: ${cur}`);
+    }
+
+    const debtRow = await tx.cascadeLevelDebt.findUnique({
+      where: { currencyId: currencyRow.id },
+    });
+    const levelCredits = debtRow
+      ? {
+          fork: Number(debtRow.forkCredit),
+          card: Number(debtRow.cardCredit),
+          provider: Number(debtRow.providerCredit),
+        }
+      : { fork: 0, card: 0, provider: 0 };
+
     const txSig = await this.computeSnapshotSignatureFromTx(tx, cur);
 
     let reqRows: ReqSnapshot[];
@@ -697,7 +884,8 @@ export class CascadeService {
     const cachedPayload = await this.redisState.getPayload(cur);
     if (
       cachedPayload?.snapshot_row_sig === txSig &&
-      cachedPayload.payload_version === 3
+      cachedPayload.payload_version === 6 &&
+      cachedPayload.fill_config_fingerprint === fillFingerprint
     ) {
       reqRows = cachedPayload.snapshots.map(stripRedisMeta);
     } else {
@@ -706,71 +894,181 @@ export class CascadeService {
       reqRows = payload.snapshots.map(stripRedisMeta);
     }
 
-    const orderedReqIds = await this.buildOrderedRequisiteIdsForAmount(tx, {
-      currency: cur,
-      amount: params.amount,
-      parserRate: params.parserRate,
-      enforceUsdtCapacity: params.enforceUsdtCapacity,
-      settings,
-      nominalAmounts,
-      reqRows,
-    });
+    const targetsPct = {
+      fork: Number(settings.forkTrafficPercent),
+      card: Number(settings.cardTrafficPercent),
+      provider: Number(settings.providerTrafficPercent),
+    };
+
+    const primary: CascadeAssignmentLevel =
+      settings.levelPickMode === 'STOCHASTIC'
+        ? pickPrimaryCascadeLevelStochastic(targetsPct, params.rng ?? Math.random)
+        : pickPrimaryCascadeLevelDebt(levelCredits, targetsPct);
+
+    const tierOrder = cascadeLevelAttemptOrder(primary);
+
+    const assignNowMs = Date.now();
+    const { usdtBal, overdraft } = await this.getUsdtCapacityMaps(tx);
 
     const snapshots = reqRows.filter((row) => {
       const remAmt = Number(row.limitTotalAmount) - Number(row.usedAmount);
       return remAmt >= params.amount - 1e-9;
     });
 
-    for (const { id, score } of orderedReqIds) {
-      const redisOk = await this.redisState.tryAcquireRequisiteLock(id);
-      if (!redisOk) {
-        redisLockContentionEvents += 1;
+    const applyDebtCredits = async () => {
+      const nextCredits = applyCascadeCreditsAfterAssignment(levelCredits, targetsPct, primary);
+      await tx.cascadeLevelDebt.upsert({
+        where: { currencyId: currencyRow.id },
+        create: {
+          currencyId: currencyRow.id,
+          forkCredit: nextCredits.fork,
+          cardCredit: nextCredits.card,
+          providerCredit: nextCredits.provider,
+        },
+        update: {
+          forkCredit: nextCredits.fork,
+          cardCredit: nextCredits.card,
+          providerCredit: nextCredits.provider,
+        },
+      });
+    };
+
+    for (const tier of tierOrder) {
+      if (tier === 'PROVIDER') {
+        const bridge = params.attemptProviderTier
+          ? await params.attemptProviderTier(tx, {
+              amount: params.amount,
+              currency: cur,
+              parserRate: params.parserRate,
+              idempotencyKey: params.providerIdempotencyKey,
+            })
+          : undefined;
+        if (bridge?.kind === 'accepted') {
+          await applyDebtCredits();
+          const duration_ms = Date.now() - cascadeStarted;
+          this.logger.log({
+            msg: 'cascade.assign_complete',
+            event: 'cascade_assign_duration_ms',
+            duration_ms,
+            currency: cur,
+            amount: params.amount,
+            outcome: 'assigned_provider',
+            external_ref: bridge.externalRef,
+            assignment_level: 'PROVIDER',
+            primary_level: primary,
+            redis_lock_contention_events: redisLockContentionEvents,
+          });
+          return {
+            kind: 'provider',
+            providerExternalRef: bridge.externalRef,
+            score: 0,
+            assignmentLevel: 'PROVIDER',
+            primaryCascadeLevel: primary,
+            landedCascadeLevel: 'PROVIDER',
+          };
+        }
+        continue;
+      }
+
+      const ranked = this.rankCandidatesForPayInTier(
+        tier,
+        snapshots,
+        params.amount,
+        snapshots,
+        nominalAmounts,
+        settings,
+        usdtBal,
+        overdraft,
+        params.parserRate,
+        params.enforceUsdtCapacity,
+        assignNowMs,
+        fillTiers,
+      );
+
+      for (const cand of ranked) {
+        candidatesTried += 1;
+        const { id, score, assignmentLevel } = cand;
+        const redisOk = await this.redisState.tryAcquireRequisiteLock(id);
+        if (!redisOk) {
+          redisLockContentionEvents += 1;
+          this.logger.log({
+            msg: 'cascade.redis_lock_contended',
+            event: 'cascade_redis_lock_contended',
+            requisite_id: id,
+            currency: cur,
+            amount: params.amount,
+          });
+          continue;
+        }
+
+        const locked = await tx.$queryRaw<
+          Array<{
+            id: string;
+            used_amount: Prisma.Decimal;
+            limit_total_amount: Prisma.Decimal;
+            used_ops: number;
+            limit_total_ops: number;
+          }>
+        >`
+          SELECT id, used_amount, limit_total_amount, used_ops, limit_total_ops
+          FROM requisites
+          WHERE id = CAST(${id} AS uuid)
+          FOR UPDATE SKIP LOCKED
+        `;
+
+        if (locked.length !== 1) {
+          await this.redisState.releaseRequisiteLock(id);
+          continue;
+        }
+
+        const head = locked[0];
+        const ua = Number(head.used_amount);
+        const limAmt = Number(head.limit_total_amount);
+        const uo = head.used_ops;
+        const limO = head.limit_total_ops;
+        if (Number.isFinite(limAmt) && limAmt > 0 && ua + params.amount > limAmt + 1e-9) {
+          await this.redisState.releaseRequisiteLock(id);
+          continue;
+        }
+        if (limO > 0 && uo + 1 > limO) {
+          await this.redisState.releaseRequisiteLock(id);
+          continue;
+        }
+
+        const row = snapshots.find((s) => s.id === id);
+        if (!row) {
+          await this.redisState.releaseRequisiteLock(id);
+          continue;
+        }
+
+        await applyDebtCredits();
+
+        const duration_ms = Date.now() - cascadeStarted;
         this.logger.log({
-          msg: 'cascade.redis_lock_contended',
-          event: 'cascade_redis_lock_contended',
-          requisite_id: id,
+          msg: 'cascade.assign_complete',
+          event: 'cascade_assign_duration_ms',
+          duration_ms,
           currency: cur,
           amount: params.amount,
+          outcome: 'assigned',
+          requisite_id: id,
+          trader_id: row.traderId,
+          assignment_level: assignmentLevel,
+          primary_level: primary,
+          score,
+          redis_lock_contention_events: redisLockContentionEvents,
         });
-        continue;
+        return {
+          kind: 'trader',
+          requisiteId: id,
+          traderId: row.traderId,
+          score,
+          assignmentLevel,
+          primaryCascadeLevel: primary,
+          landedCascadeLevel: tier,
+          redisLockHeld: true,
+        };
       }
-
-      const locked = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT id FROM requisites
-        WHERE id = ${id}::uuid
-        FOR UPDATE SKIP LOCKED
-      `;
-
-      if (locked.length !== 1) {
-        await this.redisState.releaseRequisiteLock(id);
-        continue;
-      }
-
-      const row = snapshots.find((s) => s.id === id);
-      if (!row) {
-        await this.redisState.releaseRequisiteLock(id);
-        continue;
-      }
-
-      const duration_ms = Date.now() - cascadeStarted;
-      this.logger.log({
-        msg: 'cascade.assign_complete',
-        event: 'cascade_assign_duration_ms',
-        duration_ms,
-        currency: cur,
-        amount: params.amount,
-        outcome: 'assigned',
-        requisite_id: id,
-        trader_id: row.traderId,
-        score,
-        redis_lock_contention_events: redisLockContentionEvents,
-      });
-      return {
-        requisiteId: id,
-        traderId: row.traderId,
-        score,
-        redisLockHeld: true,
-      };
     }
 
     const duration_ms = Date.now() - cascadeStarted;
@@ -782,7 +1080,7 @@ export class CascadeService {
       amount: params.amount,
       outcome: 'no_match',
       redis_lock_contention_events: redisLockContentionEvents,
-      candidates_tried: orderedReqIds.length,
+      candidates_tried: candidatesTried,
     });
     this.logger.warn(
       `No suitable requisite for ${params.amount} ${params.currency} after cascade`,
@@ -830,18 +1128,39 @@ export class CascadeService {
     const snapshotsByCurrency = new Map<string, ReqSnapshot[]>();
 
     for (const currency of currencies) {
-      const snaps = await this.prisma.$queryRaw<ReqSnapshot[]>`
+      const rawSnaps = await this.prisma.$queryRaw<
+        Array<{
+          id: string;
+          traderId: string;
+          processingMethod: string;
+          usedAmount: Prisma.Decimal;
+          limitTotalAmount: Prisma.Decimal;
+          usedOps: number;
+          limitTotalOps: number;
+          minAmount: Prisma.Decimal;
+          maxAmount: Prisma.Decimal;
+          payinRate: Prisma.Decimal;
+          cascadeIdleAnchorAt: Date;
+          payinAssignmentsCount: number;
+          cascadeRatingMultiplier: Prisma.Decimal;
+          confirmedPayinAmount: Prisma.Decimal;
+        }>
+      >`
         SELECT
           r.id,
           r.trader_id AS "traderId",
           tp.processing_method AS "processingMethod",
           r.used_amount::numeric AS "usedAmount",
           r.limit_total_amount::numeric AS "limitTotalAmount",
+          r.confirmed_payin_amount::numeric AS "confirmedPayinAmount",
           r.used_ops AS "usedOps",
           r.limit_total_ops AS "limitTotalOps",
           r.min_amount::numeric AS "minAmount",
           r.max_amount::numeric AS "maxAmount",
-          tp.payin_rate::numeric AS "payinRate"
+          tp.payin_rate::numeric AS "payinRate",
+          r.cascade_idle_anchor_at AS "cascadeIdleAnchorAt",
+          r.payin_assignments_count AS "payinAssignmentsCount",
+          tp.cascade_rating_multiplier::numeric AS "cascadeRatingMultiplier"
         FROM requisites r
         INNER JOIN requisite_groups g ON g.id = r.requisite_group_id
           AND g.archived_at IS NULL
@@ -855,6 +1174,7 @@ export class CascadeService {
         WHERE r.is_active = true
           AND r.used_ops < r.limit_total_ops
       `;
+      const snaps = this.normalizeAssignmentRows(rawSnaps);
       snapshotsByCurrency.set(currency, snaps);
     }
 
@@ -975,6 +1295,8 @@ export class CascadeService {
   }> {
     const cur = options.currency.trim().toUpperCase();
     const settings = await this.getSettings();
+    const fillTiers = parseFillMultiplierTiersJson(settings.fillMultipliersConfig);
+    const fillFingerprint = fillMultiplierConfigFingerprint(settings.fillMultipliersConfig);
     const nominalRows = await this.prisma.coverageNominalSetting.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: 'asc' },
@@ -992,10 +1314,33 @@ export class CascadeService {
     const enforceUsdt = cur === 'UAH' && parserRate !== undefined;
 
     let payload = await this.redisState.getPayload(cur);
-    if (!payload || payload.payload_version !== 3) {
+    if (
+      !payload ||
+      payload.payload_version !== 6 ||
+      payload.fill_config_fingerprint !== fillFingerprint
+    ) {
       payload = await this.buildCurrencyPayload(this.prisma, cur);
       await this.redisState.setPayload(cur, payload);
     }
+
+    const currencyRow = await this.prisma.currency.findUnique({
+      where: { code: cur },
+      select: { id: true },
+    });
+    const debtRow =
+      currencyRow &&
+      (await this.prisma.cascadeLevelDebt.findUnique({
+        where: { currencyId: currencyRow.id },
+      }));
+    const levelCredits = debtRow
+      ? {
+          fork: Number(debtRow.forkCredit),
+          card: Number(debtRow.cardCredit),
+          provider: Number(debtRow.providerCredit),
+        }
+      : { fork: 0, card: 0, provider: 0 };
+
+    const ratingsNowMs = Date.now();
 
     const strip = (s: CascadeStoredSnapshot): ReqSnapshot => {
       const { redis_meta: _rm, ...rest } = s;
@@ -1023,19 +1368,26 @@ export class CascadeService {
           if (s.redis_meta?.is_eligible_preview) eligiblePreview.add(s.id);
         }
       } else {
-        const ordered = await this.buildOrderedRequisiteIdsForAmount(this.prisma, {
-          currency: cur,
-          amount: previewAmount,
-          parserRate,
-          enforceUsdtCapacity: enforceUsdt,
-          settings,
-          nominalAmounts,
-          reqRows: payload.snapshots.map(strip),
-        });
-        for (let i = 0; i < ordered.length; i++) {
-          rankById.set(ordered[i]!.id, i + 1);
+        if (!currencyRow) {
+          eligiblePreview = new Set();
+        } else {
+          const previewRanked = await this.buildOrderedRequisiteIdsForAmount(this.prisma, {
+            currency: cur,
+            currencyId: currencyRow.id,
+            amount: previewAmount,
+            parserRate,
+            enforceUsdtCapacity: enforceUsdt,
+            settings,
+            nominalAmounts,
+            reqRows: payload.snapshots.map(strip),
+            levelCredits,
+            nowMs: ratingsNowMs,
+          });
+          for (let i = 0; i < previewRanked.ordered.length; i++) {
+            rankById.set(previewRanked.ordered[i]!.id, i + 1);
+          }
+          eligiblePreview = new Set(previewRanked.ordered.map((o) => o.id));
         }
-        eligiblePreview = new Set(ordered.map((o) => o.id));
       }
     }
 
@@ -1050,6 +1402,7 @@ export class CascadeService {
           select: {
             id: true,
             processingMethod: true,
+            cascadeRatingMultiplier: true,
             user: { select: { email: true } },
           },
         },
@@ -1121,10 +1474,28 @@ export class CascadeService {
       const fr = meta?.fill_ratio ?? fillRatioAmount(ua, lim);
       const frTx = meta?.fill_ratio_tx ?? fillRatioTx(r.usedOps, r.limitTotalOps);
       const rating = meta?.rating ?? tzRequisiteRatingPercent(fr);
-      const w =
-        pm === 'FORK' ? settings.forkRatingWeight : settings.cardRatingWeight;
+      const idleMsFb = effectiveIdleMs(
+        ratingsNowMs,
+        r.cascadeIdleAnchorAt.getTime(),
+      );
+      const traderMultFb = Math.max(1e-9, Number(r.trader.cascadeRatingMultiplier));
+      const confirmedAmtFb = Number(r.confirmedPayinAmount);
+      const cf01Fb = confirmedPayinFillRatio(confirmedAmtFb, lim);
+      const pmFb = r.trader.processingMethod as TraderCascadeMethod;
       const weighted =
-        meta?.weighted_score ?? requisiteRating(ua, lim, w);
+        meta?.weighted_score ??
+        (pmFb === 'FORK'
+          ? forkCascadeRaceScore({
+              idleMs: idleMsFb,
+              confirmedFill01: cf01Fb,
+              traderMultiplier: traderMultFb,
+              payinAssignmentsCount: r.payinAssignmentsCount,
+              fillTiers,
+            })
+          : cardCascadeRaceScore({
+              idleMs: idleMsFb,
+              traderMultiplier: traderMultFb,
+            }));
 
       let effMin = meta?.effective_min ?? null;
       let effMax = meta?.effective_max ?? null;
@@ -1264,7 +1635,7 @@ export class CascadeService {
     rows.sort((a, b) => {
       let c = 0;
       if (sort === 'rank') c = cmpNum(a.cascade_rank, b.cascade_rank) * dir;
-      else if (sort === 'rating') c = (a.rating - b.rating) * dir;
+      else if (sort === 'rating') c = (a.weighted_score - b.weighted_score) * dir;
       else if (sort === 'trader')
         c = a.trader_label.localeCompare(b.trader_label) * dir;
       else if (sort === 'remainder')
@@ -1290,6 +1661,8 @@ export class CascadeService {
       orderBy: { sortOrder: 'asc' },
     });
     const nominalAmounts = nominalRows.map((n) => Number(n.amount));
+
+    const fillFingerprint = fillMultiplierConfigFingerprint(settings.fillMultipliersConfig);
 
     const requisites = await this.prisma.requisite.findMany({
       where: { traderId },
@@ -1320,7 +1693,11 @@ export class CascadeService {
 
     for (const [code, list] of byCode) {
       let payload = await this.redisState.getPayload(code);
-      if (!payload || payload.payload_version !== 3) {
+      if (
+        !payload ||
+        payload.payload_version !== 6 ||
+        payload.fill_config_fingerprint !== fillFingerprint
+      ) {
         payload = await this.buildCurrencyPayload(this.prisma, code);
         await this.redisState.setPayload(code, payload);
       }
@@ -1432,25 +1809,50 @@ export class CascadeService {
       return rest;
     };
     const reqRows = payload.snapshots.map(strip);
-    const ordered = await this.buildOrderedRequisiteIdsForAmount(this.prisma, {
+
+    const currencyRow = await this.prisma.currency.findUnique({
+      where: { code: cur },
+      select: { id: true },
+    });
+    if (!currencyRow) {
+      throw new Error(`currency not found: ${cur}`);
+    }
+    const debtRow = await this.prisma.cascadeLevelDebt.findUnique({
+      where: { currencyId: currencyRow.id },
+    });
+    const levelCredits = debtRow
+      ? {
+          fork: Number(debtRow.forkCredit),
+          card: Number(debtRow.cardCredit),
+          provider: Number(debtRow.providerCredit),
+        }
+      : { fork: 0, card: 0, provider: 0 };
+    const explainNowMs = Date.now();
+
+    const previewOrdered = await this.buildOrderedRequisiteIdsForAmount(this.prisma, {
       currency: cur,
+      currencyId: currencyRow.id,
       amount,
       parserRate,
       enforceUsdtCapacity: enforceUsdt,
       settings,
       nominalAmounts,
       reqRows,
+      levelCredits,
+      nowMs: explainNowMs,
     });
-    const ranked = ordered.map((o, i) => ({
+    const ranked = previewOrdered.ordered.map((o, i) => ({
       rank: i + 1,
       requisite_id: o.id,
       trader_id: o.traderId,
+      assignment_level: o.assignmentLevel,
       weighted_score: Math.round(o.score * 1e6) / 1e6,
     }));
 
     const base = {
       currency: cur,
       amount,
+      primary_cascade_level: previewOrdered.primaryCascadeLevel,
       ranks: ranked,
     };
 
@@ -1463,7 +1865,9 @@ export class CascadeService {
       const remAmt = Number(row.limitTotalAmount) - Number(row.usedAmount);
       return remAmt >= amount - 1e-9;
     });
-    const orderedIds = new Set(ordered.map((o) => o.id));
+    const orderedIds = new Set(previewOrdered.ordered.map((o) => o.id));
+
+    const fillTiersExplain = parseFillMultiplierTiersJson(settings.fillMultipliersConfig);
 
     const excluded: Array<{
       requisite_id: string;
@@ -1486,6 +1890,8 @@ export class CascadeService {
         continue;
       }
 
+      const tier: 'FORK' | 'CARD' =
+        row.processingMethod === 'FORK' ? 'FORK' : 'CARD';
       const ev = this.evaluateSnapshotForPayInAmount(
         row,
         amount,
@@ -1496,6 +1902,9 @@ export class CascadeService {
         overdraft,
         parserRate,
         enforceUsdt,
+        explainNowMs,
+        tier,
+        fillTiersExplain,
       );
       if (!ev.ok) {
         excluded.push({
@@ -1510,7 +1919,7 @@ export class CascadeService {
           trader_id: row.traderId,
           code: 'LOWER_CASCADE_ORDER',
           detail:
-            'Passes amount checks but is ranked after higher-priority candidates in traffic-deficit × weighted-score ordering.',
+            'Passes checks but ranks after higher-priority candidates in method-level idle-time cascade ordering.',
         });
       }
     }
@@ -1525,10 +1934,61 @@ export class CascadeService {
       autolimitEnabled?: boolean;
       cardRatingWeight?: number;
       forkRatingWeight?: number;
+      forkTrafficPercent?: number;
+      cardTrafficPercent?: number;
+      providerTrafficPercent?: number;
+      levelPickMode?: CascadeLevelPickMode;
+      /** JSON array of `{ from, to, multiplier }` — Fork fill ladder (TZ §7.3); null clears to code defaults. */
+      fillMultipliersConfig?: unknown | null;
     },
     updatedById: string,
   ) {
     const row = await this.getSettings();
+
+    let forkTrafficPercent: Prisma.Decimal | undefined;
+    let cardTrafficPercent: Prisma.Decimal | undefined;
+    let providerTrafficPercent: Prisma.Decimal | undefined;
+    if (
+      data.forkTrafficPercent !== undefined ||
+      data.cardTrafficPercent !== undefined ||
+      data.providerTrafficPercent !== undefined
+    ) {
+      const n = normalizeCascadeMethodPercents({
+        fork: data.forkTrafficPercent ?? Number(row.forkTrafficPercent),
+        card: data.cardTrafficPercent ?? Number(row.cardTrafficPercent),
+        provider: data.providerTrafficPercent ?? Number(row.providerTrafficPercent),
+      });
+      const integration = await this.platformSettings.findOne(
+        PLATFORM_SETTING_PAYIN_PROVIDER_INTEGRATION_ENABLED,
+      );
+      if (n.provider > 1e-9 && integration.value.trim().toLowerCase() !== 'true') {
+        throw new BadRequestException(
+          'PROVIDER_TRAFFIC_REQUIRES_INTEGRATION: Enable pay-in provider integration before allocating provider traffic.',
+        );
+      }
+      forkTrafficPercent = new Prisma.Decimal(n.fork.toFixed(4));
+      cardTrafficPercent = new Prisma.Decimal(n.card.toFixed(4));
+      providerTrafficPercent = new Prisma.Decimal(n.provider.toFixed(4));
+    }
+
+    let fillMultipliersPersist:
+      | Prisma.NullableJsonNullValueInput
+      | Prisma.InputJsonValue
+      | undefined;
+    if (data.fillMultipliersConfig !== undefined) {
+      if (data.fillMultipliersConfig === null) {
+        fillMultipliersPersist = Prisma.JsonNull;
+      } else {
+        const parsed = parseFillMultiplierTiersJson(data.fillMultipliersConfig);
+        if (parsed === null) {
+          throw new BadRequestException(
+            'INVALID_FILL_MULTIPLIERS_CONFIG: Expected a JSON array of { from, to, multiplier } with 0 <= from < to <= 1.',
+          );
+        }
+        fillMultipliersPersist = data.fillMultipliersConfig as Prisma.InputJsonValue;
+      }
+    }
+
     return this.prisma.cascadeSetting.update({
       where: { id: row.id },
       data: {
@@ -1547,6 +2007,11 @@ export class CascadeService {
         ...(data.forkRatingWeight !== undefined
           ? { forkRatingWeight: data.forkRatingWeight }
           : {}),
+        ...(forkTrafficPercent !== undefined ? { forkTrafficPercent } : {}),
+        ...(cardTrafficPercent !== undefined ? { cardTrafficPercent } : {}),
+        ...(providerTrafficPercent !== undefined ? { providerTrafficPercent } : {}),
+        ...(data.levelPickMode !== undefined ? { levelPickMode: data.levelPickMode } : {}),
+        ...(fillMultipliersPersist !== undefined ? { fillMultipliersConfig: fillMultipliersPersist } : {}),
         updatedById,
       },
     });

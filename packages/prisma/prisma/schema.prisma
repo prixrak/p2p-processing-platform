@@ -169,6 +169,7 @@ model Currency {
   payoutOrders                     PayoutOrder[]
   settlements                      Settlement[]
   merchantBalanceTransactions      MerchantBalanceTransaction[]
+  cascadeLevelDebt                 CascadeLevelDebt?
 
   @@map("currencies")
 }
@@ -457,6 +458,21 @@ enum TraderProcessingMethod {
   @@map("trader_processing_method")
 }
 
+enum CascadeLevelPickMode {
+  DEBT
+  STOCHASTIC
+
+  @@map("cascade_level_pick_mode")
+}
+
+enum CascadeAssignmentLevel {
+  FORK
+  CARD
+  PROVIDER
+
+  @@map("cascade_assignment_level")
+}
+
 model TraderProfile {
   id              String   @id @default(uuid()) @db.Uuid
   userId          String   @unique @map("user_id") @db.Uuid
@@ -476,8 +492,10 @@ model TraderProfile {
   usdtErc20DepositAddress String? @map("usdt_erc20_deposit_address") @db.VarChar(42)
   /// Pay-In cascade: CARD vs FORK (affects Fork autolimits only).
   processingMethod TraderProcessingMethod @default(CARD) @map("processing_method")
-  /// Target traffic share among eligible traders (0–100). Sum across participating traders should be 100.
+  /// Legacy field — no longer used by cascade v3.1 (method-level shares replace trader percentages).
   trafficPercent   Decimal              @default(0) @map("traffic_percent") @db.Decimal(8, 4)
+  /// Pay-In idle-race multiplier for this trader (1 = default).
+  cascadeRatingMultiplier Decimal @default(1) @map("cascade_rating_multiplier") @db.Decimal(12, 6)
   createdAt       DateTime @default(now()) @map("created_at")
 
   user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -542,12 +560,21 @@ model WalletSweepLog {
 
 model CascadeSetting {
   id                 String   @id @default(uuid()) @db.Uuid
+  /// Legacy — trader-percent sliding window removed from cascade v3.1; column retained for compatibility.
   slidingWindowHours Int      @default(24) @map("sliding_window_hours")
   /// Fraction of remaining capacity at which Fork autolimits activate (e.g. 0.20).
   autolimitThreshold Decimal  @default(0.20) @map("autolimit_threshold") @db.Decimal(8, 6)
   autolimitEnabled   Boolean  @default(true) @map("autolimit_enabled")
+  /// Legacy display weights — idle race uses trader multiplier + newcomer boost (v3.1).
   cardRatingWeight   Int      @default(100) @map("card_rating_weight")
   forkRatingWeight   Int      @default(150) @map("fork_rating_weight")
+  /// Target share of Pay-In assignments routed to Fork trader pool (0–100); trio should sum to 100.
+  forkTrafficPercent     Decimal @default(70) @map("fork_traffic_percent") @db.Decimal(8, 4)
+  cardTrafficPercent     Decimal @default(30) @map("card_traffic_percent") @db.Decimal(8, 4)
+  providerTrafficPercent Decimal @default(0) @map("provider_traffic_percent") @db.Decimal(8, 4)
+  levelPickMode          CascadeLevelPickMode @default(DEBT) @map("level_pick_mode")
+  /// Optional JSON array of { from, to, multiplier } for Fork fill_multiplier (TZ §7.3); null = app defaults.
+  fillMultipliersConfig Json? @map("fill_multipliers_config")
   updatedAt          DateTime @updatedAt @map("updated_at")
   updatedById        String?  @map("updated_by_id") @db.Uuid
 
@@ -556,12 +583,28 @@ model CascadeSetting {
   @@map("cascade_settings")
 }
 
+/// Per-currency accumulators for deterministic primary-level selection (method-level debt / credits).
+model CascadeLevelDebt {
+  id             String   @id @default(uuid()) @db.Uuid
+  currencyId     String   @unique @map("currency_id") @db.Uuid
+  forkCredit     Decimal  @default(0) @map("fork_credit") @db.Decimal(24, 12)
+  cardCredit     Decimal  @default(0) @map("card_credit") @db.Decimal(24, 12)
+  providerCredit Decimal  @default(0) @map("provider_credit") @db.Decimal(24, 12)
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  currency Currency @relation(fields: [currencyId], references: [id], onDelete: Cascade)
+
+  @@map("cascade_level_debts")
+}
+
 model TrafficDistributionLog {
   id               String                 @id @default(uuid()) @db.Uuid
   traderId         String                 @map("trader_id") @db.Uuid
   payinOrderId     String                 @unique @map("payin_order_id") @db.Uuid
   amount           Decimal                @db.Decimal(18, 4)
   processingMethod TraderProcessingMethod @map("processing_method")
+  cascadeAssignmentLevel CascadeAssignmentLevel? @map("cascade_assignment_level")
+  cascadePrimaryAssignmentLevel CascadeAssignmentLevel? @map("cascade_primary_assignment_level")
   createdAt        DateTime               @default(now()) @map("created_at")
 
   trader     TraderProfile @relation(fields: [traderId], references: [id], onDelete: Cascade)
@@ -653,8 +696,14 @@ model Requisite {
   limitTotalAmount  Decimal                  @default(999999999) @map("limit_total_amount") @db.Decimal(18, 4)
   limitTotalOps     Int                      @default(999999) @map("limit_total_ops")
   usedAmount        Decimal                  @default(0) @map("used_amount") @db.Decimal(18, 4)
+  /// Sum of Pay-In amounts in terminal paid outcomes (PAID / UNDERPAID / OVERPAID) for Fork fill_multiplier (TZ §3.4).
+  confirmedPayinAmount Decimal               @default(0) @map("confirmed_payin_amount") @db.Decimal(18, 4)
   usedOps           Int                      @default(0) @map("used_ops")
   currencyId        String                   @map("currency_id") @db.Uuid
+  /// Baseline for Pay-In cascade idle-time race; reset on assignment and when min/max amounts change.
+  cascadeIdleAnchorAt DateTime               @default(now()) @map("cascade_idle_anchor_at")
+  /// Count of Pay-In orders assigned to this requisite (newcomer boost while zero).
+  payinAssignmentsCount Int                  @default(0) @map("payin_assignments_count")
   createdAt         DateTime                 @default(now()) @map("created_at")
 
   trader        TraderProfile  @relation(fields: [traderId], references: [id], onDelete: Cascade)
@@ -707,6 +756,10 @@ model PayinOrder {
   requisiteId       String?     @map("requisite_id") @db.Uuid
   paymentMethodId   String?     @map("payment_method_id") @db.Uuid
   amount            Decimal     @db.Decimal(18, 4)
+  /// Fiat amount recorded when order reaches PAID/UNDERPAID/OVERPAID (reverses requisite confirmed_payin_amount on APPEAL).
+  receivedFiatAmount Decimal?   @map("received_fiat_amount") @db.Decimal(18, 4)
+  /// External Pay-In provider reference when assigned via provider bridge (TZ §5–6).
+  providerExternalRef String? @map("provider_external_ref") @db.VarChar(512)
   currencyId        String      @map("currency_id") @db.Uuid
   commissionPercent Decimal     @default(0) @map("commission_percent") @db.Decimal(8, 4)
   commission        Decimal     @default(0) @db.Decimal(18, 4)
@@ -745,6 +798,7 @@ model PayinOrder {
   webhookOutbox WebhookOutbox[]
   trafficDistributionLog TrafficDistributionLog?
   forkChatProofs PayinForkChatProof[]
+  assignmentLog PayinOrderAssignmentLog?
 
   @@unique([merchantId, requestId])
   @@index([status])
@@ -753,6 +807,23 @@ model PayinOrder {
   @@index([currencyId])
   @@index([createdAt])
   @@map("payin_orders")
+}
+
+model PayinOrderAssignmentLog {
+  id                        String   @id @default(uuid()) @db.Uuid
+  payinOrderId              String   @unique @map("payin_order_id") @db.Uuid
+  amount                    Decimal  @db.Decimal(18, 4)
+  currencyCode              String   @map("currency_code") @db.VarChar(16)
+  primaryBucket             CascadeAssignmentLevel @map("primary_bucket")
+  finalBucket               CascadeAssignmentLevel @map("final_bucket")
+  isFallback                Boolean  @default(false) @map("is_fallback")
+  /// True when primary tier was PROVIDER and the order landed on PROVIDER (counts toward provider share plan per TZ §5.4).
+  providerTrafficPlanHit    Boolean  @default(false) @map("provider_traffic_plan_hit")
+  createdAt                 DateTime @default(now()) @map("created_at")
+
+  payinOrder PayinOrder @relation(fields: [payinOrderId], references: [id], onDelete: Cascade)
+
+  @@map("payin_order_assignment_logs")
 }
 
 // ─── Pay-Out Orders ───
@@ -823,6 +894,8 @@ model PayoutOrder {
   completionProofFile File?        @relation("PayoutOrderCompletionProof", fields: [completionProofFileId], references: [id], onDelete: SetNull)
   /// When status is FAILED after trader/specialist rejection (card inactive / funds returned).
   traderRejectReason PayoutTraderRejectReason? @map("trader_reject_reason")
+  /// Plain-language detail when `traderRejectReason` is OTHER (cabinet-required copy).
+  traderRejectOtherNote String? @map("trader_reject_other_note") @db.Text
   /// Client IP on external API order creation (first X-Forwarded-For hop or socket IP).
   partnerIp       String?           @map("partner_ip") @db.VarChar(45)
   /// External merchant API path that created this row (e.g. /api/external/v1/payout/order_upload).

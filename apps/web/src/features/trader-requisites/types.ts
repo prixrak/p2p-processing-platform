@@ -4,6 +4,9 @@ export interface VolumeBreakdown {
   amountInProcessing: number;
   amountCompleted: number;
   amountRemaining: number;
+  opsInProcessing: number;
+  opsCompleted: number;
+  opsRemaining: number;
 }
 
 export interface RequisiteApiRow {

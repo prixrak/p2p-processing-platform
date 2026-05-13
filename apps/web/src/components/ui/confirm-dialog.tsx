@@ -20,6 +20,7 @@ export function ConfirmDialog({
   onConfirm,
   confirmDisabled,
   icon,
+  children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -33,6 +34,8 @@ export function ConfirmDialog({
   confirmDisabled?: boolean;
   /** Optional icon beside the title (defaults to warning for danger tone). */
   icon?: ReactNode;
+  /** Extra body below the description (e.g. file upload). */
+  children?: ReactNode;
 }) {
   const resolvedIcon =
     icon ??
@@ -53,6 +56,7 @@ export function ConfirmDialog({
             {description ? (
               <div className="text-sm text-text-secondary leading-relaxed">{description}</div>
             ) : null}
+            {children ? <div className="pt-2">{children}</div> : null}
           </div>
         </div>
         <div className="flex flex-wrap justify-end gap-2 pt-1">

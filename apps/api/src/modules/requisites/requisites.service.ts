@@ -4,14 +4,16 @@ import {
   Logger,
   BadRequestException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { normalizeRequisiteIdentifier, RequisiteType } from '@p2p/shared';
+import { Prisma, RequisiteDisabledReason } from '@prisma/client';
+import { normalizeRequisiteIdentifier, RequisiteType, AuditAction, AuditEntityType } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
 import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
 import { CascadeService } from '../cascade/cascade.service';
 import { CascadeRedisStateService } from '../cascade/cascade-redis-state.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateRequisiteDto } from './dto/create-requisite.dto';
 import { UpdateRequisiteDto } from './dto/update-requisite.dto';
+import { randomUUID } from 'node:crypto';
 
 @Injectable()
 export class RequisitesService {
@@ -26,6 +28,7 @@ export class RequisitesService {
     private readonly cascadeService: CascadeService,
     private readonly exchangeRate: ExchangeRateService,
     private readonly cascadeCoverageCache: CascadeRedisStateService,
+    private readonly auditService: AuditService,
   ) {}
 
   /** A requisite may not remain active while its payment group is off or archived. */
@@ -97,9 +100,10 @@ export class RequisitesService {
         currency,
         parserRate,
         enforceUsdtCapacity: currencyUsesBinanceParserRate,
+        providerIdempotencyKey: randomUUID(),
       });
 
-      if (!picked) return null;
+      if (!picked || picked.kind === 'provider') return null;
 
       return tx.requisite.findUnique({
         where: { id: picked.requisiteId },
@@ -121,36 +125,116 @@ export class RequisitesService {
   /**
    * Increment usage inside an existing transaction (e.g. pay-in status change).
    * Mirrors {@link updateUsage} auto-disable rules.
+   *
+   * Enforces limits atomically: if used_amount + amount would exceed limit_total_amount
+   * (or used_ops + 1 would exceed limit_total_ops), the update affects no row and this throws.
    */
   async incrementUsageInTransaction(
     tx: Prisma.TransactionClient,
     requisiteId: string,
     amount: number,
+    options?: { recordPayInCascadeAssignment?: boolean },
   ): Promise<void> {
-    const requisite = await tx.requisite.update({
-      where: { id: requisiteId },
-      data: {
-        usedAmount: { increment: amount },
-        usedOps: { increment: 1 },
-      },
-      include: { currency: { select: { code: true } } },
-    });
+    if (!(Number.isFinite(amount) && amount > 0)) {
+      throw new BadRequestException(
+        'REQUISITE_USAGE_INVALID_AMOUNT: reservation amount must be a positive finite number',
+      );
+    }
 
+    const record = options?.recordPayInCascadeAssignment ?? false;
+
+    const rows = await tx.$queryRaw<
+      Array<{
+        id: string;
+        used_amount: Prisma.Decimal;
+        limit_total_amount: Prisma.Decimal;
+        used_ops: number;
+        limit_total_ops: number;
+        currency_id: string;
+      }>
+    >`
+      UPDATE requisites
+      SET
+        used_amount = used_amount + ${amount}::numeric,
+        used_ops = used_ops + 1,
+        cascade_idle_anchor_at = CASE WHEN ${record} THEN NOW() ELSE cascade_idle_anchor_at END,
+        payin_assignments_count = payin_assignments_count + CASE WHEN ${record} THEN 1 ELSE 0 END
+      WHERE id = CAST(${requisiteId} AS uuid)
+        AND used_amount + ${amount}::numeric <= limit_total_amount
+        AND used_ops + 1 <= limit_total_ops
+      RETURNING id, used_amount, limit_total_amount, used_ops, limit_total_ops, currency_id
+    `;
+
+    if (rows.length === 0) {
+      const exists = await tx.requisite.findUnique({
+        where: { id: requisiteId },
+        select: {
+          id: true,
+          usedAmount: true,
+          limitTotalAmount: true,
+          usedOps: true,
+          limitTotalOps: true,
+        },
+      });
+      if (!exists) {
+        throw new NotFoundException(`Requisite ${requisiteId} not found`);
+      }
+      throw new BadRequestException(
+        'REQUISITE_LIMIT_EXCEEDED: This requisite cannot accept this assignment — total amount limit or operation cap would be exceeded.',
+      );
+    }
+
+    const r = rows[0];
     const amountLimitReached =
-      Number(requisite.usedAmount) >= Number(requisite.limitTotalAmount);
-    const txLimitReached = requisite.usedOps >= requisite.limitTotalOps;
+      Number(r.used_amount) >= Number(r.limit_total_amount);
+    const txLimitReached = r.used_ops >= r.limit_total_ops;
 
     if (amountLimitReached || txLimitReached) {
-      const reason = amountLimitReached ? 'LIMIT_AMOUNT' : 'LIMIT_TX';
+      const reason = amountLimitReached
+        ? RequisiteDisabledReason.LIMIT_AMOUNT
+        : RequisiteDisabledReason.LIMIT_TX;
       await tx.requisite.update({
         where: { id: requisiteId },
         data: { isActive: false, disabledReason: reason },
       });
       this.logger.warn(
-        `Requisite ${requisiteId} auto-disabled [${reason}]: usedAmount=${requisite.usedAmount}, usedOps=${requisite.usedOps}`,
+        `Requisite ${requisiteId} auto-disabled [${reason}]: usedAmount=${r.used_amount}, usedOps=${r.used_ops}`,
       );
     }
-    void this.cascadeCoverageCache.invalidateCurrency(requisite.currency.code);
+
+    const cur = await tx.currency.findUnique({
+      where: { id: r.currency_id },
+      select: { code: true },
+    });
+    if (cur?.code) void this.cascadeCoverageCache.invalidateCurrency(cur.code);
+  }
+
+  /**
+   * Adjust cumulative confirmed Pay-In fiat on a requisite (paid outcomes). Clamped at zero.
+   */
+  async adjustConfirmedPayinVolumeInTransaction(
+    tx: Prisma.TransactionClient,
+    requisiteId: string,
+    delta: number,
+  ): Promise<void> {
+    if (!Number.isFinite(delta) || delta === 0) return;
+
+    await tx.$executeRaw`
+      UPDATE requisites
+      SET confirmed_payin_amount = GREATEST(
+        0::numeric,
+        confirmed_payin_amount + ${delta}::numeric
+      )
+      WHERE id = CAST(${requisiteId} AS uuid)
+    `;
+
+    const row = await tx.requisite.findUnique({
+      where: { id: requisiteId },
+      select: { currency: { select: { code: true } } },
+    });
+    if (row?.currency.code) {
+      void this.cascadeCoverageCache.invalidateCurrency(row.currency.code);
+    }
   }
 
   /**
@@ -328,8 +412,35 @@ export class RequisitesService {
     return requisite;
   }
 
-  async update(id: string, dto: UpdateRequisiteDto) {
-    await this.findById(id);
+  async update(
+    id: string,
+    dto: UpdateRequisiteDto,
+    auditActor?: { id: string; role: string },
+  ) {
+    const prev = await this.findById(id);
+    const usedAmt = Number(prev.usedAmount);
+    const usedOp = prev.usedOps;
+    if (dto.limitTotalAmount !== undefined) {
+      const nextLim = Number(dto.limitTotalAmount);
+      if (
+        Number.isFinite(nextLim) &&
+        nextLim > 0 &&
+        nextLim + 1e-9 < usedAmt
+      ) {
+        throw new BadRequestException(
+          'REQUISITE_LIMIT_BELOW_USAGE: Total amount limit cannot be set below current reserved usage on this requisite.',
+        );
+      }
+    }
+    if (dto.limitTotalOps !== undefined && dto.limitTotalOps < usedOp) {
+      throw new BadRequestException(
+        'REQUISITE_LIMIT_BELOW_USAGE: Operation limit cannot be set below the number of operations already reserved on this requisite.',
+      );
+    }
+    const minChanged =
+      dto.minAmount !== undefined && Number(prev.minAmount) !== dto.minAmount;
+    const maxChanged =
+      dto.maxAmount !== undefined && Number(prev.maxAmount) !== dto.maxAmount;
     const updated = await this.prisma.requisite.update({
       where: { id },
       data: {
@@ -346,10 +457,30 @@ export class RequisitesService {
         ...(dto.limitTotalOps !== undefined
           ? { limitTotalOps: dto.limitTotalOps }
           : {}),
+        ...(minChanged || maxChanged ? { cascadeIdleAnchorAt: new Date() } : {}),
       },
       include: { bank: true, group: true, currency: { select: { code: true } } },
     });
     void this.cascadeCoverageCache.invalidateCurrency(updated.currency.code);
+
+    if ((minChanged || maxChanged) && auditActor) {
+      await this.auditService.log({
+        actorId: auditActor.id,
+        actorRole: auditActor.role,
+        action: AuditAction.CASCADE_IDLE_ANCHOR_RESET,
+        entityType: AuditEntityType.Requisite,
+        entityId: id,
+        oldValue: {
+          minAmount: Number(prev.minAmount),
+          maxAmount: Number(prev.maxAmount),
+        },
+        newValue: {
+          minAmount: Number(updated.minAmount),
+          maxAmount: Number(updated.maxAmount),
+        },
+      });
+    }
+
     return updated;
   }
 

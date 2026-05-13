@@ -51,8 +51,19 @@ import { TelegramService } from '../telegram/telegram.service';
 import { CurrenciesService } from '../currencies/currencies.service';
 import type { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
-import { OrderUploadDto, PayoutOrderInfoDto, PayoutListFiltersDto, SpecialistCompleteDto } from './dto';
+import {
+  OrderUploadDto,
+  PayoutOrderInfoDto,
+  PayoutListFiltersDto,
+  SpecialistCompleteDto,
+  AttachCompletionProofDto,
+  TraderFailDto,
+} from './dto';
 import { PayoutRealtimeService } from './payout-realtime.service';
+import {
+  parsePayoutTraderRejectBody,
+  PayoutTraderRejectPayloadError,
+} from './payout-trader-reject.util';
 import { computePayoutPoolCloseDeadline } from './payout-pool-close-deadline.util';
 import type { ExternalOrderCreationMeta } from '../../common/utils/partner-request-meta';
 
@@ -102,18 +113,6 @@ function csvEscape(value: string): string {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
-}
-
-function resolvePayoutRejectReason(
-  code: PayoutTraderRejectReasonApi | undefined,
-): PayoutTraderRejectReason {
-  if (code === PayoutTraderRejectReasonApi.FOREIGN_CARD) {
-    return PayoutTraderRejectReason.FOREIGN_CARD;
-  }
-  if (code === PayoutTraderRejectReasonApi.CARD_REFUND_IN_PROGRESS) {
-    return PayoutTraderRejectReason.CARD_REFUND_IN_PROGRESS;
-  }
-  return PayoutTraderRejectReason.OTHER;
 }
 
 @Injectable()
@@ -1434,7 +1433,22 @@ export class PayoutService {
 
   // ─── Internal: traderComplete ───
 
-  async traderComplete(traderId: string, orderId: string): Promise<PayOutOrderApiDto> {
+  async traderComplete(
+    traderId: string,
+    orderId: string,
+    userId: string,
+    dto?: SpecialistCompleteDto,
+  ): Promise<PayOutOrderApiDto> {
+    const proofId = dto?.completion_proof_file_id;
+    if (proofId) {
+      const file = await this.prisma.file.findFirst({
+        where: { id: proofId, uploadedBy: userId },
+      });
+      if (!file) {
+        throw new BadRequestException('Proof file not found or was uploaded by another user');
+      }
+    }
+
     const order = await this.prisma.payoutOrder.findFirst({
       where: { id: orderId, traderId },
     });
@@ -1449,7 +1463,11 @@ export class PayoutService {
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.payoutOrder.update({
         where: { id: orderId },
-        data: { status: 'COMPLETED', endAt: new Date() },
+        data: {
+          status: 'COMPLETED',
+          endAt: new Date(),
+          ...(proofId ? { completionProofFileId: proofId } : {}),
+        },
       });
 
       if (
@@ -1482,13 +1500,74 @@ export class PayoutService {
     return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
 
+  private async assertCompletionProofFileOwned(fileId: string, userId: string): Promise<void> {
+    const file = await this.prisma.file.findFirst({
+      where: { id: fileId, uploadedBy: userId },
+    });
+    if (!file) {
+      throw new BadRequestException('Proof file not found or was uploaded by another user');
+    }
+  }
+
+  /**
+   * Standard trader: set or replace completion proof after the order is already COMPLETED.
+   */
+  async traderAttachCompletionProof(
+    traderId: string,
+    userId: string,
+    orderId: string,
+    dto: AttachCompletionProofDto,
+  ): Promise<PayOutOrderApiDto> {
+    await this.assertCompletionProofFileOwned(dto.completion_proof_file_id, userId);
+    const order = await this.prisma.payoutOrder.findFirst({
+      where: { id: orderId, traderId, status: 'COMPLETED' },
+    });
+    if (!order) {
+      throw new NotFoundException(
+        'Order not found, not assigned to this trader, or not in COMPLETED status',
+      );
+    }
+
+    const updated = await this.prisma.payoutOrder.update({
+      where: { id: orderId },
+      data: { completionProofFileId: dto.completion_proof_file_id },
+    });
+
+    this.emitPayoutOrderRealtime(updated, false);
+    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+  }
+
+  /**
+   * Pay-out specialist: set or replace completion proof after the order is already COMPLETED.
+   */
+  async specialistAttachCompletionProof(
+    payoutTraderId: string,
+    userId: string,
+    orderId: string,
+    dto: AttachCompletionProofDto,
+  ): Promise<PayOutOrderApiDto> {
+    await this.assertCompletionProofFileOwned(dto.completion_proof_file_id, userId);
+    const order = await this.prisma.payoutOrder.findFirst({
+      where: { id: orderId, payoutTraderId, status: 'COMPLETED' },
+    });
+    if (!order) {
+      throw new NotFoundException(
+        'Order not found, not assigned to this specialist, or not in COMPLETED status',
+      );
+    }
+
+    const updated = await this.prisma.payoutOrder.update({
+      where: { id: orderId },
+      data: { completionProofFileId: dto.completion_proof_file_id },
+    });
+
+    this.emitPayoutOrderRealtime(updated, false);
+    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+  }
+
   // ─── Internal: traderFail ───
 
-  async traderFail(
-    traderId: string,
-    orderId: string,
-    reasonCode?: PayoutTraderRejectReasonApi,
-  ): Promise<PayOutOrderApiDto> {
+  async traderFail(traderId: string, orderId: string, dto: TraderFailDto): Promise<PayOutOrderApiDto> {
     const order = await this.prisma.payoutOrder.findFirst({
       where: { id: orderId, traderId },
     });
@@ -1500,12 +1579,25 @@ export class PayoutService {
       );
     }
 
-    const rejectReason = resolvePayoutRejectReason(reasonCode);
+    let rejectPayload: { reason: PayoutTraderRejectReason; otherNote: string | null };
+    try {
+      rejectPayload = parsePayoutTraderRejectBody(dto);
+    } catch (err) {
+      if (err instanceof PayoutTraderRejectPayloadError) {
+        throw new BadRequestException(err.message);
+      }
+      throw err;
+    }
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.payoutOrder.update({
         where: { id: orderId },
-        data: { status: 'FAILED', endAt: new Date(), traderRejectReason: rejectReason },
+        data: {
+          status: 'FAILED',
+          endAt: new Date(),
+          traderRejectReason: rejectPayload.reason,
+          traderRejectOtherNote: rejectPayload.otherNote,
+        },
       });
 
       if (order.merchantDebitLocal != null) {
@@ -1577,6 +1669,7 @@ export class PayoutService {
           endAt: null,
           poolAssignedAt: new Date(),
           traderRejectReason: null,
+          traderRejectOtherNote: null,
         },
       });
       await this.createPayoutWebhookEntry(tx, result);
@@ -1789,6 +1882,7 @@ export class PayoutService {
           endAt: null,
           poolAssignedAt: new Date(),
           traderRejectReason: null,
+          traderRejectOtherNote: null,
         },
       });
       await this.createPayoutWebhookEntry(tx, result);
@@ -1803,7 +1897,7 @@ export class PayoutService {
   async specialistFail(
     payoutTraderId: string,
     orderId: string,
-    reasonCode?: PayoutTraderRejectReasonApi,
+    dto: TraderFailDto,
   ): Promise<PayOutOrderApiDto> {
     const order = await this.prisma.payoutOrder.findFirst({
       where: { id: orderId, payoutTraderId },
@@ -1822,12 +1916,25 @@ export class PayoutService {
       throw new BadRequestException(`Invalid status transition: ${order.status} -> FAILED`);
     }
 
-    const rejectReason = resolvePayoutRejectReason(reasonCode);
+    let rejectPayload: { reason: PayoutTraderRejectReason; otherNote: string | null };
+    try {
+      rejectPayload = parsePayoutTraderRejectBody(dto);
+    } catch (err) {
+      if (err instanceof PayoutTraderRejectPayloadError) {
+        throw new BadRequestException(err.message);
+      }
+      throw err;
+    }
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.payoutOrder.update({
         where: { id: orderId },
-        data: { status: 'FAILED', endAt: new Date(), traderRejectReason: rejectReason },
+        data: {
+          status: 'FAILED',
+          endAt: new Date(),
+          traderRejectReason: rejectPayload.reason,
+          traderRejectOtherNote: rejectPayload.otherNote,
+        },
       });
 
       if (order.merchantDebitLocal != null) {
@@ -2109,6 +2216,7 @@ export class PayoutService {
         : order.traderRejectReason === null
           ? null
           : undefined,
+      trader_reject_other_note: order.traderRejectOtherNote ?? null,
     };
 
     if (!opts?.poolListing) {

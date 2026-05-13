@@ -15,11 +15,16 @@ export type CascadeReqSnapshotRow = {
   processingMethod: string;
   usedAmount: number;
   limitTotalAmount: number;
+  /** Confirmed Pay-In fiat volume (paid outcomes); fork-tier fill multiplier input */
+  confirmedPayinAmount: number;
   usedOps: number;
   limitTotalOps: number;
   minAmount: number;
   maxAmount: number;
   payinRate: number;
+  cascadeIdleAnchorAt: string;
+  payinAssignmentsCount: number;
+  cascadeRatingMultiplier: number;
 };
 
 /**
@@ -39,7 +44,16 @@ export type CascadeReqRedisMeta = {
   fork_autolimit_active: boolean;
   /** remaining_amount / remaining_tx when Fork autolimit is active */
   fork_auto_min_estimate?: number;
-  /** Weighted Level-2 score (fill_ratio × method weight) */
+  /** TZ fork: confirmed_payin_amount / limit_total_amount */
+  confirmed_fill_ratio: number;
+  /** TZ fork fill multiplier steps from confirmed_fill_ratio */
+  fill_multiplier: number;
+  /** Idle-time race (TZ v3.1): ms since cascade idle anchor */
+  idle_ms?: number;
+  newcomer_boost: number;
+  /** Tier-specific idle race score (fork vs card formula) */
+  race_score: number;
+  /** Same as race_score; kept for API compatibility */
   weighted_score: number;
   /** Preview: eligible for default preview amount (see payload preview_amount) */
   is_eligible_preview: boolean;
@@ -52,9 +66,11 @@ export type CascadeStoredSnapshot = CascadeReqSnapshotRow & {
 };
 
 export type CascadeCurrencyPayload = {
-  payload_version: 3;
+  payload_version: 6;
   /** Deterministic fingerprint of requisite usage rows for cache validation inside transactions */
   snapshot_row_sig: string;
+  /** Fingerprint of `cascade_settings.fill_multipliers_config` JSON (invalidates ranking when ladder changes). */
+  fill_config_fingerprint: string;
   nominal_amounts: number[];
   nominals: CoverageNominalRow[];
   snapshots: CascadeStoredSnapshot[];
