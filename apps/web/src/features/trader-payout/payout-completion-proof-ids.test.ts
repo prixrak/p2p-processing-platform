@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { PayOutOrderApiDto } from '@p2p/shared';
 import { DetailsType, PayOutOrderStatus } from '@p2p/shared';
-import { payoutCompletionProofFileIds } from './payout-completion-proof-ids';
+import {
+  mergeCompletionProofUploadIdsForComplete,
+  payoutCompletionProofFileIds,
+} from './payout-completion-proof-ids';
 
 const base: PayOutOrderApiDto = {
   id: '00000000-0000-0000-0000-000000000001',
@@ -31,12 +34,34 @@ describe('payoutCompletionProofFileIds', () => {
     ).toEqual([a, b]);
   });
 
-  it('falls back to legacy single id', () => {
+  it('falls back to single-column completion_proof_file_id', () => {
     const id = '44444444-4444-4444-4444-444444444444';
     expect(payoutCompletionProofFileIds({ ...base, completion_proof_file_id: id })).toEqual([id]);
   });
 
   it('returns empty array when no proofs', () => {
     expect(payoutCompletionProofFileIds(base)).toEqual([]);
+  });
+});
+
+describe('mergeCompletionProofUploadIdsForComplete', () => {
+  it('appends staged then new uploads, skips duplicates', () => {
+    const a = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    const b = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+    const c = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+    expect(mergeCompletionProofUploadIdsForComplete([a], [b, a, c], 10)).toEqual([a, b, c]);
+  });
+
+  it('caps merged list', () => {
+    const ids = Array.from({ length: 10 }, (_, i) =>
+      `aaaaaaaa-aaaa-aaaa-aaaa-${i.toString().padStart(12, '0')}`,
+    );
+    expect(
+      mergeCompletionProofUploadIdsForComplete(
+        ids.slice(0, 3),
+        ids.slice(3, 7),
+        5,
+      ),
+    ).toHaveLength(5);
   });
 });

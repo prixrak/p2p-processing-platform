@@ -112,7 +112,7 @@ export class HmacAuthGuard implements CanActivate {
     try {
       rawSecret = decryptSecret(merchantApiKey.secretKeyHash);
     } catch {
-      this.logger.error(`Failed to decrypt secret for key ${merchantApiKey.id}, may be legacy SHA256 format`);
+      this.logger.error(`Failed to decrypt secret for key ${merchantApiKey.id}, may be SHA256-fingerprint-only blob`);
       throw new UnauthorizedException('Invalid API key configuration');
     }
 

@@ -1,7 +1,9 @@
 import {
   Controller,
+  Delete,
   Post,
   Get,
+  HttpCode,
   Param,
   Res,
   UploadedFile,
@@ -135,5 +137,30 @@ export class FilesController {
   ) {
     const url = await this.filesService.getSignedUrl(id, user);
     res.redirect(url);
+  }
+
+  /**
+   * Hard delete: removes the S3 object and DB row. Refuses with 409 when the file is
+   * still attached to an appeal proof, pay-in fork chat proof, bank logo, or a pay-out
+   * completion proof. Use the matching cabinet endpoint (e.g. payout `completion-proof/:fileId`)
+   * to first detach, then purge.
+   */
+  @Delete(':id')
+  @HttpCode(204)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.OWNER,
+    UserRole.TRADER,
+    UserRole.PAYOUT_TRADER,
+    UserRole.MERCHANT,
+  )
+  @ApiOperation({
+    summary: 'Hard-delete an uploaded file (S3 + DB). Uploader or admin/owner only; refuses while attached.',
+  })
+  async deleteFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: FileDownloadActor,
+  ): Promise<void> {
+    await this.filesService.deleteOrphanFile({ id: user.id, role: user.role }, id);
   }
 }

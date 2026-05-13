@@ -492,8 +492,6 @@ model TraderProfile {
   usdtErc20DepositAddress String? @map("usdt_erc20_deposit_address") @db.VarChar(42)
   /// Pay-In cascade: CARD vs FORK (affects Fork autolimits only).
   processingMethod TraderProcessingMethod @default(CARD) @map("processing_method")
-  /// Legacy field — no longer used by cascade v3.1 (method-level shares replace trader percentages).
-  trafficPercent   Decimal              @default(0) @map("traffic_percent") @db.Decimal(8, 4)
   /// Pay-In idle-race multiplier for this trader (1 = default).
   cascadeRatingMultiplier Decimal @default(1) @map("cascade_rating_multiplier") @db.Decimal(12, 6)
   createdAt       DateTime @default(now()) @map("created_at")
@@ -560,14 +558,9 @@ model WalletSweepLog {
 
 model CascadeSetting {
   id                 String   @id @default(uuid()) @db.Uuid
-  /// Legacy — trader-percent sliding window removed from cascade v3.1; column retained for compatibility.
-  slidingWindowHours Int      @default(24) @map("sliding_window_hours")
   /// Fraction of remaining capacity at which Fork autolimits activate (e.g. 0.20).
   autolimitThreshold Decimal  @default(0.20) @map("autolimit_threshold") @db.Decimal(8, 6)
   autolimitEnabled   Boolean  @default(true) @map("autolimit_enabled")
-  /// Legacy display weights — idle race uses trader multiplier + newcomer boost (v3.1).
-  cardRatingWeight   Int      @default(100) @map("card_rating_weight")
-  forkRatingWeight   Int      @default(150) @map("fork_rating_weight")
   /// Target share of Pay-In assignments routed to Fork trader pool (0–100); trio should sum to 100.
   forkTrafficPercent     Decimal @default(70) @map("fork_traffic_percent") @db.Decimal(8, 4)
   cardTrafficPercent     Decimal @default(30) @map("card_traffic_percent") @db.Decimal(8, 4)
@@ -778,7 +771,7 @@ model PayinOrder {
   confirmedAt       DateTime?   @map("confirmed_at")
   completedAt       DateTime?   @map("completed_at")
   isH2h             Boolean     @default(false) @map("is_h2h")
-  /// Snapshot of trader cascade method when requisite is assigned; null for NO_REQUISITE or legacy rows (see traffic_distribution_logs / migration backfill).
+  /// Snapshot of trader cascade method when requisite is assigned; null for NO_REQUISITE or rows without a captured method (see traffic_distribution_logs / migrations).
   traderProcessingMethod TraderProcessingMethod? @map("trader_processing_method")
   /// FORK flow: optional exchange / counterparty reference (set by trader).
   forkExchangeReference String? @map("fork_exchange_reference") @db.VarChar(512)

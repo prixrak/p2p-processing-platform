@@ -32,7 +32,7 @@ function parseCountryCount(raw: unknown): CountryListItem['_count'] | undefined 
   return undefined;
 }
 
-/** Maps GET /countries rows (nested `currency` or legacy string) into a stable UI shape. */
+/** Maps GET /countries rows (nested `currency` or flat string currency code) into a stable UI shape. */
 export function normalizeCountryListRow(raw: unknown): CountryListItem | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;

@@ -9,7 +9,15 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, ChevronDown, ExternalLink, ImagePlus, Play } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChevronDown,
+  ExternalLink,
+  ImagePlus,
+  Loader2,
+  Play,
+  X,
+} from 'lucide-react';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { PayOutOrderStatus, PayoutTraderRejectReason, MAX_PAYOUT_COMPLETION_PROOF_FILES } from '@p2p/shared';
 import type { PayOutOrderApiDto } from '@p2p/shared';
@@ -25,7 +33,11 @@ import { AuthorizedFilePreview } from '@/components/files/authorized-file-previe
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import type { PayoutCompleteVars } from './trader-payout-columns';
-import { payoutCompletionProofFileIds } from './payout-completion-proof-ids';
+import {
+  mergeCompletionProofUploadIdsForComplete,
+  payoutCompletionProofFileIds,
+} from './payout-completion-proof-ids';
+
 
 export type PayoutRejectVars = {
   orderId: string;
@@ -99,6 +111,7 @@ export function TraderPayoutWorkflowActions({
   cancelMutation,
   rejectMutation,
   attachCompletionProofMutation,
+  detachCompletionProofMutation,
   layout = 'cell',
 }: {
   order: PayOutOrderApiDto;
@@ -106,19 +119,30 @@ export function TraderPayoutWorkflowActions({
   completeMutation: UseMutationResult<unknown, unknown, PayoutCompleteVars>;
   cancelMutation: UseMutationResult<unknown, unknown, string>;
   rejectMutation: UseMutationResult<unknown, unknown, PayoutRejectVars>;
-  /** When set, COMPLETED orders can append proof files via POST .../completion-proof. */
+  /** When set, PROCESSING and COMPLETED orders can append proof files via POST .../completion-proof. */
   attachCompletionProofMutation?: UseMutationResult<
     PayOutOrderApiDto,
     unknown,
     { orderId: string; fileIds: string[] }
   >;
+  /** When set, attached proofs can be removed via DELETE .../completion-proof/:fileId. */
+  detachCompletionProofMutation?: UseMutationResult<
+    PayOutOrderApiDto,
+    unknown,
+    { orderId: string; fileId: string }
+  >;
   layout?: 'cell' | 'toolbar';
 }) {
-  const [receiptFiles, setReceiptFiles] = useState<File[]>([]);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [receiptUploadKey, setReceiptUploadKey] = useState(0);
   const [receiptScratch, setReceiptScratch] = useState<File[]>([]);
+  const [savingReceiptAttachments, setSavingReceiptAttachments] = useState(false);
   const [viewingPayoutReceiptId, setViewingPayoutReceiptId] = useState<string | null>(null);
+  // Per-file deletion spinners so individual X buttons can show progress without
+  // blocking the rest of the modal.
+  const [pendingDeleteFileIds, setPendingDeleteFileIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const [completeConfirmFiles, setCompleteConfirmFiles] = useState<File[]>([]);
   const [completeConfirmUploadKey, setCompleteConfirmUploadKey] = useState(0);
@@ -135,8 +159,10 @@ export function TraderPayoutWorkflowActions({
   const [rejectReason, setRejectReason] = useState<PayoutTraderRejectReason | null>(null);
   const [rejectOtherNote, setRejectOtherNote] = useState('');
 
-  const persistHistoryProof =
-    attachCompletionProofMutation != null && order.status === PayOutOrderStatus.COMPLETED;
+  const persistProofsImmediately =
+    attachCompletionProofMutation != null &&
+    (order.status === PayOutOrderStatus.PROCESSING ||
+      order.status === PayOutOrderStatus.COMPLETED);
 
   const loadingAttachProof =
     attachCompletionProofMutation != null &&
@@ -150,68 +176,120 @@ export function TraderPayoutWorkflowActions({
   }, []);
 
   const saveReceiptModal = useCallback(async () => {
-    if (persistHistoryProof) {
-      if (receiptScratch.length === 0) {
-        setReceiptModalOpen(false);
-        return;
-      }
-      const maxAdd = Math.max(
-        0,
-        MAX_PAYOUT_COMPLETION_PROOF_FILES - payoutCompletionProofFileIds(order).length,
-      );
-      if (maxAdd === 0) {
-        setReceiptModalOpen(false);
-        return;
-      }
-      const toUpload = receiptScratch.slice(0, maxAdd);
-      try {
-        const uploadedIds: string[] = [];
-        for (const file of toUpload) {
-          const fd = new FormData();
-          fd.append('file', file);
-          const meta = await api.upload<{ id: string }>(internalPaths.fileUpload, fd);
-          uploadedIds.push(meta.id);
-        }
-        await attachCompletionProofMutation!.mutateAsync({
-          orderId: order.id,
-          fileIds: uploadedIds,
-        });
-      } catch {
-        return;
-      }
+    if (!persistProofsImmediately) {
       setReceiptModalOpen(false);
-      setReceiptScratch([]);
-      setReceiptUploadKey((k) => k + 1);
       return;
     }
-
-    if (receiptScratch.length > 0) {
-      setReceiptFiles((prev) =>
-        [...prev, ...receiptScratch].slice(0, MAX_PAYOUT_COMPLETION_PROOF_FILES),
-      );
+    if (receiptScratch.length === 0) {
+      setReceiptModalOpen(false);
+      return;
     }
+    const maxAdd = Math.max(
+      0,
+      MAX_PAYOUT_COMPLETION_PROOF_FILES - payoutCompletionProofFileIds(order).length,
+    );
+    if (maxAdd === 0) {
+      setReceiptModalOpen(false);
+      return;
+    }
+    const toUpload = receiptScratch.slice(0, maxAdd);
+
+    setSavingReceiptAttachments(true);
+    try {
+      const uploadedIds: string[] = [];
+      for (const file of toUpload) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const meta = await api.upload<{ id: string }>(internalPaths.fileUpload, fd);
+        uploadedIds.push(meta.id);
+      }
+      await attachCompletionProofMutation!.mutateAsync({
+        orderId: order.id,
+        fileIds: uploadedIds,
+      });
+    } catch {
+      return;
+    } finally {
+      setSavingReceiptAttachments(false);
+    }
+
     setReceiptModalOpen(false);
+    setReceiptScratch([]);
+    setReceiptUploadKey((k) => k + 1);
   }, [
     attachCompletionProofMutation,
-    order.id,
-    persistHistoryProof,
+    order,
+    persistProofsImmediately,
     receiptScratch,
   ]);
 
-  const removeReceiptAttachment = useCallback(() => {
-    setReceiptFiles([]);
+  const removeAllPersistedReceiptsModal = useCallback(async () => {
     setReceiptScratch([]);
     setReceiptUploadKey((k) => k + 1);
+
+    const serverIds = [...payoutCompletionProofFileIds(order)];
+    setPendingDeleteFileIds((prev) => {
+      const next = new Set(prev);
+      serverIds.forEach((id) => next.add(id));
+      return next;
+    });
+
+    try {
+      if (!detachCompletionProofMutation || serverIds.length === 0) {
+        return;
+      }
+      await Promise.all(
+        serverIds.map((fileId) =>
+          detachCompletionProofMutation.mutateAsync({ orderId: order.id, fileId }),
+        ),
+      );
+      setViewingPayoutReceiptId(null);
+    } catch {
+      // Keep thumbnails visible on failure where the mutation handlers did not update.
+    } finally {
+      setPendingDeleteFileIds((prev) => {
+        const next = new Set(prev);
+        serverIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    }
     setReceiptModalOpen(false);
-  }, []);
+  }, [detachCompletionProofMutation, order]);
+
+  const detachAttachedProof = useCallback(
+    async (fileId: string) => {
+      if (!detachCompletionProofMutation) return;
+      setPendingDeleteFileIds((prev) => {
+        const next = new Set(prev);
+        next.add(fileId);
+        return next;
+      });
+      try {
+        await detachCompletionProofMutation.mutateAsync({
+          orderId: order.id,
+          fileId,
+        });
+        setViewingPayoutReceiptId((prev) => (prev === fileId ? null : prev));
+      } catch {
+        // Keep the thumbnail visible on failure; the mutation surface can
+        // expose the error elsewhere if needed.
+      } finally {
+        setPendingDeleteFileIds((prev) => {
+          const next = new Set(prev);
+          next.delete(fileId);
+          return next;
+        });
+      }
+    },
+    [detachCompletionProofMutation, order.id],
+  );
 
   const closeReceiptModal = useCallback(() => {
     setReceiptModalOpen(false);
     setViewingPayoutReceiptId(null);
   }, []);
 
-  useEffect(() => {
-    setReceiptFiles([]);
+  useLayoutEffect(() => {
     setReceiptModalOpen(false);
     setReceiptScratch([]);
     setReceiptUploadKey((k) => k + 1);
@@ -266,24 +344,33 @@ export function TraderPayoutWorkflowActions({
       setCompleteConfirmFiles([]);
       setCompleteConfirmUploadKey((k) => k + 1);
       void (async () => {
-        const fromDialog = [...filesFromDialog];
-        const pickFiles =
-          fromDialog.length > 0 ? fromDialog : [...receiptFiles];
-        const capped = pickFiles.slice(0, MAX_PAYOUT_COMPLETION_PROOF_FILES);
-        const uploadedIds: string[] = [];
-        for (const file of capped) {
+        const slotsLeft = Math.max(
+          0,
+          MAX_PAYOUT_COMPLETION_PROOF_FILES - payoutCompletionProofFileIds(order).length,
+        );
+        const cappedFiles = filesFromDialog.slice(0, slotsLeft);
+
+        const dialogUploadIds: string[] = [];
+        for (const file of cappedFiles) {
           const fd = new FormData();
           fd.append('file', file);
           try {
             const meta = await api.upload<{ id: string }>(internalPaths.fileUpload, fd);
-            uploadedIds.push(meta.id);
+            dialogUploadIds.push(meta.id);
           } catch {
             return;
           }
         }
+
+        const uniqueNew = mergeCompletionProofUploadIdsForComplete(
+          [],
+          dialogUploadIds,
+          MAX_PAYOUT_COMPLETION_PROOF_FILES,
+        );
+
         completeMutation.mutate({
           orderId: order.id,
-          ...(uploadedIds.length > 0 ? { completionProofFileIds: uploadedIds } : {}),
+          ...(uniqueNew.length > 0 ? { completionProofFileIds: uniqueNew } : {}),
         });
       })();
       return;
@@ -293,14 +380,7 @@ export function TraderPayoutWorkflowActions({
     }
     setConfirmOpen(false);
     setConfirmKind(null);
-  }, [
-    cancelMutation,
-    completeConfirmFiles,
-    completeMutation,
-    confirmKind,
-    order.id,
-    receiptFiles,
-  ]);
+  }, [cancelMutation, completeConfirmFiles, completeMutation, confirmKind, order]);
 
   const handleRejectSubmit = useCallback(() => {
     if (!rejectReason) return;
@@ -372,9 +452,9 @@ export function TraderPayoutWorkflowActions({
     order.requisites_visible === false ? '—' : maskRequisite(order.details.number);
 
   const existingProofIds = payoutCompletionProofFileIds(order);
-  const proofSlotsRemaining = persistHistoryProof
+  const proofSlotsRemaining = persistProofsImmediately
     ? Math.max(0, MAX_PAYOUT_COMPLETION_PROOF_FILES - existingProofIds.length)
-    : Math.max(0, MAX_PAYOUT_COMPLETION_PROOF_FILES - receiptFiles.length);
+    : 0;
 
   return (
     <>
@@ -427,12 +507,12 @@ export function TraderPayoutWorkflowActions({
               {order.requisites_visible !== false && (
                 <IconButton
                   label={
-                    receiptFiles.length > 0
-                      ? 'Edit payment receipts — files upload when you mark completed'
+                    existingProofIds.length > 0
+                      ? 'Edit payment receipts attached to this order'
                       : 'Attach payment receipts (optional)'
                   }
                   tooltipWide
-                  variant={receiptFiles.length > 0 ? 'secondary' : 'ghost'}
+                  variant={existingProofIds.length > 0 ? 'secondary' : 'ghost'}
                   disabled={loadingComplete || loadingCancel || loadingReject}
                   onClick={openReceiptModal}
                 >
@@ -490,7 +570,7 @@ export function TraderPayoutWorkflowActions({
             </div>
         )}
 
-        {persistHistoryProof && (
+        {persistProofsImmediately && order.status === PayOutOrderStatus.COMPLETED && (
           <div
             className={cn('flex flex-wrap items-center gap-2', layout === 'cell' && 'justify-end')}
           >
@@ -536,7 +616,10 @@ export function TraderPayoutWorkflowActions({
             </p>
             <FileUpload
               compact
-              maxFiles={MAX_PAYOUT_COMPLETION_PROOF_FILES}
+              maxFiles={Math.max(
+                0,
+                MAX_PAYOUT_COMPLETION_PROOF_FILES - existingProofIds.length,
+              )}
               key={completeConfirmUploadKey}
               disabled={loadingComplete}
               onChange={setCompleteConfirmFiles}
@@ -554,53 +637,79 @@ export function TraderPayoutWorkflowActions({
         overlayClassName="z-[58]"
       >
         <p className="text-sm text-text-secondary">
-          {persistHistoryProof
-            ? 'Upload transfer receipts for your records. You can add more files (up to ten per order) after completion.'
-            : (
-                <>
-                  Optional proof of the transfer — same idea as pay-in appeal attachments. Files are sent when you
-                  choose <span className="font-medium text-text-primary">Mark completed</span> (up to{' '}
-                  {MAX_PAYOUT_COMPLETION_PROOF_FILES} files).
-                </>
-              )}
+          {persistProofsImmediately ? (
+            <>
+              Optional proof of the transfer — same pattern as Pay-In appeal attachments. Use{' '}
+              <span className="font-medium text-text-primary">Save</span> to upload pending files and attach them to
+              this order (up to {MAX_PAYOUT_COMPLETION_PROOF_FILES} files total). Receipts stay on this order across
+              page reloads.
+            </>
+          ) : (
+            'Receipt uploads are not available for this order status.'
+          )}
         </p>
-        {receiptFiles.length > 0 && !persistHistoryProof && (
-          <p className="mt-3 rounded-lg border border-border-primary bg-bg-secondary/60 px-3 py-2 text-xs text-text-secondary">
-            Saved for this order:{' '}
-            <span className="font-medium text-text-primary">
-              {receiptFiles.length} file{receiptFiles.length === 1 ? '' : 's'}
-              {receiptFiles.length <= 3
-                ? ` (${receiptFiles.map((f) => f.name).join(', ')})`
-                : ''}
-            </span>
-          </p>
-        )}
-        {persistHistoryProof && existingProofIds.length > 0 && (
+        {persistProofsImmediately && existingProofIds.length > 0 && (
           <div className="mt-3 space-y-2">
             <p className="text-xs text-text-secondary">
               Current receipts — click a thumbnail to enlarge. Upload below to add more (max{' '}
               {MAX_PAYOUT_COMPLETION_PROOF_FILES} per order).
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {existingProofIds.map((fileId) => (
-                <button
-                  key={fileId}
-                  type="button"
-                  onClick={() => setViewingPayoutReceiptId(fileId)}
-                  className="group relative cursor-pointer overflow-hidden rounded-lg border border-border-primary bg-bg-secondary text-left transition-colors hover:border-accent-blue"
-                >
-                  <div className="pointer-events-none aspect-video max-h-36">
-                    <AuthorizedFilePreview
-                      path={internalPaths.fileById(fileId)}
-                      alt="Pay-out payment receipt"
-                      className="h-full max-h-36"
-                    />
+              {existingProofIds.map((fileId) => {
+                const deleting = pendingDeleteFileIds.has(fileId);
+                const canDetach = detachCompletionProofMutation != null;
+                return (
+                  <div
+                    key={fileId}
+                    className={cn(
+                      'group relative overflow-hidden rounded-lg border border-border-primary bg-bg-secondary transition-colors hover:border-accent-blue focus-within:border-accent-blue',
+                      deleting && 'opacity-60',
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setViewingPayoutReceiptId(fileId)}
+                      aria-label="View payment receipt"
+                      className="relative block w-full cursor-pointer overflow-hidden rounded-lg border-0 bg-transparent p-0 text-left"
+                    >
+                      <div className="pointer-events-none aspect-video max-h-36">
+                        <AuthorizedFilePreview
+                          path={internalPaths.fileById(fileId)}
+                          alt="Pay-out payment receipt"
+                          className="h-full max-h-36"
+                        />
+                      </div>
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
+                        <ExternalLink className="h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+                      </div>
+                    </button>
+                    {canDetach && (
+                      <button
+                        type="button"
+                        disabled={loadingAttachProof || deleting}
+                        aria-label="Remove this payment receipt"
+                        className={cn(
+                          'absolute right-1 top-1 z-10 flex h-8 w-8 items-center justify-center rounded-md',
+                          'border border-border-primary bg-bg-primary/95 text-text-primary shadow-sm',
+                          'hover:bg-bg-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-blue',
+                          'disabled:pointer-events-none disabled:opacity-50',
+                        )}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void detachAttachedProof(fileId);
+                        }}
+                      >
+                        {deleting ? (
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                        ) : (
+                          <X className="h-4 w-4 shrink-0" aria-hidden />
+                        )}
+                      </button>
+                    )}
                   </div>
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
-                    <ExternalLink className="h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
-                  </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -609,7 +718,7 @@ export function TraderPayoutWorkflowActions({
             <FileUpload
               key={receiptUploadKey}
               maxFiles={proofSlotsRemaining}
-              disabled={loadingAttachProof}
+              disabled={loadingAttachProof || savingReceiptAttachments}
               onChange={setReceiptScratch}
             />
           ) : (
@@ -618,31 +727,47 @@ export function TraderPayoutWorkflowActions({
             </p>
           )}
         </div>
-        <div className="mt-6 flex flex-col gap-3 border-t border-border-primary pt-4 sm:flex-row sm:items-center sm:justify-between">
-          {!persistHistoryProof ? (
+        <div className="mt-6 flex flex-col gap-3 border-t border-border-primary pt-4 sm:flex-row sm:items-end sm:justify-between">
+          {persistProofsImmediately ? (
+            <div className="flex flex-col gap-2 sm:max-w-md sm:flex-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="self-start"
+                disabled={
+                  (existingProofIds.length === 0 && receiptScratch.length === 0) ||
+                  savingReceiptAttachments ||
+                  pendingDeleteFileIds.size > 0 ||
+                  (existingProofIds.length > 0 && !detachCompletionProofMutation)
+                }
+                loading={pendingDeleteFileIds.size > 0 && existingProofIds.length > 0}
+                onClick={() => void removeAllPersistedReceiptsModal()}
+              >
+                Remove all
+              </Button>
+              <p className="hidden text-xs text-text-muted sm:block">
+                Each successful save attaches uploaded files directly to this order.
+              </p>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap justify-end gap-2">
             <Button
               type="button"
-              variant="ghost"
-              size="sm"
-              className="sm:mr-auto"
-              disabled={receiptFiles.length === 0 && receiptScratch.length === 0}
-              onClick={removeReceiptAttachment}
+              variant="secondary"
+              onClick={closeReceiptModal}
+              disabled={
+                loadingAttachProof ||
+                savingReceiptAttachments ||
+                pendingDeleteFileIds.size > 0
+              }
             >
-              Remove attachment
-            </Button>
-          ) : (
-            <span className="text-xs text-text-muted sm:mr-auto">
-              Saves immediately to this completed order.
-            </span>
-          )}
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={closeReceiptModal} disabled={loadingAttachProof}>
               Cancel
             </Button>
             <Button
               type="button"
-              loading={loadingAttachProof}
-              disabled={persistHistoryProof && receiptScratch.length === 0}
+              loading={loadingAttachProof || savingReceiptAttachments}
+              disabled={receiptScratch.length === 0 || pendingDeleteFileIds.size > 0}
               onClick={() => void saveReceiptModal()}
             >
               Save

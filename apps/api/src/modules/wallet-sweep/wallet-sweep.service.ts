@@ -31,7 +31,7 @@ function extractTxId(sendResult: unknown): string {
 /**
  * TZ Sweep Scheduler: on-chain USDT balance vs threshold.
  * Signing uses the optional Vault secrets engine mounted at {@link config.vault.tronSecpSignMount} (`vault-plugin-tron-sign`).
- * Fallback (legacy): KV `readTraderWalletPrivateKeyHex` + TronWeb inside the worker when the mount env is unset.
+ * Fallback when vault mount unset: KV `readTraderWalletPrivateKeyHex` + TronWeb inside the worker.
  * Virtual DB balance is unchanged on sweep (already credited by Monitor).
  */
 @Injectable()

@@ -26,6 +26,7 @@ export function TraderPayoutOrderDetailModal({
   cancelMutation,
   rejectMutation,
   attachCompletionProofMutation,
+  detachCompletionProofMutation,
 }: {
   selectedOrder: PayOutOrderApiDto | null;
   onClose: () => void;
@@ -38,6 +39,11 @@ export function TraderPayoutOrderDetailModal({
     PayOutOrderApiDto,
     unknown,
     { orderId: string; fileIds: string[] }
+  >;
+  detachCompletionProofMutation?: UseMutationResult<
+    PayOutOrderApiDto,
+    unknown,
+    { orderId: string; fileId: string }
   >;
 }) {
   const showFullOrderMeta = selectedOrder?.requisites_visible !== false;
@@ -132,14 +138,16 @@ export function TraderPayoutOrderDetailModal({
             )}
             {(selectedOrder.status === PayOutOrderStatus.NEW ||
               selectedOrder.status === PayOutOrderStatus.PROCESSING ||
-              (selectedOrder.status === PayOutOrderStatus.COMPLETED && attachCompletionProofMutation)) && (
+              selectedOrder.status === PayOutOrderStatus.COMPLETED) && (
               <TraderPayoutWorkflowActions
+                key={`payout-actions-${selectedOrder.id}`}
                 order={selectedOrder}
                 processMutation={processMutation}
                 completeMutation={completeMutation}
                 cancelMutation={cancelMutation}
                 rejectMutation={rejectMutation}
                 attachCompletionProofMutation={attachCompletionProofMutation}
+                detachCompletionProofMutation={detachCompletionProofMutation}
                 layout="toolbar"
               />
             )}

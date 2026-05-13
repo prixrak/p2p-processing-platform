@@ -25,6 +25,7 @@ import {
   PAYOUT_TRADER_HISTORY_STATUSES,
   PayoutTraderRejectReason as PayoutTraderRejectReasonApi,
   MAX_PAYOUT_COMPLETION_PROOF_FILES,
+  UserRole,
 } from '@p2p/shared';
 import type { PayOutOrderApiDto, ProfileDto, DetailsDto } from '@p2p/shared';
 import {
@@ -69,6 +70,8 @@ import {
 } from './payout-trader-reject.util';
 import { computePayoutPoolCloseDeadline } from './payout-pool-close-deadline.util';
 import type { ExternalOrderCreationMeta } from '../../common/utils/partner-request-meta';
+import { FilesService } from '../files/files.service';
+import { AuditService } from '../audit/audit.service';
 
 const COMPLETION_PROOF_ATTACHMENTS_INCLUDE = {
   select: { fileId: true, createdAt: true },
@@ -88,6 +91,12 @@ const ORDER_INCLUDE = {
 
 /** Singleton row for global pool B share (see migration seed). */
 const PAYOUT_POOL_SETTINGS_ROW_ID = '00000000-0000-0000-0000-000000000001';
+
+/** Audit actor used when stripping Pay-Out proofs inside platform-driven transitions after the DB unlink commits. */
+const PAYOUT_INTERNAL_PROOF_PURGE_ACTOR = {
+  id: '00000000-0000-0000-0000-000000000000',
+  role: UserRole.ADMIN,
+} satisfies { id: string; role: string };
 
 /**
  * Discriminated identity of a Pay-Out order assignee — standard trader (pool A) vs
@@ -164,6 +173,8 @@ export class PayoutService {
     private readonly exchangeRate: ExchangeRateService,
     private readonly telegram: TelegramService,
     private readonly currencies: CurrenciesService,
+    private readonly files: FilesService,
+    private readonly audit: AuditService,
   ) {}
 
   private emitPayoutOrderRealtime(
@@ -225,6 +236,48 @@ export class PayoutService {
       where: { id: orderId },
       data: { completionProofFileId: first?.fileId ?? null },
     });
+  }
+
+  /**
+   * Delete attachment rows + reset the mirrored head column during a payout status transition tx.
+   * Returns distinct linked file ids for best-effort orphan purge after the transaction commits.
+   */
+  private async unlinkAllCompletionProofsInTx(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+  ): Promise<string[]> {
+    const attachments = await tx.payoutCompletionProofAttachment.findMany({
+      where: { payoutOrderId: orderId },
+      select: { fileId: true },
+    });
+    const head = await tx.payoutOrder.findUnique({
+      where: { id: orderId },
+      select: { completionProofFileId: true },
+    });
+    const ids = new Set<string>();
+    for (const a of attachments) ids.add(a.fileId);
+    if (head?.completionProofFileId) ids.add(head.completionProofFileId);
+    await tx.payoutCompletionProofAttachment.deleteMany({
+      where: { payoutOrderId: orderId },
+    });
+    await this.syncPayoutCompletionProofHeadColumn(tx, orderId);
+    return [...ids];
+  }
+
+  private async purgeUnlinkedPayoutProofFiles(fileIds: readonly string[]): Promise<void> {
+    for (const fileId of fileIds) {
+      try {
+        await this.files.deleteOrphanFile(PAYOUT_INTERNAL_PROOF_PURGE_ACTOR, fileId, {
+          skipOwnershipCheck: true,
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Pay-Out proof orphan purge skipped for ${fileId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
   }
 
   private async assertCompletionProofFilesOwned(ids: string[], userId: string): Promise<void> {
@@ -1483,7 +1536,7 @@ export class PayoutService {
   }
 
   /**
-   * Append completion-proof attachments idempotently and keep the legacy head column in sync.
+   * Append completion-proof attachments idempotently and sync the mirrored head column (`completion_proof_file_id`).
    * Returns the merge result so callers can short-circuit on no-ops.
    */
   private async appendCompletionProofAttachments(
@@ -1523,7 +1576,7 @@ export class PayoutService {
   }
 
   /**
-   * Standard trader: append completion proof files after the order is already COMPLETED.
+   * Standard trader: append completion proof files while the order is PROCESSING or after COMPLETED.
    */
   async traderAttachCompletionProof(
     traderId: string,
@@ -1540,7 +1593,7 @@ export class PayoutService {
   }
 
   /**
-   * Pay-out specialist: append completion proof files after the order is already COMPLETED.
+   * Pay-out specialist: append completion proof files while the order is PROCESSING or after COMPLETED.
    */
   async specialistAttachCompletionProof(
     payoutTraderId: string,
@@ -1570,15 +1623,15 @@ export class PayoutService {
 
     const notFoundMessage =
       scope.kind === 'TRADER'
-        ? 'Order not found, not assigned to this trader, or not in COMPLETED status'
-        : 'Order not found, not assigned to this specialist, or not in COMPLETED status';
+        ? 'Order not found, not assigned to this trader, or not in PROCESSING or COMPLETED status'
+        : 'Order not found, not assigned to this specialist, or not in PROCESSING or COMPLETED status';
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const order = await tx.payoutOrder.findFirst({
         where: {
           id: orderId,
           ...payoutAssigneeWhereKey(scope),
-          status: 'COMPLETED',
+          status: { in: ['PROCESSING', 'COMPLETED'] },
         },
       });
       if (!order) throw new NotFoundException(notFoundMessage);
@@ -1589,6 +1642,132 @@ export class PayoutService {
     });
 
     this.emitPayoutOrderRealtime(updated, false);
+    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+  }
+
+  /**
+   * Standard trader: detach one completion proof attachment from an order and physically
+   * delete the file when no other record still holds it. Authorized for the assigned trader
+   * regardless of order status — traders need to be able to fix a wrong receipt during
+   * PROCESSING as well as after COMPLETED.
+   */
+  async traderDetachCompletionProof(
+    traderId: string,
+    userRole: string,
+    userId: string,
+    orderId: string,
+    fileId: string,
+  ): Promise<PayOutOrderApiDto> {
+    return this.detachCompletionProof(
+      { kind: 'TRADER', traderId },
+      userId,
+      userRole,
+      orderId,
+      fileId,
+    );
+  }
+
+  async specialistDetachCompletionProof(
+    payoutTraderId: string,
+    userRole: string,
+    userId: string,
+    orderId: string,
+    fileId: string,
+  ): Promise<PayOutOrderApiDto> {
+    return this.detachCompletionProof(
+      { kind: 'PAYOUT_TRADER', payoutTraderId },
+      userId,
+      userRole,
+      orderId,
+      fileId,
+    );
+  }
+
+  private async detachCompletionProof(
+    scope: PayoutAssigneeScope,
+    userId: string,
+    userRole: string,
+    orderId: string,
+    fileId: string,
+  ): Promise<PayOutOrderApiDto> {
+    const notFoundMessage =
+      scope.kind === 'TRADER'
+        ? 'Order not found or not assigned to this trader'
+        : 'Order not found or not assigned to this specialist';
+
+    const removalState = await this.prisma.$transaction(async (tx) => {
+      const order = await tx.payoutOrder.findFirst({
+        where: { id: orderId, ...payoutAssigneeWhereKey(scope) },
+      });
+      if (!order) throw new NotFoundException(notFoundMessage);
+
+      const attachment = await tx.payoutCompletionProofAttachment.findFirst({
+        where: { payoutOrderId: orderId, fileId },
+      });
+
+      const headColumnOnlyMatch = order.completionProofFileId === fileId;
+      if (!attachment && !headColumnOnlyMatch) {
+        throw new NotFoundException(
+          'Completion proof file is not attached to this order',
+        );
+      }
+
+      if (attachment) {
+        await tx.payoutCompletionProofAttachment.delete({
+          where: { id: attachment.id },
+        });
+      }
+      await this.syncPayoutCompletionProofHeadColumn(tx, orderId);
+
+      return { orderId, fileId, previousStatus: order.status };
+    });
+
+    // S3 + audit cleanup runs outside the DB transaction so a slow S3 endpoint cannot
+    // hold a long-lived write lock on the order. `deleteOrphanFile` no-ops when something
+    // else still holds the file (e.g. another order's attachment) so this is safe.
+    try {
+      const refs = await this.files.findFileReferences(fileId);
+      if (refs.length === 0) {
+        await this.files.deleteOrphanFile(
+          { id: userId, role: userRole },
+          fileId,
+          { skipOwnershipCheck: true },
+        );
+      } else {
+        this.logger.log(
+          `Pay-Out ${orderId}: detached proof ${fileId}; file kept (still attached to: ${refs.join(', ')})`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Pay-Out ${orderId}: detached proof ${fileId} but file purge failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+
+    await this.audit.log({
+      actorId: userId,
+      actorRole: userRole,
+      action: 'PAYOUT_COMPLETION_PROOF_DETACHED',
+      entityType: 'PayoutOrder',
+      entityId: orderId,
+      oldValue: { fileId, status: removalState.previousStatus },
+      newValue: null,
+    });
+
+    const order = await this.prisma.payoutOrder.findUniqueOrThrow({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        traderId: true,
+        payoutTraderId: true,
+        merchantId: true,
+      },
+    });
+    this.emitPayoutOrderRealtime(order, false);
+
     return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
 
@@ -1616,7 +1795,10 @@ export class PayoutService {
       throw err;
     }
 
+    let proofIdsToPurge: string[] = [];
     const updated = await this.prisma.$transaction(async (tx) => {
+      proofIdsToPurge = await this.unlinkAllCompletionProofsInTx(tx, orderId);
+
       const result = await tx.payoutOrder.update({
         where: { id: orderId },
         data: {
@@ -1632,6 +1814,8 @@ export class PayoutService {
 
       return result;
     });
+
+    void this.purgeUnlinkedPayoutProofFiles(proofIdsToPurge);
 
     this.emitPayoutOrderRealtime(updated, false);
 
@@ -1659,7 +1843,10 @@ export class PayoutService {
       throw new BadRequestException(`Invalid status transition: ${order.status} -> PENDING`);
     }
 
+    let proofIdsToPurge: string[] = [];
     const updated = await this.prisma.$transaction(async (tx) => {
+      proofIdsToPurge = await this.unlinkAllCompletionProofsInTx(tx, orderId);
+
       const result = await tx.payoutOrder.update({
         where: { id: orderId },
         data: {
@@ -1675,6 +1862,8 @@ export class PayoutService {
       await this.createPayoutWebhookEntry(tx, result);
       return result;
     });
+
+    void this.purgeUnlinkedPayoutProofFiles(proofIdsToPurge);
 
     this.emitPayoutOrderRealtime(updated, true);
 
@@ -1708,7 +1897,9 @@ export class PayoutService {
         continue;
       }
 
+      let proofIdsToPurge: string[] = [];
       const updated = await this.prisma.$transaction(async (tx) => {
+        proofIdsToPurge = await this.unlinkAllCompletionProofsInTx(tx, order.id);
         const result = await tx.payoutOrder.update({
           where: { id: order.id },
           data: {
@@ -1723,6 +1914,8 @@ export class PayoutService {
         await this.createPayoutWebhookEntry(tx, result);
         return result;
       });
+
+      void this.purgeUnlinkedPayoutProofFiles(proofIdsToPurge);
 
       this.emitPayoutOrderRealtime(updated, true);
       released += 1;
@@ -1871,7 +2064,10 @@ export class PayoutService {
       throw new BadRequestException(`Invalid status transition: ${order.status} -> PENDING`);
     }
 
+    let proofIdsToPurge: string[] = [];
     const updated = await this.prisma.$transaction(async (tx) => {
+      proofIdsToPurge = await this.unlinkAllCompletionProofsInTx(tx, orderId);
+
       const result = await tx.payoutOrder.update({
         where: { id: orderId },
         data: {
@@ -1888,6 +2084,8 @@ export class PayoutService {
       await this.createPayoutWebhookEntry(tx, result);
       return result;
     });
+
+    void this.purgeUnlinkedPayoutProofFiles(proofIdsToPurge);
 
     this.emitPayoutOrderRealtime(updated, true);
 
@@ -1926,7 +2124,10 @@ export class PayoutService {
       throw err;
     }
 
+    let proofIdsToPurge: string[] = [];
     const updated = await this.prisma.$transaction(async (tx) => {
+      proofIdsToPurge = await this.unlinkAllCompletionProofsInTx(tx, orderId);
+
       const result = await tx.payoutOrder.update({
         where: { id: orderId },
         data: {
@@ -1942,6 +2143,8 @@ export class PayoutService {
 
       return result;
     });
+
+    void this.purgeUnlinkedPayoutProofFiles(proofIdsToPurge);
 
     this.emitPayoutOrderRealtime(updated, false);
 

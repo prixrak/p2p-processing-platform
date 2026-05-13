@@ -31,7 +31,6 @@ import {
   payoutCabinetKeys,
   type PayoutCabinetScope,
 } from '@/lib/query-keys';
-import { payoutCompletionProofFileIds } from './payout-completion-proof-ids';
 
 interface PayOutListResponse {
   orders: PayOutOrderApiDto[];
@@ -178,19 +177,7 @@ export function TraderPayoutPage({
     const fromPool = poolData?.orders?.find((o) => o.id === selectedOrder.id);
     const fresh = fromInProgress ?? fromHistory ?? fromPool;
     if (!fresh) return;
-    setSelectedOrder((prev) => {
-      if (!prev || prev.id !== fresh.id) return fresh;
-      const prevIds = payoutCompletionProofFileIds(prev);
-      const freshIds = payoutCompletionProofFileIds(fresh);
-      if (prevIds.length > 0 && freshIds.length === 0) {
-        return {
-          ...fresh,
-          completion_proof_file_ids: prevIds,
-          completion_proof_file_id: prevIds[0],
-        };
-      }
-      return fresh;
-    });
+    setSelectedOrder((prev) => (prev?.id === fresh.id ? fresh : prev));
   }, [inProgressData?.orders, historyData?.orders, poolData?.orders, selectedOrder?.id]);
 
   const takeFromPoolMutation = useMutation({
@@ -264,6 +251,17 @@ export function TraderPayoutPage({
     },
   });
 
+  const detachCompletionProofMutation = useMutation({
+    mutationFn: async ({ orderId, fileId }: { orderId: string; fileId: string }) =>
+      api.delete<PayOutOrderApiDto>(
+        `${apiBase}/orders/${orderId}/completion-proof/${fileId}`,
+      ),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
+      setSelectedOrder((prev) => (prev?.id === updated.id ? updated : prev));
+    },
+  });
+
   const historyStatusOptions = PAYOUT_TRADER_HISTORY_STATUSES.map((s) => ({
     value: s,
     label: s,
@@ -281,6 +279,7 @@ export function TraderPayoutPage({
     cancelMutation,
     rejectMutation,
     attachCompletionProofMutation,
+    detachCompletionProofMutation,
     onView: setSelectedOrder,
   });
 
@@ -553,6 +552,7 @@ export function TraderPayoutPage({
         cancelMutation={cancelMutation}
         rejectMutation={rejectMutation}
         attachCompletionProofMutation={attachCompletionProofMutation}
+        detachCompletionProofMutation={detachCompletionProofMutation}
       />
     </div>
   );

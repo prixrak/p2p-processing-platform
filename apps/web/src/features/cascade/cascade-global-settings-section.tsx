@@ -62,10 +62,6 @@ export function CascadeGlobalSettingsSection({
   setDraftProviderPct,
   draftLevelPickMode,
   setDraftLevelPickMode,
-  draftCardW,
-  setDraftCardW,
-  draftForkW,
-  setDraftForkW,
   draftFillMultipliersJson,
   setDraftFillMultipliersJson,
   fillMultipliersJsonError,
@@ -87,10 +83,6 @@ export function CascadeGlobalSettingsSection({
   setDraftProviderPct: (v: string) => void;
   draftLevelPickMode: string;
   setDraftLevelPickMode: (v: string) => void;
-  draftCardW: string;
-  setDraftCardW: (v: string) => void;
-  draftForkW: string;
-  setDraftForkW: (v: string) => void;
   draftFillMultipliersJson: string;
   setDraftFillMultipliersJson: (v: string) => void;
   fillMultipliersJsonError: string | null;
@@ -179,12 +171,6 @@ export function CascadeGlobalSettingsSection({
             <div>
               <dt className="text-text-muted">Newcomer boost (Fork fill floor)</dt>
               <dd className="font-medium">×{NEWCOMER_RATING_BOOST}</dd>
-            </div>
-            <div>
-              <dt className="text-text-muted">Legacy CARD / FORK display weights</dt>
-              <dd className="font-medium">
-                {s.card_rating_weight} / {s.fork_rating_weight}
-              </dd>
             </div>
             <div className="sm:col-span-2">
               <dt className="text-text-muted">Fork fill multiplier ladder</dt>
@@ -475,26 +461,6 @@ export function CascadeGlobalSettingsSection({
               />
               Fork autolimits enabled
             </label>
-
-            <p className="text-xs text-text-muted">
-              Legacy observability weights (optional): idle race uses trader multiplier per TZ v3.1.
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input
-                label="CARD display weight"
-                type="number"
-                min={1}
-                value={draftCardW}
-                onChange={(e) => setDraftCardW(e.target.value)}
-              />
-              <Input
-                label="FORK display weight"
-                type="number"
-                min={1}
-                value={draftForkW}
-                onChange={(e) => setDraftForkW(e.target.value)}
-              />
-            </div>
 
             {fillMultipliersJsonError ? (
               <p className="text-sm text-danger">{fillMultipliersJsonError}</p>

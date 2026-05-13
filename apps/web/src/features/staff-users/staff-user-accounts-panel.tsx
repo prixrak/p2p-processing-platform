@@ -245,7 +245,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
     name: string;
   } | null>(null);
 
-  const [legacyMerchantModal, setLegacyMerchantModal] = useState<{
+  const [merchantProfileCreateModal, setMerchantProfileCreateModal] = useState<{
     userId: string;
     email: string;
   } | null>(null);
@@ -253,7 +253,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
     profileId: string;
     email: string;
   } | null>(null);
-  const [legacyMerchantName, setLegacyMerchantName] = useState('');
+  const [merchantProfileCreateName, setMerchantProfileCreateName] = useState('');
   const [traderDetailId, setTraderDetailId] = useState<string | null>(null);
 
   const { data: countries } = useQuery({
@@ -377,7 +377,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
     onSuccess: () => invalidateDirectory(),
   });
 
-  const createLegacyMerchant = useMutation({
+  const createMerchantProfile = useMutation({
     mutationFn: (payload: { userId: string; name: string }) =>
       api.post<{ id: string; name: string }>(internalPaths.merchants, {
         userId: payload.userId,
@@ -385,8 +385,8 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
       }),
     onSuccess: (merchant) => {
       invalidateDirectory();
-      setLegacyMerchantModal(null);
-      setLegacyMerchantName('');
+      setMerchantProfileCreateModal(null);
+      setMerchantProfileCreateName('');
       setDirectionsMerchant({ id: merchant.id, name: merchant.name });
     },
   });
@@ -527,8 +527,8 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
               type="button"
               className="!py-1 !text-xs"
               onClick={() => {
-                setLegacyMerchantModal({ userId: u.id, email: u.email });
-                setLegacyMerchantName('');
+                setMerchantProfileCreateModal({ userId: u.id, email: u.email });
+                setMerchantProfileCreateName('');
               }}
             >
               Create merchant profile
@@ -1004,40 +1004,40 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
       </Modal>
 
       <Modal
-        open={!!legacyMerchantModal}
+        open={!!merchantProfileCreateModal}
         onClose={() => {
-          setLegacyMerchantModal(null);
-          setLegacyMerchantName('');
+          setMerchantProfileCreateModal(null);
+          setMerchantProfileCreateName('');
         }}
         title="Create merchant profile"
       >
-        {legacyMerchantModal ? (
+        {merchantProfileCreateModal ? (
           <form
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              if (!legacyMerchantName.trim()) return;
-              createLegacyMerchant.mutate({
-                userId: legacyMerchantModal.userId,
-                name: legacyMerchantName,
+              if (!merchantProfileCreateName.trim()) return;
+              createMerchantProfile.mutate({
+                userId: merchantProfileCreateModal.userId,
+                name: merchantProfileCreateName,
               });
             }}
           >
             <p className="text-sm text-text-muted">
-              Link a payment profile to <strong>{legacyMerchantModal.email}</strong>. Directions & commissions can be set right after creation.
+              Link a payment profile to <strong>{merchantProfileCreateModal.email}</strong>. Directions & commissions can be set right after creation.
             </p>
             <Input
               label="Merchant display name"
-              value={legacyMerchantName}
-              onChange={(e) => setLegacyMerchantName(e.target.value)}
+              value={merchantProfileCreateName}
+              onChange={(e) => setMerchantProfileCreateName(e.target.value)}
               placeholder="Acme Corp"
               required
             />
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={() => setLegacyMerchantModal(null)}>
+              <Button type="button" variant="ghost" onClick={() => setMerchantProfileCreateModal(null)}>
                 Cancel
               </Button>
-              <Button type="submit" loading={createLegacyMerchant.isPending} disabled={!legacyMerchantName.trim()}>
+              <Button type="submit" loading={createMerchantProfile.isPending} disabled={!merchantProfileCreateName.trim()}>
                 Create
               </Button>
             </div>

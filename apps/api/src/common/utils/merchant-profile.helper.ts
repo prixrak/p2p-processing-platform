@@ -7,8 +7,8 @@ import { DirectionType } from '@p2p/shared';
  * `POST /external/v1/payout/info`. Centralized to avoid the two formerly identical
  * snapshot blocks in `PayinService.getInfo` / `PayoutService.getInfo` drifting apart.
  *
- * `rate` is fixed to 1 because the v2 settlement uses snapshot rates pulled per-order from the
- * exchange parser — the legacy field is preserved for backward compatibility only.
+ * `rate` is fixed to 1 because v2 settlement uses per-order snapshot rates from the parser —
+ * kept for backward compatibility with older merchant API contracts.
  */
 export async function buildMerchantProfileDto(
   prisma: PrismaService,

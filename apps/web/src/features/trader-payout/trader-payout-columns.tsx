@@ -163,6 +163,11 @@ export function buildPayoutOrdersColumns(opts: {
     unknown,
     { orderId: string; fileIds: string[] }
   >;
+  detachCompletionProofMutation?: UseMutationResult<
+    PayOutOrderApiDto,
+    unknown,
+    { orderId: string; fileId: string }
+  >;
   onView: (row: PayOutOrderApiDto) => void;
 }) {
   const {
@@ -172,6 +177,7 @@ export function buildPayoutOrdersColumns(opts: {
     cancelMutation,
     rejectMutation,
     attachCompletionProofMutation,
+    detachCompletionProofMutation,
     onView,
   } = opts;
   const isSpecialist = variant === 'specialist';
@@ -270,12 +276,14 @@ export function buildPayoutOrdersColumns(opts: {
       render: (row: PayOutOrderApiDto) => (
         <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
           <TraderPayoutWorkflowActions
+            key={`payout-actions-${row.id}`}
             order={row}
             processMutation={processMutation}
             completeMutation={completeMutation}
             cancelMutation={cancelMutation}
             rejectMutation={rejectMutation}
             attachCompletionProofMutation={attachCompletionProofMutation}
+            detachCompletionProofMutation={detachCompletionProofMutation}
             layout="cell"
           />
           <IconButton label="View order details" onClick={() => onView(row)}>

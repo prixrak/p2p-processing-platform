@@ -72,7 +72,7 @@ export const config = {
       'tron:deposit:stale_notify_lock',
     ),
     /**
-     * `per_account`: poll TronGrid per deposit address (legacy).
+     * `per_account`: poll TronGrid per deposit address.
      * `contract_events`: poll USDT contract Transfer events and filter by known addresses (TZ Monitor Service).
      */
     depositPollMode: optional('TRON_DEPOSIT_POLL_MODE', 'per_account') as
@@ -123,7 +123,7 @@ export const config = {
   },
   vault: {
     addr: optional('VAULT_ADDR', ''),
-    /** Legacy single AppRole; used when wallet/sweep-specific IDs are unset. */
+    /** Fallback single AppRole when wallet/sweep-specific IDs are unset. */
     roleId: optional('VAULT_ROLE_ID', ''),
     secretId: optional('VAULT_SECRET_ID', ''),
     /** TZ Wallet Service policy (counter, master seed read, wallets/* create — no read of keys). */

@@ -1,27 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import {
-  IsBoolean,
-  IsEnum,
-  IsInt,
-  IsNumber,
-  Max,
-  Min,
-  IsOptional,
-} from 'class-validator';
+import { IsBoolean, IsEnum, IsNumber, Max, Min, IsOptional } from 'class-validator';
 import { CascadeLevelPickMode } from '@prisma/client';
 
 export class UpdateCascadeSettingsDto {
-  @ApiPropertyOptional({
-    description: 'Legacy column — unused by cascade TZ v3.1 (retained for compatibility)',
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(168)
-  sliding_window_hours?: number;
-
   @ApiPropertyOptional({
     description: 'Fork autolimit activation threshold as fraction of remaining capacity (0–1)',
   })
@@ -43,24 +25,6 @@ export class UpdateCascadeSettingsDto {
   })
   @IsOptional()
   fill_multipliers_config?: unknown | null;
-
-  @ApiPropertyOptional({
-    description: 'Legacy observability weight — idle race uses trader multiplier (TZ v3.1)',
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(10000)
-  card_rating_weight?: number;
-
-  @ApiPropertyOptional({ description: 'Legacy observability weight for FORK pool rows' })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(10000)
-  fork_rating_weight?: number;
 
   @ApiPropertyOptional({
     description: 'Fork tier target percent (0–100); saved values are normalized to sum 100 with Card/Provider',

@@ -24,7 +24,7 @@ export function encryptMerchantApiSigningSecretForStorage(plaintext: string): st
   return Buffer.concat([iv, tag, encrypted]).toString('base64');
 }
 
-/** Legacy seed stored SHA256 hex digest; decryptSecret cannot consume that. */
-export function isLegacySeedSha256OnlyHash(value: string): boolean {
+/** Detects plaintext SHA256-hex fingerprints that cannot be decrypted (early seed rows). */
+export function isMerchantSecretSha256FingerprintOnly(value: string): boolean {
   return /^[a-f0-9]{64}$/i.test(value.trim());
 }

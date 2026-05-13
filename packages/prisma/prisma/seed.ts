@@ -3,7 +3,7 @@ import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import {
   encryptMerchantApiSigningSecretForStorage,
-  isLegacySeedSha256OnlyHash,
+  isMerchantSecretSha256FingerprintOnly,
 } from './merchant-api-secret-storage';
 
 const prisma = new PrismaClient();
@@ -128,13 +128,13 @@ async function main() {
     where: { merchantId: merchant.id, direction: 'PAYOUT', isActive: true },
   });
 
-  const mustMigrateLegacy =
-    (existingPayinKey != null && isLegacySeedSha256OnlyHash(existingPayinKey.secretKeyHash)) ||
-    (existingPayoutKey != null && isLegacySeedSha256OnlyHash(existingPayoutKey.secretKeyHash));
+  const mustReplaceUndecryptableMerchantKeys =
+    (existingPayinKey != null && isMerchantSecretSha256FingerprintOnly(existingPayinKey.secretKeyHash)) ||
+    (existingPayoutKey != null && isMerchantSecretSha256FingerprintOnly(existingPayoutKey.secretKeyHash));
 
-  if (mustMigrateLegacy) {
+  if (mustReplaceUndecryptableMerchantKeys) {
     console.warn(
-      '[seed] Removing legacy merchant API keys (SHA256-only blobs could not be decrypted). Recreating encrypted keys.',
+      '[seed] Removing undecryptable merchant API keys (SHA256-only fingerprints). Recreating encrypted keys.',
     );
     await prisma.merchantApiKey.deleteMany({ where: { merchantId: merchant.id } });
     existingPayinKey = null;

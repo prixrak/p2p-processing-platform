@@ -43,149 +43,11 @@ export function isValidEthereumUsdtDepositAddress(addr: string): boolean {
   return /^0x[a-fA-F0-9]{40}$/.test(s);
 }
 
-/**
- * Traffic targets for active traders: either sum to 100% (weighted cascade) or all zero
- * (equal split in cascade when total configured share is empty).
- */
-export function isValidCascadeTrafficPercentTotal(sum: number): boolean {
-  const eps = 0.02;
-  return Math.abs(sum - 100) <= eps || Math.abs(sum) <= eps;
-}
-
 function round4(n: number): number {
   return Math.round(n * 1e4) / 1e4;
 }
 
 const TRAFFIC_SUM_EPS = 0.02;
-
-/**
- * Given the current cohort (active + accepting orders) and a new traffic_percent for one member,
- * returns per-trader targets that satisfy the 100% / all-zero rule.
- * Exported for unit tests.
- */
-export function computeCascadeTrafficPercentRebalance(
-  cohort: Array<{ id: string; trafficPercent: unknown }>,
-  primaryTraderId: string,
-  primaryPercent: number,
-): Map<string, number> {
-  const out = new Map<string, number>();
-  const others = cohort.filter((c) => c.id !== primaryTraderId);
-  if (others.length === 0) {
-    out.set(primaryTraderId, primaryPercent);
-    if (!isValidCascadeTrafficPercentTotal(primaryPercent)) {
-      throw new BadRequestException(
-        `traffic_percent for the only active trader (accepting orders) must be 100% or 0% (equal split). Requested: ${primaryPercent.toFixed(2)}%.`,
-      );
-    }
-    return out;
-  }
-
-  const sumOthersOld = others.reduce((s, c) => s + Number(c.trafficPercent), 0);
-  if (Math.abs(primaryPercent) <= TRAFFIC_SUM_EPS && sumOthersOld <= TRAFFIC_SUM_EPS) {
-    for (const c of cohort) {
-      out.set(c.id, 0);
-    }
-    return out;
-  }
-
-  const remaining = round4(100 - primaryPercent);
-  if (remaining < -TRAFFIC_SUM_EPS) {
-    throw new BadRequestException('traffic_percent cannot exceed 100%.');
-  }
-
-  out.set(primaryTraderId, primaryPercent);
-
-  if (sumOthersOld <= TRAFFIC_SUM_EPS) {
-    let allocated = 0;
-    for (let i = 0; i < others.length; i++) {
-      const isLast = i === others.length - 1;
-      const chunk = isLast
-        ? round4(remaining - allocated)
-        : round4(remaining / others.length);
-      allocated += chunk;
-      out.set(others[i].id, chunk);
-    }
-    return out;
-  }
-
-  let allocated = 0;
-  for (let i = 0; i < others.length; i++) {
-    const c = others[i];
-    const isLast = i === others.length - 1;
-    const chunk = isLast
-      ? round4(remaining - allocated)
-      : round4(remaining * (Number(c.trafficPercent) / sumOthersOld));
-    allocated += chunk;
-    out.set(c.id, chunk);
-  }
-
-  return out;
-}
-
-/**
- * To fit a new active+accepting trader with a target `traffic_percent`, scales or splits the
- * **existing** cohort so their post-update sum is `100 - newTraderTrafficPercent`.
- * Empty cohort: no updates (first trader must be created with 100% or 0% only).
- */
-export function computeExistingCohortTrafficBeforeNewTrader(
-  cohort: Array<{ id: string; trafficPercent: unknown }>,
-  newTraderTrafficPercent: number,
-): Map<string, number> {
-  const updates = new Map<string, number>();
-  const newPct = newTraderTrafficPercent;
-
-  if (newPct > 100 + TRAFFIC_SUM_EPS) {
-    throw new BadRequestException('traffic_percent cannot exceed 100%.');
-  }
-
-  const cCount = cohort.length;
-  if (cCount === 0) {
-    if (!isValidCascadeTrafficPercentTotal(newPct)) {
-      throw new BadRequestException(
-        `traffic_percent for the first active trader (accepting orders) must be 100% or 0% (equal split). Requested: ${newPct.toFixed(2)}%.`,
-      );
-    }
-    return updates;
-  }
-
-  const remaining = round4(100 - newPct);
-  if (remaining < -TRAFFIC_SUM_EPS) {
-    throw new BadRequestException('traffic_percent cannot exceed 100%.');
-  }
-
-  const sumExisting = cohort.reduce((s, row) => s + Number(row.trafficPercent), 0);
-
-  if (sumExisting <= TRAFFIC_SUM_EPS && Math.abs(newPct) <= TRAFFIC_SUM_EPS) {
-    return updates;
-  }
-
-  if (sumExisting <= TRAFFIC_SUM_EPS && newPct > TRAFFIC_SUM_EPS) {
-    let allocated = 0;
-    for (let i = 0; i < cCount; i++) {
-      const isLast = i === cCount - 1;
-      const chunk = isLast
-        ? round4(remaining - allocated)
-        : round4(remaining / cCount);
-      allocated += chunk;
-      updates.set(cohort[i].id, chunk);
-    }
-    return updates;
-  }
-
-  const scale = remaining / sumExisting;
-  let allocated = 0;
-  for (let i = 0; i < cCount; i++) {
-    const row = cohort[i];
-    const isLast = i === cCount - 1;
-    const chunk = isLast
-      ? round4(remaining - allocated)
-      : round4(Number(row.trafficPercent) * scale);
-    allocated += chunk;
-    updates.set(row.id, chunk);
-  }
-
-  return updates;
-}
 
 @Injectable()
 export class TradersService {
@@ -230,7 +92,7 @@ export class TradersService {
     };
   }
 
-  /** Invalidates cascade snapshot cache after traffic-related profile fields change. */
+  /** Invalidates cascade Redis snapshots after cascade-routing-related profile updates. */
   invalidateCascadeCoverageCaches(): void {
     void this.cascadeCoverageCache.invalidateAll();
   }

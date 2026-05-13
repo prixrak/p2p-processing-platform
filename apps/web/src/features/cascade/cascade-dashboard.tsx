@@ -31,8 +31,6 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
   const [draftCardPct, setDraftCardPct] = useState('');
   const [draftProviderPct, setDraftProviderPct] = useState('');
   const [draftLevelPickMode, setDraftLevelPickMode] = useState('DEBT');
-  const [draftCardW, setDraftCardW] = useState('');
-  const [draftForkW, setDraftForkW] = useState('');
   const [draftFillMultipliersJson, setDraftFillMultipliersJson] = useState('');
   const [fillMultipliersJsonError, setFillMultipliersJsonError] = useState<string | null>(null);
 
@@ -55,8 +53,6 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
     setDraftCardPct(String(s.card_traffic_percent));
     setDraftProviderPct(String(s.provider_traffic_percent));
     setDraftLevelPickMode(s.level_pick_mode);
-    setDraftCardW(String(s.card_rating_weight));
-    setDraftForkW(String(s.fork_rating_weight));
     setDraftFillMultipliersJson(
       s.fill_multipliers_config == null
         ? ''
@@ -148,15 +144,11 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
     const fork_traffic_percent = parseDecimalInput(draftForkPct);
     const card_traffic_percent = parseDecimalInput(draftCardPct);
     const provider_traffic_percent = parseDecimalInput(draftProviderPct);
-    const card_rating_weight = parseInt(draftCardW, 10);
-    const fork_rating_weight = parseInt(draftForkW, 10);
     if (
       Number.isNaN(autolimit_threshold) ||
       Number.isNaN(fork_traffic_percent) ||
       Number.isNaN(card_traffic_percent) ||
-      Number.isNaN(provider_traffic_percent) ||
-      Number.isNaN(card_rating_weight) ||
-      Number.isNaN(fork_rating_weight)
+      Number.isNaN(provider_traffic_percent)
     ) {
       return;
     }
@@ -198,8 +190,6 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
       card_traffic_percent,
       provider_traffic_percent,
       level_pick_mode,
-      card_rating_weight,
-      fork_rating_weight,
       ...(fill_multipliers_config !== undefined ? { fill_multipliers_config } : {}),
     });
   };
@@ -235,10 +225,6 @@ export function CascadeDashboard({ readOnly, subtitle }: CascadeDashboardProps) 
         setDraftProviderPct={setDraftProviderPct}
         draftLevelPickMode={draftLevelPickMode}
         setDraftLevelPickMode={setDraftLevelPickMode}
-        draftCardW={draftCardW}
-        setDraftCardW={setDraftCardW}
-        draftForkW={draftForkW}
-        setDraftForkW={setDraftForkW}
         draftFillMultipliersJson={draftFillMultipliersJson}
         setDraftFillMultipliersJson={setDraftFillMultipliersJson}
         fillMultipliersJsonError={fillMultipliersJsonError}

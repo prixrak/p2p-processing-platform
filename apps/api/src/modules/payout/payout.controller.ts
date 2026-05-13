@@ -1,8 +1,10 @@
 import {
   Controller,
+  Delete,
   Post,
   Get,
   Body,
+  HttpCode,
   Param,
   Query,
   UseGuards,
@@ -199,9 +201,9 @@ export class PayoutInternalController {
   @Post('orders/:orderId/completion-proof')
   @Roles(UserRole.TRADER)
   @ApiOperation({
-    summary: 'Append payment receipts on a completed pay-out',
+    summary: 'Append payment receipts while processing or after completion',
     description:
-      'For COMPLETED orders assigned to this trader. Body: `completion_proof_file_ids` and/or `completion_proof_file_id`. Files must be uploaded first via POST /api/files/upload. Respects per-order max; duplicates ignored.',
+      'For orders assigned to this trader in PROCESSING or COMPLETED. Body: `completion_proof_file_ids` and/or `completion_proof_file_id`. Files must be uploaded first via POST /api/files/upload. Respects per-order max; duplicates ignored.',
   })
   async traderAttachCompletionProof(
     @CurrentUser('traderId') traderId: string,
@@ -210,6 +212,23 @@ export class PayoutInternalController {
     @Body() body: AttachCompletionProofDto,
   ) {
     return this.payoutService.traderAttachCompletionProof(traderId, userId, orderId, body);
+  }
+
+  @Delete('orders/:orderId/completion-proof/:fileId')
+  @Roles(UserRole.TRADER)
+  @ApiOperation({
+    summary: 'Detach a single payment receipt from a pay-out (and purge the S3 object if orphan)',
+    description:
+      'Removes the file from this order. The underlying file is hard-deleted from S3 and the file row is dropped when no other record references it.',
+  })
+  async traderDetachCompletionProof(
+    @CurrentUser('traderId') traderId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') role: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+  ) {
+    return this.payoutService.traderDetachCompletionProof(traderId, role, userId, orderId, fileId);
   }
 
   @Post('orders/:orderId/fail')
@@ -379,9 +398,9 @@ export class PayoutSpecialistInternalController {
   @Post('orders/:orderId/completion-proof')
   @Roles(UserRole.PAYOUT_TRADER)
   @ApiOperation({
-    summary: 'Append payment receipts on a completed pay-out',
+    summary: 'Append payment receipts while processing or after completion',
     description:
-      'For COMPLETED orders assigned to this specialist. Body: `completion_proof_file_ids` and/or `completion_proof_file_id`. Files must be uploaded first via POST /api/files/upload. Respects per-order max; duplicates ignored.',
+      'For orders assigned to this specialist in PROCESSING or COMPLETED. Body: `completion_proof_file_ids` and/or `completion_proof_file_id`. Files must be uploaded first via POST /api/files/upload. Respects per-order max; duplicates ignored.',
   })
   async specialistAttachCompletionProof(
     @CurrentUser('payoutTraderId') payoutTraderId: string,
@@ -390,6 +409,29 @@ export class PayoutSpecialistInternalController {
     @Body() body: AttachCompletionProofDto,
   ) {
     return this.payoutService.specialistAttachCompletionProof(payoutTraderId, userId, orderId, body);
+  }
+
+  @Delete('orders/:orderId/completion-proof/:fileId')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({
+    summary: 'Detach a single payment receipt from a pay-out (and purge the S3 object if orphan)',
+    description:
+      'Removes the file from this order. The underlying file is hard-deleted from S3 and the file row is dropped when no other record references it.',
+  })
+  async specialistDetachCompletionProof(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') role: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+  ) {
+    return this.payoutService.specialistDetachCompletionProof(
+      payoutTraderId,
+      role,
+      userId,
+      orderId,
+      fileId,
+    );
   }
 
   @Post('orders/:orderId/cancel')

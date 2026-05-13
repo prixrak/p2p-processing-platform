@@ -58,7 +58,7 @@ export interface OrderDto {
   request_id: string;
   created_at: number;
   confirmed_at: number | null;
-  /** Unix seconds when the order reached its current history outcome; legacy rows fall back to last update. */
+  /** Unix seconds for the terminal history outcome; older rows without it use last update timestamp. */
   completed_at: number | null;
   autoclose_at: number | null;
   /** ISO currency code (e.g. UAH), matches the order in DB */
@@ -73,10 +73,10 @@ export interface OrderDto {
   commission_percent: number;
   /**
    * Trader pay-in markup over parser P at assignment, in percent points (1 = 1%).
-   * Null when snapshots were not recorded (legacy / non-parser flows).
+   * Null when parser snapshots were not recorded (historical orders / non-parser paths).
    */
   payin_trader_markup_percent: number | null;
-  /** Legacy field; do not use as trader or merchant fee — prefer `commission_percent` and `payin_trader_markup_percent`. */
+  /** Compatibility rate field — prefer `commission_percent` and `payin_trader_markup_percent`. */
   rate: number;
   status: PayInOrderStatus;
   requisite_number: string;
@@ -85,7 +85,7 @@ export interface OrderDto {
   redirect_url: string | null;
   appeals: AppealDto[];
   payment_detail: PaymentDetailsShortDto | null;
-  /** Routing snapshot when a trader requisite was assigned (null for NO_REQUISITE / legacy). */
+  /** Routing snapshot when a trader requisite was assigned (null when unknown or unset). */
   trader_processing_method?: 'CARD' | 'FORK' | null;
   /** FORK: optional counterparty / exchange reference from the trader. */
   fork_exchange_reference?: string | null;
@@ -239,11 +239,8 @@ export interface ErrorDetails {
  * field names cannot drift apart.
  */
 export interface CascadeSettings {
-  sliding_window_hours: number;
   autolimit_threshold: number;
   autolimit_enabled: boolean;
-  card_rating_weight: number;
-  fork_rating_weight: number;
   fork_traffic_percent: number;
   card_traffic_percent: number;
   provider_traffic_percent: number;

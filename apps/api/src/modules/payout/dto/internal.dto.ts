@@ -19,7 +19,7 @@ export class AssignToTraderDto {
 }
 
 export class TraderFailDto {
-  /** Legacy field from older clients; the path parameter is authoritative. */
+  /** Optional alternate id in body; route path id is authoritative. */
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()

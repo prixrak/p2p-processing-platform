@@ -14,10 +14,10 @@ describe('sha256HexUtf8', () => {
 });
 
 describe('fillMultiplierConfigFingerprint', () => {
-  it('matches legacy Node SHA-256 hex prefix', () => {
+  it('matches Node SHA-256 hex prefix fingerprint', () => {
     const raw = [{ from: 0, to: 0.6, multiplier: 1 }];
     const s = JSON.stringify(raw);
-    const legacy = createHash('sha256').update(s, 'utf8').digest('hex').slice(0, 32);
-    expect(fillMultiplierConfigFingerprint(raw)).toBe(legacy);
+    const digestPrefix = createHash('sha256').update(s, 'utf8').digest('hex').slice(0, 32);
+    expect(fillMultiplierConfigFingerprint(raw)).toBe(digestPrefix);
   });
 });

@@ -93,7 +93,7 @@ describe('payinOrderToOrderDto', () => {
     expect(dto.completed_at).toBe(Math.floor(done.getTime() / 1000));
   });
 
-  it('falls back completed_at to updatedAt for legacy history rows without completedAt', () => {
+  it('falls back completed_at to updatedAt for historical rows without completedAt', () => {
     const upd = new Date('2026-01-15T15:00:00.000Z');
     const dto = payinOrderToOrderDto(
       minimalOrder({

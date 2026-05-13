@@ -1929,11 +1929,8 @@ export class CascadeService {
 
   async updateSettings(
     data: {
-      slidingWindowHours?: number;
       autolimitThreshold?: number;
       autolimitEnabled?: boolean;
-      cardRatingWeight?: number;
-      forkRatingWeight?: number;
       forkTrafficPercent?: number;
       cardTrafficPercent?: number;
       providerTrafficPercent?: number;
@@ -1992,20 +1989,11 @@ export class CascadeService {
     return this.prisma.cascadeSetting.update({
       where: { id: row.id },
       data: {
-        ...(data.slidingWindowHours !== undefined
-          ? { slidingWindowHours: data.slidingWindowHours }
-          : {}),
         ...(data.autolimitThreshold !== undefined
           ? { autolimitThreshold: new Prisma.Decimal(data.autolimitThreshold) }
           : {}),
         ...(data.autolimitEnabled !== undefined
           ? { autolimitEnabled: data.autolimitEnabled }
-          : {}),
-        ...(data.cardRatingWeight !== undefined
-          ? { cardRatingWeight: data.cardRatingWeight }
-          : {}),
-        ...(data.forkRatingWeight !== undefined
-          ? { forkRatingWeight: data.forkRatingWeight }
           : {}),
         ...(forkTrafficPercent !== undefined ? { forkTrafficPercent } : {}),
         ...(cardTrafficPercent !== undefined ? { cardTrafficPercent } : {}),

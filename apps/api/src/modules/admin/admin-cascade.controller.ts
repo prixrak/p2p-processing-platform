@@ -69,11 +69,8 @@ export class AdminCascadeController {
   ) {
     await this.cascadeService.updateSettings(
       {
-        slidingWindowHours: dto.sliding_window_hours,
         autolimitThreshold: dto.autolimit_threshold,
         autolimitEnabled: dto.autolimit_enabled,
-        cardRatingWeight: dto.card_rating_weight,
-        forkRatingWeight: dto.fork_rating_weight,
         forkTrafficPercent: dto.fork_traffic_percent,
         cardTrafficPercent: dto.card_traffic_percent,
         providerTrafficPercent: dto.provider_traffic_percent,
@@ -93,11 +90,8 @@ export class AdminCascadeController {
       PLATFORM_SETTING_PAYIN_PROVIDER_INTEGRATION_ENABLED,
     );
     return {
-      sliding_window_hours: s.slidingWindowHours,
       autolimit_threshold: Number(s.autolimitThreshold),
       autolimit_enabled: s.autolimitEnabled,
-      card_rating_weight: s.cardRatingWeight,
-      fork_rating_weight: s.forkRatingWeight,
       fork_traffic_percent: Number(s.forkTrafficPercent),
       card_traffic_percent: Number(s.cardTrafficPercent),
       provider_traffic_percent: Number(s.providerTrafficPercent),

@@ -13,7 +13,7 @@ export class HashicorpVaultService {
 
   /**
    * Wallet Service operations (counter, seed read, per-trader secret write).
-   * Use `VAULT_WALLET_ROLE_ID` / `VAULT_WALLET_SECRET_ID` or legacy `VAULT_ROLE_ID` / `VAULT_SECRET_ID`.
+   * Use `VAULT_WALLET_ROLE_ID` / `VAULT_WALLET_SECRET_ID`, or `VAULT_ROLE_ID` / `VAULT_SECRET_ID` as fallback.
    */
   isConfigured(): boolean {
     return Boolean(
@@ -68,7 +68,7 @@ export class HashicorpVaultService {
     }
     if (!this.isConfigured()) {
       throw new Error(
-        'Vault wallet AppRole is not configured (VAULT_ADDR / VAULT_WALLET_ROLE_ID / VAULT_WALLET_SECRET_ID or legacy VAULT_ROLE_ID / VAULT_SECRET_ID)',
+        'Vault wallet AppRole is not configured (VAULT_ADDR / VAULT_WALLET_ROLE_ID / VAULT_WALLET_SECRET_ID or fallback VAULT_ROLE_ID / VAULT_SECRET_ID)',
       );
     }
     try {
@@ -90,7 +90,7 @@ export class HashicorpVaultService {
     }
     if (!this.isSweepVaultConfigured()) {
       throw new Error(
-        'Vault sweep AppRole is not configured (VAULT_ADDR / VAULT_SWEEP_ROLE_ID / VAULT_SWEEP_SECRET_ID or legacy VAULT_ROLE_ID / VAULT_SECRET_ID)',
+        'Vault sweep AppRole is not configured (VAULT_ADDR / VAULT_SWEEP_ROLE_ID / VAULT_SWEEP_SECRET_ID or fallback VAULT_ROLE_ID / VAULT_SECRET_ID)',
       );
     }
     try {

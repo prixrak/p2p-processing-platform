@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   NotFoundException,
   BadRequestException,
@@ -10,12 +11,14 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { PrismaService } from '../../config/prisma.service';
 import { config } from '@p2p/config';
 import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE_BYTES, UserRole } from '@p2p/shared';
 import { logExternalFailure } from '../../common/utils/external-error-log';
+import { AuditService } from '../audit/audit.service';
 
 /** JWT user payload passed from FilesController — used for file download authorization */
 export interface FileDownloadActor {
@@ -39,7 +42,10 @@ export class FilesService {
   private readonly s3: S3Client;
   private readonly bucket: string;
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {
     this.bucket = config.s3.bucket;
     this.s3 = new S3Client({
       region: config.s3.region,
@@ -337,5 +343,115 @@ export class FilesService {
       await this.ensureUserCanAccessFile(actor, file);
     }
     return file;
+  }
+
+  /**
+   * Best-effort S3 object removal. Logs and swallows errors so an already-detached DB row
+   * does not leave the caller in a half-deleted state when S3 transient errors hit.
+   */
+  private async deleteFromS3(s3Key: string, context: { fileId: string }): Promise<void> {
+    try {
+      await this.s3.send(
+        new DeleteObjectCommand({ Bucket: this.bucket, Key: s3Key }),
+      );
+    } catch (err) {
+      logExternalFailure(this.logger, {
+        integration: 'AWS S3',
+        operation: 'DeleteObject',
+        context: {
+          bucket: this.bucket,
+          fileId: context.fileId,
+          keyByteLength: Buffer.byteLength(s3Key, 'utf8'),
+          ...this.s3ClientLogContext(),
+        },
+        error: err,
+      });
+      throw err;
+    }
+  }
+
+  /**
+   * Hard delete: removes the S3 object and DB row, but only when the file is not
+   * referenced by any persistent record (appeal proof, pay-in fork chat proof, bank logo,
+   * pay-out completion proof attachment, or single-column `payout_orders.completion_proof_file_id`).
+   *
+   * Used by:
+   *   - cabinets that want to drop a staged proof before it is committed to an order,
+   *   - cabinets that want to detach a committed proof and physically remove the orphan.
+   */
+  async deleteOrphanFile(
+    actor: { id: string; role: string },
+    fileId: string,
+    options: { skipOwnershipCheck?: boolean } = {},
+  ): Promise<void> {
+    const file = await this.prisma.file.findUnique({ where: { id: fileId } });
+    if (!file) throw new NotFoundException('File not found');
+
+    if (!options.skipOwnershipCheck) {
+      const isStaff =
+        actor.role === UserRole.ADMIN || actor.role === UserRole.OWNER;
+      if (!isStaff && file.uploadedBy !== actor.id) {
+        throw new ForbiddenException('File can be removed only by its uploader');
+      }
+    }
+
+    const blockingRefs = await this.findFileReferences(fileId);
+    if (blockingRefs.length > 0) {
+      throw new ConflictException(
+        `File is still attached to: ${blockingRefs.join(', ')}`,
+      );
+    }
+
+    await this.deleteFromS3(file.s3Key, { fileId });
+    await this.prisma.file.delete({ where: { id: fileId } });
+
+    await this.audit.log({
+      actorId: actor.id,
+      actorRole: actor.role,
+      action: 'FILE_DELETED',
+      entityType: 'File',
+      entityId: fileId,
+      oldValue: {
+        originalName: file.originalName,
+        mimeType: file.mimeType,
+        sizeBytes: file.sizeBytes,
+        s3Key: file.s3Key,
+        uploadedBy: file.uploadedBy,
+      },
+      newValue: null,
+    });
+  }
+
+  /**
+   * Detect any persistent record that would block a hard delete. Order matches the
+   * `File` relations in `schema.prisma`; banks include both active and inactive.
+   * Returns human-readable reasons for the `409` body.
+   */
+  async findFileReferences(fileId: string): Promise<string[]> {
+    const [
+      appealCount,
+      forkCount,
+      bankCount,
+      payoutHeadCount,
+      payoutAttachmentCount,
+    ] = await Promise.all([
+      this.prisma.appealProof.count({ where: { fileId } }),
+      this.prisma.payinForkChatProof.count({ where: { fileId } }),
+      this.prisma.bank.count({ where: { logoFileId: fileId } }),
+      this.prisma.payoutOrder.count({ where: { completionProofFileId: fileId } }),
+      this.prisma.payoutCompletionProofAttachment.count({ where: { fileId } }),
+    ]);
+
+    const refs: string[] = [];
+    if (appealCount > 0) refs.push('appeal proof');
+    if (forkCount > 0) refs.push('pay-in fork chat proof');
+    if (bankCount > 0) refs.push('bank logo');
+    if (payoutAttachmentCount > 0) refs.push('pay-out completion proof');
+    // Only surface the standalone head column when no attachment rows reference this file —
+    // the head column mirrors the attachment list via syncPayoutCompletionProofHeadColumn.
+    if (payoutAttachmentCount === 0 && payoutHeadCount > 0) {
+      refs.push('pay-out completion proof (single-column)');
+    }
+    return refs;
   }
 }

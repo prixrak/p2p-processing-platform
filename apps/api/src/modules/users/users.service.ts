@@ -103,7 +103,7 @@ export class UsersService {
   }
 
   /**
-   * Referral-role users must have a ReferralProfile row. Legacy or inconsistent data can omit it;
+   * Referral-role users must have a ReferralProfile row. Older or inconsistent data may omit it;
    * repair on directory read so staff UI always sees commission, balance, and link actions.
    */
   private async backfillMissingReferralProfiles(rows: UserListWithInclude[]): Promise<UserListWithInclude[]> {
