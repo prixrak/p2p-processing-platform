@@ -1,4 +1,15 @@
-import { TrongridClient } from './trongrid.client';
+import { TrongridClient, trongridSupportsV1AccountTokens } from './trongrid.client';
+
+describe('trongridSupportsV1AccountTokens', () => {
+  it('is false for public Nile TronGrid (tokens index not available)', () => {
+    expect(trongridSupportsV1AccountTokens('https://nile.trongrid.io')).toBe(false);
+    expect(trongridSupportsV1AccountTokens('https://nile.trongrid.io/')).toBe(false);
+  });
+
+  it('is true for mainnet TronGrid', () => {
+    expect(trongridSupportsV1AccountTokens('https://api.trongrid.io')).toBe(true);
+  });
+});
 
 describe('TrongridClient', () => {
   let fetchSpy: jest.SpyInstance;

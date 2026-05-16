@@ -6,8 +6,14 @@ import {
   PLATFORM_SETTING_PAYIN_PROVIDER_INTEGRATION_ENABLED,
   PlatformSettingsService,
 } from '../platform-settings/platform-settings.service';
+import { OpsAlertsService } from '../ops-alerts/ops-alerts.service';
+
+const mockOpsAlerts = { scheduleAlert: jest.fn() };
 
 describe('PayinProviderService', () => {
+  beforeEach(() => {
+    mockOpsAlerts.scheduleAlert.mockClear();
+  });
   const makePlatform = (integration: string) => ({
     findOne: jest.fn(async (key: string) => {
       if (key === PLATFORM_SETTING_PAYIN_PROVIDER_INTEGRATION_ENABLED) {
@@ -22,6 +28,7 @@ describe('PayinProviderService', () => {
       providers: [
         PayinProviderService,
         { provide: PlatformSettingsService, useValue: makePlatform('false') },
+        { provide: OpsAlertsService, useValue: mockOpsAlerts },
       ],
     }).compile();
     const svc = mod.get(PayinProviderService);
@@ -55,6 +62,7 @@ describe('PayinProviderService', () => {
       providers: [
         PayinProviderService,
         { provide: PlatformSettingsService, useValue: makePlatform('true') },
+        { provide: OpsAlertsService, useValue: mockOpsAlerts },
       ],
     }).compile();
     const svc = mod.get(PayinProviderService);
@@ -77,6 +85,7 @@ describe('PayinProviderService', () => {
       providers: [
         PayinProviderService,
         { provide: PlatformSettingsService, useValue: makePlatform('false') },
+        { provide: OpsAlertsService, useValue: mockOpsAlerts },
       ],
     }).compile();
     const svc = mod.get(PayinProviderService);

@@ -25,6 +25,16 @@ function normalizeTrongridBaseUrl(raw: string): string {
 /** Trimmed custom base URL; when unset, the SDK uses standard AWS partition endpoints. */
 const customS3Endpoint = process.env.S3_ENDPOINT?.trim() || undefined;
 
+export type OpsAlertSeverity = 'critical' | 'high' | 'medium' | 'low';
+
+function parseOpsAlertSeverity(raw: string): OpsAlertSeverity {
+  const v = raw.trim().toLowerCase();
+  if (v === 'critical' || v === 'high' || v === 'medium' || v === 'low') {
+    return v;
+  }
+  return 'high';
+}
+
 export const config = {
   database: {
     url: optional('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/p2p'),
@@ -57,6 +67,25 @@ export const config = {
   ownerOps: {
     /** Telegram chat_id for operational alerts (stale parser rate, etc.). Same bot as trader notifications. */
     telegramChatId: optional('OWNER_OPS_TELEGRAM_CHAT_ID', ''),
+  },
+  /** Optional SMTP ops alerts (e.g. Gmail app password). Queue-backed in API worker. */
+  opsEmail: {
+    recipientEmails: optional('OPS_ALERT_EMAILS', '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    smtpHost: optional('SMTP_HOST', 'smtp.gmail.com'),
+    smtpPort: parseInt(optional('SMTP_PORT', '587'), 10),
+    smtpSecure: optional('SMTP_SECURE', 'false') === 'true',
+    smtpUser: optional('SMTP_USER', ''),
+    smtpPass: optional('SMTP_PASS', ''),
+    fromAddress: optional('OPS_EMAIL_FROM', ''),
+    /** Minimum severity queued for email (`critical` > `high` > `medium` > `low`). */
+    minSeverity: parseOpsAlertSeverity(optional('OPS_EMAIL_MIN_SEVERITY', 'high')),
+    throttleCriticalSec: parseInt(optional('OPS_EMAIL_THROTTLE_CRITICAL_SEC', '3600'), 10),
+    throttleHighSec: parseInt(optional('OPS_EMAIL_THROTTLE_HIGH_SEC', '1800'), 10),
+    throttleMediumSec: parseInt(optional('OPS_EMAIL_THROTTLE_MEDIUM_SEC', '900'), 10),
+    throttleLowSec: parseInt(optional('OPS_EMAIL_THROTTLE_LOW_SEC', '600'), 10),
   },
   tron: {
     /** Run TRC-20 USDT deposit poller (typically in worker process only). */

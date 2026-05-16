@@ -11,6 +11,7 @@ import {
 } from './ethereum-json-rpc.client';
 import { WalletDepositsService } from './wallet-deposits.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { OpsAlertsService } from '../ops-alerts/ops-alerts.service';
 
 /**
  * Polls Ethereum mainnet USDT (ERC-20) transfers to per-trader deposit addresses (Block 5 §10.2–10.5).
@@ -27,6 +28,7 @@ export class Erc20DepositPollerService implements OnModuleInit, OnModuleDestroy 
     private readonly eth: EthereumJsonRpcClient,
     private readonly walletDeposits: WalletDepositsService,
     private readonly telegram: TelegramService,
+    private readonly opsAlerts: OpsAlertsService,
   ) {}
 
   onModuleInit(): void {
@@ -89,9 +91,6 @@ export class Erc20DepositPollerService implements OnModuleInit, OnModuleDestroy 
       `ERC-20 deposit poller stale (threshold ${config.ethereum.staleAlertMinutes}m). Last OK: ${new Date(lastMs).toISOString()}`,
     );
 
-    const chatId = config.ownerOps.telegramChatId;
-    if (!chatId) return;
-
     try {
       const locked = await this.redis.set(
         config.ethereum.staleNotifyLockRedisKey,
@@ -102,14 +101,25 @@ export class Erc20DepositPollerService implements OnModuleInit, OnModuleDestroy 
       );
       if (locked !== 'OK') return;
 
-      const msg =
-        `<b>Ethereum deposit poller alert</b>\n` +
-        `No successful ERC-20 poll within ${config.ethereum.staleAlertMinutes} minutes.\n` +
-        `Last OK: ${new Date(lastMs).toISOString()}`;
+      const chatId = config.ownerOps.telegramChatId.trim();
+      if (chatId) {
+        const msg =
+          `<b>Ethereum deposit poller alert</b>\n` +
+          `No successful ERC-20 poll within ${config.ethereum.staleAlertMinutes} minutes.\n` +
+          `Last OK: ${new Date(lastMs).toISOString()}`;
+        await this.telegram.sendNotification(chatId, msg);
+      }
 
-      await this.telegram.sendNotification(chatId, msg);
+      await this.opsAlerts.scheduleAlert({
+        severity: 'high',
+        title: 'Ethereum ERC-20 deposit poller stale',
+        lines: [
+          `No successful ERC-20 poll within ${config.ethereum.staleAlertMinutes} minutes.`,
+          `Last OK: ${new Date(lastMs).toISOString()}`,
+        ],
+      });
     } catch (e) {
-      this.logger.warn(`ERC-20 stale Telegram notify failed: ${e}`);
+      this.logger.warn(`ERC-20 stale ops notify failed: ${e}`);
     }
   }
 

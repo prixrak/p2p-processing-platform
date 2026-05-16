@@ -57,7 +57,8 @@ function buildPrismaMock(opts: {
 
 function buildService(prismaLike: ReturnType<typeof buildPrismaMock>) {
   const audit = { log: jest.fn().mockResolvedValue(undefined) } as any;
-  const svc = new FilesService(prismaLike as any, audit);
+  const opsAlerts = { scheduleAlert: jest.fn().mockResolvedValue(undefined) };
+  const svc = new FilesService(prismaLike as any, audit, opsAlerts as any);
   const s3Send = jest.fn().mockResolvedValue(undefined);
   (svc as any).s3 = { send: s3Send };
   return { svc, audit, s3Send };

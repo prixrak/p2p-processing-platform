@@ -6,6 +6,15 @@ import {
   PlatformSettingsService,
 } from '../platform-settings/platform-settings.service';
 import type { PayinProviderReserveInput, PayinProviderReserveResult } from './payin-provider.types';
+import { OpsAlertsService } from '../ops-alerts/ops-alerts.service';
+
+function safeHttpOrigin(raw: string): string {
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return 'invalid-url';
+  }
+}
 
 /**
  * External Pay-In provider bridge (TZ §5–6). HTTP contract is minimal and env-driven;
@@ -15,7 +24,10 @@ import type { PayinProviderReserveInput, PayinProviderReserveResult } from './pa
 export class PayinProviderService {
   private readonly logger = new Logger(PayinProviderService.name);
 
-  constructor(private readonly platformSettings: PlatformSettingsService) {}
+  constructor(
+    private readonly platformSettings: PlatformSettingsService,
+    private readonly opsAlerts: OpsAlertsService,
+  ) {}
 
   /**
    * POST JSON to `{PAYIN_PROVIDER_BASE_URL}{PAYIN_PROVIDER_RESERVE_PATH}` when integration is enabled.
@@ -95,6 +107,17 @@ export class PayinProviderService {
 
       if (!res.ok) {
         if (res.status >= 500) {
+          void this.opsAlerts.scheduleAlert({
+            severity: 'high',
+            title: 'Pay-In external provider unavailable',
+            lines: [
+              'Reserve request failed with HTTP 5xx.',
+              `Correlation prefix: ${correlationId}`,
+              `Reason: http_${res.status}`,
+              `Provider origin: ${safeHttpOrigin(base)}`,
+            ],
+            fingerprint: 'payin-provider:unavailable',
+          });
           return { kind: 'unavailable', reason: `http_${res.status}` };
         }
         return { kind: 'declined', reason: `http_${res.status}` };
@@ -116,6 +139,17 @@ export class PayinProviderService {
         msg: 'payin.provider.unavailable',
         correlation_id: correlationId,
         error: msg,
+      });
+      void this.opsAlerts.scheduleAlert({
+        severity: 'high',
+        title: 'Pay-In external provider unavailable',
+        lines: [
+          'Reserve request failed due to transport error or timeout.',
+          `Correlation prefix: ${correlationId}`,
+          `Reason: ${msg}`,
+          `Provider origin: ${safeHttpOrigin(base)}`,
+        ],
+        fingerprint: 'payin-provider:unavailable',
       });
       return { kind: 'unavailable', reason: msg };
     }

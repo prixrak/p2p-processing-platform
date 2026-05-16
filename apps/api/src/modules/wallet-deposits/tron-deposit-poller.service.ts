@@ -6,6 +6,7 @@ import { PrismaService } from '../../config/prisma.service';
 import { TrongridClient } from './trongrid.client';
 import { WalletDepositsService } from './wallet-deposits.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { OpsAlertsService } from '../ops-alerts/ops-alerts.service';
 
 /**
  * Polls TronGrid for USDT TRC-20 transfers to per-trader deposit addresses (Block 5 §10.2–10.5).
@@ -24,6 +25,7 @@ export class TronDepositPollerService implements OnModuleInit, OnModuleDestroy {
     private readonly trongrid: TrongridClient,
     private readonly walletDeposits: WalletDepositsService,
     private readonly telegram: TelegramService,
+    private readonly opsAlerts: OpsAlertsService,
   ) {}
 
   onModuleInit(): void {
@@ -88,9 +90,6 @@ export class TronDepositPollerService implements OnModuleInit, OnModuleDestroy {
       `Tron deposit poller stale (threshold ${config.tron.staleAlertMinutes}m). Last OK: ${new Date(lastMs).toISOString()}`,
     );
 
-    const chatId = config.ownerOps.telegramChatId;
-    if (!chatId) return;
-
     try {
       const locked = await this.redis.set(
         config.tron.staleNotifyLockRedisKey,
@@ -101,14 +100,25 @@ export class TronDepositPollerService implements OnModuleInit, OnModuleDestroy {
       );
       if (locked !== 'OK') return;
 
-      const msg =
-        `<b>TronGrid deposit poller alert</b>\n` +
-        `No successful poll within ${config.tron.staleAlertMinutes} minutes.\n` +
-        `Last OK: ${new Date(lastMs).toISOString()}`;
+      const chatId = config.ownerOps.telegramChatId.trim();
+      if (chatId) {
+        const msg =
+          `<b>TronGrid deposit poller alert</b>\n` +
+          `No successful poll within ${config.tron.staleAlertMinutes} minutes.\n` +
+          `Last OK: ${new Date(lastMs).toISOString()}`;
+        await this.telegram.sendNotification(chatId, msg);
+      }
 
-      await this.telegram.sendNotification(chatId, msg);
+      await this.opsAlerts.scheduleAlert({
+        severity: 'high',
+        title: 'TronGrid deposit poller stale',
+        lines: [
+          `No successful poll within ${config.tron.staleAlertMinutes} minutes.`,
+          `Last OK: ${new Date(lastMs).toISOString()}`,
+        ],
+      });
     } catch (e) {
-      this.logger.warn(`Tron stale Telegram notify failed: ${e}`);
+      this.logger.warn(`Tron stale ops notify failed: ${e}`);
     }
   }
 

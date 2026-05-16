@@ -13,6 +13,7 @@ import {
 } from '../common/utils/external-error-log';
 import { WEBHOOK_MAX_RETRIES, WEBHOOK_RETRY_DELAYS_MS } from '@p2p/shared';
 import { ApiKeyDirection } from '@prisma/client';
+import { OpsAlertsService } from '../modules/ops-alerts/ops-alerts.service';
 
 interface WebhookJobData {
   outboxId: string;
@@ -22,7 +23,10 @@ interface WebhookJobData {
 export class WebhookProcessor extends WorkerHost {
   private readonly logger = new Logger(WebhookProcessor.name);
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly opsAlerts: OpsAlertsService,
+  ) {
     super();
   }
 
@@ -67,6 +71,14 @@ export class WebhookProcessor extends WorkerHost {
         where: { id: outboxId },
         data: { status: 'DLQ', attempts: outbox.attempts + 1 },
       });
+      void this.opsAlerts.scheduleAlert({
+        severity: 'high',
+        title: 'Merchant webhook blocked by SSRF validation',
+        lines: [
+          'Callback URL rejected by SSRF validation; entry moved to DLQ.',
+          `Outbox ID: ${outboxId}`,
+        ],
+      });
       return;
     }
 
@@ -85,6 +97,14 @@ export class WebhookProcessor extends WorkerHost {
         await this.prisma.webhookOutbox.update({
           where: { id: outboxId },
           data: { status: 'DLQ', attempts: outbox.attempts + 1 },
+        });
+        void this.opsAlerts.scheduleAlert({
+          severity: 'critical',
+          title: 'Webhook signing key decrypt failure',
+          lines: [
+            'Could not decrypt merchant signing secret; webhook moved to DLQ.',
+            `Outbox ID: ${outboxId}`,
+          ],
         });
         return;
       }
@@ -193,6 +213,17 @@ export class WebhookProcessor extends WorkerHost {
         data: { status: 'DLQ', attempts: newAttempts },
       });
       this.logger.error(`Webhook moved to DLQ after ${newAttempts} attempts: ${outboxId}`);
+      const flow = outbox.payinOrder ? 'pay-in' : 'pay-out';
+      void this.opsAlerts.scheduleAlert({
+        severity: 'critical',
+        title: 'Merchant webhook moved to DLQ',
+        lines: [
+          'Webhook delivery failed after all retries.',
+          `Outbox ID: ${outboxId}`,
+          `Callback origin: ${safeCallbackOrigin(outbox.callbackUrl)}`,
+          `Flow: ${flow}`,
+        ],
+      });
       return;
     }
 

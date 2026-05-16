@@ -5,6 +5,7 @@ import { PrismaService } from '../../config/prisma.service';
 import { averageParserRateFromOffers, type BinanceP2pOfferPick } from '@p2p/shared';
 import { BinanceP2pClient } from './binance-p2p.client';
 import { TelegramService } from '../telegram/telegram.service';
+import { OpsAlertsService } from '../ops-alerts/ops-alerts.service';
 
 const REDIS_LAST_SUCCESS_KEY = 'binance:p2p:last_success_ms';
 const REDIS_STALE_NOTIFY_LOCK = 'binance:p2p:stale_notify_lock';
@@ -25,6 +26,7 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly binance: BinanceP2pClient,
     private readonly telegram: TelegramService,
+    private readonly opsAlerts: OpsAlertsService,
   ) {}
 
   onModuleInit(): void {
@@ -270,7 +272,7 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Warn when Binance P2P parser has not produced a rate recently (spec Block 5 section 2.2).
-   * Telegram notify is throttled via Redis lock (10 min) when OWNER_OPS_TELEGRAM_CHAT_ID is set.
+   * Ops Telegram/email notifies are throttled via Redis lock (10 min) when configured.
    */
   private async maybeAlertStaleParserRate(): Promise<void> {
     const thresholdMs = Math.max(1, config.binanceP2p.staleAlertMinutes) * 60_000;
@@ -293,21 +295,29 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
       }`,
     );
 
-    const chatId = config.ownerOps.telegramChatId;
-    if (!chatId) return;
-
     try {
       const locked = await this.redis.set(REDIS_STALE_NOTIFY_LOCK, '1', 'EX', 600, 'NX');
       if (locked !== 'OK') return;
 
-      const msg =
-        `<b>Parser rate alert</b>\n` +
-        `Binance P2P primary pair has no fresh success within ${config.binanceP2p.staleAlertMinutes} minutes.\n` +
-        `Last OK: ${lastMs ? new Date(lastMs).toISOString() : 'never'}`;
+      const chatId = config.ownerOps.telegramChatId.trim();
+      if (chatId) {
+        const msg =
+          `<b>Parser rate alert</b>\n` +
+          `Binance P2P primary pair has no fresh success within ${config.binanceP2p.staleAlertMinutes} minutes.\n` +
+          `Last OK: ${lastMs ? new Date(lastMs).toISOString() : 'never'}`;
+        await this.telegram.sendNotification(chatId, msg);
+      }
 
-      await this.telegram.sendNotification(chatId, msg);
+      await this.opsAlerts.scheduleAlert({
+        severity: 'high',
+        title: 'Binance P2P parser rate stale',
+        lines: [
+          `Primary pair has no successful refresh within ${config.binanceP2p.staleAlertMinutes} minutes.`,
+          `Last OK: ${lastMs ? new Date(lastMs).toISOString() : 'never'}`,
+        ],
+      });
     } catch (e) {
-      this.logger.warn(`Stale parser Telegram notify failed: ${e}`);
+      this.logger.warn(`Stale parser ops notify failed: ${e}`);
     }
   }
 }

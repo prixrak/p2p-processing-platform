@@ -17,8 +17,9 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { PrismaService } from '../../config/prisma.service';
 import { config } from '@p2p/config';
 import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE_BYTES, UserRole } from '@p2p/shared';
-import { logExternalFailure } from '../../common/utils/external-error-log';
+import { logExternalFailure, summarizeExternalError } from '../../common/utils/external-error-log';
 import { AuditService } from '../audit/audit.service';
+import { OpsAlertsService } from '../ops-alerts/ops-alerts.service';
 
 /** JWT user payload passed from FilesController — used for file download authorization */
 export interface FileDownloadActor {
@@ -45,6 +46,7 @@ export class FilesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly opsAlerts: OpsAlertsService,
   ) {
     this.bucket = config.s3.bucket;
     this.s3 = new S3Client({
@@ -115,6 +117,19 @@ export class FilesService {
           ...this.s3ClientLogContext(),
         },
         error: err,
+      });
+      const summary = summarizeExternalError(err);
+      void this.opsAlerts.scheduleAlert({
+        severity: 'high',
+        title: 'AWS S3 PutObject failed',
+        lines: [
+          'File upload could not be stored in object storage.',
+          `Bucket: ${this.bucket}`,
+          ...(summary.errorMessage
+            ? [`Error: ${summary.errorMessage.slice(0, 240)}`]
+            : []),
+        ],
+        fingerprint: 's3:PutObject',
       });
       throw err;
     }
@@ -311,6 +326,20 @@ export class FilesService {
         },
         error: err,
       });
+      const summary = summarizeExternalError(err);
+      void this.opsAlerts.scheduleAlert({
+        severity: 'high',
+        title: 'AWS S3 presigned URL failed',
+        lines: [
+          'Could not generate a download URL.',
+          `Bucket: ${this.bucket}`,
+          `File ID: ${file.id}`,
+          ...(summary.errorMessage
+            ? [`Error: ${summary.errorMessage.slice(0, 240)}`]
+            : []),
+        ],
+        fingerprint: 's3:getSignedUrl',
+      });
       throw err;
     }
   }
@@ -365,6 +394,20 @@ export class FilesService {
           ...this.s3ClientLogContext(),
         },
         error: err,
+      });
+      const summary = summarizeExternalError(err);
+      void this.opsAlerts.scheduleAlert({
+        severity: 'high',
+        title: 'AWS S3 DeleteObject failed',
+        lines: [
+          'Could not remove object from storage during file deletion.',
+          `Bucket: ${this.bucket}`,
+          `File ID: ${context.fileId}`,
+          ...(summary.errorMessage
+            ? [`Error: ${summary.errorMessage.slice(0, 240)}`]
+            : []),
+        ],
+        fingerprint: 's3:DeleteObject',
       });
       throw err;
     }

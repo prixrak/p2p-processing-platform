@@ -72,6 +72,19 @@ function parseContractTransferEvent(raw: {
 }
 
 /**
+ * `GET /v1/accounts/:address/tokens` is not implemented on public Nile TronGrid (HTTP 404).
+ * The client uses contract `balanceOf` for balances when this returns false.
+ */
+export function trongridSupportsV1AccountTokens(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl.trim()).hostname.toLowerCase();
+    return host !== 'nile.trongrid.io';
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Minimal TronGrid REST client for USDT TRC-20 incoming transfers (Block 5 §10.5).
  */
 @Injectable()
@@ -394,6 +407,9 @@ export class TrongridClient {
     const account = address?.trim() ?? '';
     if (!account) {
       return null;
+    }
+    if (!trongridSupportsV1AccountTokens(config.tron.baseUrl)) {
+      return this.getUsdtTrc20BalanceViaBalanceOfCall(account);
     }
     const url = new URL(`${config.tron.baseUrl}/v1/accounts/${account}/tokens`);
     try {
