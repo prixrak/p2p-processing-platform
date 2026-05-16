@@ -8,6 +8,9 @@ import { WalletDepositsService } from './wallet-deposits.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { OpsAlertsService } from '../ops-alerts/ops-alerts.service';
 
+/** TRC-20 USDT on Tron mainnet (Nile tests must use the testnet mint in env instead). */
+const TRON_MAINNET_USDT_CONTRACT_BASE58 = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
+
 /**
  * Polls TronGrid for USDT TRC-20 transfers to per-trader deposit addresses (Block 5 §10.2–10.5).
  * Intended to run in the worker process only.
@@ -33,6 +36,7 @@ export class TronDepositPollerService implements OnModuleInit, OnModuleDestroy {
       this.logger.log('Tron deposit poller disabled (TRON_DEPOSIT_POLL_ENABLED=false)');
       return;
     }
+    this.warnIfNileUsesMainnetUsdtContract();
     this.redis = new Redis({
       host: config.redis.host,
       port: config.redis.port,
@@ -56,6 +60,26 @@ export class TronDepositPollerService implements OnModuleInit, OnModuleDestroy {
   onModuleDestroy(): void {
     if (this.timer) clearInterval(this.timer);
     void this.redis?.quit();
+  }
+
+  /**
+   * Nile uses a different USDT mint than mainnet; wrong `TRON_USDT_TRC20_CONTRACT` yields empty
+   * TronGrid pages, so no TOP_UP / settlement rows are ever created.
+   */
+  private warnIfNileUsesMainnetUsdtContract(): void {
+    try {
+      const host = new URL(config.tron.baseUrl.trim()).hostname.toLowerCase();
+      if (host !== 'nile.trongrid.io') return;
+      const c = config.tron.usdtTrc20Contract.trim();
+      if (c === TRON_MAINNET_USDT_CONTRACT_BASE58) {
+        this.logger.warn(
+          'Tron deposit poller: TRONGRID_BASE_URL points to Nile but TRON_USDT_TRC20_CONTRACT is mainnet USDT. ' +
+            'TronGrid will return no TRC-20 rows for this filter — set TRON_USDT_TRC20_CONTRACT to the Nile testnet USDT contract.',
+        );
+      }
+    } catch {
+      // invalid TRONGRID_BASE_URL
+    }
   }
 
   private async touchPollSuccess(headBlock: number): Promise<void> {

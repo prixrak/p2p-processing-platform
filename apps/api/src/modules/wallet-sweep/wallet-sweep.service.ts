@@ -40,6 +40,8 @@ export class WalletSweepService implements OnModuleInit, OnModuleDestroy {
   private redis: Redis | null = null;
   private subscriber: Redis | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** Log once: sweep only scans `trader_wallets`, not standalone profile deposit fields. */
+  private loggedNoCustodialWalletsForSweep = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -133,6 +135,16 @@ export class WalletSweepService implements OnModuleInit, OnModuleDestroy {
       where: { isActive: true },
       select: { traderId: true, address: true },
     });
+    if (rows.length === 0) {
+      if (!this.loggedNoCustodialWalletsForSweep) {
+        this.loggedNoCustodialWalletsForSweep = true;
+        this.logger.warn(
+          'Tron sweep: no active trader_wallets rows. Sweep only runs for Vault-backed custodial addresses ' +
+            '(API wallet generation). Profile-only deposit addresses are not swept.',
+        );
+      }
+      return;
+    }
     for (const r of rows) {
       await this.maybeSweep(r.traderId, r.address);
     }
