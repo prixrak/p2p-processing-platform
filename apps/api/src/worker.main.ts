@@ -1,25 +1,24 @@
 import './load-env';
 import { Logger } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
 import type { INestApplicationContext } from '@nestjs/common';
-import { WorkerModule } from './worker.module';
 import { registerProcessHandlers } from './process-lifecycle';
 
 let workerContext: INestApplicationContext | null = null;
 registerProcessHandlers(() => workerContext);
 
-async function bootstrapWorker(): Promise<void> {
-  const app = await NestFactory.createApplicationContext(WorkerModule, {
-    bufferLogs: false,
-  });
-  workerContext = app;
-  app.enableShutdownHooks(['SIGTERM', 'SIGINT']);
+async function main(): Promise<void> {
+  const { hydrateFromAwsSecretsManager, startAwsSecretsRefreshLoop } =
+    await import('./hydrate-aws-secrets');
+  await hydrateFromAwsSecretsManager();
+  const { assertSafeProductionEnvironment } = await import('./validate-production-env');
+  assertSafeProductionEnvironment();
+  startAwsSecretsRefreshLoop();
 
-  const logger = new Logger('WorkerBootstrap');
-  logger.log('Queue workers running (webhook, telegram); no HTTP server.');
+  const { bootstrapWorkerContext } = await import('./bootstrap-worker-context');
+  workerContext = await bootstrapWorkerContext();
 }
 
-bootstrapWorker().catch((err: unknown) => {
+main().catch((err: unknown) => {
   const logger = new Logger('WorkerBootstrap');
   logger.error(err instanceof Error ? err.stack : String(err), 'Worker failed to start');
   process.exit(1);

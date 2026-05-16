@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import Redis from 'ioredis';
+import { createRedisConnectionOptions } from '../../common/redis-connection-options';
 import { config } from '@p2p/config';
 import { PrismaService } from '../../config/prisma.service';
 import { HashicorpVaultService } from './hashicorp-vault.service';
@@ -22,8 +23,7 @@ export class TraderWalletsService {
 
   private async withVaultRedisLock<T>(fn: () => Promise<T>): Promise<T> {
     const redis = new Redis({
-      host: config.redis.host,
-      port: config.redis.port,
+      ...createRedisConnectionOptions(),
       maxRetriesPerRequest: 2,
     });
     const key = config.vault.deriveLockKey;

@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import Redis from 'ioredis';
+import { createRedisConnectionOptions } from '../../common/redis-connection-options';
 import { config } from '@p2p/config';
 import { PrismaService } from '../../config/prisma.service';
 import { averageParserRateFromOffers, type BinanceP2pOfferPick } from '@p2p/shared';
@@ -31,8 +32,7 @@ export class ExchangeRateService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     this.redis = new Redis({
-      host: config.redis.host,
-      port: config.redis.port,
+      ...createRedisConnectionOptions(),
       maxRetriesPerRequest: 2,
       lazyConnect: true,
     });

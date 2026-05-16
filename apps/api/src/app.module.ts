@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { config } from '@p2p/config';
+import { createRedisConnectionOptions } from './common/redis-connection-options';
 import { PrismaModule } from './config/prisma.module';
 import { SecurityModule } from './common/security.module';
 import { ApiLoggingModule } from './common/logging/logging.module';
@@ -53,10 +53,7 @@ import { TraderWalletsModule } from './modules/trader-wallets/trader-wallets.mod
       limit: 600,
     }]),
     BullModule.forRoot({
-      connection: {
-        host: config.redis.host,
-        port: config.redis.port,
-      },
+      connection: createRedisConnectionOptions(),
     }),
     BullModule.registerQueue(
       { name: 'webhook' },

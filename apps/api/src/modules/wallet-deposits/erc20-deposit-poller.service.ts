@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { BlockchainNetwork } from '@prisma/client';
 import Redis from 'ioredis';
+import { createRedisConnectionOptions } from '../../common/redis-connection-options';
 import { config } from '@p2p/config';
 import { PrismaService } from '../../config/prisma.service';
 import {
@@ -42,8 +43,7 @@ export class Erc20DepositPollerService implements OnModuleInit, OnModuleDestroy 
     }
 
     this.redis = new Redis({
-      host: config.redis.host,
-      port: config.redis.port,
+      ...createRedisConnectionOptions(),
       maxRetriesPerRequest: 2,
       lazyConnect: true,
     });

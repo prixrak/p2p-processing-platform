@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
-import { config } from '@p2p/config';
+import { createRedisConnectionOptions } from './common/redis-connection-options';
 import { PrismaModule } from './config/prisma.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
@@ -17,10 +17,7 @@ import { OpsAlertsModule } from './modules/ops-alerts/ops-alerts.module';
   imports: [
     PrismaModule,
     BullModule.forRoot({
-      connection: {
-        host: config.redis.host,
-        port: config.redis.port,
-      },
+      connection: createRedisConnectionOptions(),
     }),
     BullModule.registerQueue({ name: 'telegram' }),
     WebhooksModule,

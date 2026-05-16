@@ -1,10 +1,6 @@
-import { config } from '@p2p/config';
+import { createRedisConnectionOptions } from '../common/redis-connection-options';
 
-export const REDIS_CONNECTION = {
-  host: config.redis.host,
-  port: config.redis.port,
-} as const;
-
+/** BullMQ/IORedis connection (shared with ad-hoc Redis clients). */
 export const bullMqConfig = {
-  connection: REDIS_CONNECTION,
+  connection: createRedisConnectionOptions(),
 };

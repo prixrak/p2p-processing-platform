@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
-import { config } from '@p2p/config';
+import { createRedisConnectionOptions } from '../redis-connection-options';
 import { NONCE_VALIDITY_SECONDS } from '@p2p/shared';
 
 @Injectable()
@@ -9,8 +9,8 @@ export class NonceStoreService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     this.redis = new Redis({
-      host: config.redis.host,
-      port: config.redis.port,
+      ...createRedisConnectionOptions(),
+      maxRetriesPerRequest: 20,
       keyPrefix: 'nonce:',
     });
   }

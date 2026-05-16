@@ -6,6 +6,7 @@ export function createRedisConnectionOptions(): RedisOptions {
   return {
     host: config.redis.host,
     port: config.redis.port,
+    ...(config.redis.password ? { password: config.redis.password } : {}),
     maxRetriesPerRequest: null,
     connectTimeout: 10_000,
     retryStrategy(times: number): number {

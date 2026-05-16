@@ -30,6 +30,10 @@ export class AuthService {
     return match ? user : null;
   }
 
+  private jwtCredentials() {
+    return { secret: config.jwt.secret };
+  }
+
   async login(email: string, password: string) {
     const user = await this.validateUser(email, password);
 
@@ -44,6 +48,7 @@ export class AuthService {
     if (user.twoFaSecret) {
       const tempPayload = { sub: user.id, type: '2fa-pending' };
       const tempToken = await this.jwtService.signAsync(tempPayload as any, {
+        ...this.jwtCredentials(),
         expiresIn: '5m' as any,
       });
       return { requires2FA: true, tempToken };
@@ -55,7 +60,7 @@ export class AuthService {
   async verify2FALogin(tempToken: string, code: string) {
     let decoded: any;
     try {
-      decoded = await this.jwtService.verifyAsync(tempToken);
+      decoded = await this.jwtService.verifyAsync(tempToken, this.jwtCredentials());
     } catch {
       throw new UnauthorizedException('Invalid or expired temp token');
     }
@@ -95,11 +100,15 @@ export class AuthService {
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload as any, {
+        ...this.jwtCredentials(),
         expiresIn: config.jwt.accessExpiresIn as any,
       }),
       this.jwtService.signAsync(
         { ...payload, type: 'refresh' } as any,
-        { expiresIn: config.jwt.refreshExpiresIn as any },
+        {
+          ...this.jwtCredentials(),
+          expiresIn: config.jwt.refreshExpiresIn as any,
+        },
       ),
     ]);
 
@@ -110,9 +119,10 @@ export class AuthService {
 
   async refreshToken(token: string) {
     try {
-      const decoded = await this.jwtService.verifyAsync<
-        JwtPayload & { type?: string }
-      >(token);
+      const decoded = await this.jwtService.verifyAsync<JwtPayload & { type?: string }>(
+        token,
+        this.jwtCredentials(),
+      );
 
       if (decoded.type !== 'refresh') {
         throw new UnauthorizedException('Invalid token type');

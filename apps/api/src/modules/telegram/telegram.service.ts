@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import Redis from 'ioredis';
+import { createRedisConnectionOptions } from '../../common/redis-connection-options';
 import { BalanceTransactionType } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { config } from '@p2p/config';
@@ -349,8 +350,7 @@ export class TelegramService {
     this.redisInitAttempted = true;
     try {
       const r = new Redis({
-        host: config.redis.host,
-        port: config.redis.port,
+        ...createRedisConnectionOptions(),
         maxRetriesPerRequest: 2,
         lazyConnect: true,
       });

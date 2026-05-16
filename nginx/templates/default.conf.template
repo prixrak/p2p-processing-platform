@@ -1,0 +1,79 @@
+# Rendered by the official nginx image entrypoint (envsubst).
+# Set NGINX_SITE_DOMAIN and NGINX_TLS_CERT_NAME (see .env.prod.example).
+# TLS: certbot certonly --webroot -w /var/www/certbot \
+#   -d ${NGINX_SITE_DOMAIN} -d www.${NGINX_SITE_DOMAIN} -d api.${NGINX_SITE_DOMAIN}
+# The first -d should match NGINX_TLS_CERT_NAME (folder under /etc/letsencrypt/live/).
+
+resolver 127.0.0.11 valid=30s ipv6=off;
+
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+limit_req_zone $binary_remote_addr zone=login_limit:10m rate=1r/s;
+
+server {
+    listen 80;
+    server_name ${NGINX_SITE_DOMAIN} www.${NGINX_SITE_DOMAIN} api.${NGINX_SITE_DOMAIN};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name ${NGINX_SITE_DOMAIN} www.${NGINX_SITE_DOMAIN};
+
+    ssl_certificate /etc/letsencrypt/live/${NGINX_TLS_CERT_NAME}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${NGINX_TLS_CERT_NAME}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    location / {
+        set $web_upstream http://web:3000;
+        proxy_pass $web_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name api.${NGINX_SITE_DOMAIN};
+
+    ssl_certificate /etc/letsencrypt/live/${NGINX_TLS_CERT_NAME}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${NGINX_TLS_CERT_NAME}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    client_max_body_size 25M;
+
+    location /api/auth/login {
+        limit_req zone=login_limit burst=5 nodelay;
+        set $api_upstream http://api:3001;
+        proxy_pass $api_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        limit_req zone=api_limit burst=20 nodelay;
+        set $api_upstream http://api:3001;
+        proxy_pass $api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

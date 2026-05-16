@@ -35,6 +35,14 @@ Then run the API in one terminal and the web app in the other (see lines above).
 **After `git pull` (new migrations):** `npm run db:migrate:deploy`
 **Create a new migration (interactive):** `npm run db:migrate` (requires `packages/prisma/.env` with `DATABASE_URL`, same as in the block above).
 
+### Production (EC2 + Docker)
+
+- **Host file:** copy `.env.prod.example` → `.env.prod` on the server (never commit it). Required in production: strong `JWT_SECRET` (≥32 chars), `ENCRYPTION_KEY` (≥32 chars), `INTERNAL_API_KEY`, public `BASE_URL` / `FRONTEND_URL`, and a non-local `DATABASE_URL`. The API and worker exit at startup if these are missing or unsafe defaults (after an optional AWS Secrets Manager load — see below).
+- **AWS Secrets Manager (optional):** set `AWS_SECRETS_MANAGER_SECRET_ARN` or `AWS_SECRETS_MANAGER_SECRET_ID` plus `AWS_REGION`. The secret must be a **JSON object** whose keys match environment variable names (e.g. `JWT_SECRET`, `DATABASE_URL`). Values are loaded before validation, then refreshed on a timer (`AWS_SECRETS_MANAGER_POLL_MS`, default 5 minutes; use `0` for initial load only). Grant the EC2 instance role `secretsmanager:GetSecretValue`. New values apply wherever the app re-reads `config` (JWT sign/verify already uses the current secret). Long-lived connections (Prisma, Redis, some AWS SDK clients, CORS `origin` set at bootstrap) may still need a process restart when those change.
+- **Nginx / TLS:** config is generated from `nginx/templates/default.conf.template` via the official `nginx` image entrypoint. Set `NGINX_SITE_DOMAIN` and `NGINX_TLS_CERT_NAME` in `.env.prod` (and obtain certs under `certbot/`). CI deploy syncs `nginx/templates/` to the server with `docker-compose.prod.yml`.
+- **Redis:** optional `REDIS_PASSWORD` in `.env.prod` — when set, it must match the Redis service (`docker-compose.prod.yml`) and the app (all ioredis/BullMQ clients use it).
+- **GitHub Actions:** pushing to `main` runs tests, pushes images to ECR, then SSH to EC2 to pull, run `prisma migrate deploy`, and `compose up`. Configure secrets (`AWS_*`, `EC2_*`) and variables (`NEXT_PUBLIC_API_URL`, optional `INCLUDE_EXTERNAL_PLAYGROUND=false` for production web builds).
+
 ---
 
 ## Quick Start (step by step)
@@ -139,6 +147,8 @@ p2p/
 │   ├── prisma/                 # Database schema, migrations, seed
 │   └── config/                 # Centralized env configuration
 ├── docker-compose.yml          # Local dev infrastructure
+├── docker-compose.prod.yml     # EC2: API, worker, web, Vault, Redis, nginx, certbot
+├── nginx/templates/            # Production nginx (envsubst; see .env.prod.example)
 ├── Dockerfile.api              # Production API image
 ├── Dockerfile.web              # Production frontend image
 └── .github/workflows/ci.yml   # CI/CD pipeline
@@ -234,6 +244,7 @@ All variables are in `.env.example`. Key ones:
 | --------------------- | --------------------------------------------------- | ----------------------------------------------- |
 | `DATABASE_URL`        | `postgresql://postgres:postgres@localhost:5432/p2p` | PostgreSQL connection                           |
 | `REDIS_HOST`          | `localhost`                                         | Redis host                                      |
+| `REDIS_PASSWORD`      | (empty)                                             | Optional; must match Redis `requirepass` in prod compose |
 | `JWT_SECRET`          | `dev-jwt-secret-change-me...`                       | **Change in production!**                       |
 | `S3_ENDPOINT`         | `http://localhost:9000`                             | MinIO locally, remove for AWS S3                |
 | `S3_ACCESS_KEY_ID`    | `minioadmin`                                        | MinIO default / AWS IAM key                     |

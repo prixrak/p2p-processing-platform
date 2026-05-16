@@ -104,7 +104,7 @@ jobs:
         run: npm run build --workspace=@p2p/web
         env:
           NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || vars.API_URL }}
-          INCLUDE_EXTERNAL_PLAYGROUND: 'true'
+          INCLUDE_EXTERNAL_PLAYGROUND: ${{ vars.INCLUDE_EXTERNAL_PLAYGROUND || 'true' }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -146,7 +146,7 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || vars.API_URL }}
-            INCLUDE_EXTERNAL_PLAYGROUND=true
+            INCLUDE_EXTERNAL_PLAYGROUND=${{ vars.INCLUDE_EXTERNAL_PLAYGROUND || 'true' }}
 
   deploy:
     runs-on: ubuntu-latest
@@ -164,7 +164,7 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           overwrite: true
-          source: "docker-compose.prod.yml,nginx.conf,vault-config/"
+          source: "docker-compose.prod.yml,nginx/templates/,vault-config/"
           target: ${{ vars.EC2_APP_PATH || '/home/ubuntu/p2p' }}
 
       - name: Deploy to EC2 via SSH

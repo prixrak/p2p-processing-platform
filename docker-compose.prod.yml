@@ -111,8 +111,18 @@ services:
 
   redis:
     image: redis:7-alpine
-    # No --requirepass: app uses ioredis/Bull without AUTH; Redis is only reachable on the internal Docker network (not published to the host).
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    env_file: .env.prod
+    # Optional REDIS_PASSWORD in .env.prod — must match apps/api ioredis/BullMQ. Not published to the host.
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        if [ -n "$${REDIS_PASSWORD:-}" ]; then
+          exec redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass "$${REDIS_PASSWORD}"
+        else
+          exec redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+        fi
     volumes:
       - redisdata:/data
     restart: always
@@ -136,8 +146,11 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      NGINX_SITE_DOMAIN: ${NGINX_SITE_DOMAIN:-p2p-processing-dev.com}
+      NGINX_TLS_CERT_NAME: ${NGINX_TLS_CERT_NAME:-p2p-processing-dev.com}
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/templates:/etc/nginx/templates:ro
       - ./certbot/conf:/etc/letsencrypt:ro
       - ./certbot/www:/var/www/certbot:ro
     depends_on:

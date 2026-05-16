@@ -26,8 +26,9 @@ docker run --rm \
     --agree-tos \
     --email "$EMAIL" \
     -d "$DOMAIN" \
+    -d "www.$DOMAIN" \
     -d "api.$DOMAIN"
 
 echo "=== SSL certificate obtained ==="
-echo "Now update nginx.conf with your domain and run:"
-echo "  docker compose -f docker-compose.prod.yml up -d"
+echo "Set NGINX_SITE_DOMAIN and NGINX_TLS_CERT_NAME in .env.prod (see .env.prod.example),"
+echo "then: docker compose --env-file .env.prod -f docker-compose.prod.yml up -d"
