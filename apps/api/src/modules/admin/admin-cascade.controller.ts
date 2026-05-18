@@ -169,7 +169,7 @@ export class AdminCascadeController {
   @ApiOperation({
     summary:
       'Hypothetical cascade assignment order for an amount (observability). ' +
-      'When `amount` is omitted, defaults to the cached Redis snapshot amount (min nominal). ' +
+      'When `amount` is omitted, ranks candidates eligible for at least one active coverage nominal (all-grid preview). ' +
       '`amount=0` evaluates gates at zero (explicit preview).',
   })
   async assignmentExplain(

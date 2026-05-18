@@ -32,3 +32,29 @@ export const PAYIN_REQUISITE_COMPLETED_STATUSES: readonly PayInOrderStatus[] = [
   PayInOrderStatus.UNDERPAID,
   PayInOrderStatus.OVERPAID,
 ] as const;
+
+/**
+ * Pay-In statuses that still hold requisite reservation (`used_amount` / `used_ops`) because
+ * `releaseUsage` runs on CANCEL (and similar) only — not when moving to paid-like outcomes.
+ * Used for requisite volume breakdown so UI sums match platform counters for every non-terminal
+ * outcome except completed (e.g. includes {@link PayInOrderStatus.UPLOAD_FAILED}).
+ */
+export const PAYIN_REQUISITE_NONCOMPLETED_STATUSES: readonly PayInOrderStatus[] = (
+  Object.values(PayInOrderStatus) as PayInOrderStatus[]
+).filter(
+  (s) =>
+    s !== PayInOrderStatus.CANCELED &&
+    !(PAYIN_REQUISITE_COMPLETED_STATUSES as readonly PayInOrderStatus[]).includes(s),
+);
+
+/**
+ * Pay-In rows where a trader is liable for the eventual USDT debit but `creditBalancesOnPaid` has
+ * not run yet (same boundary as payin.service `applyPayinPaidTransitionTx` when entering PAID-like outcomes).
+ * Used to reserve USDT headroom during cascade assignment so balance + overdraft is not exceeded
+ * after queued NEW/VERIFIED orders confirm.
+ */
+export const PAYIN_PRE_USDT_SETTLEMENT_STATUSES: readonly PayInOrderStatus[] = [
+  PayInOrderStatus.PENDING,
+  PayInOrderStatus.NEW,
+  PayInOrderStatus.VERIFIED,
+] as const;

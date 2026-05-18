@@ -6,8 +6,8 @@ import {
 } from '@nestjs/common';
 import { PaymentMethodAvailability, PayinStatus, Prisma, RequisiteDisabledReason } from '@prisma/client';
 import {
-  PAYIN_PIPELINE_IN_FLIGHT_STATUSES,
   PAYIN_REQUISITE_COMPLETED_STATUSES,
+  PAYIN_REQUISITE_NONCOMPLETED_STATUSES,
   type PayInOrderStatus,
 } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
@@ -27,8 +27,9 @@ function mapPayInStatusToPrisma(
   return statuses.map((s) => s as unknown as PayinStatus);
 }
 
-const REQUISITE_VOLUME_PIPELINE: PayinStatus[] = mapPayInStatusToPrisma(
-  PAYIN_PIPELINE_IN_FLIGHT_STATUSES,
+/** Non-completed Pay-In rows that still reserve requisite capacity (see `@p2p/shared/payin-volume`). */
+const REQUISITE_VOLUME_NONCOMPLETED: PayinStatus[] = mapPayInStatusToPrisma(
+  PAYIN_REQUISITE_NONCOMPLETED_STATUSES,
 );
 
 const REQUISITE_VOLUME_COMPLETED: PayinStatus[] = mapPayInStatusToPrisma(
@@ -229,7 +230,7 @@ export class RequisiteGroupsService {
         by: ['requisiteId'],
         where: {
           requisiteId: { in: requisiteIds },
-          status: { in: REQUISITE_VOLUME_PIPELINE },
+          status: { in: REQUISITE_VOLUME_NONCOMPLETED },
         },
         _sum: { amount: true },
       }),
@@ -245,7 +246,7 @@ export class RequisiteGroupsService {
         by: ['requisiteId'],
         where: {
           requisiteId: { in: requisiteIds },
-          status: { in: REQUISITE_VOLUME_PIPELINE },
+          status: { in: REQUISITE_VOLUME_NONCOMPLETED },
         },
         _count: { _all: true },
       }),

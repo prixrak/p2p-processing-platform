@@ -445,10 +445,10 @@ export function CascadeRequisiteRatingsPanel({
           </li>
           <li>
             <strong className="text-text-primary">Preview amount</strong> is optional: leave it{' '}
-            <strong className="text-text-primary">empty</strong> to use the Redis snapshot ranking (same as
-            production cache for the currency, no custom simulation). Enter a Pay-In amount (including{' '}
-            <strong className="text-text-primary">0</strong>) to recompute ranks, eligibility, and the queue
-            for that amount only.
+            <strong className="text-text-primary">empty</strong> so the assignment queue shows candidates
+            eligible for <strong className="text-text-primary">any</strong> active coverage nominal. The ratings
+            table still uses Redis snapshot ranks unless you enter a custom preview amount. Enter a Pay-In amount
+            (including <strong className="text-text-primary">0</strong>) to simulate that exact amount only.
           </li>
         </ul>
       </Card>
@@ -626,11 +626,17 @@ export function CascadeRequisiteRatingsPanel({
             <span>
               Amount evaluated:{' '}
               <strong className="tabular-nums text-text-primary">
-                {explain.amount} {currencyUpper}
+                {explain.amount == null ? (
+                  <>All coverage nominals ({currencyUpper})</>
+                ) : (
+                  <>
+                    {explain.amount} {currencyUpper}
+                  </>
+                )}
               </strong>
             </span>
-            {explain.amount_source === 'snapshot_default' ? (
-              <Badge variant="muted">Snapshot default (min nominal)</Badge>
+            {explain.amount_source === 'all_nominals' ? (
+              <Badge variant="muted">All coverage nominals</Badge>
             ) : (
               <Badge variant="info">From preview field</Badge>
             )}

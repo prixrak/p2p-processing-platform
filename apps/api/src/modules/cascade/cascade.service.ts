@@ -1,5 +1,10 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { Prisma, type CascadeLevelPickMode, type CascadeSetting } from '@prisma/client';
+import {
+  PayinStatus,
+  Prisma,
+  type CascadeLevelPickMode,
+  type CascadeSetting,
+} from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { CurrenciesService } from '../currencies/currencies.service';
 import {
@@ -26,12 +31,16 @@ import {
   forkAutolimitAutoMinPerTx,
   forkCascadeRaceScore,
   isForkAutolimitActive,
+  MONEY_COMPARE_EPS,
   newcomerRatingBoostMultiplier,
   nominalCoveredByRange,
   normalizeCascadeMethodPercents,
   parseFillMultiplierTiersJson,
+  payInAmountWithinAssignRange,
+  PAYIN_PRE_USDT_SETTLEMENT_STATUSES,
   pickPrimaryCascadeLevelDebt,
   pickPrimaryCascadeLevelStochastic,
+  roundMoney2,
   tzRequisiteRatingPercent,
   type CascadeAssignmentLevel,
   type FillMultiplierTier,
@@ -82,6 +91,10 @@ function maskRequisiteNumber(num: string): string {
   if (d.length <= 4) return '****';
   return `**** ${d.slice(-4)}`;
 }
+
+/** Prisma `PayinStatus` values aligned with {@link PAYIN_PRE_USDT_SETTLEMENT_STATUSES}. */
+const PAYIN_STATUS_PENDING_USDT_SETTLEMENT: PayinStatus[] =
+  PAYIN_PRE_USDT_SETTLEMENT_STATUSES.map((s) => s as unknown as PayinStatus);
 
 @Injectable()
 export class CascadeService {
@@ -219,12 +232,14 @@ export class CascadeService {
     settings: CascadeSetting,
     usdtBal: Map<string, number>,
     overdraft: Map<string, number>,
+    pendingPayinUsdtDebit: Map<string, number>,
     parserRate: number | undefined,
     enforceUsdtCapacity: boolean,
     nowMs: number,
     assignmentTier: 'FORK' | 'CARD',
     fillTiers: readonly FillMultiplierTier[] | null,
     idleMsByRequisiteId?: ReadonlyMap<string, number>,
+    tryAnyNominal = false,
   ): { ok: true; score: number } | { ok: false; code: string; detail: string } {
     const coverageCounts = new Map<number, number>();
     for (const n of nominalAmounts) {
@@ -260,39 +275,63 @@ export class CascadeService {
       autolimitThreshold: Number(settings.autolimitThreshold),
     };
 
-    const bounds = computeForkAssignBounds(
-      forkInp,
-      nominalAmounts,
-      (nominal) => coverageCounts.get(nominal) ?? 0,
-    );
-    if (!bounds) {
-      return {
-        ok: false,
-        code: 'EFFECTIVE_BOUNDS_UNAVAILABLE',
-        detail:
-          'Fork/card bounds could not be derived (limits exhausted or incompatible with coverage grid).',
-      };
-    }
-    if (amount < bounds.effMin - 1e-9 || amount > bounds.effMax + 1e-9) {
-      return {
-        ok: false,
-        code: 'AMOUNT_OUTSIDE_EFFECTIVE_RANGE',
-        detail: `Amount ${amount} not in [${bounds.effMin.toFixed(2)}, ${bounds.effMax.toFixed(2)}].`,
-      };
-    }
+    const checkAmountForAssign = (
+      a: number,
+    ): { ok: true } | { ok: false; code: string; detail: string } => {
+      const rangeOk = payInAmountWithinAssignRange(
+        forkInp,
+        nominalAmounts,
+        (nominal) => coverageCounts.get(nominal) ?? 0,
+        a,
+      );
+      if (!rangeOk.ok) return rangeOk;
 
-    if (enforceUsdtCapacity && parserRate !== undefined) {
-      const cap =
-        (usdtBal.get(row.traderId) ?? 0) + (overdraft.get(row.traderId) ?? 0);
-      const need =
-        amount / (parserRate * (1 + Number(row.payinRate)));
-      if (need > cap + 1e-9) {
-        return {
-          ok: false,
-          code: 'USDT_CAPACITY_INSUFFICIENT',
-          detail: `Required ≈${need.toFixed(4)} USDT (with pay-in rate) exceeds trader capacity ${cap.toFixed(4)} USDT (incl. overdraft).`,
-        };
+      if (enforceUsdtCapacity && parserRate !== undefined) {
+        const reserved = pendingPayinUsdtDebit.get(row.traderId) ?? 0;
+        const cap =
+          (usdtBal.get(row.traderId) ?? 0) +
+          (overdraft.get(row.traderId) ?? 0) -
+          reserved;
+        const need = a / (parserRate * (1 + Number(row.payinRate)));
+        if (need > cap + 1e-9) {
+          return {
+            ok: false,
+            code: 'USDT_CAPACITY_INSUFFICIENT',
+            detail: `Required ≈${need.toFixed(4)} USDT (with pay-in rate) exceeds trader capacity ${cap.toFixed(4)} USDT (balance + overdraft − pending pay-in debits).`,
+          };
+        }
       }
+      return { ok: true };
+    };
+
+    if (tryAnyNominal) {
+      if (nominalAmounts.length === 0) {
+        const z = checkAmountForAssign(amount);
+        if (!z.ok) return z;
+      } else {
+        let lastFail: { ok: false; code: string; detail: string } | null = null;
+        let anyOk = false;
+        for (const n of [...nominalAmounts].sort((a, b) => a - b)) {
+          const c = checkAmountForAssign(n);
+          if (c.ok) {
+            anyOk = true;
+            break;
+          }
+          lastFail = c;
+        }
+        if (!anyOk) {
+          return (
+            lastFail ?? {
+              ok: false,
+              code: 'AMOUNT_OUTSIDE_EFFECTIVE_RANGE',
+              detail: 'No amount on the coverage nominal grid fits this requisite.',
+            }
+          );
+        }
+      }
+    } else {
+      const first = checkAmountForAssign(amount);
+      if (!first.ok) return first;
     }
 
     const idleMs =
@@ -326,11 +365,13 @@ export class CascadeService {
     settings: CascadeSetting,
     usdtBal: Map<string, number>,
     overdraft: Map<string, number>,
+    pendingPayinUsdtDebit: Map<string, number>,
     parserRate: number | undefined,
     enforceUsdtCapacity: boolean,
     nowMs: number,
     fillTiers: readonly FillMultiplierTier[] | null,
     idleMsByRequisiteId?: ReadonlyMap<string, number>,
+    tryAnyNominal = false,
   ): Array<{
     id: string;
     score: number;
@@ -354,12 +395,14 @@ export class CascadeService {
           settings,
           usdtBal,
           overdraft,
+          pendingPayinUsdtDebit,
           parserRate,
           enforceUsdtCapacity,
           nowMs,
           tier,
           fillTiers,
           idleMsByRequisiteId,
+          tryAnyNominal,
         );
         if (!ev.ok) return null;
         return {
@@ -373,11 +416,38 @@ export class CascadeService {
       .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
   }
 
+  private async getPendingPayinUsdtDebitByTrader(
+    db: PrismaService | Prisma.TransactionClient,
+  ): Promise<Map<string, number>> {
+    const rows = await db.payinOrder.findMany({
+      where: {
+        traderId: { not: null },
+        status: { in: PAYIN_STATUS_PENDING_USDT_SETTLEMENT },
+        rateTraderIn: { not: null },
+        currency: { code: 'UAH' },
+      },
+      select: { traderId: true, amount: true, rateTraderIn: true },
+    });
+    const byTrader = new Map<string, number>();
+    for (const r of rows) {
+      if (!r.traderId) continue;
+      const fiat = Number(r.amount);
+      const rt = Number(r.rateTraderIn);
+      if (!(fiat > 0) || !(rt > 0) || !Number.isFinite(fiat) || !Number.isFinite(rt)) {
+        continue;
+      }
+      const usdt = fiat / rt;
+      byTrader.set(r.traderId, (byTrader.get(r.traderId) ?? 0) + usdt);
+    }
+    return byTrader;
+  }
+
   private async getUsdtCapacityMaps(
     db: PrismaService | Prisma.TransactionClient,
   ): Promise<{
     usdtBal: Map<string, number>;
     overdraft: Map<string, number>;
+    pendingPayinUsdtDebit: Map<string, number>;
   }> {
     const usdtId = await this.currencies.getUsdtCurrencyId();
     const balanceRows = await db.traderBalance.findMany({
@@ -395,7 +465,8 @@ export class CascadeService {
     for (const r of odRows) {
       overdraft.set(r.id, Number(r.overdraftLimit));
     }
-    return { usdtBal, overdraft };
+    const pendingPayinUsdtDebit = await this.getPendingPayinUsdtDebitByTrader(db);
+    return { usdtBal, overdraft, pendingPayinUsdtDebit };
   }
 
   /**
@@ -409,6 +480,8 @@ export class CascadeService {
       currency: string;
       currencyId: string;
       amount: number;
+      /** When true, include requisites eligible for at least one nominal on the coverage grid (assignment preview). */
+      anyNominal?: boolean;
       parserRate?: number;
       enforceUsdtCapacity: boolean;
       settings: CascadeSetting;
@@ -429,6 +502,7 @@ export class CascadeService {
   }> {
     const {
       amount,
+      anyNominal = false,
       parserRate,
       enforceUsdtCapacity,
       settings,
@@ -454,15 +528,16 @@ export class CascadeService {
 
     const levelOrder = cascadeLevelAttemptOrder(primary).filter((lvl) => lvl !== 'PROVIDER');
 
-    const { usdtBal, overdraft } = await this.getUsdtCapacityMaps(db);
+    const { usdtBal, overdraft, pendingPayinUsdtDebit } = await this.getUsdtCapacityMaps(db);
 
     const idleMsByRequisiteId = await this.fetchRequisiteIdleMsFromDb(db, [
       ...new Set(reqRows.map((r) => r.id)),
     ]);
 
     const snapshots = reqRows.filter((row) => {
-      const remAmt = Number(row.limitTotalAmount) - Number(row.usedAmount);
-      return remAmt >= amount - 1e-9;
+      const remAmt = roundMoney2(Number(row.limitTotalAmount) - Number(row.usedAmount));
+      if (anyNominal) return remAmt > MONEY_COMPARE_EPS;
+      return remAmt >= roundMoney2(amount) - MONEY_COMPARE_EPS;
     });
 
     const orderedReqIds: Array<{
@@ -483,11 +558,13 @@ export class CascadeService {
         settings,
         usdtBal,
         overdraft,
+        pendingPayinUsdtDebit,
         parserRate,
         enforceUsdtCapacity,
         nowMs,
         fillTiers,
         idleMsByRequisiteId,
+        anyNominal,
       );
       orderedReqIds.push(...ranked);
     }
@@ -953,11 +1030,11 @@ export class CascadeService {
     const tierOrder = cascadeLevelAttemptOrder(primary);
 
     const assignNowMs = Date.now();
-    const { usdtBal, overdraft } = await this.getUsdtCapacityMaps(tx);
+    const { usdtBal, overdraft, pendingPayinUsdtDebit } = await this.getUsdtCapacityMaps(tx);
 
     const snapshots = reqRows.filter((row) => {
-      const remAmt = Number(row.limitTotalAmount) - Number(row.usedAmount);
-      return remAmt >= params.amount - 1e-9;
+      const remAmt = roundMoney2(Number(row.limitTotalAmount) - Number(row.usedAmount));
+      return remAmt >= roundMoney2(params.amount) - MONEY_COMPARE_EPS;
     });
 
     const idleMsByRequisiteId = await this.fetchRequisiteIdleMsFromDb(tx, [
@@ -1028,6 +1105,7 @@ export class CascadeService {
         settings,
         usdtBal,
         overdraft,
+        pendingPayinUsdtDebit,
         params.parserRate,
         params.enforceUsdtCapacity,
         assignNowMs,
@@ -1076,7 +1154,11 @@ export class CascadeService {
         const limAmt = Number(head.limit_total_amount);
         const uo = head.used_ops;
         const limO = head.limit_total_ops;
-        if (Number.isFinite(limAmt) && limAmt > 0 && ua + params.amount > limAmt + 1e-9) {
+        if (
+          Number.isFinite(limAmt) &&
+          limAmt > 0 &&
+          roundMoney2(ua + params.amount) > roundMoney2(limAmt) + MONEY_COMPARE_EPS
+        ) {
           await this.redisState.releaseRequisiteLock(id);
           continue;
         }
@@ -1941,12 +2023,12 @@ export class CascadeService {
     };
     const reqRows = payload.snapshots.map(strip);
 
-    // Default to the snapshot amount (minimum active nominal) so callers can
-    // get a meaningful queue preview without having to guess an amount.
-    const effectiveAmount =
-      amount !== undefined && Number.isFinite(amount) ? amount : payload.preview_amount;
-    const amountSource: 'requested' | 'snapshot_default' =
-      amount === undefined ? 'snapshot_default' : 'requested';
+    const explainAllNominals = amount === undefined;
+    const singleEvalAmount = explainAllNominals ? 0 : amount!;
+    const amountSource: 'requested' | 'all_nominals' = explainAllNominals
+      ? 'all_nominals'
+      : 'requested';
+    const responseAmount: number | null = explainAllNominals ? null : amount!;
 
     const currencyRow = await this.prisma.currency.findUnique({
       where: { code: cur },
@@ -1970,7 +2052,8 @@ export class CascadeService {
     const previewOrdered = await this.buildOrderedRequisiteIdsForAmount(this.prisma, {
       currency: cur,
       currencyId: currencyRow.id,
-      amount: effectiveAmount,
+      amount: singleEvalAmount,
+      anyNominal: explainAllNominals,
       parserRate,
       enforceUsdtCapacity: enforceUsdt,
       settings,
@@ -2049,7 +2132,7 @@ export class CascadeService {
 
     const base = {
       currency: cur,
-      amount: effectiveAmount,
+      amount: responseAmount,
       amount_source: amountSource,
       primary_cascade_level: previewOrdered.primaryCascadeLevel,
       cascade_context,
@@ -2061,10 +2144,11 @@ export class CascadeService {
       return base;
     }
 
-    const { usdtBal, overdraft } = await this.getUsdtCapacityMaps(this.prisma);
+    const { usdtBal, overdraft, pendingPayinUsdtDebit } = await this.getUsdtCapacityMaps(this.prisma);
     const snapshots = reqRows.filter((row) => {
-      const remAmt = Number(row.limitTotalAmount) - Number(row.usedAmount);
-      return remAmt >= effectiveAmount - 1e-9;
+      const remAmt = roundMoney2(Number(row.limitTotalAmount) - Number(row.usedAmount));
+      if (explainAllNominals) return remAmt > MONEY_COMPARE_EPS;
+      return remAmt >= roundMoney2(singleEvalAmount) - MONEY_COMPARE_EPS;
     });
     const explainIdleMsById = await this.fetchRequisiteIdleMsFromDb(this.prisma, [
       ...new Set(reqRows.map((r) => r.id)),
@@ -2111,11 +2195,22 @@ export class CascadeService {
         requisite_masked: lbl?.requisite_masked ?? '',
         processing_method: row.processingMethod,
       };
-      if (remAmt < effectiveAmount - 1e-9) {
+      if (
+        !explainAllNominals &&
+        remAmt < roundMoney2(singleEvalAmount) - MONEY_COMPARE_EPS
+      ) {
         excluded.push({
           ...baseLbl,
           code: 'INSUFFICIENT_AMOUNT_HEADROOM',
-          detail: `Remaining amount ${remAmt.toFixed(2)} is less than order ${effectiveAmount}.`,
+          detail: `Remaining amount ${remAmt.toFixed(2)} is less than order ${singleEvalAmount}.`,
+        });
+        continue;
+      }
+      if (explainAllNominals && remAmt <= MONEY_COMPARE_EPS) {
+        excluded.push({
+          ...baseLbl,
+          code: 'INSUFFICIENT_AMOUNT_HEADROOM',
+          detail: 'No remaining headroom for any Pay-In amount.',
         });
         continue;
       }
@@ -2124,18 +2219,20 @@ export class CascadeService {
         row.processingMethod === 'FORK' ? 'FORK' : 'CARD';
       const ev = this.evaluateSnapshotForPayInAmount(
         row,
-        effectiveAmount,
+        singleEvalAmount,
         snapshots,
         nominalAmounts,
         settings,
         usdtBal,
         overdraft,
+        pendingPayinUsdtDebit,
         parserRate,
         enforceUsdt,
         explainNowMs,
         tier,
         fillTiersExplain,
         explainIdleMsById,
+        explainAllNominals,
       );
       if (!ev.ok) {
         excluded.push({ ...baseLbl, code: ev.code, detail: ev.detail });

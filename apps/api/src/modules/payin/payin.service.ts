@@ -1505,14 +1505,30 @@ export class PayinService {
     const rt = Number(order.rateTraderIn);
     const ra = Number(order.rateAdminIn);
     const merchantFrac = percentToFraction(Number(order.commissionPercent));
-    const traderPayinFrac = Number(
-      (await tx.traderProfile.findUniqueOrThrow({ where: { id: order.traderId } })).payinRate,
-    );
+    const traderProfile = await tx.traderProfile.findUniqueOrThrow({
+      where: { id: order.traderId },
+      select: { payinRate: true, overdraftLimit: true },
+    });
+    const traderPayinFrac = Number(traderProfile.payinRate);
+    const overdraftLimitUsdt = Number(traderProfile.overdraftLimit ?? 0);
 
     const merchantCredit = creditFiatMerchantPayin(paidAmountLocal, merchantFrac);
     const debitUsdt = debitUsdtPayin(paidAmountLocal, rt);
     const marginUsdt = platformMarginUsdtPayin(paidAmountLocal, rt, ra);
     const marginLocal = platformMarginLocal(marginUsdt, P);
+
+    const existingTraderBal = await tx.traderBalance.findUnique({
+      where: {
+        traderId_currencyId: { traderId: order.traderId, currencyId: usdtId },
+      },
+      select: { amount: true },
+    });
+    const ledgerUsdtBefore = Number(existingTraderBal?.amount ?? 0);
+    if (ledgerUsdtBefore - debitUsdt < -overdraftLimitUsdt - 1e-9) {
+      throw new BadRequestException(
+        `Pay-In settlement would exceed the trader USDT overdraft limit (${overdraftLimitUsdt}): current=${ledgerUsdtBefore}, debit=${debitUsdt.toFixed(4)}`,
+      );
+    }
 
     await tx.merchantBalance.upsert({
       where: {

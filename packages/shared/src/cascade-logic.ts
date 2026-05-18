@@ -37,6 +37,14 @@ export interface EffectiveAmountBounds {
   effMax: number;
 }
 
+/** Half-cent tolerance for fiat (2 dp) comparisons after rounding. */
+export const MONEY_COMPARE_EPS = 0.005;
+
+export function roundMoney2(n: number): number {
+  if (!Number.isFinite(n)) return n;
+  return Math.round(n * 100) / 100;
+}
+
 /** Fill ratio by amount (0–1). */
 export function fillRatioAmount(usedAmount: number, limitTotalAmount: number): number {
   if (limitTotalAmount <= 0) return 0;
@@ -153,6 +161,41 @@ export function computeForkAssignBounds(
 
   if (effMin > effMax) return null;
   return { effMin, effMax };
+}
+
+/**
+ * Validates Pay-In amount against trader manual limits and remaining requisite headroom.
+ * Uses `computeForkAssignBounds` for the **minimum** (Fork autolimit floor). The **maximum** is
+ * always `min(manualMax, remainingAmount)` so Fork autolimit nominal slicing cannot block a single
+ * order that fits remaining headroom and manual max (e.g. one 20k order when 20k remains).
+ */
+export function payInAmountWithinAssignRange(
+  inp: ForkAutolimitInputs,
+  nominalAmountsAsc: number[],
+  coverageExcludeSelf: (nominal: number) => number,
+  amount: number,
+): { ok: true } | { ok: false; code: string; detail: string } {
+  const bounds = computeForkAssignBounds(inp, nominalAmountsAsc, coverageExcludeSelf);
+  if (!bounds) {
+    return {
+      ok: false,
+      code: 'EFFECTIVE_BOUNDS_UNAVAILABLE',
+      detail:
+        'Fork/card bounds could not be derived (limits exhausted or incompatible with coverage grid).',
+    };
+  }
+  const remainingHeadroom = roundMoney2(inp.limitTotalAmount - inp.usedAmount);
+  const assignMax = roundMoney2(Math.min(inp.manualMax, remainingHeadroom));
+  const assignMin = roundMoney2(bounds.effMin);
+  const a = roundMoney2(amount);
+  if (a < assignMin - MONEY_COMPARE_EPS || a > assignMax + MONEY_COMPARE_EPS) {
+    return {
+      ok: false,
+      code: 'AMOUNT_OUTSIDE_EFFECTIVE_RANGE',
+      detail: `Amount ${amount} not in [${assignMin.toFixed(2)}, ${assignMax.toFixed(2)}].`,
+    };
+  }
+  return { ok: true };
 }
 
 /**

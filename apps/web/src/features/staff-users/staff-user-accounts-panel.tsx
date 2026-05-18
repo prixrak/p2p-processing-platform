@@ -314,6 +314,9 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         body.processingMethod = payload.processingMethod;
         body.cascadeRatingMultiplier = payload.cascadeRatingMultiplier;
       }
+      if (payload.role === UserRole.MERCHANT) {
+        body.merchantName = payload.merchantName.trim();
+      }
       const row = await api.post<UsersApiRow>(internalPaths.users, body);
       const merchantProfile =
         payload.role === UserRole.MERCHANT ? await fetchMerchantProfileForUser(row.id) : null;

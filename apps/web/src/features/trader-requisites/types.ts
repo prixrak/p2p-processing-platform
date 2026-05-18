@@ -9,12 +9,16 @@ export interface VolumeBreakdown {
   opsRemaining: number;
 }
 
+export type RequisiteDisabledReason = 'LIMIT_AMOUNT' | 'LIMIT_TX' | 'MANUAL';
+
 export interface RequisiteApiRow {
   id: string;
   type: RequisiteType;
   number: string;
   owner: string;
   isActive: boolean;
+  /** Persisted disable reason (`LIMIT_*` vs `MANUAL`) when inactive. */
+  disabledReason?: RequisiteDisabledReason | string | null;
   acceptsOtherBanks: boolean;
   minAmount: unknown;
   maxAmount: unknown;

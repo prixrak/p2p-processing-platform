@@ -7,6 +7,7 @@ import {
   isForkAutolimitActive,
   nominalCoveredByRange,
   approximateOthersEffectiveRange,
+  payInAmountWithinAssignRange,
   effectiveIdleMs,
   newcomerRatingBoostMultiplier,
   fillMultiplierFromConfirmedFill,
@@ -102,6 +103,39 @@ describe('computeForkAssignBounds', () => {
     const bounds = computeForkAssignBounds(inp, nominals, () => 1);
     expect(bounds).not.toBeNull();
     expect(bounds!.effMin).toBe(100);
+  });
+});
+
+describe('payInAmountWithinAssignRange', () => {
+  const nominals = [300, 400, 500, 700, 800, 1000];
+
+  it('allows one order up to remaining headroom even when Fork autolimit effMax was capped by nominals',
+() => {
+    const inp: ForkAutolimitInputs = {
+      traderMethod: 'FORK',
+      limitTotalAmount: 15000,
+      usedAmount: 12000,
+      usedOps: 6,
+      limitTotalOps: 10,
+      manualMin: 300,
+      manualMax: 5000,
+      autolimitEnabledGlobal: true,
+      autolimitThreshold: 0.25,
+    };
+    const sliceBounds = computeForkAssignBounds(inp, nominals, () => 5);
+    expect(sliceBounds).not.toBeNull();
+    expect(sliceBounds!.effMax).toBeLessThan(3000 - 1e-6);
+
+    const fullRemainder = 3000;
+    const okFull = payInAmountWithinAssignRange(inp, nominals, () => 5, fullRemainder);
+    expect(okFull.ok).toBe(true);
+
+    const aboveManual = payInAmountWithinAssignRange(inp, nominals, () => 5, 6000);
+    expect(aboveManual.ok).toBe(false);
+
+    const cardInp: ForkAutolimitInputs = { ...inp, traderMethod: 'CARD' };
+    const card = payInAmountWithinAssignRange(cardInp, nominals, () => 5, fullRemainder);
+    expect(card.ok).toBe(true);
   });
 });
 

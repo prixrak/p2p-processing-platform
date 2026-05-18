@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, RequisiteDisabledReason } from '@prisma/client';
 import { RequisiteType } from '@p2p/shared';
 import type { PrismaService } from '../../config/prisma.service';
 import type { CascadeService } from '../cascade/cascade.service';
@@ -155,6 +155,130 @@ describe('RequisitesService.incrementUsageInTransaction', () => {
         }),
       }),
     );
+  });
+});
+
+describe('RequisitesService.releaseUsageInTransaction', () => {
+  const requisiteId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+  function svc(prisma: PrismaService) {
+    return new RequisitesService(
+      prisma,
+      {} as CascadeService,
+      {} as ExchangeRateService,
+      { invalidateCurrency: jest.fn() } as unknown as CascadeRedisStateService,
+      auditStub,
+    );
+  }
+
+  it('auto-reenables when limit-driven inactive requisite has headroom again', async () => {
+    const updates: unknown[] = [];
+    const tx = {
+      requisite: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: requisiteId,
+            usedAmount: new Prisma.Decimal(1000),
+            usedOps: 10,
+            currency: { code: 'UAH' },
+          })
+          .mockResolvedValueOnce({
+            id: requisiteId,
+            usedAmount: new Prisma.Decimal(800),
+            usedOps: 9,
+            limitTotalAmount: new Prisma.Decimal(10000),
+            limitTotalOps: 10,
+            isActive: false,
+            disabledReason: RequisiteDisabledReason.LIMIT_TX,
+            type: 'CARD' as const,
+            numberNormalized: '4111111111111111',
+            group: { isActive: true, archivedAt: null },
+          }),
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockImplementation((args: { data: unknown }) => {
+          updates.push(args.data);
+          return Promise.resolve({});
+        }),
+      },
+    } as unknown as Prisma.TransactionClient;
+
+    await svc({} as PrismaService).releaseUsageInTransaction(tx, requisiteId, 200);
+
+    expect(tx.requisite.update).toHaveBeenCalledTimes(2);
+    expect(updates[0]).toMatchObject({ usedOps: 9, usedAmount: 800 });
+    expect(updates[1]).toMatchObject({ isActive: true, disabledReason: null });
+  });
+
+  it('does not auto-reenable when disabled manually', async () => {
+    const tx = {
+      requisite: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: requisiteId,
+            usedAmount: new Prisma.Decimal(1000),
+            usedOps: 10,
+            currency: { code: 'UAH' },
+          })
+          .mockResolvedValueOnce({
+            id: requisiteId,
+            usedAmount: new Prisma.Decimal(800),
+            usedOps: 9,
+            limitTotalAmount: new Prisma.Decimal(10000),
+            limitTotalOps: 10,
+            isActive: false,
+            disabledReason: RequisiteDisabledReason.MANUAL,
+            type: 'CARD' as const,
+            numberNormalized: '4111111111111111',
+            group: { isActive: true, archivedAt: null },
+          }),
+        findFirst: jest.fn(),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    } as unknown as Prisma.TransactionClient;
+
+    await svc({} as PrismaService).releaseUsageInTransaction(tx, requisiteId, 200);
+
+    expect(tx.requisite.update).toHaveBeenCalledTimes(1);
+    expect(tx.requisite.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ usedOps: 9, usedAmount: 800 }),
+      }),
+    );
+  });
+
+  it('does not auto-reenable when payment group is inactive', async () => {
+    const tx = {
+      requisite: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: requisiteId,
+            usedAmount: new Prisma.Decimal(1000),
+            usedOps: 10,
+            currency: { code: 'UAH' },
+          })
+          .mockResolvedValueOnce({
+            id: requisiteId,
+            usedAmount: new Prisma.Decimal(800),
+            usedOps: 9,
+            limitTotalAmount: new Prisma.Decimal(10000),
+            limitTotalOps: 10,
+            isActive: false,
+            disabledReason: RequisiteDisabledReason.LIMIT_TX,
+            type: 'CARD' as const,
+            numberNormalized: '4111111111111111',
+            group: { isActive: false, archivedAt: null },
+          }),
+        findFirst: jest.fn(),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    } as unknown as Prisma.TransactionClient;
+
+    await svc({} as PrismaService).releaseUsageInTransaction(tx, requisiteId, 200);
+
+    expect(tx.requisite.update).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -9,6 +9,19 @@ import type { UseMutationResult } from '@tanstack/react-query';
 import type { PayinAssignRangeRow, RequisiteApiRow } from './types';
 import { compactAmount, num, remainingFromLimitAndConsumed, volumePart } from './utils';
 
+function inactiveRequisiteSubtitle(r: RequisiteApiRow): string {
+  switch (r.disabledReason) {
+    case 'LIMIT_AMOUNT':
+      return 'Turned off automatically — total amount limit reached.';
+    case 'LIMIT_TX':
+      return 'Turned off automatically — operation limit reached.';
+    case 'MANUAL':
+      return 'Turned off manually.';
+    default:
+      return 'Inactive.';
+  }
+}
+
 export function TraderRequisitesGroupTable({
   groupId,
   groupIsActive,
@@ -148,11 +161,16 @@ export function TraderRequisitesGroupTable({
                   {compactAmount(ar!.eff_min!)} ↔ {compactAmount(ar!.eff_max!)}
                 </span>
                 {!ar!.participates_in_cascade ? (
-                  <span className="ml-1 text-amber-600">(not in cascade pool)</span>
+                  <span className="ml-1 text-amber-600">
+                    (not in cascade pool{r.isActive ? '' : '; inactive requisite is excluded'})
+                  </span>
                 ) : null}
               </div>
             ) : ar && !ar.participates_in_cascade ? (
-              <div className="text-[10px] text-amber-600">Not in cascade assignment pool</div>
+              <div className="text-[10px] text-amber-600">
+                Not in cascade assignment pool
+                {!r.isActive ? ' (inactive requisite is excluded)' : ''}
+              </div>
             ) : null}
           </div>
         );
@@ -223,25 +241,32 @@ export function TraderRequisitesGroupTable({
       render: (r: RequisiteApiRow) => {
         const acceptingPayIns = groupIsActive && r.isActive;
         return (
-          <input
-            type="checkbox"
-            role="switch"
-            className="accent-accent-blue"
-            checked={acceptingPayIns}
-            disabled={!groupIsActive}
-            title={
-              !groupIsActive
-                ? 'Payment group is off — requisites cannot accept Pay-In assignments'
-                : undefined
-            }
-            onChange={(e) => {
-              if (!groupIsActive) return;
-              toggleMutation.mutate({
-                id: r.id,
-                makeActive: e.target.checked,
-              });
-            }}
-          />
+          <div className="flex flex-col gap-0.5">
+            <input
+              type="checkbox"
+              role="switch"
+              className="accent-accent-blue"
+              checked={acceptingPayIns}
+              disabled={!groupIsActive}
+              title={
+                !groupIsActive
+                  ? 'Payment group is off — requisites cannot accept Pay-In assignments'
+                  : undefined
+              }
+              onChange={(e) => {
+                if (!groupIsActive) return;
+                toggleMutation.mutate({
+                  id: r.id,
+                  makeActive: e.target.checked,
+                });
+              }}
+            />
+            {groupIsActive && !r.isActive ? (
+              <span className="max-w-[12rem] text-[10px] leading-tight text-text-muted">
+                {inactiveRequisiteSubtitle(r)}
+              </span>
+            ) : null}
+          </div>
         );
       },
     },

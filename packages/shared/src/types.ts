@@ -375,8 +375,9 @@ export interface CascadeAssignmentExcludedRow {
 /** GET `/admin/cascade/assignment-explain` (detailed=true). */
 export interface CascadeAssignmentExplainResponse {
   currency: string;
-  amount: number;
-  amount_source: 'requested' | 'snapshot_default';
+  /** Set when a specific `amount` was requested; null when evaluating all active coverage nominals. */
+  amount: number | null;
+  amount_source: 'requested' | 'all_nominals';
   primary_cascade_level: 'FORK' | 'CARD';
   cascade_context: CascadeStaffRequisitesContext;
   tiers: CascadeAssignmentTierGroup[];

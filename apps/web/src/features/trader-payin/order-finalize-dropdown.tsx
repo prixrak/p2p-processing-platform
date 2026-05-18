@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import type { OrderDto } from '@p2p/shared';
 import { finalizeOptionsForOrder } from './payin-finalize-utils';
 import type { FinalizeKind } from './payin-types';
+import { computeTraderPayinFinalizeMenuPosition } from './order-finalize-dropdown-position';
 
 /** Which UI surface owns the open menu (table row vs detail modal share the same order id). */
 export type OrderFinalizeMenuAnchor = 'table' | 'modal';
@@ -36,26 +37,46 @@ export function OrderFinalizeDropdown({
   onPickKind: (kind: FinalizeKind) => void;
 }) {
   const opts = finalizeOptionsForOrder(order);
-  if (opts.length === 0) return null;
-
   const open =
+    opts.length > 0 &&
     menuState !== null &&
     menuState.anchor === menuAnchor &&
     menuState.orderId === order.id;
   const triggerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
 
   const updateMenuPosition = useCallback(() => {
-    const el = triggerRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    setMenuPos({ top: r.bottom + 4, left: r.right });
+    const trigger = triggerRef.current;
+    const menu = menuRef.current;
+    if (!trigger) return;
+
+    const tr = trigger.getBoundingClientRect();
+    let top = tr.bottom + 4;
+    let left = tr.right;
+
+    if (menu) {
+      const next = computeTraderPayinFinalizeMenuPosition(
+        tr,
+        menu.offsetWidth,
+        menu.offsetHeight,
+        window.innerWidth,
+        window.innerHeight,
+      );
+      top = next.top;
+      left = next.left;
+    }
+
+    setMenuPos({ top, left });
   }, []);
 
   useLayoutEffect(() => {
     if (!open) return;
     updateMenuPosition();
-  }, [open, updateMenuPosition]);
+    queueMicrotask(() => {
+      updateMenuPosition();
+    });
+  }, [open, updateMenuPosition, opts.length]);
 
   useEffect(() => {
     if (!open) return;
@@ -87,6 +108,7 @@ export function OrderFinalizeDropdown({
 
   const menu = open && (
     <div
+      ref={menuRef}
       data-trader-payin-finalize-dropdown
       className={cn(
         'flex min-w-[12.5rem] flex-col gap-1 rounded-lg border border-border-primary bg-surface-secondary p-1.5 shadow-2xl',
@@ -147,6 +169,10 @@ export function OrderFinalizeDropdown({
       )}
     </div>
   );
+
+  if (opts.length === 0) {
+    return null;
+  }
 
   return (
     <>

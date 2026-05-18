@@ -283,9 +283,78 @@ export class RequisitesService {
       },
     });
 
+    await this.maybeAutoReenableAfterLimitReleaseInTransaction(tx, requisiteId);
+
     void this.cascadeCoverageCache.invalidateCurrency(requisite.currency.code);
     this.logger.log(
       `Requisite ${requisiteId} usage released: amount=${amount}, ops=1`,
+    );
+  }
+
+  /**
+   * When usage drops (e.g. pay-in canceled), turn the requisite back on if it was
+   * auto-disabled only for LIMIT_AMOUNT / LIMIT_TX and both caps have headroom again.
+   */
+  private async maybeAutoReenableAfterLimitReleaseInTransaction(
+    tx: Prisma.TransactionClient,
+    requisiteId: string,
+  ): Promise<void> {
+    const row = await tx.requisite.findUnique({
+      where: { id: requisiteId },
+      select: {
+        id: true,
+        isActive: true,
+        disabledReason: true,
+        type: true,
+        numberNormalized: true,
+        usedAmount: true,
+        usedOps: true,
+        limitTotalAmount: true,
+        limitTotalOps: true,
+        group: { select: { isActive: true, archivedAt: true } },
+      },
+    });
+    if (!row || row.isActive) return;
+
+    if (
+      row.disabledReason !== RequisiteDisabledReason.LIMIT_AMOUNT &&
+      row.disabledReason !== RequisiteDisabledReason.LIMIT_TX
+    ) {
+      return;
+    }
+
+    if (row.group.archivedAt != null || !row.group.isActive) {
+      return;
+    }
+
+    const belowAmountCap =
+      Number(row.usedAmount) < Number(row.limitTotalAmount);
+    const belowOpsCap = row.usedOps < row.limitTotalOps;
+    if (!belowAmountCap || !belowOpsCap) return;
+
+    const conflicting = await tx.requisite.findFirst({
+      where: {
+        type: row.type,
+        numberNormalized: row.numberNormalized,
+        isActive: true,
+        NOT: { id: requisiteId },
+      },
+      select: { id: true },
+    });
+    if (conflicting) {
+      this.logger.warn(
+        `Requisite ${requisiteId}: skip auto-reenable after usage release — another active requisite shares this identity (other=${conflicting.id})`,
+      );
+      return;
+    }
+
+    await tx.requisite.update({
+      where: { id: requisiteId },
+      data: { isActive: true, disabledReason: null },
+    });
+
+    this.logger.log(
+      `Requisite ${requisiteId} auto-reenabled after usage fell below limits (had been ${row.disabledReason})`,
     );
   }
 
