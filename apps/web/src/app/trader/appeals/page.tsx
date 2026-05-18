@@ -16,7 +16,9 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { traderKeys } from '@/lib/query-keys';
 import { AuthorizedFilePreview } from '@/components/files/authorized-file-preview';
-import { formatCurrency, formatDate, formatDateFull, shortId } from '@/lib/utils';
+import { OrderIdCopyCell } from '@/components/ui/order-id-copy-cell';
+import { PayinRequisiteTableCell } from '@/components/ui/payin-requisite-table-cell';
+import { formatCurrency, formatDate, formatDateFull } from '@/lib/utils';
 import { AppealStatus } from '@p2p/shared';
 import type { AppealDto } from '@p2p/shared';
 
@@ -93,6 +95,7 @@ export default function AppealsPage() {
       api.patch<AppealDto>(internalPaths.appealResolve(id), { decision }),
     onSuccess: (updated) => {
       void queryClient.invalidateQueries({ queryKey: traderKeys.appealsScope });
+      void queryClient.invalidateQueries({ queryKey: traderKeys.payinOrdersScope });
       setSelectedAppeal((prev) => (prev?.id === updated.id ? updated : prev));
     },
   });
@@ -113,7 +116,7 @@ export default function AppealsPage() {
       header: 'Appeal ID',
       className: 'font-mono tabular-nums text-end',
       render: (row: AppealDto) => (
-        <span className="font-mono text-xs text-text-muted">{shortId(row.id)}</span>
+        <OrderIdCopyCell id={row.id} withToast label="Appeal ID" />
       ),
     },
     {
@@ -121,9 +124,21 @@ export default function AppealsPage() {
       header: 'Pay-In order',
       className: 'font-mono tabular-nums text-end',
       render: (row: AppealDto) => (
-        <span className="font-mono text-xs text-text-muted" title={row.payin_order_id}>
-          {shortId(row.payin_order_id)}
-        </span>
+        <OrderIdCopyCell id={row.payin_order_id} withToast label="Pay-In order ID" />
+      ),
+    },
+    {
+      key: 'requisite',
+      header: 'Requisite',
+      className: 'min-w-[7rem]',
+      render: (row: AppealDto) => (
+        <PayinRequisiteTableCell
+          row={{
+            requisite_number: row.requisite_number,
+            requisite_owner: row.requisite_owner,
+            bank: row.bank,
+          }}
+        />
       ),
     },
     {

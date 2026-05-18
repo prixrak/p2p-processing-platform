@@ -11,6 +11,7 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { parseDecimalInput } from '@/lib/decimal-input';
 import { adminPayoutPoolKeys } from '@/lib/query-keys';
+import { formatDateTime } from '@/lib/utils';
 
 interface GlobalSettings {
   pool_b_global_percent: number;
@@ -253,7 +254,7 @@ export function AdminPayoutPoolPage() {
             </div>
             <p className="sm:col-span-2 text-xs text-text-muted flex items-center gap-1">
               <Clock className="h-4 w-4" />
-              Last updated: {new Date(g.updated_at).toLocaleString()}
+              Last updated: {formatDateTime(new Date(g.updated_at))}
             </p>
           </form>
         )}

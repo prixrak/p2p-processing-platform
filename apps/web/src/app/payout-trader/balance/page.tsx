@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { specialistCabinetKeys } from '@/lib/query-keys';
 import { DataTable } from '@/components/ui/data-table';
+import { formatDateTime } from '@/lib/utils';
 
 interface SpecialistSummary {
   email: string;
@@ -43,7 +44,7 @@ export default function PayoutTraderBalancePage() {
   const settlementCols = [
     {
       key: 'type',
-      header: 'Direction',
+      header: 'Type',
       render: (row: SettlementItem) => (
         <span className="text-xs uppercase text-text-muted">{row.type}</span>
       ),
@@ -79,7 +80,7 @@ export default function PayoutTraderBalancePage() {
       header: 'Recorded at',
       render: (row: SettlementItem) => (
         <span className="text-xs text-text-muted">
-          {new Date(row.created_at).toLocaleString('en-US')}
+          {formatDateTime(new Date(row.created_at))}
         </span>
       ),
     },

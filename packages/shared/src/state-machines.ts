@@ -16,6 +16,7 @@ export const PAYIN_TRANSITIONS: Record<PayInOrderStatus, PayInOrderStatus[]> = {
     PayInOrderStatus.UNDERPAID,
     PayInOrderStatus.OVERPAID,
     PayInOrderStatus.CANCELED,
+    PayInOrderStatus.APPEAL,
   ],
   [PayInOrderStatus.VERIFIED]: [
     PayInOrderStatus.PAID,
@@ -32,7 +33,12 @@ export const PAYIN_TRANSITIONS: Record<PayInOrderStatus, PayInOrderStatus[]> = {
     PayInOrderStatus.UNDERPAID,
     PayInOrderStatus.OVERPAID,
   ],
-  [PayInOrderStatus.APPEAL]: [],
+  [PayInOrderStatus.APPEAL]: [
+    PayInOrderStatus.PAID,
+    PayInOrderStatus.UNDERPAID,
+    PayInOrderStatus.OVERPAID,
+    PayInOrderStatus.CANCELED,
+  ],
   [PayInOrderStatus.UPLOAD_FAILED]: [],
   [PayInOrderStatus.NO_REQUISITE]: [PayInOrderStatus.CANCELED],
 };

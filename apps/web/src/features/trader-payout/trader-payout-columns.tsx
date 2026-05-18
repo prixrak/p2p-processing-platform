@@ -8,7 +8,7 @@ import { PayoutOrderStatusBadge } from '@/components/ui/order-status-badge';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { PayOutOrderStatus } from '@p2p/shared';
 import type { PayOutOrderApiDto } from '@p2p/shared';
-import { formatCurrency, formatDate, shortId, formatDurationShort, formatCountdownRemaining, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, formatDurationShort, formatCountdownRemaining, cn } from '@/lib/utils';
 import { TraderPayoutWorkflowActions, type PayoutRejectVars } from './trader-payout-workflow-actions';
 import { TraderPayoutTakeFromPoolButton } from './trader-payout-take-from-pool-button';
 
@@ -62,7 +62,7 @@ function LiveElapsed({
 }
 
 function CopyOrderIdCell({ id }: { id: string }) {
-  return <OrderIdCopyCell id={id} variant="inline" />;
+  return <OrderIdCopyCell id={id} />;
 }
 
 function PoolCloseCountdown({ untilUnix }: { untilUnix: number | null | undefined }) {
@@ -186,12 +186,7 @@ export function buildPayoutOrdersColumns(opts: {
     key: 'id',
     header: 'ID',
     className: 'font-mono tabular-nums text-end',
-    render: (row: PayOutOrderApiDto) =>
-      isSpecialist ? (
-        <CopyOrderIdCell id={row.id} />
-      ) : (
-        <span className="font-mono text-xs text-text-muted">{shortId(row.id)}</span>
-      ),
+    render: (row: PayOutOrderApiDto) => <CopyOrderIdCell id={row.id} />,
   };
 
   const amountCol = {

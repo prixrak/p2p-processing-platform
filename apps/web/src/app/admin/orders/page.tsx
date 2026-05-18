@@ -20,15 +20,18 @@ import {
   ListPageHeader,
 } from '@/components/ui/list-page-tools';
 import { IconButton } from '@/components/ui/icon-button';
+import { OrderIdCopyCell } from '@/components/ui/order-id-copy-cell';
+import { PayinRequisiteTableCell } from '@/components/ui/payin-requisite-table-cell';
 import { Modal } from '@/components/ui/modal';
 import { StatusHistoryList } from '@/components/ui/status-history-list';
-import { format } from 'date-fns';
-import { buildQueryString, formatCurrency } from '@/lib/utils';
+import { isPayinCabinetOrderRow } from '@/lib/is-payin-cabinet-order-row';
+import { buildQueryString, formatCurrency, formatDateTime } from '@/lib/utils';
 import {
   ORDER_LIST_UI_TAB,
   isOrderListPayOutTab,
   orderListUiTabToDirection,
   type OrderListUiTab,
+  type PaymentDetailsShortDto,
 } from '@p2p/shared';
 import {
   badgeVariantForPayin,
@@ -54,6 +57,8 @@ interface Order {
   paymentMethod: string;
   createdAt: string;
   updatedAt: string;
+  payment_detail?: PaymentDetailsShortDto | null;
+  trader_processing_method?: 'CARD' | 'FORK' | null;
 }
 
 interface TraderOption {
@@ -171,16 +176,14 @@ function AdminOrdersPageContent() {
       key: 'id',
       header: 'ID',
       className: 'font-mono tabular-nums text-end',
-      render: (row: Order) => (
-        <span className="font-mono text-xs text-text-muted">{row.id.slice(0, 8)}...</span>
-      ),
+      render: (row: Order) => <OrderIdCopyCell id={row.id} label="Order ID" />,
     },
     {
       key: 'externalId',
       header: 'External ID',
       className: 'font-mono tabular-nums text-end',
       render: (row: Order) => (
-        <span className="font-mono text-xs">{row.externalId?.slice(0, 12) ?? '—'}</span>
+        <OrderIdCopyCell id={row.externalId ?? ''} label="External ID" />
       ),
     },
     {
@@ -207,6 +210,17 @@ function AdminOrdersPageContent() {
         </span>
       ),
     },
+    {
+      key: 'requisite',
+      header: 'Requisite',
+      className: 'min-w-[7rem]',
+      render: (row: Order) =>
+        isPayinCabinetOrderRow(row) ? (
+          <PayinRequisiteTableCell row={row} />
+        ) : (
+          <span className="text-text-muted">—</span>
+        ),
+    },
     { key: 'paymentMethod', header: 'Method' },
     {
       key: 'status',
@@ -219,7 +233,7 @@ function AdminOrdersPageContent() {
       header: 'Created',
       render: (row: Order) => (
         <span className="text-xs text-text-muted">
-          {format(new Date(row.createdAt), 'dd.MM.yy HH:mm')}
+          {formatDateTime(new Date(row.createdAt))}
         </span>
       ),
     },
@@ -424,7 +438,7 @@ function AdminOrdersPageContent() {
               <div>
                 <p className="text-xs text-text-muted">Created</p>
                 <p className="text-sm text-text-secondary">
-                  {new Date(details.createdAt).toLocaleString()}
+                  {formatDateTime(new Date(details.createdAt))}
                 </p>
               </div>
               <div>

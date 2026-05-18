@@ -19,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { banksKeys, currencyKeys, fetchCurrencyList, paymentMethodsKeys, requisiteKeys, traderKeys } from '@/lib/query-keys';
-import { cn } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 import { getUserFromToken } from '@/lib/auth';
 import type {
   AuditItem,
@@ -392,11 +392,7 @@ export function TraderRequisitesPage() {
         <div className="space-y-3">
           {filteredGroups.map((g) => {
             const isOpen = expanded[g.id] ?? true;
-            const created = new Date(g.createdAt).toLocaleDateString(undefined, {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-            });
+            const created = formatDateTime(new Date(g.createdAt));
             return (
               <Card key={g.id} className="overflow-hidden border-border-primary">
                 <div

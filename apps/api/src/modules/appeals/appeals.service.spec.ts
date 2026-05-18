@@ -13,15 +13,22 @@ function mockResolvedAppeal(overrides: Record<string, unknown>) {
     payinOrder: {
       traderId: 'tp-self',
       amount: 200,
-      currency: 'USD',
+      currency: { code: 'USD' },
       requisite: { number: '4111', owner: 'ACME', bank: { name: 'Test Bank' } },
     },
     ...overrides,
   };
 }
 
+function mockPayinService() {
+  return {
+    settlePayInOrderWhenAppealCloses: jest.fn().mockResolvedValue({ id: 'order-x' }),
+  };
+}
+
 describe('AppealsService.resolve authorization', () => {
   it('rejects trader resolve when order belongs to another trader', async () => {
+    const payin = mockPayinService();
     const prisma = {
       appeal: {
         findUnique: jest.fn().mockResolvedValue(
@@ -29,16 +36,15 @@ describe('AppealsService.resolve authorization', () => {
             payinOrder: {
               traderId: 'tp-other',
               amount: 200,
-              currency: 'USD',
+              currency: { code: 'USD' },
               requisite: { number: 'x', owner: 'y', bank: { name: 'B' } },
             },
           }),
         ),
-        update: jest.fn(),
       },
     };
 
-    const service = new AppealsService(prisma as never);
+    const service = new AppealsService(prisma as never, payin as never);
 
     await expect(
       service.resolve('a2', AppealStatus.RESOLVED, {
@@ -47,19 +53,22 @@ describe('AppealsService.resolve authorization', () => {
       }),
     ).rejects.toThrow(ForbiddenException);
 
-    expect(prisma.appeal.update).not.toHaveBeenCalled();
+    expect(payin.settlePayInOrderWhenAppealCloses).not.toHaveBeenCalled();
   });
 
   it('allows trader resolve when trader matches pay-in assignee', async () => {
-    const updatedRow = mockResolvedAppeal({ status: AppealStatus.RESOLVED });
+    const payin = mockPayinService();
+    const afterSettle = mockResolvedAppeal({ status: AppealStatus.RESOLVED });
     const prisma = {
       appeal: {
-        findUnique: jest.fn().mockResolvedValue(mockResolvedAppeal({})),
-        update: jest.fn().mockResolvedValue(updatedRow),
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce(mockResolvedAppeal({}))
+          .mockResolvedValueOnce(afterSettle),
       },
     };
 
-    const service = new AppealsService(prisma as never);
+    const service = new AppealsService(prisma as never, payin as never);
 
     const out = await service.resolve('a2', AppealStatus.RESOLVED, {
       role: UserRole.TRADER,
@@ -67,22 +76,21 @@ describe('AppealsService.resolve authorization', () => {
     });
 
     expect(out.status).toBe(AppealStatus.RESOLVED);
-    expect(prisma.appeal.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'a2' },
-        data: { status: AppealStatus.RESOLVED },
-      }),
+    expect(payin.settlePayInOrderWhenAppealCloses).toHaveBeenCalledWith(
+      'a2',
+      AppealStatus.RESOLVED,
     );
   });
 
   it('returns 404 when appeal missing', async () => {
+    const payin = mockPayinService();
     const prisma = {
       appeal: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
     };
 
-    const service = new AppealsService(prisma as never);
+    const service = new AppealsService(prisma as never, payin as never);
 
     await expect(
       service.resolve('missing', AppealStatus.RESOLVED, {
@@ -90,6 +98,8 @@ describe('AppealsService.resolve authorization', () => {
         traderId: null,
       }),
     ).rejects.toThrow(NotFoundException);
+
+    expect(payin.settlePayInOrderWhenAppealCloses).not.toHaveBeenCalled();
   });
 });
 
@@ -102,7 +112,7 @@ describe('AppealsService.findAll', () => {
       },
     };
 
-    const service = new AppealsService(prisma as never);
+    const service = new AppealsService(prisma as never, mockPayinService() as never);
     await service.findAll({ listBucket: 'current', page: 1, limit: 10 }, undefined);
 
     expect(prisma.appeal.findMany).toHaveBeenCalledWith(
@@ -120,7 +130,7 @@ describe('AppealsService.findAll', () => {
       },
     };
 
-    const service = new AppealsService(prisma as never);
+    const service = new AppealsService(prisma as never, mockPayinService() as never);
     await service.findAll({ listBucket: 'history', page: 1, limit: 10 }, undefined);
 
     expect(prisma.appeal.findMany).toHaveBeenCalledWith(

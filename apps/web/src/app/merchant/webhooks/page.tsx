@@ -10,7 +10,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { FilterBar, FilterSelect } from '@/components/ui/filters';
-import { format } from 'date-fns';
+import { formatDateTime } from '@/lib/utils';
 
 interface WebhookLog {
   id: string;
@@ -80,7 +80,7 @@ export default function WebhooksPage() {
       className: 'font-mono tabular-nums',
       render: (row: WebhookLog) => (
         <span className="text-xs text-text-muted font-mono whitespace-nowrap">
-          {format(new Date(row.timestamp), 'dd.MM.yy HH:mm:ss')}
+          {formatDateTime(new Date(row.timestamp))}
         </span>
       ),
     },

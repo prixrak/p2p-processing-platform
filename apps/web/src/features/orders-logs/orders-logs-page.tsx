@@ -15,7 +15,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { ClipboardCopy, Filter, LineChart, X } from 'lucide-react';
+import { Filter, LineChart, X } from 'lucide-react';
 import {
   ApplicationLogUiStatus,
   DirectionType,
@@ -25,12 +25,13 @@ import { adminKeys, ownerKeys } from '@/lib/query-keys';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { Button } from '@/components/ui/button';
+import { OrderIdCopyCell } from '@/components/ui/order-id-copy-cell';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { Modal } from '@/components/ui/modal';
 import { Select } from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 
 const CHART_GREEN = '#22c55e';
 const CHART_RED = '#ef4444';
@@ -614,19 +615,7 @@ export function OrdersLogsPageView({
             key: 'requestId',
             header: 'Request ID',
             render: (row) => (
-              <span className="inline-flex items-center gap-1 font-mono text-xs">
-                {row.requestId}
-                <button
-                  type="button"
-                  className="p-0.5 rounded hover:bg-bg-hover text-text-muted"
-                  title="Copy"
-                  onClick={() =>
-                    void navigator.clipboard.writeText(row.requestId).catch(() => {})
-                  }
-                >
-                  <ClipboardCopy size={14} />
-                </button>
-              </span>
+              <OrderIdCopyCell id={row.requestId} label="Request ID" />
             ),
           },
           {
@@ -634,7 +623,7 @@ export function OrdersLogsPageView({
             header: 'Created',
             render: (row) => (
               <span className="tabular-nums text-xs">
-                {new Date(row.createdAt).toISOString().replace('T', ' ').slice(0, 19)}
+                {formatDateTime(new Date(row.createdAt))}
               </span>
             ),
           },
@@ -644,7 +633,6 @@ export function OrdersLogsPageView({
             header: 'Trader',
             render: (row) => row.traderLabel ?? '—',
           },
-          { key: 'direction', header: 'Direction' },
           {
             key: 'kind',
             header: 'Kind',
@@ -948,9 +936,7 @@ function ApplicationLogDetailModal({
             <DetailRow
               label="Received"
               value={
-                data?.createdAt
-                  ? new Date(String(data.createdAt)).toISOString().replace('T', ' ').slice(0, 19)
-                  : '—'
+                data?.createdAt ? formatDateTime(new Date(String(data.createdAt))) : '—'
               }
             />
             <DetailRow
@@ -972,7 +958,7 @@ function ApplicationLogDetailModal({
               <p className="text-sm text-text-primary">{err.message}</p>
               {err.at && (
                 <p className="text-xs text-text-muted">
-                  {new Date(err.at).toISOString().replace('T', ' ').slice(0, 19)}
+                  {formatDateTime(new Date(err.at))}
                 </p>
               )}
             </section>
@@ -1045,7 +1031,7 @@ function ApplicationLogDetailModal({
                   <Badge variant="muted">{h.status}</Badge>
                   <span className="text-text-muted">{h.actor}</span>
                   <span className="tabular-nums text-xs text-text-muted">
-                    {new Date(h.timestamp).toISOString().replace('T', ' ').slice(0, 19)}
+                    {formatDateTime(new Date(h.timestamp))}
                   </span>
                 </li>
               ))}

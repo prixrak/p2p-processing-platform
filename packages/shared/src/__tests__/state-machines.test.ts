@@ -78,10 +78,8 @@ describe('terminal states (no outbound transitions)', () => {
   const payInTerminal = ALL_PAY_IN_STATUSES.filter((s) => PAYIN_TRANSITIONS[s].length === 0);
   const payOutTerminal = ALL_PAY_OUT_STATUSES.filter((s) => PAYOUT_TRANSITIONS[s].length === 0);
 
-  it('Pay-In: only APPEAL and UPLOAD_FAILED are terminal in the transition graph', () => {
-    expect([...payInTerminal].sort()).toEqual(
-      [PayInOrderStatus.APPEAL, PayInOrderStatus.UPLOAD_FAILED].sort(),
-    );
+  it('Pay-In: only UPLOAD_FAILED is terminal in the transition graph', () => {
+    expect([...payInTerminal].sort()).toEqual([PayInOrderStatus.UPLOAD_FAILED].sort());
   });
 
   it('Pay-In terminal states reject transition to any Pay-In status', () => {
@@ -129,16 +127,17 @@ describe('isValidPayInTransition', () => {
     expect(isValidPayInTransition(PayInOrderStatus.PENDING, PayInOrderStatus.CANCELED)).toBe(true);
     expect(isValidPayInTransition(PayInOrderStatus.NEW, PayInOrderStatus.VERIFIED)).toBe(true);
     expect(isValidPayInTransition(PayInOrderStatus.NEW, PayInOrderStatus.PAID)).toBe(true);
+    expect(isValidPayInTransition(PayInOrderStatus.NEW, PayInOrderStatus.APPEAL)).toBe(true);
     expect(isValidPayInTransition(PayInOrderStatus.VERIFIED, PayInOrderStatus.PAID)).toBe(true);
     expect(isValidPayInTransition(PayInOrderStatus.CANCELED, PayInOrderStatus.PAID)).toBe(true);
-    expect(isValidPayInTransition(PayInOrderStatus.PAID, PayInOrderStatus.APPEAL)).toBe(true);
+    expect(isValidPayInTransition(PayInOrderStatus.APPEAL, PayInOrderStatus.PAID)).toBe(true);
   });
 
   it('matches PAYIN_TRANSITIONS for sample invalid paths', () => {
     expect(isValidPayInTransition(PayInOrderStatus.PENDING, PayInOrderStatus.VERIFIED)).toBe(
       false,
     );
-    expect(isValidPayInTransition(PayInOrderStatus.APPEAL, PayInOrderStatus.PAID)).toBe(false);
+    expect(isValidPayInTransition(PayInOrderStatus.APPEAL, PayInOrderStatus.NEW)).toBe(false);
     expect(isValidPayInTransition(PayInOrderStatus.NO_REQUISITE, PayInOrderStatus.CANCELED)).toBe(
       true,
     );

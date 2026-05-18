@@ -1,6 +1,6 @@
 import { AppealStatus, PayInOrderStatus } from '@p2p/shared';
 import type { OrderWithRelations } from './payin-order.mapper';
-import { payinOrderToOrderDto } from './payin-order.mapper';
+import { payinOrderToOrderDto, payinOrderToTraderPayInOrderDto } from './payin-order.mapper';
 
 describe('payinOrderToOrderDto', () => {
   const baseDate = new Date('2026-01-15T12:00:00.000Z');
@@ -46,6 +46,7 @@ describe('payinOrderToOrderDto', () => {
     expect(dto.request_id).toBe('req-1');
     expect(dto.status).toBe(PayInOrderStatus.NEW);
     expect(dto.amount).toBe(100);
+    expect(dto.amount_equivalent_usdt).toBeNull();
     expect(dto.commission_percent).toBe(5);
     expect(dto.payin_trader_markup_percent).toBeNull();
     expect(dto.payment_detail).toEqual({
@@ -128,6 +129,18 @@ describe('payinOrderToOrderDto', () => {
       }),
     );
     expect(dto.payin_trader_markup_percent).toBeCloseTo(1, 5);
+    expect(dto.amount_equivalent_usdt).toBeCloseTo(100 / rt, 10);
+  });
+
+  it('falls back amount_equivalent_usdt to parser-only when trader rate is missing', () => {
+    const P = 45.29;
+    const dto = payinOrderToOrderDto(
+      minimalOrder({
+        parserRate: P as any,
+        rateTraderIn: null as any,
+      }),
+    );
+    expect(dto.amount_equivalent_usdt).toBeCloseTo(100 / P, 10);
   });
 
   it('sets completed_at null for in-progress statuses without completedAt', () => {
@@ -135,5 +148,83 @@ describe('payinOrderToOrderDto', () => {
       minimalOrder({ status: PayInOrderStatus.NEW, completedAt: null }),
     );
     expect(dto.completed_at).toBeNull();
+  });
+});
+
+describe('payinOrderToTraderPayInOrderDto', () => {
+  const baseDate = new Date('2026-01-15T12:00:00.000Z');
+
+  function minimalOrder(
+    overrides: Partial<OrderWithRelations> = {},
+  ): OrderWithRelations {
+    return {
+      id: 'order-1',
+      requestId: 'req-1',
+      createdAt: baseDate,
+      confirmedAt: null,
+      completedAt: null,
+      updatedAt: baseDate,
+      autocloseAt: baseDate,
+      currency: { code: 'UAH' } as never,
+      amount: 100 as any,
+      commission: 5 as any,
+      commissionPercent: 5 as any,
+      partnerAmount: 95 as any,
+      parserRate: null as any,
+      rateTraderIn: null as any,
+      rate: 41 as any,
+      status: PayInOrderStatus.NEW,
+      redirectUrl: null,
+      requisite: {
+        id: 'req-num',
+        type: 'CARD',
+        number: '4111',
+        owner: 'John Doe',
+        code: null,
+        bank: { name: 'Test Bank' },
+      },
+      appeals: [],
+      forkChatProofs: [],
+      ...overrides,
+    } as OrderWithRelations;
+  }
+
+  it('excludes merchant economics, request id, and fork audit fields', () => {
+    const dto = payinOrderToTraderPayInOrderDto(
+      minimalOrder({
+        forkExchangeReference: 'fk-ref' as never,
+        forkChatProofs: [{ fileId: 'f-fork' } as never],
+      }),
+    );
+    expect(dto).not.toHaveProperty('request_id');
+    expect(dto).not.toHaveProperty('commission');
+    expect(dto).not.toHaveProperty('partner_amount');
+    expect(dto).not.toHaveProperty('payin_trader_markup_percent');
+    expect(dto).not.toHaveProperty('fork_exchange_reference');
+    expect(dto).not.toHaveProperty('fork_chat_proof_file_ids');
+  });
+
+  it('maps slim appeals without payer-reported amounts', () => {
+    const dto = payinOrderToTraderPayInOrderDto(
+      minimalOrder({
+        appeals: [
+          {
+            id: 'ap-1',
+            status: AppealStatus.OPEN,
+            createdAt: baseDate,
+            paidAmount: 77 as any,
+            proofs: [{ fileId: 'p1' }],
+          } as any,
+        ],
+      }),
+    );
+    expect(dto.appeals).toHaveLength(1);
+    expect(dto.appeals[0]).toEqual({
+      id: 'ap-1',
+      status: AppealStatus.OPEN,
+      created_at: Math.floor(baseDate.getTime() / 1000),
+      proofs_of_payment: ['p1'],
+    });
+    expect(dto.appeals[0]).not.toHaveProperty('paid_amount');
   });
 });

@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { specialistCabinetKeys } from '@/lib/query-keys';
+import { formatDateTime } from '@/lib/utils';
 
 interface NotificationItem {
   id: string;
@@ -43,7 +44,7 @@ export default function PayoutTraderNotificationsPage() {
               <div className="flex justify-between gap-4">
                 <span className="text-sm font-medium text-text-primary">{n.title}</span>
                 <span className="text-xs text-text-muted shrink-0">
-                  {new Date(n.created_at).toLocaleString()}
+                  {formatDateTime(new Date(n.created_at))}
                 </span>
               </div>
               <p className="text-sm text-text-secondary">{n.message}</p>

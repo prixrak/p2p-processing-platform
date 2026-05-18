@@ -9,6 +9,7 @@ import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
 import { summarizeAuditValue } from '@/lib/audit-display';
+import { formatDateTime } from '@/lib/utils';
 
 interface AuditEntry {
   id: string;
@@ -123,7 +124,7 @@ export default function AuditPage() {
       className: 'font-mono tabular-nums',
       render: (e: AuditEntry) => (
         <span className="whitespace-nowrap text-sm text-text-muted">
-          {new Date(e.timestamp).toLocaleString()}
+          {formatDateTime(new Date(e.timestamp))}
         </span>
       ),
     },

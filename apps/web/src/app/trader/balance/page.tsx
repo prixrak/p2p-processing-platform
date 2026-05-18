@@ -12,6 +12,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { Select } from '@/components/ui/select';
+import { formatDateTime } from '@/lib/utils';
 
 interface BalanceTx {
   id: string;
@@ -196,7 +197,7 @@ export default function BalanceHistoryPage() {
       header: 'Time',
       render: (tx: BalanceTx) => (
         <span className="text-xs text-text-muted">
-          {new Date(tx.createdAt).toLocaleString('en-US')}
+          {formatDateTime(new Date(tx.createdAt))}
         </span>
       ),
     },

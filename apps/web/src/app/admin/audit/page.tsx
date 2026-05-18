@@ -9,7 +9,7 @@ import { adminKeys } from '@/lib/query-keys';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { FilterBar, FilterSelect, FilterInput } from '@/components/ui/filters';
-import { format } from 'date-fns';
+import { formatDateTime } from '@/lib/utils';
 import {
   summarizeAuditValue,
   humanizeFieldKey,
@@ -95,7 +95,7 @@ export default function AuditLogPage() {
       className: 'font-mono tabular-nums',
       render: (row: AuditEntry) => (
         <span className="text-xs text-text-muted font-mono whitespace-nowrap">
-          {format(new Date(row.timestamp), 'dd.MM.yy HH:mm:ss')}
+          {formatDateTime(new Date(row.timestamp))}
         </span>
       ),
     },

@@ -11,7 +11,7 @@ import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { OrderDto } from '@p2p/shared';
+import type { TraderPayInOrderDto } from '@p2p/shared';
 import { finalizeOptionsForOrder } from './payin-finalize-utils';
 import type { FinalizeKind } from './payin-types';
 import { computeTraderPayinFinalizeMenuPosition } from './order-finalize-dropdown-position';
@@ -30,7 +30,7 @@ export function OrderFinalizeDropdown({
   menuAnchor,
   onPickKind,
 }: {
-  order: OrderDto;
+  order: TraderPayInOrderDto;
   menuState: OrderFinalizeMenuState;
   setMenuState: (state: OrderFinalizeMenuState) => void;
   menuAnchor: OrderFinalizeMenuAnchor;

@@ -16,6 +16,7 @@ import { ownerKeys } from '@/lib/query-keys';
 import { StatCard, Card } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { formatDateTime } from '@/lib/utils';
 
 interface Statistics {
   totalVolume: number;
@@ -183,7 +184,7 @@ export default function StatisticsPage() {
                       />
                     </div>
                     <span className="text-[10px] text-text-muted">
-                      {new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      {formatDateTime(new Date(`${d.date}T12:00:00`))}
                     </span>
                   </div>
                 );

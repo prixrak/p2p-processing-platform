@@ -1,5 +1,5 @@
 import { PayInOrderStatus } from '@p2p/shared';
-import type { OrderDto } from '@p2p/shared';
+import type { TraderPayInOrderDto } from '@p2p/shared';
 import type { FinalizeKind } from './payin-types';
 
 export function maskRequisite(numberRaw: string | null | undefined): string {
@@ -18,7 +18,7 @@ export function parsePositiveAmount(raw: string): number | null {
 }
 
 export function finalizeTargetPreview(
-  order: OrderDto,
+  order: Pick<TraderPayInOrderDto, 'amount'>,
   kind: FinalizeKind,
   actual?: number,
 ): string {
@@ -35,7 +35,7 @@ export function finalizeTargetPreview(
 
 /** Accent for the preview line describing the upcoming status label */
 export function finalizePreviewTone(
-  order: OrderDto,
+  order: Pick<TraderPayInOrderDto, 'amount'>,
   kind: FinalizeKind,
   adjustmentInput: string,
 ): string {
@@ -49,7 +49,7 @@ export function finalizePreviewTone(
   return 'text-accent-purple';
 }
 
-export function finalizeOptionsForOrder(order: OrderDto): FinalizeKind[] {
+export function finalizeOptionsForOrder(order: Pick<TraderPayInOrderDto, 'status'>): FinalizeKind[] {
   if (
     order.status === PayInOrderStatus.NEW ||
     order.status === PayInOrderStatus.VERIFIED
@@ -62,7 +62,9 @@ export function finalizeOptionsForOrder(order: OrderDto): FinalizeKind[] {
   return [];
 }
 
-export function orderPayinProofFileIds(row: OrderDto): string[] {
+export function orderPayinProofFileIds(row: {
+  appeals?: ReadonlyArray<{ proofs_of_payment: string[] }>;
+}): string[] {
   const ids: string[] = [];
   for (const a of row.appeals ?? []) {
     for (const f of a.proofs_of_payment) ids.push(f);
@@ -70,7 +72,9 @@ export function orderPayinProofFileIds(row: OrderDto): string[] {
   return ids;
 }
 
-export function payinDirectionLabel(row: OrderDto): string {
+export function payinDirectionLabel(row: {
+  payment_detail?: { type?: string } | null;
+}): string {
   const t = row.payment_detail?.type;
   if (t === 'CARD' || t === 'IBAN') return t;
   return '—';

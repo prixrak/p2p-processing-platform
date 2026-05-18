@@ -13,6 +13,7 @@ import { FilesService, UploadedFile } from '../files/files.service';
 import { MerchantDirectionsService } from '../merchant-directions/merchant-directions.service';
 import {
   PayInOrderStatus,
+  AppealStatus,
   isValidPayInTransition,
   WebhookMethod,
   DirectionType,
@@ -32,6 +33,7 @@ import type {
   ProfileDto,
   PayInCheckAvailabilityResponseDto,
   PaymentBankApiDto,
+  TraderPayInOrderDto,
 } from '@p2p/shared';
 import {
   BalanceTransactionType,
@@ -80,6 +82,7 @@ import {
   ORDER_INCLUDE,
   type OrderWithRelations,
   payinOrderToOrderDto,
+  payinOrderToTraderPayInOrderDto,
 } from './payin-order.mapper';
 import { payinCompletedAtForHistoryStatus } from './payin-history-completion';
 import type { ExternalOrderCreationMeta } from '../../common/utils/partner-request-meta';
@@ -952,7 +955,7 @@ export class PayinService {
     orderId: string,
     exchangeReferenceRaw: string,
     files: UploadedFile[],
-  ): Promise<OrderDto> {
+  ): Promise<TraderPayInOrderDto> {
     const exchangeReference = (exchangeReferenceRaw ?? '').trim();
     if (!exchangeReference) {
       throw new BadRequestException('exchange_reference is required');
@@ -1020,7 +1023,7 @@ export class PayinService {
       status: updated.status as PayInOrderStatus,
     });
 
-    return payinOrderToOrderDto(updated);
+    return payinOrderToTraderPayInOrderDto(updated);
   }
 
   // ─── Internal (Trader): list orders ───
@@ -1076,7 +1079,7 @@ export class PayinService {
     ]);
 
     return {
-      items: items.map((o) => payinOrderToOrderDto(o)),
+      items: items.map((o) => payinOrderToTraderPayInOrderDto(o)),
       total,
       page,
       limit,
@@ -1168,6 +1171,105 @@ export class PayinService {
     });
 
     return payinOrderToOrderDto(updated);
+  }
+
+  /**
+   * Closes an OPEN appeal and moves the Pay-In order out of APPEAL (paid outcomes or CANCELED).
+   * Used by AppealsService after RBAC checks — single DB transaction with webhook + balance logic.
+   *
+   * RISK: Mutates merchant/trader balances and requisite volume when resolving to PAID variants.
+   */
+  async settlePayInOrderWhenAppealCloses(
+    appealId: string,
+    decision: AppealStatus.RESOLVED | AppealStatus.REJECTED,
+  ): Promise<OrderWithRelations> {
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      const appealRow = await tx.appeal.findUnique({ where: { id: appealId } });
+      if (!appealRow) throw new NotFoundException('Appeal not found');
+      if (appealRow.status !== 'OPEN') {
+        throw new BadRequestException(`Appeal is already ${appealRow.status}`);
+      }
+
+      await tx.appeal.update({
+        where: { id: appealId },
+        data: { status: decision as never },
+      });
+
+      const order = await tx.payinOrder.findUnique({
+        where: { id: appealRow.payinOrderId },
+        include: ORDER_INCLUDE,
+      });
+
+      if (!order) throw new NotFoundException('Pay-in order not found');
+
+      const cur = order.status as PayInOrderStatus;
+      if (cur !== PayInOrderStatus.APPEAL) {
+        throw new BadRequestException(
+          `Pay-In order must be APPEAL to settle from appeal, got ${order.status}`,
+        );
+      }
+
+      if (decision === AppealStatus.REJECTED) {
+        if (!isValidPayInTransition(cur, PayInOrderStatus.CANCELED)) {
+          throw new BadRequestException(`Cannot transition ${cur} -> CANCELED`);
+        }
+
+        const result = await tx.payinOrder.update({
+          where: { id: order.id },
+          data: {
+            status: 'CANCELED',
+            receivedFiatAmount: null,
+            ...payinCompletedAtForHistoryStatus(PayInOrderStatus.CANCELED),
+          },
+          include: ORDER_INCLUDE,
+        });
+
+        await this.createPayinWebhookEntry(tx, result);
+        return result;
+      }
+
+      const reported = Number(appealRow.paidAmount);
+      const orderAmt = Number(order.amount);
+      let targetStatus: PayInOrderStatus;
+      if (reported === orderAmt) {
+        targetStatus = PayInOrderStatus.PAID;
+      } else if (reported < orderAmt) {
+        targetStatus = PayInOrderStatus.UNDERPAID;
+      } else {
+        targetStatus = PayInOrderStatus.OVERPAID;
+      }
+
+      if (!isValidPayInTransition(cur, targetStatus)) {
+        throw new BadRequestException(`Cannot transition ${cur} -> ${targetStatus}`);
+      }
+
+      return this.applyPayinPaidTransitionTx(tx, {
+        order,
+        targetStatus,
+        paidCredit: reported,
+      });
+    });
+
+    if (decision === AppealStatus.REJECTED && updatedOrder.requisiteId) {
+      await this.requisitesService.releaseUsage(updatedOrder.requisiteId, Number(updatedOrder.amount));
+    }
+
+    this.emitPayinOrderRealtime({
+      id: updatedOrder.id,
+      traderId: updatedOrder.traderId,
+      merchantId: updatedOrder.merchantId,
+      status: updatedOrder.status as PayInOrderStatus,
+    });
+
+    this.logger.log({
+      msg: 'payin.appeal_settlement',
+      appeal_id: appealId,
+      decision,
+      payin_order_id: updatedOrder.id,
+      order_status: updatedOrder.status,
+    });
+
+    return updatedOrder;
   }
 
   /**

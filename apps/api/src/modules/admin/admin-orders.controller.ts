@@ -5,6 +5,7 @@ import {
   Param,
   Body,
   Query,
+  Req,
   UseGuards,
   ParseUUIDPipe,
   ParseIntPipe,
@@ -16,6 +17,7 @@ import {
   Header,
   MessageEvent,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiProduces } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -25,6 +27,8 @@ import {
   PayOutOrderStatus,
   PayInOrderStatus,
   ApplicationLogUiStatus,
+  AuditAction,
+  AuditEntityType,
   isValidPayOutTransition,
   WebhookMethod,
   DirectionType,
@@ -42,8 +46,11 @@ import { PrismaService } from '../../config/prisma.service';
 import { PayinService } from '../payin/payin.service';
 import { PayinRealtimeService } from '../payin/payin-realtime.service';
 import { PayoutRealtimeService } from '../payout/payout-realtime.service';
+import { AuditService } from '../audit/audit.service';
 import { IsString } from 'class-validator';
 import { buildPayinPayoutOrderSearchOr } from '../../common/order-search-where';
+import { mapAuditRowToAdminStatusHistory } from './admin-order-status-audit-history';
+import { payinOrderListRequisiteFields } from '../../common/payin-order-list-requisite-fields';
 
 const PAYOUT_ADMIN_ORDER_INCLUDE = {
   merchant: { select: { id: true, name: true } },
@@ -71,6 +78,7 @@ export class AdminOrdersController {
     private readonly payinService: PayinService,
     private readonly payinRealtime: PayinRealtimeService,
     private readonly payoutRealtime: PayoutRealtimeService,
+    private readonly audit: AuditService,
   ) {}
 
   @Get()
@@ -134,6 +142,16 @@ export class AdminOrdersController {
             merchant: { select: { name: true } },
             trader: { select: { user: { select: { email: true } } } },
             currency: { select: { code: true } },
+            requisite: {
+              select: {
+                id: true,
+                type: true,
+                number: true,
+                owner: true,
+                code: true,
+                bank: { select: { name: true } },
+              },
+            },
           },
         }),
         this.prisma.payinOrder.count({ where }),
@@ -152,6 +170,7 @@ export class AdminOrdersController {
           paymentMethod: null,
           createdAt: o.createdAt,
           updatedAt: o.updatedAt,
+          ...payinOrderListRequisiteFields(o.traderProcessingMethod, o.requisite),
         })),
         total,
         page,
@@ -267,6 +286,8 @@ export class AdminOrdersController {
             action: true,
             createdAt: true,
             actor: { select: { email: true } },
+            oldValue: true,
+            newValue: true,
           },
         });
         return this.buildPayoutAdminDetail(payoutOrder, auditLogsFb);
@@ -279,6 +300,8 @@ export class AdminOrdersController {
           action: true,
           createdAt: true,
           actor: { select: { email: true } },
+          oldValue: true,
+          newValue: true,
         },
       });
 
@@ -365,11 +388,7 @@ export class AdminOrdersController {
               cardNumber: order.requisite.number,
             }
           : null,
-        statusHistory: auditLogs.map((l) => ({
-          status: l.action,
-          timestamp: l.createdAt,
-          actor: l.actor?.email ?? 'system',
-        })),
+        statusHistory: auditLogs.map((l) => mapAuditRowToAdminStatusHistory(l)),
       };
     } else {
       const order = await this.prisma.payoutOrder.findUnique({
@@ -385,6 +404,8 @@ export class AdminOrdersController {
           action: true,
           createdAt: true,
           actor: { select: { email: true } },
+          oldValue: true,
+          newValue: true,
         },
       });
 
@@ -396,6 +417,7 @@ export class AdminOrdersController {
   @ApiOperation({ summary: 'Update order status (admin override with state-machine validation)' })
   @ApiQuery({ name: 'type', required: false, enum: DirectionType })
   async updateStatus(
+    @Req() req: Request,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateOrderStatusDto,
     @Query('type') type?: string,
@@ -405,20 +427,57 @@ export class AdminOrdersController {
     const isPayin = !type || type.toUpperCase() !== DirectionType.PAYOUT;
 
     if (isPayin) {
-      const order = await this.prisma.payinOrder.findUnique({ where: { id } });
+      const payinProbe = await this.prisma.payinOrder.findUnique({ where: { id } });
 
-      if (!order) {
+      if (!payinProbe) {
         const payoutOrder = await this.prisma.payoutOrder.findUnique({ where: { id } });
         if (!payoutOrder) throw new NotFoundException(`Order ${id} not found`);
-        return this.updatePayoutStatus(payoutOrder, targetStatus);
+        const prev = payoutOrder.status;
+        const updated = await this.updatePayoutStatus(payoutOrder, targetStatus);
+        void this.safeAdminOrderStatusAudit(req, AuditEntityType.PayoutOrder, id, prev, updated.status);
+        return updated;
       }
 
-      return this.payinService.adminUpdatePayinOrderStatus(id, targetStatus);
-    } else {
-      const order = await this.prisma.payoutOrder.findUnique({ where: { id } });
-      if (!order) throw new NotFoundException(`Order ${id} not found`);
-      return this.updatePayoutStatus(order, targetStatus);
+      const prev = payinProbe.status;
+      const updated = await this.payinService.adminUpdatePayinOrderStatus(id, targetStatus);
+      void this.safeAdminOrderStatusAudit(req, AuditEntityType.PayinOrder, id, prev, updated.status);
+      return updated;
     }
+
+    const payoutProbe = await this.prisma.payoutOrder.findUnique({ where: { id } });
+    if (!payoutProbe) throw new NotFoundException(`Order ${id} not found`);
+    const prev = payoutProbe.status;
+    const updated = await this.updatePayoutStatus(payoutProbe, targetStatus);
+    void this.safeAdminOrderStatusAudit(req, AuditEntityType.PayoutOrder, id, prev, updated.status);
+    return updated;
+  }
+
+  /**
+   * Best-effort audit after a validated admin manual status transition (`ORDER_STATUS_CHANGED`).
+   * Does not block PATCH success.
+   */
+  private safeAdminOrderStatusAudit(
+    req: Request,
+    entityType: string,
+    entityId: string,
+    previousStatus: string,
+    nextStatus: string,
+  ): void {
+    const user = req.user as { id: string; role: string } | undefined;
+    const ip =
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.ip ?? '';
+    void this.audit
+      .log({
+        actorId: user?.id ?? null,
+        actorRole: user?.role ?? null,
+        action: AuditAction.ORDER_STATUS_CHANGED,
+        entityType,
+        entityId,
+        oldValue: { status: previousStatus },
+        newValue: { status: nextStatus },
+        ip,
+      })
+      .catch(() => undefined);
   }
 
   private async updatePayoutStatus(order: { id: string; status: string; callbackUrl: string | null; requestId: string; amount: any }, targetStatus: string) {
@@ -461,6 +520,8 @@ export class AdminOrdersController {
       action: string;
       createdAt: Date;
       actor: { email: string } | null;
+      oldValue: unknown;
+      newValue: unknown;
     }>,
   ) {
     const uiStatus = mapPayoutToApplicationLogUiStatus(order.status as PayOutOrderStatus);
@@ -550,11 +611,7 @@ export class AdminOrdersController {
           : null,
       applicationLogHideAssignmentSections: hideAssignmentSections,
       requisites: null,
-      statusHistory: auditLogs.map((l) => ({
-        status: l.action,
-        timestamp: l.createdAt,
-        actor: l.actor?.email ?? 'system',
-      })),
+      statusHistory: auditLogs.map((l) => mapAuditRowToAdminStatusHistory(l)),
     };
   }
 }

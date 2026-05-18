@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
+import { PayinService } from '../payin/payin.service';
 import { AppealStatus, UserRole } from '@p2p/shared';
 import type { AppealDto } from '@p2p/shared';
 import { AppealFiltersDto } from './dto';
@@ -32,7 +33,10 @@ type AppealWithRelations = Prisma.AppealGetPayload<{ include: typeof APPEAL_INCL
 export class AppealsService {
   private readonly logger = new Logger(AppealsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly payinService: PayinService,
+  ) {}
 
   async findByOrderId(orderId: string, traderId?: string): Promise<AppealDto[]> {
     const where: Prisma.AppealWhereInput = {
@@ -118,11 +122,16 @@ export class AppealsService {
       throw new BadRequestException('Decision must be RESOLVED or REJECTED');
     }
 
-    const updated = await this.prisma.appeal.update({
+    await this.payinService.settlePayInOrderWhenAppealCloses(
+      appealId,
+      decision as AppealStatus.RESOLVED | AppealStatus.REJECTED,
+    );
+
+    const updated = await this.prisma.appeal.findUnique({
       where: { id: appealId },
-      data: { status: decision },
       include: APPEAL_INCLUDE,
     });
+    if (!updated) throw new NotFoundException('Appeal not found after settlement');
 
     return this.toAppealDto(updated);
   }

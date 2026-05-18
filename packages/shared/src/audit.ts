@@ -32,6 +32,8 @@ export const AuditAction = {
   UNLOCK: 'UNLOCK',
   /** Cascade idle anchor reset because requisite min/max nominal range changed (TZ observability). */
   CASCADE_IDLE_ANCHOR_RESET: 'CASCADE_IDLE_ANCHOR_RESET',
+  /** Admin/owner manual Pay-In / Pay-Out status override (`PATCH admin/orders/:id/status`). */
+  ORDER_STATUS_CHANGED: 'ORDER_STATUS_CHANGED',
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];

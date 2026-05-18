@@ -19,6 +19,7 @@ import { Modal } from '@/components/ui/modal';
 import { Badge } from '@/components/ui/badge';
 import { useCopyToClipboard } from '@/lib/hooks/use-copy-to-clipboard';
 import { ORDER_LIST_DIRECTION, type OrderListDirection } from '@p2p/shared';
+import { formatDateTime } from '@/lib/utils';
 
 interface ApiKeyPair {
   id: string;
@@ -316,7 +317,7 @@ function KeySection({
 
               {key.lastUsedAt && (
                 <p className="text-xs text-text-muted">
-                  Last used: {new Date(key.lastUsedAt).toLocaleString()}
+                  Last used: {formatDateTime(new Date(key.lastUsedAt))}
                 </p>
               )}
             </div>

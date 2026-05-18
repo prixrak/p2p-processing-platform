@@ -32,6 +32,7 @@ import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { FormAlert } from '@/components/ui/form-alert';
 import { errorMessageFromUnknown } from '@/lib/error-message';
+import { formatDateTime } from '@/lib/utils';
 import {
   countryKeys,
   currencyKeys,
@@ -490,7 +491,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
       header: 'Created',
       render: (u: DirectoryUser) => (
         <span className="text-sm text-text-secondary">
-          {new Date(u.createdAt).toLocaleDateString()}
+          {formatDateTime(new Date(u.createdAt))}
         </span>
       ),
     },

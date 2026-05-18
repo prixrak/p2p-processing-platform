@@ -27,6 +27,7 @@ import {
 } from '@/lib/validation/schemas';
 import { fieldErrorsFromZod } from '@/lib/validation/zod-field-errors';
 import { errorMessageFromUnknown } from '@/lib/error-message';
+import { formatDateTime } from '@/lib/utils';
 import { parseDecimalInput } from '@/lib/decimal-input';
 import {
   humanizeFieldKey,
@@ -662,7 +663,7 @@ export function TraderRequisiteHistoryModal({
               <div className="flex flex-wrap justify-between gap-2 text-text-primary">
                 <span className="font-medium">{row.action}</span>
                 <span className="font-mono tabular-nums text-text-muted">
-                  {new Date(row.createdAt).toLocaleString()}
+                  {formatDateTime(new Date(row.createdAt))}
                 </span>
               </div>
               <p className="mt-1 text-text-muted">

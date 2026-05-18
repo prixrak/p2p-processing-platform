@@ -2,15 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDownToLine, Eye, FileText } from 'lucide-react';
-import type { OrderDto } from '@p2p/shared';
-import { Button } from '@/components/ui/button';
-import { PayinOrderStatusBadge } from '@/components/ui/order-status-badge';
-import { IconButton } from '@/components/ui/icon-button';
-import { Table } from '@/components/ui/table';
+import { ArrowDownToLine } from 'lucide-react';
+import type { AppealDto, TraderPayInOrderDto } from '@p2p/shared';
 import { ListPageHeader, SearchStatusRow } from '@/components/ui/list-page-tools';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { Tabs } from '@/components/ui/tabs';
+import { Table } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -20,21 +17,27 @@ import { formatCurrency, formatDateFull } from '@/lib/utils';
 import { payinStatusLabel } from '@/lib/order-status-ui';
 import {
   PayInOrderStatus,
+  AppealStatus,
   PAYIN_TRADER_CURRENT_STATUSES,
   PAYIN_TRADER_HISTORY_STATUSES,
 } from '@p2p/shared';
 import { PayInFinalizeConfirmationModal } from './payin-finalize-confirmation-modal';
 import type { FinalizeKind, FinalizeDialogState, PayInListApiResponse } from './payin-types';
+import { parsePositiveAmount } from './payin-finalize-utils';
+import { PayinRequisiteTableCell } from '@/components/ui/payin-requisite-table-cell';
 import {
-  orderPayinProofFileIds,
-  payinDirectionLabel,
-  parsePositiveAmount,
-} from './payin-finalize-utils';
-import { AppealCell, CopyOrderIdCell, CountdownTimer } from './payin-order-cells';
+  CopyOrderIdCell,
+  CountdownTimer,
+  PayInOrderStatusColumnCell,
+} from './payin-order-cells';
 import {
   OrderFinalizeDropdown,
   type OrderFinalizeMenuState,
 } from './order-finalize-dropdown';
+import {
+  PayInAppealDecisionDropdown,
+  type AppealDecisionMenuState,
+} from './payin-appeal-decision-dropdown';
 import {
   PayInProofViewerModal,
   PayInReceiptGalleryModal,
@@ -61,23 +64,27 @@ export function TraderPayInPage() {
     pageSize: PAYIN_LIST_PAGE_SIZE,
     resetWhen: [listTab],
   });
-  const [selectedOrder, setSelectedOrder] = useState<OrderDto | null>(null);
-  const [receiptOrder, setReceiptOrder] = useState<OrderDto | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<TraderPayInOrderDto | null>(null);
+  const [receiptOrder, setReceiptOrder] = useState<TraderPayInOrderDto | null>(null);
   const [viewingProofFileId, setViewingProofFileId] = useState<string | null>(null);
   const [finalizeMenu, setFinalizeMenu] = useState<OrderFinalizeMenuState>(null);
+  const [appealDecisionMenu, setAppealDecisionMenu] = useState<AppealDecisionMenuState>(null);
   const [finalizeDialog, setFinalizeDialog] = useState<FinalizeDialogState | null>(null);
 
   useEffect(() => {
-    if (!finalizeMenu) return;
+    if (!finalizeMenu && !appealDecisionMenu) return;
     const handler = (e: MouseEvent) => {
-      const inside = (e.target as HTMLElement | null)?.closest(
-        '[data-trader-payin-finalize-dropdown]',
-      );
-      if (!inside) setFinalizeMenu(null);
+      const el = e.target as HTMLElement | null;
+      if (finalizeMenu && !el?.closest('[data-trader-payin-finalize-dropdown]')) {
+        setFinalizeMenu(null);
+      }
+      if (appealDecisionMenu && !el?.closest('[data-payin-appeal-decision-dropdown]')) {
+        setAppealDecisionMenu(null);
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [finalizeMenu]);
+  }, [finalizeMenu, appealDecisionMenu]);
 
   const queryParams: Record<string, string> = {
     list: listTab,
@@ -111,7 +118,7 @@ export function TraderPayInPage() {
   useSelectedRowSync(data?.orders, selectedOrder, setSelectedOrder);
   useSelectedRowSync(data?.orders, receiptOrder, setReceiptOrder);
 
-  function openFinalize(kind: FinalizeKind, order: OrderDto) {
+  function openFinalize(kind: FinalizeKind, order: TraderPayInOrderDto) {
     setFinalizeDialog({
       order,
       kind,
@@ -141,6 +148,19 @@ export function TraderPayInPage() {
       queryClient.invalidateQueries({ queryKey: traderKeys.payinOrdersScope });
       setSelectedOrder(null);
       setFinalizeDialog(null);
+    },
+    onError: (e: unknown) => {
+      toast.error(formatErrorMessage(e));
+    },
+  });
+
+  const resolveAppealMutation = useMutation({
+    mutationFn: ({ appealId, decision }: { appealId: string; decision: AppealStatus }) =>
+      api.patch<AppealDto>(internalPaths.appealResolve(appealId), { decision }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: traderKeys.payinOrdersScope });
+      void queryClient.invalidateQueries({ queryKey: traderKeys.appealsScope });
+      toast.success('Appeal decision saved');
     },
     onError: (e: unknown) => {
       toast.error(formatErrorMessage(e));
@@ -184,7 +204,7 @@ export function TraderPayInPage() {
       ? {
           key: 'completed_at',
           header: 'Completion time',
-          render: (row: OrderDto) => (
+          render: (row: TraderPayInOrderDto) => (
             <span className="text-text-muted text-sm whitespace-nowrap">
               {row.completed_at != null ? formatDateFull(row.completed_at) : '—'}
             </span>
@@ -194,7 +214,7 @@ export function TraderPayInPage() {
           key: 'timer',
           header: 'Time to complete',
           className: 'text-end font-mono tabular-nums',
-          render: (row: OrderDto) => (
+          render: (row: TraderPayInOrderDto) => (
             <CountdownTimer
               autocloseAt={row.autoclose_at}
               createdAt={row.created_at}
@@ -209,12 +229,12 @@ export function TraderPayInPage() {
         key: 'id',
         header: 'Order ID',
         className: 'min-w-[8rem]',
-        render: (row: OrderDto) => <CopyOrderIdCell id={row.id} />,
+        render: (row: TraderPayInOrderDto) => <CopyOrderIdCell id={row.id} />,
       },
       {
         key: 'created_at',
         header: 'Created',
-        render: (row: OrderDto) => (
+        render: (row: TraderPayInOrderDto) => (
           <span className="text-text-muted text-sm whitespace-nowrap">
             {formatDateFull(row.created_at)}
           </span>
@@ -222,76 +242,85 @@ export function TraderPayInPage() {
       },
       timerOrCompletionColumn,
       {
-        key: 'direction',
-        header: 'Direction',
-        className: 'text-center',
-        render: (row: OrderDto) => (
-          <span className="text-sm font-medium text-text-primary">{payinDirectionLabel(row)}</span>
+        key: 'amount',
+        header: 'Payment amount',
+        className: 'text-end tabular-nums align-top',
+        render: (row: TraderPayInOrderDto) => (
+          <div className="flex flex-col items-end gap-0.5 leading-tight">
+            <span className="font-semibold text-text-primary">
+              {formatCurrency(row.amount, row.currency)}
+            </span>
+            {row.amount_equivalent_usdt != null ? (
+              <span
+                className="text-xs font-normal tabular-nums text-text-muted"
+                title="USDT equivalent from snapshot rate when the order was quoted"
+              >
+                {row.amount_equivalent_usdt.toFixed(2)} USDT
+              </span>
+            ) : null}
+          </div>
         ),
       },
       {
-        key: 'amount',
-        header: 'Payment amount',
-        className: 'text-end tabular-nums',
-        render: (row: OrderDto) => (
-          <span className="font-medium">{formatCurrency(row.amount, row.currency)}</span>
-        ),
+        key: 'requisite',
+        header: 'Requisite',
+        className: 'min-w-[7rem]',
+        render: (row: TraderPayInOrderDto) => <PayinRequisiteTableCell row={row} />,
       },
       {
         key: 'status',
         header: 'Status',
-        className: 'text-center',
-        render: (row: OrderDto) => <PayinOrderStatusBadge status={row.status} />,
-      },
-      {
-        key: 'appeal',
-        header: 'Appeal',
-        className: 'text-center',
-        render: (row: OrderDto) => <AppealCell row={row} />,
-      },
-      {
-        key: 'receipt',
-        header: 'Payment receipt',
-        className: 'text-end',
-        render: (row: OrderDto) => {
-          const proofIds = orderPayinProofFileIds(row);
-          const hasProofs = proofIds.length > 0;
-          return (
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={!hasProofs}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (hasProofs) setReceiptOrder(row);
-              }}
-            >
-              <FileText className="h-4 w-4" />
-              {hasProofs
-                ? `Receipt${proofIds.length > 1 ? `s (${proofIds.length})` : ''}`
-                : 'No receipt'}
-            </Button>
-          );
-        },
+        className: 'text-center align-top',
+        render: (row: TraderPayInOrderDto) => (
+          <PayInOrderStatusColumnCell row={row} onOpenReceipts={setReceiptOrder} />
+        ),
       },
       {
         key: 'actions',
         header: 'Actions',
         className: 'text-end',
-        render: (row: OrderDto) => (
-          <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-            <OrderFinalizeDropdown
-              order={row}
-              menuState={finalizeMenu}
-              setMenuState={setFinalizeMenu}
-              menuAnchor="table"
-              onPickKind={(kind) => openFinalize(kind, row)}
-            />
-            <IconButton label="View order details" onClick={() => setSelectedOrder(row)}>
-              <Eye className="h-4 w-4" />
-            </IconButton>
-          </div>
-        ),
+        render: (row: TraderPayInOrderDto) => {
+          const openAppeal = (row.appeals ?? []).find((a) => a.status === AppealStatus.OPEN);
+          const showAppealActions =
+            row.status === PayInOrderStatus.APPEAL && openAppeal !== undefined;
+          const appealBusy =
+            resolveAppealMutation.isPending &&
+            resolveAppealMutation.variables?.appealId === openAppeal?.id;
+
+          return (
+            <div className="flex flex-wrap items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+              {showAppealActions && (
+                <PayInAppealDecisionDropdown
+                  orderId={row.id}
+                  appealId={openAppeal!.id}
+                  menuState={appealDecisionMenu}
+                  setMenuState={setAppealDecisionMenu}
+                  menuAnchor="table"
+                  loading={appealBusy}
+                  onReject={() =>
+                    resolveAppealMutation.mutate({
+                      appealId: openAppeal!.id,
+                      decision: AppealStatus.REJECTED,
+                    })
+                  }
+                  onAccept={() =>
+                    resolveAppealMutation.mutate({
+                      appealId: openAppeal!.id,
+                      decision: AppealStatus.RESOLVED,
+                    })
+                  }
+                />
+              )}
+              <OrderFinalizeDropdown
+                order={row}
+                menuState={finalizeMenu}
+                setMenuState={setFinalizeMenu}
+                menuAnchor="table"
+                onPickKind={(kind) => openFinalize(kind, row)}
+              />
+            </div>
+          );
+        },
       },
     ];
 
@@ -349,6 +378,7 @@ export function TraderPayInPage() {
         loading={isLoading}
         onRowClick={(row) => {
           setFinalizeMenu(null);
+          setAppealDecisionMenu(null);
           setSelectedOrder(row);
         }}
         emptyMessage="No pay-in orders found"
@@ -377,9 +407,15 @@ export function TraderPayInPage() {
 
       <PayInOrderDetailModal
         selectedOrder={selectedOrder}
+        historyMode={listTab === 'history'}
         clockOffsetMs={data?.clockOffsetMs ?? 0}
+        appealDecisionMenu={appealDecisionMenu}
+        setAppealDecisionMenu={setAppealDecisionMenu}
+        resolveAppealMutation={resolveAppealMutation}
+        onOpenReceipts={setReceiptOrder}
         onClose={() => {
           setFinalizeMenu((m) => (m?.anchor === 'modal' ? null : m));
+          setAppealDecisionMenu((m) => (m?.anchor === 'modal' ? null : m));
           setSelectedOrder(null);
         }}
         finalizeMenu={finalizeMenu}

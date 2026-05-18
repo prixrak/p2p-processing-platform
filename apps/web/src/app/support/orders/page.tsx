@@ -8,6 +8,8 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { supportKeys } from '@/lib/query-keys';
 import { IconButton } from '@/components/ui/icon-button';
+import { OrderIdCopyCell } from '@/components/ui/order-id-copy-cell';
+import { PayinRequisiteTableCell } from '@/components/ui/payin-requisite-table-cell';
 import { FilterInput, FilterSelect } from '@/components/ui/filters';
 import { FilterFieldsRow, ListPageHeader } from '@/components/ui/list-page-tools';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +23,9 @@ import {
   payinStatusFilterOptions,
   payoutStatusFilterOptions,
 } from '@/lib/order-status-ui';
-import { buildQueryString } from '@/lib/utils';
+import { buildQueryString, formatDateTime } from '@/lib/utils';
+import { isPayinCabinetOrderRow } from '@/lib/is-payin-cabinet-order-row';
+import type { PaymentDetailsShortDto } from '@p2p/shared';
 
 interface Order {
   id: string;
@@ -32,6 +36,8 @@ interface Order {
   currency: string;
   status: string;
   createdAt: string;
+  payment_detail?: PaymentDetailsShortDto | null;
+  trader_processing_method?: 'CARD' | 'FORK' | null;
 }
 
 interface OrdersResponse {
@@ -103,9 +109,7 @@ function SupportOrdersPageContent() {
       key: 'id',
       header: 'Order ID',
       className: 'font-mono tabular-nums text-end',
-      render: (o: Order) => (
-        <span className="font-mono text-sm text-text-primary">{o.id.slice(0, 12)}</span>
-      ),
+      render: (o: Order) => <OrderIdCopyCell id={o.id} label="Order ID" />,
     },
     {
       key: 'merchant',
@@ -132,6 +136,17 @@ function SupportOrdersPageContent() {
       ),
     },
     {
+      key: 'requisite',
+      header: 'Requisite',
+      className: 'min-w-[7rem]',
+      render: (o: Order) =>
+        isPayinCabinetOrderRow(o) ? (
+          <PayinRequisiteTableCell row={o} />
+        ) : (
+          <span className="text-text-muted">—</span>
+        ),
+    },
+    {
       key: 'status',
       header: 'Status',
       className: 'text-center',
@@ -152,7 +167,7 @@ function SupportOrdersPageContent() {
       header: 'Created',
       render: (o: Order) => (
         <span className="text-sm text-text-muted">
-          {new Date(o.createdAt).toLocaleString()}
+          {formatDateTime(new Date(o.createdAt))}
         </span>
       ),
     },
@@ -268,7 +283,7 @@ function SupportOrdersPageContent() {
               <div>
                 <p className="text-xs text-text-muted">Created</p>
                 <p className="text-sm text-text-secondary">
-                  {new Date(details.createdAt).toLocaleString()}
+                  {formatDateTime(new Date(details.createdAt))}
                 </p>
               </div>
               <div>

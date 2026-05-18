@@ -53,6 +53,37 @@ export interface AppealDto {
   proofs_of_payment: string[];
 }
 
+/**
+ * Appeal payload on trader Pay-In cabinet APIs — proof file IDs and resolution actions only.
+ */
+export interface TraderPayInOrderAppealDto {
+  id: string;
+  status: AppealStatus;
+  created_at: number;
+  proofs_of_payment: string[];
+}
+
+/**
+ * Trader Pay-In list/detail row — mirrors trader table columns only (no merchant economics or fork extras).
+ */
+export interface TraderPayInOrderDto {
+  id: string;
+  created_at: number;
+  confirmed_at: number | null;
+  completed_at: number | null;
+  autoclose_at: number | null;
+  currency: string;
+  amount: number;
+  amount_equivalent_usdt: number | null;
+  status: PayInOrderStatus;
+  requisite_number: string;
+  requisite_owner: string;
+  bank: string;
+  appeals: TraderPayInOrderAppealDto[];
+  payment_detail: PaymentDetailsShortDto | null;
+  trader_processing_method?: 'CARD' | 'FORK' | null;
+}
+
 export interface OrderDto {
   id: string;
   request_id: string;
@@ -64,6 +95,12 @@ export interface OrderDto {
   /** ISO currency code (e.g. UAH), matches the order in DB */
   currency: string;
   amount: number;
+  /**
+   * USDT equivalent of `amount` from captured quote snapshots at assignment time:
+   * prefers trader snapshot (`rateTraderIn`, fiat per 1 USDT), else parser reference P (`parserRate`).
+   * Null when neither snapshot exists (historical / non-parser flows).
+   */
+  amount_equivalent_usdt: number | null;
   commission: number;
   partner_amount: number;
   /**

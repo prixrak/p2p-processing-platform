@@ -207,7 +207,7 @@ export default function DirectionsPage() {
   const columns = [
     {
       key: 'name',
-      header: 'Direction',
+      header: 'Name',
       render: (d: Direction) => (
         <div>
           <p className="font-medium text-text-primary">{d.name}</p>

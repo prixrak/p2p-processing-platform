@@ -1,12 +1,32 @@
 import { Prisma } from '@prisma/client';
-import type { AppealDto, OrderDto, PayInOrderStatus } from '@p2p/shared';
+import type {
+  AppealDto,
+  OrderDto,
+  PayInOrderStatus,
+  TraderPayInOrderDto,
+} from '@p2p/shared';
 import {
   AppealStatus,
+  debitUsdtPayin,
   payinTraderMarkupPercentPoints,
   PAYIN_TRADER_HISTORY_STATUSES,
 } from '@p2p/shared';
 
 const PAYIN_HISTORY_STATUS_SET = new Set<PayInOrderStatus>(PAYIN_TRADER_HISTORY_STATUSES);
+
+function payinAmountEquivalentUsdt(order: OrderWithRelations): number | null {
+  const fiat = Number(order.amount);
+  if (!Number.isFinite(fiat) || fiat <= 0) return null;
+  const rtIn = order.rateTraderIn != null ? Number(order.rateTraderIn) : null;
+  if (rtIn != null && rtIn > 0 && Number.isFinite(rtIn)) {
+    return debitUsdtPayin(fiat, rtIn);
+  }
+  const parser = order.parserRate != null ? Number(order.parserRate) : null;
+  if (parser != null && parser > 0 && Number.isFinite(parser)) {
+    return fiat / parser;
+  }
+  return null;
+}
 
 function payinCompletionUnixSeconds(order: OrderWithRelations): number | null {
   if (order.completedAt) {
@@ -53,6 +73,7 @@ export function payinOrderToOrderDto(order: OrderWithRelations): OrderDto {
       : null,
     currency: order.currency.code,
     amount: Number(order.amount),
+    amount_equivalent_usdt: payinAmountEquivalentUsdt(order),
     commission: Number(order.commission),
     partner_amount: Number(order.partnerAmount),
     commission_percent: Number(order.commissionPercent),
@@ -89,5 +110,40 @@ export function payinOrderToOrderDto(order: OrderWithRelations): OrderDto {
     trader_processing_method: order.traderProcessingMethod ?? null,
     fork_exchange_reference: order.forkExchangeReference ?? null,
     fork_chat_proof_file_ids: (order.forkChatProofs ?? []).map((p) => p.fileId),
+  };
+}
+
+/** Trader cabinet row — excludes merchant economics and fork-only audit fields. */
+export function payinOrderToTraderPayInOrderDto(order: OrderWithRelations): TraderPayInOrderDto {
+  return {
+    id: order.id,
+    created_at: Math.floor(order.createdAt.getTime() / 1000),
+    confirmed_at: order.confirmedAt ? Math.floor(order.confirmedAt.getTime() / 1000) : null,
+    completed_at: payinCompletionUnixSeconds(order),
+    autoclose_at: order.autocloseAt ? Math.floor(order.autocloseAt.getTime() / 1000) : null,
+    currency: order.currency.code,
+    amount: Number(order.amount),
+    amount_equivalent_usdt: payinAmountEquivalentUsdt(order),
+    status: order.status as PayInOrderStatus,
+    requisite_number: order.requisite?.number ?? '',
+    requisite_owner: order.requisite?.owner ?? '',
+    bank: order.requisite?.bank?.name ?? '',
+    appeals: (order.appeals ?? []).map((a) => ({
+      id: a.id,
+      status: a.status as AppealStatus,
+      created_at: Math.floor(a.createdAt.getTime() / 1000),
+      proofs_of_payment: (a.proofs ?? []).map((p) => p.fileId),
+    })),
+    payment_detail: order.requisite
+      ? {
+          id: order.requisite.id,
+          type: order.requisite.type,
+          number: order.requisite.number,
+          owner: order.requisite.owner,
+          code: order.requisite.code ?? '',
+          bank_name: order.requisite.bank?.name ?? '',
+        }
+      : null,
+    trader_processing_method: order.traderProcessingMethod ?? null,
   };
 }

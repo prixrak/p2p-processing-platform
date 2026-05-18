@@ -14,6 +14,7 @@ import { Modal } from '@/components/ui/modal';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs } from '@/components/ui/tabs';
 import { DataTable } from '@/components/ui/data-table';
+import { formatDateTime } from '@/lib/utils';
 
 interface Dispute {
   id: string;
@@ -158,7 +159,7 @@ export default function DisputesPage() {
       header: 'Created',
       render: (d: Dispute) => (
         <span className="text-sm text-text-muted">
-          {new Date(d.createdAt).toLocaleString()}
+          {formatDateTime(new Date(d.createdAt))}
         </span>
       ),
     },
@@ -283,7 +284,7 @@ export default function DisputesPage() {
                       <div className="mb-1 flex items-center justify-between">
                         <span className="text-xs font-medium text-accent">{n.author}</span>
                         <span className="text-xs text-text-muted">
-                          {new Date(n.createdAt).toLocaleString()}
+                          {formatDateTime(new Date(n.createdAt))}
                         </span>
                       </div>
                       <p className="text-sm text-text-secondary">{n.content}</p>

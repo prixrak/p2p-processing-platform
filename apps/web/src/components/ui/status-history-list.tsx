@@ -1,6 +1,7 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
+import { formatDateTime } from '@/lib/utils';
 
 export interface StatusHistoryEntry {
   status: string;
@@ -34,7 +35,7 @@ export function StatusHistoryList({
               <span className="text-xs text-text-muted">by {h.actor}</span>
             </div>
             <span className="text-xs text-text-muted">
-              {new Date(h.timestamp).toLocaleString()}
+              {formatDateTime(new Date(h.timestamp))}
             </span>
           </div>
         ))}

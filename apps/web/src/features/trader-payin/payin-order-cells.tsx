@@ -1,12 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Scale, CheckCircle2, XCircle } from 'lucide-react';
+import { FileText, Scale, CheckCircle2, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { IconButton } from '@/components/ui/icon-button';
 import { OrderIdCopyCell } from '@/components/ui/order-id-copy-cell';
+import { PayinOrderStatusBadge } from '@/components/ui/order-status-badge';
 import { AppealStatus, PayInOrderStatus } from '@p2p/shared';
-import type { OrderDto } from '@p2p/shared';
+import type { TraderPayInOrderDto } from '@p2p/shared';
 import { cn } from '@/lib/utils';
+import { orderPayinProofFileIds } from './payin-finalize-utils';
 import { payinDeadlineElapsedShowsCanceled } from './payin-countdown-utils';
 
 type CountdownUrgency = 'canceled' | 'critical' | 'low' | 'moderate' | 'comfortable';
@@ -107,41 +110,105 @@ export function CountdownTimer({
 }
 
 export function CopyOrderIdCell({ id }: { id: string }) {
-  return <OrderIdCopyCell id={id} variant="chip" withToast />;
+  return <OrderIdCopyCell id={id} withToast />;
 }
 
-export function AppealCell({ row }: { row: OrderDto }) {
+function AppealInlineSummary({
+  row,
+  shortLabels,
+}: {
+  row: TraderPayInOrderDto;
+  /** Shorter copy when this is the only status badge (order status is already `APPEAL`). */
+  shortLabels: boolean;
+}) {
   const appeals = row.appeals ?? [];
   if (appeals.length === 0) {
     if (row.status === PayInOrderStatus.APPEAL) {
       return (
-        <Badge variant="warning" leadingIcon={<Scale strokeWidth={2} />}>
-          Appeal
+        <Badge
+          variant="warning"
+          className="max-w-full shrink truncate px-2 py-px text-[11px]"
+          leadingIcon={<Scale strokeWidth={2} />}
+        >
+          {shortLabels ? 'Pending' : 'Appeal pending'}
         </Badge>
       );
     }
-    return <span className="text-text-muted">—</span>;
+    return null;
   }
 
   const open = appeals.filter((a) => a.status === AppealStatus.OPEN);
   const rejected = appeals.some((a) => a.status === AppealStatus.REJECTED);
   if (open.length > 0) {
     return (
-      <Badge variant="warning" leadingIcon={<Scale strokeWidth={2} />}>
-        Open{open.length > 1 ? ` (${open.length})` : ''}
+      <Badge
+        variant="warning"
+        className="max-w-full shrink truncate px-2 py-px text-[11px]"
+        leadingIcon={<Scale strokeWidth={2} />}
+      >
+        {shortLabels
+          ? `Open${open.length > 1 ? ` (${open.length})` : ''}`
+          : `Appeal open${open.length > 1 ? ` (${open.length})` : ''}`}
       </Badge>
     );
   }
   if (rejected) {
     return (
-      <Badge variant="danger" leadingIcon={<XCircle strokeWidth={2} />}>
-        Rejected
+      <Badge
+        variant="danger"
+        className="max-w-full shrink truncate px-2 py-px text-[11px]"
+        leadingIcon={<XCircle strokeWidth={2} />}
+      >
+        {shortLabels ? 'Rejected' : 'Appeal rejected'}
       </Badge>
     );
   }
   return (
-    <Badge variant="success" leadingIcon={<CheckCircle2 strokeWidth={2} />}>
-      Resolved
+    <Badge
+      variant="success"
+      className="max-w-full shrink truncate px-2 py-px text-[11px]"
+      leadingIcon={<CheckCircle2 strokeWidth={2} />}
+    >
+      {shortLabels ? 'Resolved' : 'Appeal resolved'}
     </Badge>
+  );
+}
+
+/** Status column: order + appeal badges (deduped), optional receipt icon. */
+export function PayInOrderStatusColumnCell({
+  row,
+  onOpenReceipts,
+}: {
+  row: TraderPayInOrderDto;
+  onOpenReceipts: (row: TraderPayInOrderDto) => void;
+}) {
+  const proofIds = orderPayinProofFileIds(row);
+  const proofCount = proofIds.length;
+  const hasProofs = proofCount > 0;
+
+  /** Avoid two badges both reading “Appeal …” when order status is already `APPEAL`. */
+  const appealCarriesPrimaryStatus = row.status === PayInOrderStatus.APPEAL;
+
+  return (
+    <div className="flex max-w-full flex-row flex-nowrap items-center justify-center gap-1 py-0.5">
+      <span className="inline-flex min-w-0 max-w-full flex-row flex-nowrap items-center justify-center gap-1">
+        {!appealCarriesPrimaryStatus && <PayinOrderStatusBadge status={row.status} />}
+        <AppealInlineSummary row={row} shortLabels={appealCarriesPrimaryStatus} />
+      </span>
+      {hasProofs ? (
+        <IconButton
+          label={`View payment proofs (${proofCount})`}
+          tooltipWide
+          variant="ghost"
+          className="!min-h-8 !min-w-8 shrink-0 !p-1.5 text-text-primary hover:bg-bg-hover"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenReceipts(row);
+          }}
+        >
+          <FileText className="h-4 w-4" strokeWidth={2} />
+        </IconButton>
+      ) : null}
+    </div>
   );
 }

@@ -23,6 +23,7 @@ import {
 import { currencyCodeFromUnknown } from '@/lib/currency-code';
 import { Badge } from '@/components/ui/badge';
 import { settlementRecordedByLabel } from '@/features/settlements/settlement-row-labels';
+import { formatDateTime } from '@/lib/utils';
 
 interface SettlementRow {
   id: string;
@@ -315,7 +316,7 @@ export default function SettlementsPage() {
       key: 'createdAt',
       header: 'Date',
       render: (row: SettlementRow) => (
-        <span className="text-xs text-text-muted">{format(new Date(row.createdAt), 'dd.MM.yy HH:mm')}</span>
+        <span className="text-xs text-text-muted">{formatDateTime(new Date(row.createdAt))}</span>
       ),
     },
   ];

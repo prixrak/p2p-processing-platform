@@ -20,6 +20,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole, DirectionType } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
+import { payinOrderListRequisiteFields } from '../../common/payin-order-list-requisite-fields';
 import { buildAppealPayinOrderSearchOr } from '../../common/order-search-where';
 
 @ApiTags('Support Cabinet')
@@ -108,6 +109,16 @@ export class SupportCabinetController {
           merchant: { select: { name: true } },
           trader: { include: { user: { select: { email: true } } } },
           currency: { select: { code: true } },
+          requisite: {
+            select: {
+              id: true,
+              type: true,
+              number: true,
+              owner: true,
+              code: true,
+              bank: { select: { name: true } },
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         take,
@@ -126,6 +137,7 @@ export class SupportCabinetController {
         currency: o.currency.code,
         status: o.status,
         createdAt: o.createdAt.toISOString(),
+        ...payinOrderListRequisiteFields(o.traderProcessingMethod, o.requisite),
       })),
       total,
       page: page ?? 1,

@@ -19,7 +19,7 @@ import { Card } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
 import { LimitUsageBar } from '@/components/ui/limit-usage-bar';
 import { Tooltip } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 
 type StaffCabinetPrefix = 'admin' | 'owner' | 'support';
 
@@ -866,7 +866,7 @@ export function CascadeRequisiteRatingsPanel({
                     {row.last_assigned_at ? (
                       <div className="flex flex-col gap-0.5">
                         <time dateTime={row.last_assigned_at}>
-                          {new Date(row.last_assigned_at).toLocaleString()}
+                          {formatDateTime(new Date(row.last_assigned_at))}
                         </time>
                         {row.last_assignment_order_id ? (
                           <Link

@@ -36,6 +36,7 @@ import { GenerateApiKeysDto } from './dto';
 import { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
 import { buildPayinPayoutOrderSearchOr } from '../../common/order-search-where';
+import { payinOrderListRequisiteFields } from '../../common/payin-order-list-requisite-fields';
 import { PayinRealtimeService } from '../payin/payin-realtime.service';
 import { PayoutRealtimeService } from '../payout/payout-realtime.service';
 
@@ -290,7 +291,19 @@ export class MerchantCabinetController {
         orderBy: { createdAt: 'desc' },
         take,
         skip,
-        include: { currency: { select: { code: true } } },
+        include: {
+          currency: { select: { code: true } },
+          requisite: {
+            select: {
+              id: true,
+              type: true,
+              number: true,
+              owner: true,
+              code: true,
+              bank: { select: { name: true } },
+            },
+          },
+        },
       }),
       this.prisma.payinOrder.count({ where }),
     ]);
@@ -306,6 +319,7 @@ export class MerchantCabinetController {
       customerEmail: o.userFullName ?? null,
       createdAt: o.createdAt.toISOString(),
       completedAt: o.completedAt?.toISOString() ?? null,
+      ...payinOrderListRequisiteFields(o.traderProcessingMethod, o.requisite),
     }));
 
     return {

@@ -1,5 +1,9 @@
 import clsx, { type ClassValue } from 'clsx';
+import { format } from 'date-fns';
 import { twMerge } from 'tailwind-merge';
+
+/** Wall-clock display for tables and detail rows (`2026-04-30 17:10:58`, local timezone). */
+export const DISPLAY_DATETIME_SEC = 'yyyy-MM-dd HH:mm:ss';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -13,24 +17,19 @@ export function formatCurrency(amount: number, currency = 'UAH'): string {
   }).format(amount) + ` ${currency}`;
 }
 
+/** Unix timestamp in **seconds**. */
 export function formatDate(ts: number): string {
-  return new Date(ts * 1000).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return format(new Date(ts * 1000), DISPLAY_DATETIME_SEC);
 }
 
+/** Unix timestamp in **seconds** (same output as {@link formatDate}). */
 export function formatDateFull(ts: number): string {
-  return new Date(ts * 1000).toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  return format(new Date(ts * 1000), DISPLAY_DATETIME_SEC);
+}
+
+/** `Date` instance (e.g. API ISO string parsed with `new Date(...)`). */
+export function formatDateTime(date: Date): string {
+  return format(date, DISPLAY_DATETIME_SEC);
 }
 
 export function shortId(id: string): string {

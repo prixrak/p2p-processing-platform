@@ -14,16 +14,19 @@ import {
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { merchantKeys } from '@/lib/query-keys';
-import { buildQueryString } from '@/lib/utils';
+import { buildQueryString, formatDateTime } from '@/lib/utils';
+import { isPayinCabinetOrderRow } from '@/lib/is-payin-cabinet-order-row';
 import { DataTable } from '@/components/ui/data-table';
+import { OrderIdCopyCell } from '@/components/ui/order-id-copy-cell';
+import { PayinRequisiteTableCell } from '@/components/ui/payin-requisite-table-cell';
 import { StatusBadge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
 import { FilterInput } from '@/components/ui/filters';
-import { format } from 'date-fns';
 import {
   ORDER_LIST_UI_TAB,
   orderListUiTabToDirection,
   type OrderListUiTab,
+  type PaymentDetailsShortDto,
 } from '@p2p/shared';
 import { payinStatusFilterOptions, payoutStatusFilterOptions } from '@/lib/order-status-ui';
 
@@ -40,6 +43,8 @@ interface MerchantOrder {
   customerEmail: string | null;
   createdAt: string;
   completedAt: string | null;
+  payment_detail?: PaymentDetailsShortDto | null;
+  trader_processing_method?: 'CARD' | 'FORK' | null;
 }
 
 interface MerchantOrdersResponse {
@@ -101,16 +106,14 @@ export default function MerchantOrdersPage() {
       key: 'id',
       header: 'ID',
       className: 'font-mono tabular-nums text-end',
-      render: (row: MerchantOrder) => (
-        <span className="font-mono text-xs text-text-muted">{row.id.slice(0, 8)}...</span>
-      ),
+      render: (row: MerchantOrder) => <OrderIdCopyCell id={row.id} label="Order ID" />,
     },
     {
       key: 'externalId',
       header: 'External ID',
       className: 'font-mono tabular-nums text-end',
       render: (row: MerchantOrder) => (
-        <span className="font-mono text-xs">{row.externalId?.slice(0, 12) ?? '—'}</span>
+        <OrderIdCopyCell id={row.externalId ?? ''} label="External ID" />
       ),
     },
     {
@@ -122,6 +125,17 @@ export default function MerchantOrdersPage() {
           {row.amount.toLocaleString()} {row.currency}
         </span>
       ),
+    },
+    {
+      key: 'requisite',
+      header: 'Requisite',
+      className: 'min-w-[7rem]',
+      render: (row: MerchantOrder) =>
+        isPayinCabinetOrderRow(row) ? (
+          <PayinRequisiteTableCell row={row} />
+        ) : (
+          <span className="text-text-muted">—</span>
+        ),
     },
     { key: 'paymentMethod', header: 'Method' },
     {
@@ -142,7 +156,7 @@ export default function MerchantOrdersPage() {
       header: 'Created',
       render: (row: MerchantOrder) => (
         <span className="text-xs text-text-muted">
-          {format(new Date(row.createdAt), 'dd.MM.yy HH:mm')}
+          {formatDateTime(new Date(row.createdAt))}
         </span>
       ),
     },
@@ -152,7 +166,7 @@ export default function MerchantOrdersPage() {
       render: (row: MerchantOrder) => (
         <span className="text-xs text-text-muted">
           {row.completedAt
-            ? format(new Date(row.completedAt), 'dd.MM.yy HH:mm')
+            ? formatDateTime(new Date(row.completedAt))
             : '—'}
         </span>
       ),

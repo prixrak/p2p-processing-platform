@@ -11,6 +11,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { Badge } from '@/components/ui/badge';
 import { currencyCodeFromUnknown } from '@/lib/currency-code';
+import { formatDateTime } from '@/lib/utils';
 
 interface BalanceRow {
   currency: unknown;
@@ -160,7 +161,7 @@ export default function MerchantBalancesPage() {
       header: 'Recorded at',
       render: (r: MerchantSettlementRow) => (
         <span className="text-xs text-text-muted">
-          {new Date(r.createdAt).toLocaleString('en-US')}
+          {formatDateTime(new Date(r.createdAt))}
         </span>
       ),
     },
@@ -198,7 +199,7 @@ export default function MerchantBalancesPage() {
       header: 'Time',
       render: (r: MerchantBalanceTx) => (
         <span className="text-xs text-text-muted">
-          {new Date(r.createdAt).toLocaleString('en-US')}
+          {formatDateTime(new Date(r.createdAt))}
         </span>
       ),
     },

@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { PayInOrderStatus, PayOutOrderStatus } from '@p2p/shared';
 import { payinStatusLabel, payoutStatusLabel } from '@/lib/order-status-ui';
+import { formatDateTime } from '@/lib/utils';
 
 const ACCENT = 'var(--color-accent)';
 const SUCCESS = 'var(--color-success)';
@@ -46,10 +47,7 @@ export function TraderVolumeChart({
 
   const chartData = data.map((d) => ({
     ...d,
-    label: new Date(d.date + 'T12:00:00Z').toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-    }),
+    label: formatDateTime(new Date(`${d.date}T12:00:00`)),
   }));
 
   return (

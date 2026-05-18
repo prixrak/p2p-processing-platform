@@ -150,7 +150,7 @@ export default function PaymentMethodsPage() {
     },
     {
       key: 'availability',
-      header: 'Direction',
+      header: 'Availability',
       className: 'text-center',
       render: (m: PaymentMethod) => (
         <Badge color={AVAIL_COLOR[m.availability] ?? 'blue'}>
@@ -253,7 +253,7 @@ export default function PaymentMethodsPage() {
               onChange={(e) => setForm({ ...form, requisiteType: e.target.value })}
             />
             <Select
-              label="Direction"
+              label="Availability"
               options={['PAYIN', 'PAYOUT', 'BOTH'].map((v) => ({
                 value: v,
                 label: AVAIL_LABELS[v],

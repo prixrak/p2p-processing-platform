@@ -2,8 +2,7 @@
 
 import { ExternalLink } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
-import { shortId } from '@/lib/utils';
-import type { OrderDto } from '@p2p/shared';
+import type { TraderPayInOrderDto } from '@p2p/shared';
 import { orderPayinProofFileIds } from './payin-finalize-utils';
 import { AuthorizedFilePreview } from '@/components/files/authorized-file-preview';
 import { internalPaths } from '@/lib/internal-api';
@@ -13,7 +12,7 @@ export function PayInReceiptGalleryModal({
   onClose,
   onOpenProof,
 }: {
-  receiptOrder: OrderDto | null;
+  receiptOrder: TraderPayInOrderDto | null;
   onClose: () => void;
   onOpenProof: (fileId: string) => void;
 }) {
@@ -24,7 +23,8 @@ export function PayInReceiptGalleryModal({
       {receiptOrder && ids.length > 0 && (
         <div className="space-y-3">
           <p className="text-xs text-text-muted">
-            Order <span className="font-mono text-text-secondary">{shortId(receiptOrder.id)}</span>
+            Order{' '}
+            <span className="font-mono text-xs break-all text-text-secondary">{receiptOrder.id}</span>
           </p>
           <div className="grid grid-cols-3 gap-3">
             {ids.map((fileId) => (

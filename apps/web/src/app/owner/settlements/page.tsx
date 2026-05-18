@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { Tabs } from '@/components/ui/tabs';
 import { DataTable } from '@/components/ui/data-table';
+import { OrderIdCopyCell } from '@/components/ui/order-id-copy-cell';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { Select } from '@/components/ui/select';
 import { format } from 'date-fns';
@@ -23,6 +24,7 @@ import {
 } from '@/lib/query-keys';
 import { currencyCodeFromUnknown } from '@/lib/currency-code';
 import { settlementRecordedByLabel } from '@/features/settlements/settlement-row-labels';
+import { formatDateTime } from '@/lib/utils';
 
 interface Settlement {
   id: string;
@@ -255,9 +257,7 @@ export default function SettlementsPage() {
       key: 'id',
       header: 'Settlement ID',
       className: 'font-mono tabular-nums text-end',
-      render: (s: Settlement) => (
-        <span className="font-mono text-sm text-text-primary">{s.id.slice(0, 12)}</span>
-      ),
+      render: (s: Settlement) => <OrderIdCopyCell id={s.id} label="Settlement ID" />,
     },
     {
       key: 'type',
@@ -306,7 +306,7 @@ export default function SettlementsPage() {
       key: 'date',
       header: 'Created',
       render: (s: Settlement) => (
-        <span className="text-sm text-text-muted">{new Date(s.createdAt).toLocaleString()}</span>
+        <span className="text-sm text-text-muted">{formatDateTime(new Date(s.createdAt))}</span>
       ),
     },
     {
@@ -484,7 +484,7 @@ export default function SettlementsPage() {
               <div className="col-span-2">
                 <p className="text-xs text-text-muted">Created At</p>
                 <p className="text-sm text-text-secondary">
-                  {new Date(details.createdAt).toLocaleString()}
+                  {formatDateTime(new Date(details.createdAt))}
                 </p>
               </div>
               {(details.manualRate != null || details.usdtEquivalent != null) && (
