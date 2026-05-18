@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { Coins, PieChart } from 'lucide-react';
 import { Card, StatCard } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,38 +36,6 @@ type TraderCabinetAnalytics = {
   }>;
 };
 
-const PRESET_PERIODS = [
-  { value: '24h', label: 'Last 24 hours' },
-  { value: '7d', label: 'Last 7 days' },
-  { value: '30d', label: 'Last 30 days' },
-  { value: '90d', label: 'Last 90 days' },
-];
-
-const RANGE_MODES = [
-  { value: 'preset', label: 'Preset range' },
-  { value: 'custom', label: 'Custom range' },
-];
-
-const DATE_BASIS_OPTIONS = [
-  { value: 'created', label: 'Order creation date' },
-  { value: 'completed', label: 'Order completion date' },
-];
-
-function formatUtcBucketLabel(iso: string, granularity: AnalyticsGranularity): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  if (granularity === 'hour') {
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')} ${String(d.getUTCHours()).padStart(2, '0')}:00 UTC`;
-  }
-  if (granularity === 'day') {
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')} UTC`;
-  }
-  if (granularity === 'week') {
-    return `Week of ${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')} UTC`;
-  }
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')} UTC`;
-}
-
 function defaultCustomRange(): { from: string; to: string } {
   const to = new Date();
   const from = new Date(to);
@@ -76,12 +45,66 @@ function defaultCustomRange(): { from: string; to: string } {
 }
 
 export default function TraderAnalyticsPage() {
+  const t = useTranslations('Trader.Analytics');
   const [rangeMode, setRangeMode] = useState<'preset' | 'custom'>('preset');
   const [presetPeriod, setPresetPeriod] = useState('7d');
   const [customDates, setCustomDates] = useState(defaultCustomRange);
   const [granularity, setGranularity] = useState<AnalyticsGranularity>('day');
   const [dateBasis, setDateBasis] = useState<'created' | 'completed'>('created');
   const [currency, setCurrency] = useState('UAH');
+
+  const presetPeriods = useMemo(
+    () => [
+      { value: '24h', label: t('period24h') },
+      { value: '7d', label: t('period7d') },
+      { value: '30d', label: t('period30d') },
+      { value: '90d', label: t('period90d') },
+    ],
+    [t],
+  );
+
+  const rangeModes = useMemo(
+    () => [
+      { value: 'preset', label: t('presetRange') },
+      { value: 'custom', label: t('customRange') },
+    ],
+    [t],
+  );
+
+  const dateBasisOptions = useMemo(
+    () => [
+      { value: 'created', label: t('dateBasisCreated') },
+      { value: 'completed', label: t('dateBasisCompleted') },
+    ],
+    [t],
+  );
+
+  const granularityButtons = useMemo(
+    () =>
+      [
+        { id: 'hour' as const, label: t('granularityHour') },
+        { id: 'day' as const, label: t('granularityDay') },
+        { id: 'week' as const, label: t('granularityWeek') },
+        { id: 'month' as const, label: t('granularityMonth') },
+      ] as const,
+    [t],
+  );
+
+  const formatUtcBucketLabel = useCallback(
+    (iso: string, g: AnalyticsGranularity): string => {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return iso;
+      const year = String(d.getUTCFullYear());
+      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      const hour = String(d.getUTCHours()).padStart(2, '0');
+      if (g === 'hour') return t('bucketHour', { year, month, day, hour });
+      if (g === 'day') return t('bucketDay', { year, month, day });
+      if (g === 'week') return t('bucketWeek', { year, month, day });
+      return t('bucketMonth', { year, month });
+    },
+    [t],
+  );
 
   const { data: balances } = useQuery({
     queryKey: traderKeys.balancesMe(),
@@ -118,13 +141,6 @@ export default function TraderAnalyticsPage() {
     return [...s].sort((a, b) => b.periodStart.localeCompare(a.periodStart));
   }, [data]);
 
-  const granularityButtons: { id: AnalyticsGranularity; label: string }[] = [
-    { id: 'hour', label: 'Hour' },
-    { id: 'day', label: 'Day' },
-    { id: 'week', label: 'Week' },
-    { id: 'month', label: 'Month' },
-  ];
-
   const currencyOptions = useMemo(() => {
     const codes = [...new Set(balances?.map((b) => b.currency) ?? [])];
     if (currency && !codes.includes(currency)) codes.push(currency);
@@ -141,10 +157,8 @@ export default function TraderAnalyticsPage() {
         <div className="flex items-center gap-3">
           <PieChart className="h-6 w-6 text-accent-blue" />
           <div>
-            <h1 className="text-2xl font-bold text-text-primary">Analytics</h1>
-            <p className="text-sm text-text-muted">
-              Cabinet profit and successful Pay-In / Pay-Out / dispute volumes (UTC).
-            </p>
+            <h1 className="text-2xl font-bold text-text-primary">{t('title')}</h1>
+            <p className="text-sm text-text-muted">{t('subtitle')}</p>
           </div>
         </div>
       </div>
@@ -152,7 +166,7 @@ export default function TraderAnalyticsPage() {
       <Card className="p-4 space-y-4">
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
           <Select
-            label="Currency"
+            label={t('currency')}
             options={currencyOptions}
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
@@ -160,16 +174,16 @@ export default function TraderAnalyticsPage() {
             rootClassName="gap-1"
           />
           <Select
-            label="Date basis"
-            options={DATE_BASIS_OPTIONS}
+            label={t('dateBasis')}
+            options={dateBasisOptions}
             value={dateBasis}
             onChange={(e) => setDateBasis(e.target.value as 'created' | 'completed')}
             className="w-full"
             rootClassName="gap-1"
           />
           <Select
-            label="Range mode"
-            options={RANGE_MODES}
+            label={t('rangeMode')}
+            options={rangeModes}
             value={rangeMode}
             onChange={(e) => setRangeMode(e.target.value as 'preset' | 'custom')}
             className="w-full"
@@ -177,8 +191,8 @@ export default function TraderAnalyticsPage() {
           />
           {rangeMode === 'preset' ? (
             <Select
-              label="Preset window"
-              options={PRESET_PERIODS}
+              label={t('presetWindow')}
+              options={presetPeriods}
               value={presetPeriod}
               onChange={(e) => setPresetPeriod(e.target.value)}
               className="w-full"
@@ -188,7 +202,7 @@ export default function TraderAnalyticsPage() {
             <div className="grid grid-cols-2 gap-2 items-end">
               <div>
                 <label className="mb-1 block text-xs font-medium text-text-secondary">
-                  From (UTC day)
+                  {t('fromUtc')}
                 </label>
                 <input
                   type="date"
@@ -198,7 +212,9 @@ export default function TraderAnalyticsPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-text-secondary">To (UTC day)</label>
+                <label className="mb-1 block text-xs font-medium text-text-secondary">
+                  {t('toUtc')}
+                </label>
                 <input
                   type="date"
                   value={customDates.to}
@@ -211,9 +227,7 @@ export default function TraderAnalyticsPage() {
         </div>
 
         <div>
-          <p className="mb-2 text-xs font-medium text-text-secondary">
-            Display grouping (period and filters stay the same)
-          </p>
+          <p className="mb-2 text-xs font-medium text-text-secondary">{t('groupingHint')}</p>
           <div className="flex flex-wrap gap-2">
             {granularityButtons.map((g) => (
               <Button
@@ -237,33 +251,30 @@ export default function TraderAnalyticsPage() {
       )}
 
       <StatCard
-        title="Cabinet profit (commissions)"
-        value={busy || !data ? '…' : formatCurrency(data.cabinetProfitTotal, displayCurrency)}
+        title={t('statProfit')}
+        value={busy || !data ? t('loading') : formatCurrency(data.cabinetProfitTotal, displayCurrency)}
         icon={Coins}
       />
 
       <Card>
-        <h2 className="text-lg font-semibold text-text-primary mb-1">Volumes by period</h2>
-        <p className="text-xs text-text-muted mb-4">
-          Pay-In and Pay-Out use successful outcomes (Pay-In: PAID, Pay-Out: COMPLETED). Disputes are appeals on your
-          Pay-In orders (declared amounts). Completion date basis uses resolved or rejected appeals only.
-        </p>
+        <h2 className="text-lg font-semibold text-text-primary mb-1">{t('volumesTitle')}</h2>
+        <p className="text-xs text-text-muted mb-4">{t('volumesHelp')}</p>
         <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
           <table className="min-w-[960px] w-full text-sm">
             <thead>
               <tr className="border-b border-border-primary text-left text-text-secondary">
-                <th className="py-2 pr-3 font-medium">Period (UTC)</th>
-                <th className="py-2 pr-3 font-medium">Profit</th>
-                <th className="py-2 pr-3 font-medium">Pay-In</th>
-                <th className="py-2 pr-3 font-medium">Pay-Out</th>
-                <th className="py-2 pr-3 font-medium">Disputes</th>
+                <th className="py-2 pr-3 font-medium">{t('colPeriod')}</th>
+                <th className="py-2 pr-3 font-medium">{t('colProfit')}</th>
+                <th className="py-2 pr-3 font-medium">{t('colPayin')}</th>
+                <th className="py-2 pr-3 font-medium">{t('colPayout')}</th>
+                <th className="py-2 pr-3 font-medium">{t('colDisputes')}</th>
               </tr>
             </thead>
             <tbody>
               {busy || !data ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-text-muted">
-                    Loading…
+                    {t('loading')}
                   </td>
                 </tr>
               ) : (

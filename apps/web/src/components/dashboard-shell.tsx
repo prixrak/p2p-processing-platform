@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { Link, usePathname } from '@/i18n/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { clsx } from 'clsx';
 import { LogOut, Menu, Power, PowerOff, X, type LucideIcon } from 'lucide-react';
@@ -11,6 +11,7 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { payoutCabinetKeys, traderKeys } from '@/lib/query-keys';
 import { Tooltip } from '@/components/ui/tooltip';
+import { TraderLocaleSwitch } from '@/components/trader-locale-switch';
 import { isNavHrefActive } from '@/lib/nav-active';
 import type { PayInListApiResponse } from '@/features/trader-payin/payin-types';
 
@@ -101,16 +102,19 @@ function resolveNavBadgeCount(
 function SidebarNavBadge({
   count,
   label,
+  ariaLabel,
 }: {
   count: number | undefined;
   label: string;
+  ariaLabel?: string;
 }) {
   if (count === undefined || count < 1) return null;
   const text = count > 99 ? '99+' : String(count);
+  const fullAria = ariaLabel ?? `${label}: ${count} pending`;
   return (
     <span
       className="pointer-events-none absolute right-1.5 top-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-[3px] text-[8px] font-bold leading-none text-white tabular-nums shadow-sm ring-1 ring-red-600/30"
-      aria-label={`${label}: ${count} pending`}
+      aria-label={fullAria}
     >
       {text}
     </span>
@@ -122,12 +126,14 @@ function DashboardSidebarNavLink({
   firstHref,
   pathname,
   badgeCount,
+  badgeAriaLabel,
   onNavigate,
 }: {
   item: NavItem;
   firstHref: string;
   pathname: string;
   badgeCount: number | undefined;
+  badgeAriaLabel?: string;
   onNavigate: () => void;
 }) {
   const isActive = isNavHrefActive(pathname, item.href, firstHref);
@@ -147,7 +153,7 @@ function DashboardSidebarNavLink({
     >
       <item.icon className="h-4.5 w-4.5 shrink-0" />
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
-      <SidebarNavBadge count={badgeCount} label={item.label} />
+      <SidebarNavBadge count={badgeCount} label={item.label} ariaLabel={badgeAriaLabel} />
     </Link>
   );
 }
@@ -160,6 +166,7 @@ interface TraderDashboardStatsToggleFields {
 
 /** Header pill: online / offline for Pay-In + Pay-Out intake (trader self-service). */
 function TraderHeaderOrderStatus() {
+  const t = useTranslations('Trader.HeaderStatus');
   const queryClient = useQueryClient();
   const { data, isLoading, isError } = useQuery({
     queryKey: traderKeys.dashboardStats(),
@@ -186,25 +193,23 @@ function TraderHeaderOrderStatus() {
   const accepting = data?.accepting_orders ?? true;
   const isOnline = accepting && !accountSuspended;
 
-  const tooltipContent =
-    isLoading ? (
-      'Loading your availability status…'
-    ) : isError ? (
-      'Could not load status. Refresh the page or try again.'
-    ) : accountSuspended ? (
-      'Trading is suspended by an administrator. Contact support.'
-    ) : accepting ? (
-      <>
-        You are <strong>online</strong>: new Pay-In and Pay-Out assignments can reach you. Click to go offline and
-        pause.
-      </>
-    ) : (
-      <>
-        You are <strong>offline</strong>: no new Pay-In or Pay-Out assignments. Click to go online.
-      </>
-    );
+  const tooltipContent = isLoading
+    ? t('loadingTooltip')
+    : isError
+      ? t('errorTooltip')
+      : accountSuspended
+        ? t('suspendedTooltip')
+        : accepting
+          ? t('onlineTooltip')
+          : t('offlineTooltip');
 
-  const label = isLoading ? '…' : accountSuspended ? 'Suspended' : accepting ? 'Online' : 'Offline';
+  const label = isLoading
+    ? t('labelLoading')
+    : accountSuspended
+      ? t('labelSuspended')
+      : accepting
+        ? t('labelOnline')
+        : t('labelOffline');
 
   const pill = (
     <button
@@ -223,10 +228,10 @@ function TraderHeaderOrderStatus() {
       aria-pressed={accepting && !accountSuspended}
       aria-label={
         accountSuspended
-          ? 'Trading suspended by administrator'
+          ? t('ariaSuspended')
           : accepting
-            ? 'Online — click to pause new orders'
-            : 'Offline — click to receive new orders'
+            ? t('ariaOnline')
+            : t('ariaOffline')
       }
     >
       {accountSuspended || !accepting ? (
@@ -257,6 +262,7 @@ function TraderHeaderOrderStatus() {
 
 export function DashboardShell({ children, navItems, role }: DashboardShellProps) {
   const pathname = usePathname();
+  const tShell = useTranslations('Trader.Shell');
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const sidebarBadges = useTraderSidebarBadgeData(role);
@@ -283,7 +289,9 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
             </div>
             <div>
               <p className="text-sm font-semibold text-text-primary capitalize">{role}</p>
-              <p className="text-xs text-text-muted">Panel</p>
+              <p className="text-xs text-text-muted">
+                {role === 'trader' ? tShell('panelBrand') : 'Panel'}
+              </p>
             </div>
           </div>
           <button
@@ -295,16 +303,24 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          {navItems.map((item) => (
-            <DashboardSidebarNavLink
-              key={item.href}
-              item={item}
-              firstHref={navItems[0].href}
-              pathname={pathname}
-              badgeCount={resolveNavBadgeCount(item, role, sidebarBadges)}
-              onNavigate={() => setSidebarOpen(false)}
-            />
-          ))}
+          {navItems.map((item) => {
+            const badgeCount = resolveNavBadgeCount(item, role, sidebarBadges);
+            const badgeAriaLabel =
+              role === 'trader' && badgeCount !== undefined && badgeCount >= 1
+                ? tShell('badgePending', { label: item.label, count: badgeCount })
+                : undefined;
+            return (
+              <DashboardSidebarNavLink
+                key={item.href}
+                item={item}
+                firstHref={navItems[0].href}
+                pathname={pathname}
+                badgeCount={badgeCount}
+                badgeAriaLabel={badgeAriaLabel}
+                onNavigate={() => setSidebarOpen(false)}
+              />
+            );
+          })}
         </nav>
 
         <div className="border-t border-border-primary p-4">
@@ -322,7 +338,7 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-muted transition-colors hover:bg-surface-tertiary hover:text-danger"
           >
             <LogOut className="h-4 w-4" />
-            Sign out
+            {role === 'trader' ? tShell('signOut') : 'Sign out'}
           </button>
         </div>
       </aside>
@@ -342,8 +358,9 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
             <Menu className="h-5 w-5" />
           </button>
           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary capitalize">
-            {role} Panel
+            {role === 'trader' ? tShell('headerTitle', { role }) : `${role} Panel`}
           </span>
+          {role === 'trader' && <TraderLocaleSwitch />}
           {role === 'trader' && <TraderHeaderOrderStatus />}
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-surface-primary">

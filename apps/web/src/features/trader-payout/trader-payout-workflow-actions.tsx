@@ -4,11 +4,13 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslations } from 'next-intl';
 import {
   AlertTriangle,
   ChevronDown,
@@ -45,18 +47,6 @@ export type PayoutRejectVars = {
   /** Sent only when `reason` is OTHER. */
   reason_other_note?: string;
 };
-
-const REJECT_REASON_META: {
-  reason: PayoutTraderRejectReason;
-  label: string;
-}[] = [
-  { reason: PayoutTraderRejectReason.FOREIGN_CARD, label: 'Foreign card' },
-  {
-    reason: PayoutTraderRejectReason.CARD_REFUND_IN_PROGRESS,
-    label: 'Card cancellation or refund in progress',
-  },
-  { reason: PayoutTraderRejectReason.OTHER, label: 'Other' },
-];
 
 type ConfirmKind = 'complete' | 'cancel';
 
@@ -133,6 +123,19 @@ export function TraderPayoutWorkflowActions({
   >;
   layout?: 'cell' | 'toolbar';
 }) {
+  const t = useTranslations('Trader.Payout.workflow');
+  const rejectReasonMeta = useMemo(
+    () => [
+      { reason: PayoutTraderRejectReason.FOREIGN_CARD, label: t('rejectReasonForeignCard') },
+      {
+        reason: PayoutTraderRejectReason.CARD_REFUND_IN_PROGRESS,
+        label: t('rejectReasonRefund'),
+      },
+      { reason: PayoutTraderRejectReason.OTHER, label: t('rejectReasonOther') },
+    ],
+    [t],
+  );
+
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [receiptUploadKey, setReceiptUploadKey] = useState(0);
   const [receiptScratch, setReceiptScratch] = useState<File[]>([]);
@@ -423,19 +426,17 @@ export function TraderPayoutWorkflowActions({
 
   let confirmTitle = '';
   let confirmDescription = '';
-  let confirmLabel = 'Confirm';
+  let confirmLabel = t('confirmDefault');
   let tone: 'default' | 'danger' = 'default';
 
   if (confirmKind === 'complete') {
-    confirmTitle = 'Mark this pay-out as completed?';
-    confirmDescription =
-      'Only confirm after the recipient has received the funds. This action cannot be undone.';
-    confirmLabel = 'Yes, completed';
+    confirmTitle = t('completeTitle');
+    confirmDescription = t('completeDescription');
+    confirmLabel = t('completeLabel');
   } else if (confirmKind === 'cancel') {
-    confirmTitle = 'Return this order to the pool?';
-    confirmDescription =
-      'The order will be available for another trader. The merchant is not refunded.';
-    confirmLabel = 'Yes, return to pool';
+    confirmTitle = t('cancelTitle');
+    confirmDescription = t('cancelDescription');
+    confirmLabel = t('cancelLabel');
     tone = 'danger';
   }
 
@@ -466,7 +467,7 @@ export function TraderPayoutWorkflowActions({
         {order.status === PayOutOrderStatus.NEW &&
           (layout === 'cell' ? (
             <IconButton
-              label="Start processing payout"
+              label={t('startProcessingAria')}
               variant="primary"
               onClick={() => processMutation.mutate(order.id)}
               loading={loadingProcess}
@@ -480,7 +481,7 @@ export function TraderPayoutWorkflowActions({
               loading={loadingProcess}
             >
               <Play className="h-4 w-4" />
-              Start processing
+              {t('startProcessing')}
             </Button>
           ))}
 
@@ -500,16 +501,14 @@ export function TraderPayoutWorkflowActions({
                 aria-haspopup="true"
                 onClick={() => setMenuOpen((o) => !o)}
               >
-                Change status
+                {t('changeStatus')}
                 <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
               </button>
 
               {order.requisites_visible !== false && (
                 <IconButton
                   label={
-                    existingProofIds.length > 0
-                      ? 'Edit payment receipts attached to this order'
-                      : 'Attach payment receipts (optional)'
+                    existingProofIds.length > 0 ? t('editReceipts') : t('attachReceiptsOptional')
                   }
                   tooltipWide
                   variant={existingProofIds.length > 0 ? 'secondary' : 'ghost'}
@@ -541,7 +540,7 @@ export function TraderPayoutWorkflowActions({
                       role="menuitem"
                       onClick={() => openConfirm('complete')}
                     >
-                      Mark completed
+                      {t('menuComplete')}
                     </button>
                     <button
                       type="button"
@@ -549,7 +548,7 @@ export function TraderPayoutWorkflowActions({
                       role="menuitem"
                       onClick={() => openConfirm('cancel')}
                     >
-                      Return to pool
+                      {t('menuReturnPool')}
                     </button>
                     <button
                       type="button"
@@ -562,7 +561,7 @@ export function TraderPayoutWorkflowActions({
                         setRejectModalOpen(true);
                       }}
                     >
-                      Rejected
+                      {t('menuFail')}
                     </button>
                   </div>,
                   document.body,
@@ -576,9 +575,7 @@ export function TraderPayoutWorkflowActions({
           >
             <IconButton
               label={
-                existingProofIds.length > 0
-                  ? 'Add more payment receipts for this completed order'
-                  : 'Attach payment receipts to this completed order'
+                existingProofIds.length > 0 ? t('addMoreReceipts') : t('attachReceiptsCompleted')
               }
               tooltipWide
               variant={existingProofIds.length > 0 ? 'secondary' : 'ghost'}
@@ -611,8 +608,7 @@ export function TraderPayoutWorkflowActions({
         {confirmOpen && confirmKind === 'complete' ? (
           <div className="space-y-2">
             <p className="text-xs text-text-muted">
-              Optional receipts (PNG, JPG, PDF), up to {MAX_PAYOUT_COMPLETION_PROOF_FILES} files. Attach here or use
-              the image button next to Change status.
+              {t('completeFilesHint', { max: MAX_PAYOUT_COMPLETION_PROOF_FILES })}
             </p>
             <FileUpload
               compact
@@ -631,28 +627,25 @@ export function TraderPayoutWorkflowActions({
       <Modal
         open={receiptModalOpen}
         onClose={closeReceiptModal}
-        title="Payment receipt"
-        subtitle={`Order ${shortId(order.id)}`}
+        title={t('receiptModalTitle')}
+        subtitle={t('receiptModalSubtitle', { shortId: shortId(order.id) })}
         size="md"
         overlayClassName="z-[58]"
       >
         <p className="text-sm text-text-secondary">
           {persistProofsImmediately ? (
-            <>
-              Optional proof of the transfer — same pattern as Pay-In appeal attachments. Use{' '}
-              <span className="font-medium text-text-primary">Save</span> to upload pending files and attach them to
-              this order (up to {MAX_PAYOUT_COMPLETION_PROOF_FILES} files total). Receipts stay on this order across
-              page reloads.
-            </>
+            t.rich('receiptBodyPersist', {
+              max: MAX_PAYOUT_COMPLETION_PROOF_FILES,
+              save: (chunks) => <span className="font-medium text-text-primary">{chunks}</span>,
+            })
           ) : (
-            'Receipt uploads are not available for this order status.'
+            t('receiptBodyDisabled')
           )}
         </p>
         {persistProofsImmediately && existingProofIds.length > 0 && (
           <div className="mt-3 space-y-2">
             <p className="text-xs text-text-secondary">
-              Current receipts — click a thumbnail to enlarge. Upload below to add more (max{' '}
-              {MAX_PAYOUT_COMPLETION_PROOF_FILES} per order).
+              {t('currentReceiptsHint', { max: MAX_PAYOUT_COMPLETION_PROOF_FILES })}
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {existingProofIds.map((fileId) => {
@@ -669,13 +662,13 @@ export function TraderPayoutWorkflowActions({
                     <button
                       type="button"
                       onClick={() => setViewingPayoutReceiptId(fileId)}
-                      aria-label="View payment receipt"
+                      aria-label={t('viewReceiptAria')}
                       className="relative block w-full cursor-pointer overflow-hidden rounded-lg border-0 bg-transparent p-0 text-left"
                     >
                       <div className="pointer-events-none aspect-video max-h-36">
                         <AuthorizedFilePreview
                           path={internalPaths.fileById(fileId)}
-                          alt="Pay-out payment receipt"
+                          alt={t('receiptThumbAlt')}
                           className="h-full max-h-36"
                         />
                       </div>
@@ -687,7 +680,7 @@ export function TraderPayoutWorkflowActions({
                       <button
                         type="button"
                         disabled={loadingAttachProof || deleting}
-                        aria-label="Remove this payment receipt"
+                        aria-label={t('removeReceiptAria')}
                         className={cn(
                           'absolute right-1 top-1 z-10 flex h-8 w-8 items-center justify-center rounded-md',
                           'border border-border-primary bg-bg-primary/95 text-text-primary shadow-sm',
@@ -723,7 +716,7 @@ export function TraderPayoutWorkflowActions({
             />
           ) : (
             <p className="rounded-lg border border-border-primary bg-bg-secondary/40 px-3 py-2 text-xs text-text-secondary">
-              Maximum of {MAX_PAYOUT_COMPLETION_PROOF_FILES} receipts for this order.
+              {t('receiptMaxNote', { max: MAX_PAYOUT_COMPLETION_PROOF_FILES })}
             </p>
           )}
         </div>
@@ -744,10 +737,10 @@ export function TraderPayoutWorkflowActions({
                 loading={pendingDeleteFileIds.size > 0 && existingProofIds.length > 0}
                 onClick={() => void removeAllPersistedReceiptsModal()}
               >
-                Remove all
+                {t('removeAll')}
               </Button>
               <p className="hidden text-xs text-text-muted sm:block">
-                Each successful save attaches uploaded files directly to this order.
+                {t('saveFooterHint')}
               </p>
             </div>
           ) : null}
@@ -762,7 +755,7 @@ export function TraderPayoutWorkflowActions({
                 pendingDeleteFileIds.size > 0
               }
             >
-              Cancel
+              {t('cancel')}
             </Button>
             <Button
               type="button"
@@ -770,7 +763,7 @@ export function TraderPayoutWorkflowActions({
               disabled={receiptScratch.length === 0 || pendingDeleteFileIds.size > 0}
               onClick={() => void saveReceiptModal()}
             >
-              Save
+              {t('save')}
             </Button>
           </div>
         </div>
@@ -779,7 +772,7 @@ export function TraderPayoutWorkflowActions({
       <Modal
         open={viewingPayoutReceiptId != null}
         onClose={() => setViewingPayoutReceiptId(null)}
-        title="Payment receipt"
+        title={t('previewTitle')}
         size="xl"
         overlayClassName="z-[62]"
       >
@@ -787,7 +780,7 @@ export function TraderPayoutWorkflowActions({
           <div className="flex min-h-[40vh] items-center justify-center">
             <AuthorizedFilePreview
               path={internalPaths.fileById(viewingPayoutReceiptId)}
-              alt="Pay-out payment receipt"
+              alt={t('receiptThumbAlt')}
               className="max-h-[75vh]"
             />
           </div>
@@ -804,41 +797,44 @@ export function TraderPayoutWorkflowActions({
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-orange/15 text-accent-orange">
             <AlertTriangle className="h-6 w-6" aria-hidden />
           </span>
-          <h2 className="text-lg font-semibold text-text-primary">Are you sure?</h2>
+          <h2 className="text-lg font-semibold text-text-primary">{t('rejectSureTitle')}</h2>
         </div>
 
         <p className="mt-4 text-center text-sm text-text-secondary">
-          Status will be set to{' '}
-          <span className="font-medium text-text-primary">Failed (rejected)</span>.
+          {t.rich('rejectSureBody', {
+            strong: (chunks) => (
+              <span className="font-medium text-text-primary">{chunks}</span>
+            ),
+          })}
         </p>
 
         <dl className="mt-5 divide-y divide-border-primary rounded-lg border border-border-primary bg-bg-secondary/40 text-sm">
           <div className="flex justify-between gap-3 px-3 py-2.5">
-            <dt className="text-text-muted">Number</dt>
+            <dt className="text-text-muted">{t('rejectDlNumber')}</dt>
             <dd className="font-mono text-text-primary">{maskedNumber}</dd>
           </div>
           <div className="flex justify-between gap-3 px-3 py-2.5">
-            <dt className="text-text-muted">Amount</dt>
+            <dt className="text-text-muted">{t('rejectDlAmount')}</dt>
             <dd className="tabular-nums text-text-primary">
               {formatCurrency(order.amount, order.currency)}
             </dd>
           </div>
           <div className="flex justify-between gap-3 px-3 py-2.5">
-            <dt className="text-text-muted">Owner</dt>
+            <dt className="text-text-muted">{t('rejectDlOwner')}</dt>
             <dd className="text-right text-text-primary">
               {order.requisites_visible === false
-                ? '—'
+                ? t('rejectNumberMasked')
                 : order.details.owner?.trim()
                   ? order.details.owner
-                  : '—'}
+                  : t('rejectNumberMasked')}
             </dd>
           </div>
         </dl>
 
         <div className="mt-6 space-y-3">
-          <p className="text-sm font-medium text-text-primary">Rejection reason</p>
-          <div className="space-y-2.5" role="radiogroup" aria-label="Rejection reason">
-            {REJECT_REASON_META.map(({ reason: value, label }) => (
+          <p className="text-sm font-medium text-text-primary">{t('rejectReasonHeading')}</p>
+          <div className="space-y-2.5" role="radiogroup" aria-label={t('rejectReasonAria')}>
+            {rejectReasonMeta.map(({ reason: value, label }) => (
               <label
                 key={value}
                 className={cn(
@@ -870,8 +866,8 @@ export function TraderPayoutWorkflowActions({
           <div className="mt-4">
             <Textarea
               id={`payout-reject-other-${order.id}`}
-              label="Describe the reason"
-              placeholder="Required when you select Other"
+              label={t('rejectOtherLabel')}
+              placeholder={t('rejectOtherPlaceholder')}
               rows={4}
               maxLength={2000}
               value={rejectOtherNote}
@@ -889,7 +885,7 @@ export function TraderPayoutWorkflowActions({
             disabled={loadingReject}
             onClick={closeRejectModal}
           >
-            Cancel
+            {t('cancel')}
           </Button>
           <Button
             type="button"
@@ -898,7 +894,7 @@ export function TraderPayoutWorkflowActions({
             disabled={!rejectSubmitEnabled}
             onClick={handleRejectSubmit}
           >
-            Reject pay-out
+            {t('rejectSubmit')}
           </Button>
         </div>
       </Modal>

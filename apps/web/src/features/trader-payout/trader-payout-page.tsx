@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowUpFromLine,
@@ -60,6 +61,7 @@ export function TraderPayoutPage({
   const apiBase = isSpecialist ? internalPaths.payoutCabinetSpecialist : internalPaths.payoutCabinetTrader;
   const qk: PayoutCabinetScope = isSpecialist ? 'payout-trader' : 'trader';
   const apiPublicBase = process.env.NEXT_PUBLIC_API_URL ?? '';
+  const t = useTranslations('Trader.Payout');
 
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 
@@ -262,26 +264,49 @@ export function TraderPayoutPage({
     },
   });
 
-  const historyStatusOptions = PAYOUT_TRADER_HISTORY_STATUSES.map((s) => ({
-    value: s,
-    label: s,
-  }));
+  const historyStatusOptions = useMemo(
+    () =>
+      PAYOUT_TRADER_HISTORY_STATUSES.map((s) => ({
+        value: s,
+        label: t(`statuses.${s}`),
+      })),
+    [t],
+  );
 
-  const poolColumns = buildPayoutPoolColumns({
-    variant: isSpecialist ? 'specialist' : 'standard',
-    takeFromPoolMutation,
-  });
+  const poolColumns = useMemo(
+    () =>
+      buildPayoutPoolColumns({
+        variant: isSpecialist ? 'specialist' : 'standard',
+        takeFromPoolMutation,
+        t,
+      }),
+    [isSpecialist, takeFromPoolMutation, t],
+  );
 
-  const ordersColumns = buildPayoutOrdersColumns({
-    variant: isSpecialist ? 'specialist' : 'standard',
-    processMutation,
-    completeMutation,
-    cancelMutation,
-    rejectMutation,
-    attachCompletionProofMutation,
-    detachCompletionProofMutation,
-    onView: setSelectedOrder,
-  });
+  const ordersColumns = useMemo(
+    () =>
+      buildPayoutOrdersColumns({
+        variant: isSpecialist ? 'specialist' : 'standard',
+        processMutation,
+        completeMutation,
+        cancelMutation,
+        rejectMutation,
+        attachCompletionProofMutation,
+        detachCompletionProofMutation,
+        onView: setSelectedOrder,
+        t,
+      }),
+    [
+      isSpecialist,
+      processMutation,
+      completeMutation,
+      cancelMutation,
+      rejectMutation,
+      attachCompletionProofMutation,
+      detachCompletionProofMutation,
+      t,
+    ],
+  );
 
   const handleExportCsv = async () => {
     if (!isSpecialist) return;
@@ -306,14 +331,24 @@ export function TraderPayoutPage({
     URL.revokeObjectURL(url);
   };
 
-  const headerSubtitle =
-    activeTab === 'new'
-      ? isSpecialist
-        ? `${poolData?.total ?? 0} orders in your geo pool (pool B)`
-        : `${poolData?.total ?? 0} orders in the shared pool`
-      : activeTab === 'in_progress'
-        ? `${inProgressData?.total ?? 0} orders in your queue`
-        : `${historyData?.total ?? 0} completed or closed orders`;
+  const headerSubtitle = useMemo(() => {
+    if (activeTab === 'new') {
+      return isSpecialist
+        ? t('subtitleGeoPool', { count: poolData?.total ?? 0 })
+        : t('subtitleSharedPool', { count: poolData?.total ?? 0 });
+    }
+    if (activeTab === 'in_progress') {
+      return t('subtitleInProgress', { count: inProgressData?.total ?? 0 });
+    }
+    return t('subtitleHistory', { count: historyData?.total ?? 0 });
+  }, [
+    activeTab,
+    historyData?.total,
+    inProgressData?.total,
+    isSpecialist,
+    poolData?.total,
+    t,
+  ]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -321,14 +356,14 @@ export function TraderPayoutPage({
         <div className="flex items-center gap-3">
           <ArrowUpFromLine className="h-6 w-6 text-accent-blue" />
           <div>
-            <h1 className="text-2xl font-bold text-text-primary">Pay-Out Orders</h1>
+            <h1 className="text-2xl font-bold text-text-primary">{t('title')}</h1>
             <p className="text-sm text-text-muted">{headerSubtitle}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 sm:justify-end">
           <Button variant="secondary" size="sm" onClick={() => setShowFilters(!showFilters)}>
             <Filter className="h-4 w-4" />
-            Filters
+            {t('filters')}
           </Button>
           <div className="flex flex-wrap gap-1 rounded-lg bg-bg-secondary p-1 w-fit">
             <button
@@ -342,7 +377,7 @@ export function TraderPayoutPage({
               )}
             >
               <Layers className="h-4 w-4" />
-              New
+              {t('tabNew')}
               {(poolData?.total ?? 0) > 0 && (
                 <span className="ml-1 rounded-full bg-accent-blue px-2 py-0.5 text-xs text-white">
                   {poolData?.total}
@@ -360,7 +395,7 @@ export function TraderPayoutPage({
               )}
             >
               <ListTodo className="h-4 w-4" />
-              In progress
+              {t('tabInProgress')}
               {(inProgressData?.total ?? 0) > 0 && (
                 <span className="ml-1 rounded-full bg-bg-tertiary px-2 py-0.5 text-xs text-text-secondary">
                   {inProgressData?.total}
@@ -378,7 +413,7 @@ export function TraderPayoutPage({
               )}
             >
               <History className="h-4 w-4" />
-              History
+              {t('tabHistory')}
               {(historyData?.total ?? 0) > 0 && (
                 <span className="ml-1 rounded-full bg-bg-tertiary px-2 py-0.5 text-xs text-text-secondary">
                   {historyData?.total}
@@ -389,7 +424,7 @@ export function TraderPayoutPage({
           {isSpecialist && activeTab === 'history' && (
             <Button variant="secondary" size="sm" onClick={() => void handleExportCsv()}>
               <Download className="h-4 w-4" />
-              CSV
+              {t('exportCsv')}
             </Button>
           )}
         </div>
@@ -399,39 +434,39 @@ export function TraderPayoutPage({
         <Card>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Select
-              label="Status"
+              label={t('filterStatus')}
               options={historyStatusOptions}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              placeholder="All statuses"
+              placeholder={t('filterAllStatuses')}
             />
             <Input
-              label="Closed from (date)"
+              label={t('filterClosedFrom')}
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
             />
             <Input
-              label="Closed to (date)"
+              label={t('filterClosedTo')}
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
             />
             <Input
-              label="Min amount"
+              label={t('filterMinAmount')}
               type="text"
               inputMode="decimal"
               value={minAmount}
               onChange={(e) => setMinAmount(e.target.value)}
-              placeholder="Optional"
+              placeholder={t('filterPlaceholderOptional')}
             />
             <Input
-              label="Max amount"
+              label={t('filterMaxAmount')}
               type="text"
               inputMode="decimal"
               value={maxAmount}
               onChange={(e) => setMaxAmount(e.target.value)}
-              placeholder="Optional"
+              placeholder={t('filterPlaceholderOptional')}
             />
           </div>
           <div className="mt-4 flex justify-end gap-2">
@@ -446,7 +481,7 @@ export function TraderPayoutPage({
                 setMaxAmount('');
               }}
             >
-              Clear
+              {t('filterClear')}
             </Button>
           </div>
         </Card>
@@ -457,9 +492,7 @@ export function TraderPayoutPage({
           <div className="mb-4 flex items-start gap-3 rounded-lg border border-accent-blue/20 bg-accent-blue/5 p-3">
             <Layers className="mt-0.5 h-4 w-4 shrink-0 text-accent-blue" />
             <p className="text-sm text-text-secondary">
-              {isSpecialist
-                ? 'Pool B: unassigned pay-out orders for your region. Taking an order assigns it to you as PROCESSING (in progress).'
-                : 'Shared pool of unassigned pay-out orders. Only amounts within your configured limits are listed. Taking an order assigns it to you and moves it to In progress.'}
+              {isSpecialist ? t('poolBannerSpecialist') : t('poolBannerStandard')}
             </p>
           </div>
           <Table
@@ -469,9 +502,7 @@ export function TraderPayoutPage({
             loading={poolLoading}
             onRowClick={(row) => setSelectedOrder(row)}
             emptyMessage={
-              isSpecialist
-                ? 'No orders in your pool — check back soon'
-                : 'No orders in pool matching your limits'
+              isSpecialist ? t('emptyPoolSpecialist') : t('emptyPoolStandard')
             }
           />
           <PaginationControls
@@ -479,7 +510,7 @@ export function TraderPayoutPage({
             totalPages={poolTotalPages}
             onPageChange={setPoolPage}
             totalItems={poolData?.total ?? 0}
-            itemLabel="orders"
+            itemLabel={t('itemLabel')}
             variant="minimal"
             className="mt-4"
           />
@@ -490,10 +521,7 @@ export function TraderPayoutPage({
         <Card>
           <div className="mb-4 flex items-start gap-3 rounded-lg border border-border-primary bg-bg-secondary/40 p-3">
             <ListTodo className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" />
-            <p className="text-sm text-text-secondary">
-              Orders you took from New. Start processing, then mark done or failed when the transfer
-              is finished.
-            </p>
+            <p className="text-sm text-text-secondary">{t('inProgressBanner')}</p>
           </div>
           <Table
             columns={ordersColumns}
@@ -501,14 +529,14 @@ export function TraderPayoutPage({
             keyExtractor={(row) => row.id}
             loading={inProgressLoading}
             onRowClick={(row) => setSelectedOrder(row)}
-            emptyMessage="No orders in your queue — take one from New"
+            emptyMessage={t('emptyInProgress')}
           />
           <PaginationControls
             page={inProgressPage}
             totalPages={inProgressTotalPages}
             onPageChange={setInProgressPage}
             totalItems={inProgressData?.total ?? 0}
-            itemLabel="orders"
+            itemLabel={t('itemLabel')}
             variant="minimal"
             className="mt-4"
           />
@@ -519,9 +547,7 @@ export function TraderPayoutPage({
         <Card>
           <div className="mb-4 flex items-start gap-3 rounded-lg border border-border-primary bg-bg-secondary/40 p-3">
             <History className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" />
-            <p className="text-sm text-text-secondary">
-              Completed payouts and closed orders (failed or upload error).
-            </p>
+            <p className="text-sm text-text-secondary">{t('historyBanner')}</p>
           </div>
           <Table
             columns={ordersColumns}
@@ -529,14 +555,14 @@ export function TraderPayoutPage({
             keyExtractor={(row) => row.id}
             loading={historyLoading}
             onRowClick={(row) => setSelectedOrder(row)}
-            emptyMessage="No completed pay-out orders yet"
+            emptyMessage={t('emptyHistory')}
           />
           <PaginationControls
             page={historyPage}
             totalPages={historyTotalPages}
             onPageChange={setHistoryPage}
             totalItems={historyData?.total ?? 0}
-            itemLabel="orders"
+            itemLabel={t('itemLabel')}
             variant="minimal"
             className="mt-4"
           />

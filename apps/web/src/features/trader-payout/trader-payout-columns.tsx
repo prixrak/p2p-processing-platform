@@ -14,6 +14,8 @@ import { TraderPayoutTakeFromPoolButton } from './trader-payout-take-from-pool-b
 
 export type PayoutTableVariant = 'standard' | 'specialist';
 
+type PayoutT = any;
+
 function LiveElapsed({
   fromUnix,
   warnAfterSec,
@@ -95,19 +97,20 @@ function PoolCloseCountdown({ untilUnix }: { untilUnix: number | null | undefine
 export function buildPayoutPoolColumns(opts: {
   variant?: PayoutTableVariant;
   takeFromPoolMutation: UseMutationResult<unknown, unknown, string>;
+  t: PayoutT;
 }) {
-  const { takeFromPoolMutation } = opts;
+  const { takeFromPoolMutation, t } = opts;
 
   return [
     {
       key: 'id',
-      header: 'ID',
+      header: t('colId'),
       className: 'font-mono tabular-nums text-end',
       render: (row: PayOutOrderApiDto) => <CopyOrderIdCell id={row.id} />,
     },
     {
       key: 'pool_close',
-      header: 'Time to close',
+      header: t('colTimeToClose'),
       className: 'text-end',
       render: (row: PayOutOrderApiDto) => (
         <PoolCloseCountdown untilUnix={row.pool_close_deadline_at} />
@@ -115,7 +118,7 @@ export function buildPayoutPoolColumns(opts: {
     },
     {
       key: 'amount',
-      header: 'Amount',
+      header: t('colAmount'),
       className: 'text-end tabular-nums',
       render: (row: PayOutOrderApiDto) => (
         <span className="font-semibold text-accent-blue">
@@ -125,13 +128,13 @@ export function buildPayoutPoolColumns(opts: {
     },
     {
       key: 'status',
-      header: 'Status',
+      header: t('colStatus'),
       className: 'text-center',
       render: (row: PayOutOrderApiDto) => <PayoutOrderStatusBadge status={row.status} />,
     },
     {
       key: 'actions',
-      header: 'Actions',
+      header: t('colActions'),
       className: 'text-end',
       render: (row: PayOutOrderApiDto) => (
         <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
@@ -169,6 +172,7 @@ export function buildPayoutOrdersColumns(opts: {
     { orderId: string; fileId: string }
   >;
   onView: (row: PayOutOrderApiDto) => void;
+  t: PayoutT;
 }) {
   const {
     variant = 'standard',
@@ -179,19 +183,20 @@ export function buildPayoutOrdersColumns(opts: {
     attachCompletionProofMutation,
     detachCompletionProofMutation,
     onView,
+    t,
   } = opts;
   const isSpecialist = variant === 'specialist';
 
   const idCol = {
     key: 'id',
-    header: 'ID',
+    header: t('colId'),
     className: 'font-mono tabular-nums text-end',
     render: (row: PayOutOrderApiDto) => <CopyOrderIdCell id={row.id} />,
   };
 
   const amountCol = {
     key: 'amount',
-    header: 'Amount',
+    header: t('colAmount'),
     className: 'text-end tabular-nums',
     render: (row: PayOutOrderApiDto) => (
       <span className="font-medium">{formatCurrency(row.amount, row.currency)}</span>
@@ -202,7 +207,7 @@ export function buildPayoutOrdersColumns(opts: {
     ? [
         {
           key: 'usdt_est',
-          header: '~USDT',
+          header: t('colUsdtEstimate'),
           className: 'text-end tabular-nums text-sm',
           render: (row: PayOutOrderApiDto) => (
             <span className="text-text-secondary">
@@ -212,14 +217,14 @@ export function buildPayoutOrdersColumns(opts: {
         },
         {
           key: 'method',
-          header: 'Method',
+          header: t('colMethod'),
           render: (row: PayOutOrderApiDto) => (
             <span className="text-xs text-text-secondary">{row.payment_method_name ?? '—'}</span>
           ),
         },
         {
           key: 'active',
-          header: 'Active',
+          header: t('colActive'),
           render: (row: PayOutOrderApiDto) =>
             row.status === PayOutOrderStatus.PROCESSING ? (
               <LiveElapsed fromUnix={row.start_at} warnAfterSec={180} critAfterSec={600} />
@@ -233,7 +238,7 @@ export function buildPayoutOrdersColumns(opts: {
   const tail = [
     {
       key: 'currency',
-      header: 'Currency',
+      header: t('colCurrency'),
       className: 'text-center',
       render: (row: PayOutOrderApiDto) => (
         <span className="text-text-secondary">{row.currency}</span>
@@ -241,7 +246,7 @@ export function buildPayoutOrdersColumns(opts: {
     },
     {
       key: 'recipient',
-      header: 'Recipient',
+      header: t('colRecipient'),
       render: (row: PayOutOrderApiDto) => (
         <div className="flex flex-col">
           <span className="font-mono text-xs">{row.details.number}</span>
@@ -253,20 +258,20 @@ export function buildPayoutOrdersColumns(opts: {
     },
     {
       key: 'status',
-      header: 'Status',
+      header: t('colStatus'),
       className: 'text-center',
       render: (row: PayOutOrderApiDto) => <PayoutOrderStatusBadge status={row.status} />,
     },
     {
       key: 'created_at',
-      header: 'Created',
+      header: t('colCreated'),
       render: (row: PayOutOrderApiDto) => (
         <span className="text-text-muted text-sm">{formatDate(row.created_at)}</span>
       ),
     },
     {
       key: 'actions',
-      header: 'Action',
+      header: t('colAction'),
       className: 'text-end',
       render: (row: PayOutOrderApiDto) => (
         <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
@@ -281,7 +286,7 @@ export function buildPayoutOrdersColumns(opts: {
             detachCompletionProofMutation={detachCompletionProofMutation}
             layout="cell"
           />
-          <IconButton label="View order details" onClick={() => onView(row)}>
+          <IconButton label={t('viewOrderDetails')} onClick={() => onView(row)}>
             <Eye className="h-4 w-4" />
           </IconButton>
         </div>

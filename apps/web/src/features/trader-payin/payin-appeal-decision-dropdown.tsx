@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { computeTraderPayinFinalizeMenuPosition } from './order-finalize-dropdown-position';
@@ -38,6 +39,7 @@ export function PayInAppealDecisionDropdown({
   onReject: () => void;
   onAccept: () => void;
 }) {
+  const t = useTranslations('Trader.Payin.appealDecision');
   const open =
     menuState !== null &&
     menuState.anchor === menuAnchor &&
@@ -115,7 +117,7 @@ export function PayInAppealDecisionDropdown({
         zIndex: 250,
       }}
       role="menu"
-      aria-label="Appeal decision"
+      aria-label={t('ariaMenu')}
     >
       <button
         type="button"
@@ -127,7 +129,7 @@ export function PayInAppealDecisionDropdown({
           onAccept();
         }}
       >
-        Accept (resolved)
+        {t('acceptResolved')}
       </button>
       <button
         type="button"
@@ -139,7 +141,7 @@ export function PayInAppealDecisionDropdown({
           onReject();
         }}
       >
-        Reject appeal
+        {t('rejectAppeal')}
       </button>
     </div>
   );
@@ -162,9 +164,9 @@ export function PayInAppealDecisionDropdown({
           }
           aria-expanded={open}
           aria-haspopup="menu"
-          aria-label="Choose appeal decision"
+          aria-label={t('ariaChoose')}
         >
-          Appeal decision
+          {t('trigger')}
           <ChevronDown
             className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')}
           />

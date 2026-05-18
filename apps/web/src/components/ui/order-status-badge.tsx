@@ -52,12 +52,19 @@ function fallbackIcon(): LucideIcon {
   return Clock;
 }
 
-export function PayinOrderStatusBadge({ status }: { status: string }) {
+export function PayinOrderStatusBadge({
+  status,
+  label,
+}: {
+  status: string;
+  /** When set (e.g. from `next-intl`), overrides the default title-cased enum label. */
+  label?: string;
+}) {
   const variant = payinStatusVariant[status] ?? 'default';
   const Icon = payinStatusIcon[status] ?? fallbackIcon();
   return (
     <Badge variant={variant} leadingIcon={<Icon strokeWidth={2} />}>
-      {payinStatusLabel(status)}
+      {label ?? payinStatusLabel(status)}
     </Badge>
   );
 }

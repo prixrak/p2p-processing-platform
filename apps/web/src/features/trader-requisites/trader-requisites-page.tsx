@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CreditCard,
@@ -43,6 +44,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Tabs } from '@/components/ui/tabs';
 
 export function TraderRequisitesPage() {
+  const t = useTranslations('Trader.Requisites');
   const queryClient = useQueryClient();
   const traderLabel = getUserFromToken()?.email?.split('@')[0] ?? 'Trader';
 
@@ -315,9 +317,9 @@ export function TraderRequisitesPage() {
         open={!!deleteGroupId}
         onOpenChange={(next) => !next && setDeleteGroupId(null)}
         tone="danger"
-        title="Archive payment method group?"
-        description="All requisites in this group will be turned off and the group will move to Archived immediately. Existing pay-ins keep their history; nothing is permanently deleted."
-        confirmLabel="Archive group"
+        title={t('archiveConfirmTitle')}
+        description={t('archiveConfirmBody')}
+        confirmLabel={t('archiveConfirmAction')}
         loading={deleteGroupMutation.isPending}
         onConfirm={() => {
           if (!deleteGroupId) return;
@@ -331,18 +333,15 @@ export function TraderRequisitesPage() {
         <div className="flex items-center gap-3">
           <CreditCard className="h-6 w-6 text-accent-blue" />
           <div>
-            <h1 className="text-2xl font-bold text-text-primary">Payment methods</h1>
-            <p className="text-sm text-text-muted">
-              Manage pay-in groups, requisites, limits, and activity. New groups and requisites
-              appear at the top.
-            </p>
+            <h1 className="text-2xl font-bold text-text-primary">{t('title')}</h1>
+            <p className="text-sm text-text-muted">{t('subtitle')}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 sm:justify-end">
           <Tabs
             tabs={[
-              { key: 'current', label: 'Current' },
-              { key: 'archived', label: 'Archived' },
+              { key: 'current', label: t('tabCurrent') },
+              { key: 'archived', label: t('tabArchived') },
             ]}
             active={archivedTab ? 'archived' : 'current'}
             onChange={(k) => setArchivedTab(k === 'archived')}
@@ -355,7 +354,7 @@ export function TraderRequisitesPage() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
           <Input
             className="pl-9"
-            placeholder="Search..."
+            placeholder={t('searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -369,7 +368,7 @@ export function TraderRequisitesPage() {
               }}
             >
               <Plus className="h-4 w-4" />
-              Add payment method group
+              {t('addGroup')}
             </Button>
           </div>
         ) : null}
@@ -383,9 +382,7 @@ export function TraderRequisitesPage() {
         <Card className="text-center py-12">
           <CreditCard className="mx-auto h-10 w-10 text-text-muted mb-3" />
           <p className="text-text-muted">
-            {archivedTab
-              ? 'No archived groups.'
-              : 'No payment method groups yet. Create one to add requisites.'}
+            {archivedTab ? t('emptyArchived') : t('emptyCurrent')}
           </p>
         </Card>
       ) : (
@@ -415,19 +412,19 @@ export function TraderRequisitesPage() {
                   </button>
                   <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 sm:grid-cols-4">
                     <div>
-                      <p className="text-[10px] uppercase tracking-wide text-text-muted">Created</p>
+                      <p className="text-[10px] uppercase tracking-wide text-text-muted">{t('created')}</p>
                       <p className="text-sm font-medium text-text-primary">{created}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-wide text-text-muted">Trader</p>
+                      <p className="text-[10px] uppercase tracking-wide text-text-muted">{t('trader')}</p>
                       <p className="text-sm font-medium text-text-primary truncate">{traderLabel}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-wide text-text-muted">Name</p>
+                      <p className="text-[10px] uppercase tracking-wide text-text-muted">{t('name')}</p>
                       <p className="text-sm font-medium text-text-primary truncate">{g.name}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-wide text-text-muted">Currency</p>
+                      <p className="text-[10px] uppercase tracking-wide text-text-muted">{t('currency')}</p>
                       <p className="text-sm font-medium text-text-primary">
                         {requisiteGroupCurrencyCode(g.currency)}
                       </p>
@@ -435,7 +432,7 @@ export function TraderRequisitesPage() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {g.archivedAt ? (
-                      <Badge variant="muted">Archived</Badge>
+                      <Badge variant="muted">{t('archived')}</Badge>
                     ) : (
                       <label
                         className={cn(
@@ -462,12 +459,12 @@ export function TraderRequisitesPage() {
                             })
                           }
                         />
-                        Active
+                        {t('active')}
                       </label>
                     )}
                     {!g.archivedAt && (
                       <IconButton
-                        label="Add requisite"
+                        label={t('addRequisite')}
                         variant="secondary"
                         onClick={() => {
                           setForm(defaultRequisiteForm);
@@ -479,7 +476,7 @@ export function TraderRequisitesPage() {
                     )}
                     {!g.archivedAt && (
                       <IconButton
-                        label="Edit group"
+                        label={t('editGroup')}
                         variant="secondary"
                         onClick={() => openEditGroup(g)}
                       >
@@ -496,11 +493,11 @@ export function TraderRequisitesPage() {
                           restoreGroupMutation.variables === g.id
                         }
                       >
-                        Restore
+                        {t('restore')}
                       </Button>
                     ) : (
                       <IconButton
-                        label="Archive group"
+                        label={t('archiveGroup')}
                         variant="danger"
                         onClick={() => setDeleteGroupId(g.id)}
                       >
@@ -513,7 +510,7 @@ export function TraderRequisitesPage() {
                   <div className="p-2 sm:p-3">
                     {g.requisites.length === 0 ? (
                       <p className="px-2 py-4 text-center text-sm text-text-muted">
-                        No requisites in this group.
+                        {t('emptyGroupRequisites')}
                       </p>
                     ) : (
                       <TraderRequisitesGroupTable

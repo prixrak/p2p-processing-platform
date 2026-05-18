@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { ArrowDownToLine } from 'lucide-react';
 import type { AppealDto, TraderPayInOrderDto } from '@p2p/shared';
 import { ListPageHeader, SearchStatusRow } from '@/components/ui/list-page-tools';
@@ -14,7 +15,6 @@ import { internalPaths } from '@/lib/internal-api';
 import { traderKeys } from '@/lib/query-keys';
 import { formatErrorMessage } from '@/lib/format-error';
 import { formatCurrency, formatDateFull } from '@/lib/utils';
-import { payinStatusLabel } from '@/lib/order-status-ui';
 import {
   PayInOrderStatus,
   AppealStatus,
@@ -49,6 +49,7 @@ import { useSelectedRowSync } from '@/lib/hooks/use-selected-row-sync';
 const PAYIN_LIST_PAGE_SIZE = 20;
 
 export function TraderPayInPage() {
+  const t = useTranslations('Trader.Payin');
   const queryClient = useQueryClient();
   const [listTab, setListTab] = useState<'current' | 'history'>('current');
   const {
@@ -70,6 +71,22 @@ export function TraderPayInPage() {
   const [finalizeMenu, setFinalizeMenu] = useState<OrderFinalizeMenuState>(null);
   const [appealDecisionMenu, setAppealDecisionMenu] = useState<AppealDecisionMenuState>(null);
   const [finalizeDialog, setFinalizeDialog] = useState<FinalizeDialogState | null>(null);
+
+  const statusLabels = useMemo(
+    () => ({
+      [PayInOrderStatus.PENDING]: t('statuses.PENDING'),
+      [PayInOrderStatus.NEW]: t('statuses.NEW'),
+      [PayInOrderStatus.VERIFIED]: t('statuses.VERIFIED'),
+      [PayInOrderStatus.PAID]: t('statuses.PAID'),
+      [PayInOrderStatus.UNDERPAID]: t('statuses.UNDERPAID'),
+      [PayInOrderStatus.OVERPAID]: t('statuses.OVERPAID'),
+      [PayInOrderStatus.APPEAL]: t('statuses.APPEAL'),
+      [PayInOrderStatus.CANCELED]: t('statuses.CANCELED'),
+      [PayInOrderStatus.UPLOAD_FAILED]: t('statuses.UPLOAD_FAILED'),
+      [PayInOrderStatus.NO_REQUISITE]: t('statuses.NO_REQUISITE'),
+    }),
+    [t],
+  );
 
   useEffect(() => {
     if (!finalizeMenu && !appealDecisionMenu) return;
@@ -160,7 +177,7 @@ export function TraderPayInPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: traderKeys.payinOrdersScope });
       void queryClient.invalidateQueries({ queryKey: traderKeys.appealsScope });
-      toast.success('Appeal decision saved');
+      toast.success(t('appealSaved'));
     },
     onError: (e: unknown) => {
       toast.error(formatErrorMessage(e));
@@ -180,12 +197,12 @@ export function TraderPayInPage() {
     }
     const actual = parsePositiveAmount(adjustmentInput);
     if (actual === null) {
-      toast.error('Enter a valid received amount');
+      toast.error(t('toastInvalidAmount'));
       return;
     }
     const orderAmt = Number(order.amount);
     if (actual === orderAmt) {
-      toast.error('Amount matches the order. Choose Paid instead, or enter a different amount.');
+      toast.error(t('toastAmountMatches'));
       return;
     }
     confirmMutation.mutate({ orderId: order.id, actualAmount: actual });
@@ -195,55 +212,55 @@ export function TraderPayInPage() {
     listTab === 'current' ? PAYIN_TRADER_CURRENT_STATUSES : PAYIN_TRADER_HISTORY_STATUSES;
   const statusOptions = allowedStatusesForTab.map((s) => ({
     value: s,
-    label: payinStatusLabel(s),
+    label: statusLabels[s as PayInOrderStatus] ?? s,
   }));
-  const statusSelectOptions = [{ value: '', label: 'All statuses' }, ...statusOptions];
+  const statusSelectOptions = [{ value: '', label: t('allStatuses') }, ...statusOptions];
 
-  const timerOrCompletionColumn =
-    listTab === 'history'
-      ? {
-          key: 'completed_at',
-          header: 'Completion time',
-          render: (row: TraderPayInOrderDto) => (
-            <span className="text-text-muted text-sm whitespace-nowrap">
-              {row.completed_at != null ? formatDateFull(row.completed_at) : '—'}
-            </span>
-          ),
-        }
-      : {
-          key: 'timer',
-          header: 'Time to complete',
-          className: 'text-end font-mono tabular-nums',
-          render: (row: TraderPayInOrderDto) => (
-            <CountdownTimer
-              autocloseAt={row.autoclose_at}
-              createdAt={row.created_at}
-              status={row.status}
-              clockOffsetMs={data?.clockOffsetMs ?? 0}
-            />
-          ),
-        };
+  const clockOffsetMs = data?.clockOffsetMs ?? 0;
 
-  const columns = [
+  const columns = useMemo(
+    () => [
       {
         key: 'id',
-        header: 'Order ID',
+        header: t('colOrderId'),
         className: 'min-w-[8rem]',
         render: (row: TraderPayInOrderDto) => <CopyOrderIdCell id={row.id} />,
       },
       {
         key: 'created_at',
-        header: 'Created',
+        header: t('colCreated'),
         render: (row: TraderPayInOrderDto) => (
-          <span className="text-text-muted text-sm whitespace-nowrap">
+          <span className="whitespace-nowrap text-sm text-text-muted">
             {formatDateFull(row.created_at)}
           </span>
         ),
       },
-      timerOrCompletionColumn,
+      listTab === 'history'
+        ? {
+            key: 'completed_at',
+            header: t('colCompletionTime'),
+            render: (row: TraderPayInOrderDto) => (
+              <span className="whitespace-nowrap text-sm text-text-muted">
+                {row.completed_at != null ? formatDateFull(row.completed_at) : t('dash')}
+              </span>
+            ),
+          }
+        : {
+            key: 'timer',
+            header: t('colTimeToComplete'),
+            className: 'text-end font-mono tabular-nums',
+            render: (row: TraderPayInOrderDto) => (
+              <CountdownTimer
+                autocloseAt={row.autoclose_at}
+                createdAt={row.created_at}
+                status={row.status}
+                clockOffsetMs={clockOffsetMs}
+              />
+            ),
+          },
       {
         key: 'amount',
-        header: 'Payment amount',
+        header: t('colPaymentAmount'),
         className: 'text-end tabular-nums align-top',
         render: (row: TraderPayInOrderDto) => (
           <div className="flex flex-col items-end gap-0.5 leading-tight">
@@ -253,7 +270,7 @@ export function TraderPayInPage() {
             {row.amount_equivalent_usdt != null ? (
               <span
                 className="text-xs font-normal tabular-nums text-text-muted"
-                title="USDT equivalent from snapshot rate when the order was quoted"
+                title={t('usdtEquivTitle')}
               >
                 {row.amount_equivalent_usdt.toFixed(2)} USDT
               </span>
@@ -263,13 +280,13 @@ export function TraderPayInPage() {
       },
       {
         key: 'requisite',
-        header: 'Requisite',
+        header: t('colRequisite'),
         className: 'min-w-[7rem]',
         render: (row: TraderPayInOrderDto) => <PayinRequisiteTableCell row={row} />,
       },
       {
         key: 'status',
-        header: 'Status',
+        header: t('colStatus'),
         className: 'text-center align-top',
         render: (row: TraderPayInOrderDto) => (
           <PayInOrderStatusColumnCell row={row} onOpenReceipts={setReceiptOrder} />
@@ -277,7 +294,7 @@ export function TraderPayInPage() {
       },
       {
         key: 'actions',
-        header: 'Actions',
+        header: t('colActions'),
         className: 'text-end',
         render: (row: TraderPayInOrderDto) => {
           const openAppeal = (row.appeals ?? []).find((a) => a.status === AppealStatus.OPEN);
@@ -288,7 +305,10 @@ export function TraderPayInPage() {
             resolveAppealMutation.variables?.appealId === openAppeal?.id;
 
           return (
-            <div className="flex flex-wrap items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="flex flex-wrap items-center justify-end gap-2"
+              onClick={(e) => e.stopPropagation()}
+            >
               {showAppealActions && (
                 <PayInAppealDecisionDropdown
                   orderId={row.id}
@@ -322,7 +342,18 @@ export function TraderPayInPage() {
           );
         },
       },
-    ];
+    ],
+    [
+      t,
+      listTab,
+      clockOffsetMs,
+      resolveAppealMutation.isPending,
+      resolveAppealMutation.variables?.appealId,
+      appealDecisionMenu,
+      finalizeMenu,
+      resolveAppealMutation,
+    ],
+  );
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -331,12 +362,10 @@ export function TraderPayInPage() {
           <div className="flex items-center gap-3">
             <ArrowDownToLine className="h-6 w-6 text-accent-green" />
             <div>
-              <h1 className="text-2xl font-bold text-text-primary">Pay-In Orders</h1>
+              <h1 className="text-2xl font-bold text-text-primary">{t('title')}</h1>
               <p className="text-sm text-text-muted">
-                {listTab === 'current'
-                  ? 'Active requests: pending assignment, awaiting payer, or awaiting your confirmation.'
-                  : 'Completed or closed orders: paid, canceled, appeal, or upload failed.'}{' '}
-                <span className="text-text-secondary">({data?.total ?? 0} in this view)</span>
+                {listTab === 'current' ? t('subtitleCurrent') : t('subtitleHistory')}{' '}
+                <span className="text-text-secondary">{t('inView', { count: data?.total ?? 0 })}</span>
               </p>
             </div>
           </div>
@@ -344,8 +373,8 @@ export function TraderPayInPage() {
         actions={
           <Tabs
             tabs={[
-              { key: 'current', label: 'Current' },
-              { key: 'history', label: 'History' },
+              { key: 'current', label: t('tabCurrent') },
+              { key: 'history', label: t('tabHistory') },
             ]}
             active={listTab}
             onChange={(k) => {
@@ -365,7 +394,7 @@ export function TraderPayInPage() {
       <SearchStatusRow
         searchValue={searchInput}
         onSearchChange={setSearchInput}
-        searchPlaceholder="Order ID, request ID, requisite, or account owner..."
+        searchPlaceholder={t('searchPlaceholder')}
         statusValue={statusFilter}
         onStatusChange={setStatusFilter}
         statusOptions={statusSelectOptions}
@@ -381,7 +410,7 @@ export function TraderPayInPage() {
           setAppealDecisionMenu(null);
           setSelectedOrder(row);
         }}
-        emptyMessage="No pay-in orders found"
+        emptyMessage={t('emptyMessage')}
       />
 
       <PaginationControls
@@ -389,10 +418,9 @@ export function TraderPayInPage() {
         totalPages={data?.totalPages ?? 1}
         onPageChange={setPage}
         totalItems={data?.total ?? 0}
-        itemLabel="orders"
+        itemLabel={t('itemLabel')}
         variant="minimal"
       />
-
 
       <PayInReceiptGalleryModal
         receiptOrder={receiptOrder}

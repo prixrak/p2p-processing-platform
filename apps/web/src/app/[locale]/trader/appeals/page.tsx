@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { AlertTriangle, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -37,7 +38,24 @@ const appealStatusVariant: Record<AppealStatus, 'warning' | 'success' | 'danger'
 
 const APPEALS_PAGE_SIZE = 20;
 
+function appealStatusLabel(
+  t: (key: 'appealStatuses.OPEN' | 'appealStatuses.RESOLVED' | 'appealStatuses.REJECTED') => string,
+  status: AppealStatus,
+) {
+  switch (status) {
+    case AppealStatus.OPEN:
+      return t('appealStatuses.OPEN');
+    case AppealStatus.RESOLVED:
+      return t('appealStatuses.RESOLVED');
+    case AppealStatus.REJECTED:
+      return t('appealStatuses.REJECTED');
+    default:
+      return status;
+  }
+}
+
 export default function AppealsPage() {
+  const t = useTranslations('Trader.Appeals');
   const queryClient = useQueryClient();
   const [listTab, setListTab] = useState<'current' | 'history'>('current');
   const [currentPage, setCurrentPage] = useState(1);
@@ -110,115 +128,107 @@ export default function AppealsPage() {
   const listData =
     listTab === 'current' ? (currentData?.items ?? []) : (historyData?.items ?? []);
 
-  const columns = [
-    {
-      key: 'id',
-      header: 'Appeal ID',
-      className: 'font-mono tabular-nums text-end',
-      render: (row: AppealDto) => (
-        <OrderIdCopyCell id={row.id} withToast label="Appeal ID" />
-      ),
-    },
-    {
-      key: 'payin_order_id',
-      header: 'Pay-In order',
-      className: 'font-mono tabular-nums text-end',
-      render: (row: AppealDto) => (
-        <OrderIdCopyCell id={row.payin_order_id} withToast label="Pay-In order ID" />
-      ),
-    },
-    {
-      key: 'requisite',
-      header: 'Requisite',
-      className: 'min-w-[7rem]',
-      render: (row: AppealDto) => (
-        <PayinRequisiteTableCell
-          row={{
-            requisite_number: row.requisite_number,
-            requisite_owner: row.requisite_owner,
-            bank: row.bank,
-          }}
-        />
-      ),
-    },
-    {
-      key: 'order_amount',
-      header: 'Order amount',
-      className: 'text-end tabular-nums',
-      render: (row: AppealDto) => (
-        <span className="text-text-primary">
-          {formatCurrency(row.order_amount, row.currency)}
-        </span>
-      ),
-    },
-    {
-      key: 'paid_amount',
-      header: 'Paid (reported)',
-      className: 'text-end tabular-nums',
-      render: (row: AppealDto) => (
-        <span className="font-medium">
-          {formatCurrency(row.paid_amount, row.currency)}
-        </span>
-      ),
-    },
-    {
-      key: 'requisite',
-      header: 'Requisite',
-      render: (row: AppealDto) => (
-        <div className="max-w-[14rem] truncate text-sm text-text-primary" title={requisiteLabel(row)}>
-          {requisiteShort(row)}
-        </div>
-      ),
-    },
-    {
-      key: 'requisite_owner',
-      header: 'Owner',
-      render: (row: AppealDto) => (
-        <span className="max-w-[10rem] truncate text-sm text-text-muted" title={row.requisite_owner}>
-          {row.requisite_owner || '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      className: 'text-center',
-      render: (row: AppealDto) => (
-        <Badge variant={appealStatusVariant[row.status]} dot>
-          {row.status}
-        </Badge>
-      ),
-    },
-    {
-      key: 'proofs',
-      header: 'Proofs',
-      className: 'text-end tabular-nums',
-      render: (row: AppealDto) => (
-        <span className="text-text-muted text-sm">
-          {row.proofs_of_payment.length} file{row.proofs_of_payment.length !== 1 ? 's' : ''}
-        </span>
-      ),
-    },
-    {
-      key: 'created_at',
-      header: 'Created',
-      render: (row: AppealDto) => (
-        <span className="text-text-muted text-sm">{formatDate(row.created_at)}</span>
-      ),
-    },
-    {
-      key: 'actions',
-      header: '',
-      className: 'text-end w-12',
-      render: (row: AppealDto) => (
-        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <IconButton label="View appeal details" onClick={() => setSelectedAppeal(row)}>
-            <Eye className="h-4 w-4" />
-          </IconButton>
-        </div>
-      ),
-    },
-  ];
+  const columns = useMemo(
+    () => [
+      {
+        key: 'id',
+        header: t('colAppealId'),
+        className: 'font-mono tabular-nums text-end',
+        render: (row: AppealDto) => (
+          <OrderIdCopyCell id={row.id} withToast label={t('colAppealId')} />
+        ),
+      },
+      {
+        key: 'payin_order_id',
+        header: t('colPayinOrder'),
+        className: 'font-mono tabular-nums text-end',
+        render: (row: AppealDto) => (
+          <OrderIdCopyCell id={row.payin_order_id} withToast label={t('modalPayinId')} />
+        ),
+      },
+      {
+        key: 'requisite',
+        header: t('colRequisite'),
+        className: 'min-w-[7rem]',
+        render: (row: AppealDto) => (
+          <PayinRequisiteTableCell
+            row={{
+              requisite_number: row.requisite_number,
+              requisite_owner: row.requisite_owner,
+              bank: row.bank,
+            }}
+          />
+        ),
+      },
+      {
+        key: 'order_amount',
+        header: t('colOrderAmount'),
+        className: 'text-end tabular-nums',
+        render: (row: AppealDto) => (
+          <span className="text-text-primary">{formatCurrency(row.order_amount, row.currency)}</span>
+        ),
+      },
+      {
+        key: 'paid_amount',
+        header: t('colPaidReported'),
+        className: 'text-end tabular-nums',
+        render: (row: AppealDto) => (
+          <span className="font-medium">{formatCurrency(row.paid_amount, row.currency)}</span>
+        ),
+      },
+      {
+        key: 'requisite_owner',
+        header: t('colOwner'),
+        render: (row: AppealDto) => (
+          <span className="max-w-[10rem] truncate text-sm text-text-muted" title={row.requisite_owner}>
+            {row.requisite_owner || t('dash')}
+          </span>
+        ),
+      },
+      {
+        key: 'status',
+        header: t('colStatus'),
+        className: 'text-center',
+        render: (row: AppealDto) => (
+          <Badge variant={appealStatusVariant[row.status]} dot>
+            {appealStatusLabel(t, row.status)}
+          </Badge>
+        ),
+      },
+      {
+        key: 'proofs',
+        header: t('colProofs'),
+        className: 'text-end tabular-nums',
+        render: (row: AppealDto) => (
+          <span className="text-text-muted text-sm">
+            {t('proofFiles', { count: row.proofs_of_payment.length })}
+          </span>
+        ),
+      },
+      {
+        key: 'created_at',
+        header: t('colCreated'),
+        render: (row: AppealDto) => (
+          <span className="text-text-muted text-sm">{formatDate(row.created_at)}</span>
+        ),
+      },
+      {
+        key: 'actions',
+        header: t('colActions'),
+        className: 'text-end w-12',
+        render: (row: AppealDto) => (
+          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <IconButton label={t('viewDetails')} onClick={() => setSelectedAppeal(row)}>
+              <Eye className="h-4 w-4" />
+            </IconButton>
+          </div>
+        ),
+      },
+    ],
+    [t],
+  );
+
+  const totalCount = activeBucket?.total ?? listData.length;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -226,16 +236,11 @@ export default function AppealsPage() {
         <div className="flex items-center gap-3">
           <AlertTriangle className="h-6 w-6 text-accent-yellow" />
           <div>
-            <h1 className="text-2xl font-bold text-text-primary">Appeals</h1>
+            <h1 className="text-2xl font-bold text-text-primary">{t('title')}</h1>
             <p className="text-sm text-text-muted">
-              {listTab === 'current'
-                ? 'Open appeals on your assigned orders: review payer proof files and resolve or reject. Support and administrators can intervene when needed.'
-                : 'Completed appeals on your orders: accepted (resolved) or rejected (cancelled).'}{' '}
+              {listTab === 'current' ? t('subtitleCurrent') : t('subtitleHistory')}{' '}
               <span className="text-text-secondary">
-                {(activeBucket?.total ?? listData.length) === 1
-                  ? `${activeBucket?.total ?? listData.length} appeal`
-                  : `${activeBucket?.total ?? listData.length} appeals`}{' '}
-                ({listData.length} on this page)
+                {t('countLine', { total: totalCount, pageCount: listData.length })}
               </span>
             </p>
           </div>
@@ -243,8 +248,8 @@ export default function AppealsPage() {
         <div className="flex flex-wrap items-center gap-3 sm:justify-end">
           <Tabs
             tabs={[
-              { key: 'current', label: 'Current' },
-              { key: 'history', label: 'History' },
+              { key: 'current', label: t('tabCurrent') },
+              { key: 'history', label: t('tabHistory') },
             ]}
             active={listTab}
             onChange={(k) => setListTab(k as 'current' | 'history')}
@@ -258,7 +263,7 @@ export default function AppealsPage() {
         keyExtractor={(row) => row.id}
         loading={activeLoading}
         onRowClick={(row) => setSelectedAppeal(row)}
-        emptyMessage={listTab === 'current' ? 'No open appeals' : 'No completed appeals yet'}
+        emptyMessage={listTab === 'current' ? t('emptyCurrent') : t('emptyHistory')}
       />
 
       <PaginationControls
@@ -266,46 +271,46 @@ export default function AppealsPage() {
         totalPages={activeTotalPages}
         onPageChange={setActivePage}
         totalItems={activeBucket?.total ?? 0}
-        itemLabel="appeals"
+        itemLabel={t('itemLabel')}
         variant="minimal"
       />
 
       <Modal
         open={!!selectedAppeal}
         onClose={() => setSelectedAppeal(null)}
-        title="Appeal Details"
+        title={t('modalTitle')}
         size="lg"
       >
         {selectedAppeal && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <DetailRow label="Appeal ID" value={selectedAppeal.id} mono />
-              <DetailRow label="Pay-In order ID" value={selectedAppeal.payin_order_id} mono />
-              <DetailRow label="Created" value={formatDateFull(selectedAppeal.created_at)} />
+              <DetailRow label={t('colAppealId')} value={selectedAppeal.id} mono />
+              <DetailRow label={t('modalPayinId')} value={selectedAppeal.payin_order_id} mono />
+              <DetailRow label={t('colCreated')} value={formatDateFull(selectedAppeal.created_at)} />
               <DetailRow
-                label="Order amount"
+                label={t('colOrderAmount')}
                 value={formatCurrency(selectedAppeal.order_amount, selectedAppeal.currency)}
               />
               <DetailRow
-                label="Paid amount (reported by payer)"
+                label={t('paidReportedLabel')}
                 value={formatCurrency(selectedAppeal.paid_amount, selectedAppeal.currency)}
               />
-              <DetailRow label="Bank" value={selectedAppeal.bank || '—'} />
-              <DetailRow label="Requisite (number)" value={selectedAppeal.requisite_number || '—'} mono />
-              <DetailRow label="Card / account owner" value={selectedAppeal.requisite_owner || '—'} />
-              <DetailRow label="Status">
+              <DetailRow label={t('modalBank')} value={selectedAppeal.bank || t('dash')} />
+              <DetailRow label={t('requisiteNumber')} value={selectedAppeal.requisite_number || t('dash')} mono />
+              <DetailRow label={t('cardOwner')} value={selectedAppeal.requisite_owner || t('dash')} />
+              <DetailRow label={t('colStatus')}>
                 <Badge variant={appealStatusVariant[selectedAppeal.status]} dot>
-                  {selectedAppeal.status}
+                  {appealStatusLabel(t, selectedAppeal.status)}
                 </Badge>
               </DetailRow>
             </div>
 
             {selectedAppeal.proofs_of_payment.length > 0 && (
               <div className="space-y-3">
-                <h3 className="text-sm font-medium text-text-secondary">Proof files</h3>
+                <h3 className="text-sm font-medium text-text-secondary">{t('proofFilesHeading')}</h3>
                 <ProofThumbnailGrid
                   fileIds={selectedAppeal.proofs_of_payment}
-                  alt="Proof of payment"
+                  alt={t('proofAlt')}
                   onOpen={setViewingProof}
                   columnsClass="grid-cols-1 sm:grid-cols-3"
                   tileMaxHeightClass="max-h-36"
@@ -326,7 +331,7 @@ export default function AppealsPage() {
                     })
                   }
                 >
-                  Reject appeal
+                  {t('rejectAppeal')}
                 </Button>
                 <Button
                   size="sm"
@@ -338,7 +343,7 @@ export default function AppealsPage() {
                     })
                   }
                 >
-                  Accept (resolved)
+                  {t('acceptResolved')}
                 </Button>
               </div>
             )}
@@ -349,14 +354,14 @@ export default function AppealsPage() {
       <Modal
         open={!!viewingProof}
         onClose={() => setViewingProof(null)}
-        title="Proof of Payment"
+        title={t('proofModalTitle')}
         size="xl"
       >
         {viewingProof && (
           <div className="flex min-h-[40vh] items-center justify-center">
             <AuthorizedFilePreview
               path={internalPaths.fileById(viewingProof)}
-              alt="Proof of payment"
+              alt={t('proofAlt')}
               className="max-h-[75vh]"
             />
           </div>
@@ -364,13 +369,4 @@ export default function AppealsPage() {
       </Modal>
     </div>
   );
-}
-
-function requisiteShort(row: AppealDto): string {
-  const parts = [row.requisite_number, row.bank].filter(Boolean);
-  return parts.length > 0 ? parts.join(' · ') : '—';
-}
-
-function requisiteLabel(row: AppealDto): string {
-  return requisiteShort(row);
 }

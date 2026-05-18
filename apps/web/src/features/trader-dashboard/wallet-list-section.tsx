@@ -2,7 +2,8 @@
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
+import { useTranslations } from 'next-intl';
 import { Plus, ReceiptText, Wallet } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -47,6 +48,7 @@ function parseAmount(raw: string | number): number {
 }
 
 export function TraderDashboardWalletListSection() {
+  const t = useTranslations('Trader.Wallet');
   const { data: balances, isLoading: balancesLoading } = useQuery({
     queryKey: traderKeys.balancesMe(),
     queryFn: () => api.get<TraderMeBalanceRow[]>(internalPaths.traderMeBalances),
@@ -96,7 +98,7 @@ export function TraderDashboardWalletListSection() {
     <section className="rounded-xl border border-border-primary bg-bg-secondary/60 p-4 sm:p-5">
       <div className="mb-4 flex items-center gap-2">
         <Wallet className="h-5 w-5 text-accent-blue" />
-        <h2 className="text-lg font-semibold text-text-primary">Wallet list</h2>
+        <h2 className="text-lg font-semibold text-text-primary">{t('title')}</h2>
       </div>
 
       {loading ? (
@@ -109,7 +111,7 @@ export function TraderDashboardWalletListSection() {
           ))}
         </div>
       ) : wallets.length === 0 ? (
-        <p className="text-sm text-text-muted">No currency balances on file yet.</p>
+        <p className="text-sm text-text-muted">{t('empty')}</p>
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-1 scroll-smooth">
           {wallets.map((w, idx) => {
@@ -135,7 +137,7 @@ export function TraderDashboardWalletListSection() {
 
               {w.overdraftUsd !== undefined ? (
                 <p className="relative mt-2 text-xs text-white/75">
-                  Credit limit (overdraft):{' '}
+                  {t('creditLimit')}{' '}
                   <span className="font-mono tabular-nums text-white/95">
                     {formatCurrency(w.overdraftUsd, w.currency)}
                   </span>
@@ -154,7 +156,7 @@ export function TraderDashboardWalletListSection() {
                     w.isCrypto ? 'bg-white/20 text-white' : 'bg-white/15 text-white/95',
                   )}
                 >
-                  {w.isCrypto ? 'Crypto' : 'Fiat'}
+                  {w.isCrypto ? t('crypto') : t('fiat')}
                 </span>
               </div>
 
@@ -164,8 +166,8 @@ export function TraderDashboardWalletListSection() {
                     <Link
                       href="/trader/balance#wallet-deposit-instructions"
                       className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white transition hover:bg-white/25"
-                      aria-label="Top up USDT"
-                      title="Top up USDT"
+                      aria-label={t('topUpUsdt')}
+                      title={t('topUpUsdt')}
                     >
                       <Plus className="h-5 w-5" />
                     </Link>
@@ -178,7 +180,7 @@ export function TraderDashboardWalletListSection() {
                   className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/25"
                 >
                   <ReceiptText className="h-4 w-4 shrink-0" />
-                  Transactions
+                  {t('transactions')}
                 </Link>
               </div>
               </article>

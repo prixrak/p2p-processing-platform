@@ -27,6 +27,9 @@ export function TraderVolumeChart({
   data,
   currency,
   empty,
+  payInName = 'Pay-In',
+  payOutName = 'Pay-Out',
+  emptyMessage = 'No volume data for this period',
 }: {
   data: Array<{
     date: string;
@@ -36,11 +39,14 @@ export function TraderVolumeChart({
   }>;
   currency: string;
   empty: boolean;
+  payInName?: string;
+  payOutName?: string;
+  emptyMessage?: string;
 }) {
   if (empty) {
     return (
       <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-border-secondary">
-        <p className="text-sm text-text-muted">No volume data for this period</p>
+        <p className="text-sm text-text-muted">{emptyMessage}</p>
       </div>
     );
   }
@@ -67,7 +73,7 @@ export function TraderVolumeChart({
             formatter={(value, name) => {
               const raw = value ?? 0;
               const n = typeof raw === 'number' ? raw : parseFloat(String(raw));
-              const label = name === 'payinVolume' ? 'Pay-In' : 'Pay-Out';
+              const label = name === 'payinVolume' ? payInName : payOutName;
               return [
                 `${Number.isFinite(n) ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'} ${currency}`,
                 String(label),
@@ -75,8 +81,14 @@ export function TraderVolumeChart({
             }}
           />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Bar dataKey="payinVolume" name="Pay-In" stackId="vol" fill={ACCENT} />
-          <Bar dataKey="payoutVolume" name="Pay-Out" stackId="vol" fill={SUCCESS} radius={[4, 4, 0, 0]} />
+          <Bar dataKey="payinVolume" name={payInName} stackId="vol" fill={ACCENT} />
+          <Bar
+            dataKey="payoutVolume"
+            name={payOutName}
+            stackId="vol"
+            fill={SUCCESS}
+            radius={[4, 4, 0, 0]}
+          />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -100,20 +112,26 @@ function statusBarData(
 
 export function TraderPayinStatusChart({
   counts,
+  statusLabel = payinStatusLabel,
+  emptyMessage = 'No Pay-In orders in this period',
+  ordersAxisLabel = 'Orders',
 }: {
   counts: Record<string, number>;
+  statusLabel?: (s: string) => string;
+  emptyMessage?: string;
+  ordersAxisLabel?: string;
 }) {
   const data = statusBarData(
     Object.values(PayInOrderStatus),
     counts,
-    payinStatusLabel,
+    statusLabel,
   );
 
   const hasAny = data.some((d) => d.count > 0);
   if (!hasAny) {
     return (
       <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border-secondary">
-        <p className="text-sm text-text-muted">No Pay-In orders in this period</p>
+        <p className="text-sm text-text-muted">{emptyMessage}</p>
       </div>
     );
   }
@@ -138,9 +156,9 @@ export function TraderPayinStatusChart({
               border: `1px solid ${BORDER_PRIMARY}`,
               borderRadius: 8,
             }}
-            formatter={(value) => [String(value ?? 0), 'Orders']}
+            formatter={(value) => [String(value ?? 0), ordersAxisLabel]}
           />
-          <Bar dataKey="count" fill={ACCENT} radius={[4, 4, 0, 0]} name="Orders" />
+          <Bar dataKey="count" fill={ACCENT} radius={[4, 4, 0, 0]} name={ordersAxisLabel} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -149,20 +167,26 @@ export function TraderPayinStatusChart({
 
 export function TraderPayoutStatusChart({
   counts,
+  statusLabel = payoutStatusLabel,
+  emptyMessage = 'No Pay-Out orders in this period',
+  ordersAxisLabel = 'Orders',
 }: {
   counts: Record<string, number>;
+  statusLabel?: (s: string) => string;
+  emptyMessage?: string;
+  ordersAxisLabel?: string;
 }) {
   const data = statusBarData(
     Object.values(PayOutOrderStatus),
     counts,
-    payoutStatusLabel,
+    statusLabel,
   );
 
   const hasAny = data.some((d) => d.count > 0);
   if (!hasAny) {
     return (
       <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border-secondary">
-        <p className="text-sm text-text-muted">No Pay-Out orders in this period</p>
+        <p className="text-sm text-text-muted">{emptyMessage}</p>
       </div>
     );
   }
@@ -187,9 +211,9 @@ export function TraderPayoutStatusChart({
               border: `1px solid ${BORDER_PRIMARY}`,
               borderRadius: 8,
             }}
-            formatter={(value) => [String(value ?? 0), 'Orders']}
+            formatter={(value) => [String(value ?? 0), ordersAxisLabel]}
           />
-          <Bar dataKey="count" fill={SUCCESS} radius={[4, 4, 0, 0]} name="Orders" />
+          <Bar dataKey="count" fill={SUCCESS} radius={[4, 4, 0, 0]} name={ordersAxisLabel} />
         </BarChart>
       </ResponsiveContainer>
     </div>

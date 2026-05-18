@@ -1,6 +1,7 @@
 'use client';
 
 import type { UseMutationResult } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import type { AppealDto } from '@p2p/shared';
 import { Modal } from '@/components/ui/modal';
 import { DetailRow } from '@/components/ui/detail-row';
@@ -18,6 +19,156 @@ import {
 } from './payin-appeal-decision-dropdown';
 import type { FinalizeKind } from './payin-types';
 import { CountdownTimer, PayInOrderStatusColumnCell } from './payin-order-cells';
+
+function PayInOrderDetailBody({
+  order,
+  historyMode,
+  clockOffsetMs,
+  finalizeMenu,
+  setFinalizeMenu,
+  appealDecisionMenu,
+  setAppealDecisionMenu,
+  resolveAppealMutation,
+  onPickFinalizeKind,
+  onOpenReceipts,
+}: {
+  order: TraderPayInOrderDto;
+  historyMode: boolean;
+  clockOffsetMs: number;
+  finalizeMenu: OrderFinalizeMenuState;
+  setFinalizeMenu: (state: OrderFinalizeMenuState) => void;
+  appealDecisionMenu: AppealDecisionMenuState;
+  setAppealDecisionMenu: (state: AppealDecisionMenuState) => void;
+  resolveAppealMutation: Pick<
+    UseMutationResult<
+      AppealDto,
+      unknown,
+      { appealId: string; decision: AppealStatus },
+      unknown
+    >,
+    'mutate' | 'isPending' | 'variables'
+  >;
+  onPickFinalizeKind: (kind: FinalizeKind, order: TraderPayInOrderDto) => void;
+  onOpenReceipts: (order: TraderPayInOrderDto) => void;
+}) {
+  const t = useTranslations('Trader.Payin.detail');
+  const tPayin = useTranslations('Trader.Payin');
+  const snap = payinOrderRequisiteSnapshot(order);
+  const dash = tPayin('dash');
+
+  const openAppeal = (order.appeals ?? []).find((a) => a.status === AppealStatus.OPEN);
+  const showAppealActions =
+    order.status === PayInOrderStatus.APPEAL && openAppeal !== undefined;
+  const appealBusy =
+    resolveAppealMutation.isPending &&
+    resolveAppealMutation.variables?.appealId === openAppeal?.id;
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-3">
+        <DetailRow label={t('orderId')}>
+          <span className="inline-flex flex-wrap items-center gap-2">
+            <span className="font-mono text-xs leading-relaxed break-all text-text-primary">
+              {order.id}
+            </span>
+            <OrderIdCopyCell id={order.id} withToast label={t('orderId')} />
+          </span>
+        </DetailRow>
+
+        <DetailRow label={t('created')} value={formatDateFull(order.created_at)} />
+
+        {historyMode ? (
+          <DetailRow
+            label={t('completionTime')}
+            value={order.completed_at != null ? formatDateFull(order.completed_at) : dash}
+          />
+        ) : (
+          <DetailRow label={t('timeToComplete')}>
+            <CountdownTimer
+              autocloseAt={order.autoclose_at}
+              createdAt={order.created_at}
+              status={order.status}
+              clockOffsetMs={clockOffsetMs}
+            />
+          </DetailRow>
+        )}
+
+        <DetailRow label={t('paymentAmount')}>
+          <div className="flex flex-col gap-0.5 leading-tight">
+            <span className="text-sm font-semibold text-text-primary tabular-nums">
+              {formatCurrency(order.amount, order.currency)}
+            </span>
+            {order.amount_equivalent_usdt != null ? (
+              <span className="text-xs font-normal tabular-nums text-text-muted">
+                {order.amount_equivalent_usdt.toFixed(2)} USDT
+              </span>
+            ) : null}
+          </div>
+        </DetailRow>
+
+        <DetailRow label={t('requisiteType')} value={snap.type ?? dash} />
+        <DetailRow label={t('bank')} value={snap.bank ?? dash} />
+
+        <DetailRow label={t('requisiteNumber')}>
+          {snap.copyValue ? (
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span className="font-mono text-sm leading-relaxed break-all text-text-primary">
+                {snap.copyValue}
+              </span>
+              <OrderIdCopyCell
+                id={snap.copyValue}
+                withToast
+                label={t('requisiteNumber')}
+              />
+            </span>
+          ) : (
+            <span className="text-sm text-text-muted">{dash}</span>
+          )}
+        </DetailRow>
+
+        <DetailRow label={t('owner')} value={snap.owner ?? dash} />
+
+        <DetailRow label={t('status')}>
+          <div className="flex justify-start">
+            <PayInOrderStatusColumnCell row={order} onOpenReceipts={onOpenReceipts} />
+          </div>
+        </DetailRow>
+      </div>
+
+      <div className="flex flex-wrap justify-end gap-2 border-t border-border-primary pt-4">
+        {showAppealActions && openAppeal ? (
+          <PayInAppealDecisionDropdown
+            orderId={order.id}
+            appealId={openAppeal.id}
+            menuState={appealDecisionMenu}
+            setMenuState={setAppealDecisionMenu}
+            menuAnchor="modal"
+            loading={appealBusy}
+            onReject={() =>
+              resolveAppealMutation.mutate({
+                appealId: openAppeal.id,
+                decision: AppealStatus.REJECTED,
+              })
+            }
+            onAccept={() =>
+              resolveAppealMutation.mutate({
+                appealId: openAppeal.id,
+                decision: AppealStatus.RESOLVED,
+              })
+            }
+          />
+        ) : null}
+        <OrderFinalizeDropdown
+          order={order}
+          menuState={finalizeMenu}
+          setMenuState={setFinalizeMenu}
+          menuAnchor="modal"
+          onPickKind={(kind) => onPickFinalizeKind(kind, order)}
+        />
+      </div>
+    </div>
+  );
+}
 
 export function PayInOrderDetailModal({
   selectedOrder,
@@ -52,133 +203,24 @@ export function PayInOrderDetailModal({
   onPickFinalizeKind: (kind: FinalizeKind, order: TraderPayInOrderDto) => void;
   onOpenReceipts: (order: TraderPayInOrderDto) => void;
 }) {
+  const t = useTranslations('Trader.Payin.detail');
+
   return (
-    <Modal open={!!selectedOrder} onClose={onClose} title="Pay-In Order Details" size="lg">
-      {(() => {
-        const order = selectedOrder;
-        if (!order) return null;
-        const snap = payinOrderRequisiteSnapshot(order);
-        return (
-        <div className="space-y-4">
-          <div className="space-y-3">
-            <DetailRow label="Order ID">
-              <span className="inline-flex flex-wrap items-center gap-2">
-                <span className="font-mono text-xs leading-relaxed break-all text-text-primary">
-                  {order.id}
-                </span>
-                <OrderIdCopyCell id={order.id} withToast label="Order ID" />
-              </span>
-            </DetailRow>
-
-            <DetailRow label="Created" value={formatDateFull(order.created_at)} />
-
-            {historyMode ? (
-              <DetailRow
-                label="Completion time"
-                value={
-                  order.completed_at != null ? formatDateFull(order.completed_at) : '—'
-                }
-              />
-            ) : (
-              <DetailRow label="Time to complete">
-                <CountdownTimer
-                  autocloseAt={order.autoclose_at}
-                  createdAt={order.created_at}
-                  status={order.status}
-                  clockOffsetMs={clockOffsetMs}
-                />
-              </DetailRow>
-            )}
-
-            <DetailRow label="Payment amount">
-              <div className="flex flex-col gap-0.5 leading-tight">
-                <span className="text-sm font-semibold text-text-primary tabular-nums">
-                  {formatCurrency(order.amount, order.currency)}
-                </span>
-                {order.amount_equivalent_usdt != null ? (
-                  <span className="text-xs font-normal tabular-nums text-text-muted">
-                    {order.amount_equivalent_usdt.toFixed(2)} USDT
-                  </span>
-                ) : null}
-              </div>
-            </DetailRow>
-
-            <DetailRow label="Requisite type" value={snap.type ?? '—'} />
-            <DetailRow label="Bank" value={snap.bank ?? '—'} />
-
-            <DetailRow label="Requisite number">
-              {snap.copyValue ? (
-                <span className="inline-flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-sm leading-relaxed break-all text-text-primary">
-                    {snap.copyValue}
-                  </span>
-                  <OrderIdCopyCell
-                    id={snap.copyValue}
-                    withToast
-                    label="Requisite number"
-                  />
-                </span>
-              ) : (
-                <span className="text-sm text-text-muted">—</span>
-              )}
-            </DetailRow>
-
-            <DetailRow label="Owner" value={snap.owner ?? '—'} />
-
-            <DetailRow label="Status">
-              <div className="flex justify-start">
-                <PayInOrderStatusColumnCell row={order} onOpenReceipts={onOpenReceipts} />
-              </div>
-            </DetailRow>
-          </div>
-
-          <div className="flex flex-wrap justify-end gap-2 border-t border-border-primary pt-4">
-            {(() => {
-              const openAppeal = (order.appeals ?? []).find((a) => a.status === AppealStatus.OPEN);
-              const showAppealActions =
-                order.status === PayInOrderStatus.APPEAL && openAppeal !== undefined;
-              const appealBusy =
-                resolveAppealMutation.isPending &&
-                resolveAppealMutation.variables?.appealId === openAppeal?.id;
-
-              return (
-                <>
-                  {showAppealActions && (
-                    <PayInAppealDecisionDropdown
-                      orderId={order.id}
-                      appealId={openAppeal!.id}
-                      menuState={appealDecisionMenu}
-                      setMenuState={setAppealDecisionMenu}
-                      menuAnchor="modal"
-                      loading={appealBusy}
-                      onReject={() =>
-                        resolveAppealMutation.mutate({
-                          appealId: openAppeal!.id,
-                          decision: AppealStatus.REJECTED,
-                        })
-                      }
-                      onAccept={() =>
-                        resolveAppealMutation.mutate({
-                          appealId: openAppeal!.id,
-                          decision: AppealStatus.RESOLVED,
-                        })
-                      }
-                    />
-                  )}
-                  <OrderFinalizeDropdown
-                    order={order}
-                    menuState={finalizeMenu}
-                    setMenuState={setFinalizeMenu}
-                    menuAnchor="modal"
-                    onPickKind={(kind) => onPickFinalizeKind(kind, order)}
-                  />
-                </>
-              );
-            })()}
-          </div>
-        </div>
-        );
-      })()}
+    <Modal open={!!selectedOrder} onClose={onClose} title={t('modalTitle')} size="lg">
+      {selectedOrder ? (
+        <PayInOrderDetailBody
+          order={selectedOrder}
+          historyMode={historyMode}
+          clockOffsetMs={clockOffsetMs}
+          finalizeMenu={finalizeMenu}
+          setFinalizeMenu={setFinalizeMenu}
+          appealDecisionMenu={appealDecisionMenu}
+          setAppealDecisionMenu={setAppealDecisionMenu}
+          resolveAppealMutation={resolveAppealMutation}
+          onPickFinalizeKind={onPickFinalizeKind}
+          onOpenReceipts={onOpenReceipts}
+        />
+      ) : null}
     </Modal>
   );
 }

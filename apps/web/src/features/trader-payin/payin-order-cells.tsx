@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { FileText, Scale, CheckCircle2, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { IconButton } from '@/components/ui/icon-button';
@@ -9,6 +10,7 @@ import { PayinOrderStatusBadge } from '@/components/ui/order-status-badge';
 import { AppealStatus, PayInOrderStatus } from '@p2p/shared';
 import type { TraderPayInOrderDto } from '@p2p/shared';
 import { cn } from '@/lib/utils';
+import { payinStatusLabel } from '@/lib/order-status-ui';
 import { orderPayinProofFileIds } from './payin-finalize-utils';
 import { payinDeadlineElapsedShowsCanceled } from './payin-countdown-utils';
 
@@ -57,12 +59,11 @@ export function CountdownTimer({
   clockOffsetMs = 0,
 }: {
   autocloseAt: number | null;
-  /** When set with `autocloseAt`, remaining time is colored relative to the full window. */
   createdAt?: number | null;
   status?: PayInOrderStatus;
-  /** Matches API deadline (`autocloseAt`) to server time via the response `Date` header. */
   clockOffsetMs?: number;
 }) {
+  const t = useTranslations('Trader.Payin.countdown');
   const [remainingMs, setRemainingMs] = useState(0);
 
   useEffect(() => {
@@ -79,7 +80,7 @@ export function CountdownTimer({
     return () => clearInterval(interval);
   }, [autocloseAt, clockOffsetMs]);
 
-  if (!autocloseAt) return <span className="text-text-muted">-</span>;
+  if (!autocloseAt) return <span className="text-text-muted">{t('placeholder')}</span>;
 
   const displayRemainingMs = Math.max(0, remainingMs);
   const showCanceled = payinDeadlineElapsedShowsCanceled(status);
@@ -91,7 +92,6 @@ export function CountdownTimer({
       ? 'critical'
       : computeUrgency(displayRemainingMs, createdAt, autocloseAt);
 
-  /** Past `autoclose_at` while still active: slightly stronger than “critical”, without heavy glow. */
   const overdueActive = !showCanceled && displayRemainingMs <= 0;
 
   return (
@@ -102,9 +102,9 @@ export function CountdownTimer({
           ? 'border border-red-400/55 bg-red-950/25 !text-red-400/90'
           : urgencyClass[urgency],
       )}
-      title={overdueActive ? 'Payment deadline passed — resolve or cancel explicitly' : undefined}
+      title={overdueActive ? t('overdueTitle') : undefined}
     >
-      {showCanceled ? 'Canceled' : `${minutes}:${seconds.toString().padStart(2, '0')}`}
+      {showCanceled ? t('canceled') : `${minutes}:${seconds.toString().padStart(2, '0')}`}
     </span>
   );
 }
@@ -118,9 +118,9 @@ function AppealInlineSummary({
   shortLabels,
 }: {
   row: TraderPayInOrderDto;
-  /** Shorter copy when this is the only status badge (order status is already `APPEAL`). */
   shortLabels: boolean;
 }) {
+  const t = useTranslations('Trader.Payin.appealBadge');
   const appeals = row.appeals ?? [];
   if (appeals.length === 0) {
     if (row.status === PayInOrderStatus.APPEAL) {
@@ -130,7 +130,7 @@ function AppealInlineSummary({
           className="max-w-full shrink truncate px-2 py-px text-[11px]"
           leadingIcon={<Scale strokeWidth={2} />}
         >
-          {shortLabels ? 'Pending' : 'Appeal pending'}
+          {shortLabels ? t('pendingShort') : t('pendingLong')}
         </Badge>
       );
     }
@@ -140,15 +140,16 @@ function AppealInlineSummary({
   const open = appeals.filter((a) => a.status === AppealStatus.OPEN);
   const rejected = appeals.some((a) => a.status === AppealStatus.REJECTED);
   if (open.length > 0) {
+    const many = open.length > 1;
+    const shortText = many ? t('openShortMany', { count: open.length }) : t('openShortOne');
+    const longText = many ? t('openLongMany', { count: open.length }) : t('openLongOne');
     return (
       <Badge
         variant="warning"
         className="max-w-full shrink truncate px-2 py-px text-[11px]"
         leadingIcon={<Scale strokeWidth={2} />}
       >
-        {shortLabels
-          ? `Open${open.length > 1 ? ` (${open.length})` : ''}`
-          : `Appeal open${open.length > 1 ? ` (${open.length})` : ''}`}
+        {shortLabels ? shortText : longText}
       </Badge>
     );
   }
@@ -159,7 +160,7 @@ function AppealInlineSummary({
         className="max-w-full shrink truncate px-2 py-px text-[11px]"
         leadingIcon={<XCircle strokeWidth={2} />}
       >
-        {shortLabels ? 'Rejected' : 'Appeal rejected'}
+        {shortLabels ? t('rejectedShort') : t('rejectedLong')}
       </Badge>
     );
   }
@@ -169,7 +170,7 @@ function AppealInlineSummary({
       className="max-w-full shrink truncate px-2 py-px text-[11px]"
       leadingIcon={<CheckCircle2 strokeWidth={2} />}
     >
-      {shortLabels ? 'Resolved' : 'Appeal resolved'}
+      {shortLabels ? t('resolvedShort') : t('resolvedLong')}
     </Badge>
   );
 }
@@ -182,22 +183,43 @@ export function PayInOrderStatusColumnCell({
   row: TraderPayInOrderDto;
   onOpenReceipts: (row: TraderPayInOrderDto) => void;
 }) {
+  const t = useTranslations('Trader.Payin');
+  const statusLabels = useMemo(
+    () => ({
+      [PayInOrderStatus.PENDING]: t('statuses.PENDING'),
+      [PayInOrderStatus.NEW]: t('statuses.NEW'),
+      [PayInOrderStatus.VERIFIED]: t('statuses.VERIFIED'),
+      [PayInOrderStatus.PAID]: t('statuses.PAID'),
+      [PayInOrderStatus.UNDERPAID]: t('statuses.UNDERPAID'),
+      [PayInOrderStatus.OVERPAID]: t('statuses.OVERPAID'),
+      [PayInOrderStatus.APPEAL]: t('statuses.APPEAL'),
+      [PayInOrderStatus.CANCELED]: t('statuses.CANCELED'),
+      [PayInOrderStatus.UPLOAD_FAILED]: t('statuses.UPLOAD_FAILED'),
+      [PayInOrderStatus.NO_REQUISITE]: t('statuses.NO_REQUISITE'),
+    }),
+    [t],
+  );
+
   const proofIds = orderPayinProofFileIds(row);
   const proofCount = proofIds.length;
   const hasProofs = proofCount > 0;
 
-  /** Avoid two badges both reading “Appeal …” when order status is already `APPEAL`. */
   const appealCarriesPrimaryStatus = row.status === PayInOrderStatus.APPEAL;
 
   return (
     <div className="flex max-w-full flex-row flex-nowrap items-center justify-center gap-1 py-0.5">
       <span className="inline-flex min-w-0 max-w-full flex-row flex-nowrap items-center justify-center gap-1">
-        {!appealCarriesPrimaryStatus && <PayinOrderStatusBadge status={row.status} />}
+        {!appealCarriesPrimaryStatus && (
+          <PayinOrderStatusBadge
+            status={row.status}
+            label={statusLabels[row.status as PayInOrderStatus] ?? payinStatusLabel(row.status)}
+          />
+        )}
         <AppealInlineSummary row={row} shortLabels={appealCarriesPrimaryStatus} />
       </span>
       {hasProofs ? (
         <IconButton
-          label={`View payment proofs (${proofCount})`}
+          label={t('proofViewLabel', { count: proofCount })}
           tooltipWide
           variant="ghost"
           className="!min-h-8 !min-w-8 shrink-0 !p-1.5 text-text-primary hover:bg-bg-hover"

@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { PayoutOrderStatusBadge } from '@/components/ui/order-status-badge';
 import { Modal } from '@/components/ui/modal';
 import type { UseMutationResult } from '@tanstack/react-query';
@@ -46,62 +47,57 @@ export function TraderPayoutOrderDetailModal({
     { orderId: string; fileId: string }
   >;
 }) {
+  const t = useTranslations('Trader.Payout.detail');
   const showFullOrderMeta = selectedOrder?.requisites_visible !== false;
 
   return (
-    <Modal
-      open={!!selectedOrder}
-      onClose={onClose}
-      title="Pay-Out Order Details"
-      size="lg"
-    >
+    <Modal open={!!selectedOrder} onClose={onClose} title={t('modalTitle')} size="lg">
       {selectedOrder && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <DetailRow label="Order ID" value={selectedOrder.id} mono />
+            <DetailRow label={t('orderId')} value={selectedOrder.id} mono />
             {showFullOrderMeta && (
-              <DetailRow label="Request ID" value={selectedOrder.request_id} mono />
+              <DetailRow label={t('requestId')} value={selectedOrder.request_id} mono />
             )}
             <DetailRow
-              label="Amount"
+              label={t('amount')}
               value={formatCurrency(selectedOrder.amount, selectedOrder.currency)}
             />
-            <DetailRow label="Currency" value={selectedOrder.currency} />
-            <DetailRow label="Status">
+            <DetailRow label={t('currency')} value={selectedOrder.currency} />
+            <DetailRow label={t('status')}>
               <PayoutOrderStatusBadge status={selectedOrder.status} />
             </DetailRow>
             {selectedOrder.pool_close_deadline_at != null && (
               <DetailRow
-                label="Pool deadline"
+                label={t('poolDeadline')}
                 value={formatDateFull(selectedOrder.pool_close_deadline_at)}
               />
             )}
             {showFullOrderMeta && (
               <>
-                <DetailRow label="Rate" value={String(selectedOrder.rate)} />
-                <DetailRow label="Partner Amount" value={String(selectedOrder.partner_amount)} />
-                <DetailRow label="Fee" value={`${selectedOrder.percent_fee}%`} />
+                <DetailRow label={t('rate')} value={String(selectedOrder.rate)} />
+                <DetailRow label={t('partnerAmount')} value={String(selectedOrder.partner_amount)} />
+                <DetailRow label={t('fee')} value={`${selectedOrder.percent_fee}%`} />
               </>
             )}
-            <DetailRow label="Created" value={formatDateFull(selectedOrder.created_at)} />
+            <DetailRow label={t('created')} value={formatDateFull(selectedOrder.created_at)} />
             {showFullOrderMeta && selectedOrder.start_at != null && (
-              <DetailRow label="Started" value={formatDateFull(selectedOrder.start_at)} />
+              <DetailRow label={t('started')} value={formatDateFull(selectedOrder.start_at)} />
             )}
             {showFullOrderMeta && selectedOrder.end_at != null && (
-              <DetailRow label="Completed" value={formatDateFull(selectedOrder.end_at)} />
+              <DetailRow label={t('completed')} value={formatDateFull(selectedOrder.end_at)} />
             )}
           </div>
 
-          {/* Not gated on `requisites_visible`: pool rows hide requisites but may still carry a proof id after assign/sync. */}
           {payoutCompletionProofFileIds(selectedOrder).length > 0 && (
             <div className="rounded-lg border border-border-primary p-4">
-              <h3 className="mb-3 text-sm font-medium text-text-secondary">Completion proof</h3>
+              <h3 className="mb-3 text-sm font-medium text-text-secondary">{t('completionProof')}</h3>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {payoutCompletionProofFileIds(selectedOrder).map((fileId) => (
                   <AuthorizedFilePreview
                     key={fileId}
                     path={internalPaths.fileById(fileId)}
-                    alt="Pay-out completion proof"
+                    alt={t('proofAlt')}
                     className="max-h-80"
                   />
                 ))}
@@ -110,19 +106,17 @@ export function TraderPayoutOrderDetailModal({
           )}
 
           {!showFullOrderMeta && (
-            <p className="text-sm text-text-secondary">
-              Recipient requisites and owner data are available after you take this order from the pool.
-            </p>
+            <p className="text-sm text-text-secondary">{t('recipientHiddenHint')}</p>
           )}
 
           {showFullOrderMeta && (
             <div className="rounded-lg border border-border-primary p-4">
-              <h3 className="mb-3 text-sm font-medium text-text-secondary">Recipient Details</h3>
+              <h3 className="mb-3 text-sm font-medium text-text-secondary">{t('recipientSection')}</h3>
               <div className="grid grid-cols-2 gap-3">
-                <DetailRow label="Type" value={selectedOrder.details.type} />
-                <DetailRow label="Number" value={selectedOrder.details.number} mono />
-                <DetailRow label="Owner" value={selectedOrder.details.owner ?? '-'} />
-                <DetailRow label="Code" value={selectedOrder.details.code ?? '-'} />
+                <DetailRow label={t('recipientType')} value={selectedOrder.details.type} />
+                <DetailRow label={t('recipientNumber')} value={selectedOrder.details.number} mono />
+                <DetailRow label={t('recipientOwner')} value={selectedOrder.details.owner ?? '-'} />
+                <DetailRow label={t('recipientCode')} value={selectedOrder.details.code ?? '-'} />
               </div>
             </div>
           )}

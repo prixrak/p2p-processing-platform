@@ -13,6 +13,7 @@ import {
   Settings,
   Wallet,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { UserRole } from '@p2p/shared';
 import { AuthGuard } from '@/components/auth-guard';
 import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
@@ -24,21 +25,23 @@ import {
 
 const TRADER_ALLOWED = [UserRole.TRADER] as const;
 
-const navItems: NavItem[] = [
-  { label: 'Dashboard', href: '/trader', icon: LayoutDashboard },
-  { label: 'Pay-In', href: '/trader/payin', icon: ArrowDownToLine, navBadge: 'payin-current' },
-  { label: 'Pay-Out', href: '/trader/payout', icon: ArrowUpFromLine, navBadge: 'payout-pool' },
-  { label: 'Analytics', href: '/trader/analytics', icon: PieChart },
-  { label: 'Requisites', href: '/trader/requisites', icon: CreditCard },
-  { label: 'Balance', href: '/trader/balance', icon: Wallet },
-  { label: 'Appeals', href: '/trader/appeals', icon: MessageSquareWarning },
-  { label: 'Statistics', href: '/trader/statistics', icon: BarChart3 },
-  { label: 'Telegram', href: '/trader/telegram', icon: Send },
-  { label: 'Settings', href: '/trader/settings', icon: Settings },
-];
-
 export default function TraderLayout({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
+  const t = useTranslations('Trader.Nav');
+
+  const navItems: NavItem[] = [
+    { label: t('dashboard'), href: '/trader', icon: LayoutDashboard },
+    { label: t('payin'), href: '/trader/payin', icon: ArrowDownToLine, navBadge: 'payin-current' },
+    { label: t('payout'), href: '/trader/payout', icon: ArrowUpFromLine, navBadge: 'payout-pool' },
+    { label: t('analytics'), href: '/trader/analytics', icon: PieChart },
+    { label: t('requisites'), href: '/trader/requisites', icon: CreditCard },
+    { label: t('balance'), href: '/trader/balance', icon: Wallet },
+    { label: t('appeals'), href: '/trader/appeals', icon: MessageSquareWarning },
+    { label: t('statistics'), href: '/trader/statistics', icon: BarChart3 },
+    { label: t('telegram'), href: '/trader/telegram', icon: Send },
+    { label: t('settings'), href: '/trader/settings', icon: Settings },
+  ];
+
   // Keep SSE alive across trader routes so lists refresh off Pay-In/Pay-Out/dashboard pages too.
   usePayinTraderRealtime(queryClient);
   usePayOutTraderRealtime(queryClient);

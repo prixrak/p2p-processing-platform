@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { TraderPayInOrderDto } from '@p2p/shared';
@@ -36,6 +37,7 @@ export function OrderFinalizeDropdown({
   menuAnchor: OrderFinalizeMenuAnchor;
   onPickKind: (kind: FinalizeKind) => void;
 }) {
+  const t = useTranslations('Trader.Payin.finalize');
   const opts = finalizeOptionsForOrder(order);
   const open =
     opts.length > 0 &&
@@ -135,7 +137,7 @@ export function OrderFinalizeDropdown({
             onPickKind('paid');
           }}
         >
-          Paid
+          {t('paid')}
         </button>
       )}
       {opts.includes('adjustment') && (
@@ -151,7 +153,7 @@ export function OrderFinalizeDropdown({
             onPickKind('adjustment');
           }}
         >
-          Adjustment
+          {t('adjustment')}
         </button>
       )}
       {opts.includes('cancel') && (
@@ -164,7 +166,7 @@ export function OrderFinalizeDropdown({
             onPickKind('cancel');
           }}
         >
-          Canceled
+          {t('canceled')}
         </button>
       )}
     </div>
@@ -191,7 +193,7 @@ export function OrderFinalizeDropdown({
           aria-expanded={open}
           aria-haspopup="menu"
         >
-          Change status
+          {t('changeStatus')}
           <ChevronDown
             className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')}
           />

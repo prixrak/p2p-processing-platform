@@ -3,6 +3,7 @@
 import { Settings, User, Lock, GitBranch } from 'lucide-react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { Card } from '@/components/ui/card';
 import { useAuth } from '@/hooks/use-auth';
 import { api } from '@/lib/api';
@@ -15,6 +16,7 @@ type TraderMeProfile = {
 };
 
 export default function SettingsPage() {
+  const t = useTranslations('Trader.Settings');
   const { user } = useAuth();
 
   const { data: profile } = useQuery({
@@ -30,27 +32,27 @@ export default function SettingsPage() {
       <div className="flex items-center gap-3">
         <Settings className="h-6 w-6 text-accent-blue" />
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Settings</h1>
-          <p className="text-sm text-text-muted">Manage your account preferences</p>
+          <h1 className="text-2xl font-bold text-text-primary">{t('title')}</h1>
+          <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
       </div>
 
       <Card>
         <div className="flex items-center gap-3 mb-4">
           <User className="h-5 w-5 text-text-muted" />
-          <h2 className="text-lg font-semibold text-text-primary">Profile</h2>
+          <h2 className="text-lg font-semibold text-text-primary">{t('profileTitle')}</h2>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <span className="text-xs text-text-muted">Name</span>
+            <span className="text-xs text-text-muted">{t('labelName')}</span>
             <p className="text-sm text-text-primary">{user?.name ?? '-'}</p>
           </div>
           <div>
-            <span className="text-xs text-text-muted">Email</span>
+            <span className="text-xs text-text-muted">{t('labelEmail')}</span>
             <p className="text-sm text-text-primary">{user?.email ?? '-'}</p>
           </div>
           <div>
-            <span className="text-xs text-text-muted">Role</span>
+            <span className="text-xs text-text-muted">{t('labelRole')}</span>
             <p className="text-sm text-text-primary">{user?.role ?? '-'}</p>
           </div>
         </div>
@@ -59,63 +61,62 @@ export default function SettingsPage() {
       <Card>
         <div className="flex items-center gap-3 mb-4">
           <GitBranch className="h-5 w-5 text-text-muted" />
-          <h2 className="text-lg font-semibold text-text-primary">Pay-In routing</h2>
+          <h2 className="text-lg font-semibold text-text-primary">{t('routingTitle')}</h2>
         </div>
         <div className="mb-4 space-y-3 text-sm text-text-muted">
-          <p>
-            Your assigned processing method (<span className="font-mono text-text-primary">CARD</span>{' '}
-            or <span className="font-mono text-text-primary">FORK</span>) is configured by platform staff.
-            Incoming Pay-Ins first route to Fork vs Card by global traffic %; inside your tier, idle time
-            and your cascade rating multiplier decide who gets the next assignment. You cannot switch
-            tiers yourself—contact support if you need a different mode.
+          <p className="leading-relaxed">
+            {t.rich('routingIntro', {
+              card: (chunks) => (
+                <span className="font-mono text-text-primary">{chunks}</span>
+              ),
+              fork: (chunks) => (
+                <span className="font-mono text-text-primary">{chunks}</span>
+              ),
+            })}
           </p>
           <ul className="list-inside list-disc space-y-1 text-text-secondary">
             <li>
-              Fork: <code className="text-xs">idle × max(fill_mult, trader_mult)</code>
-              (fill_mult scales with confirmed volume; new requisites get a short start boost on the fill
-              ladder).
+              {t.rich('routingBulletFork', {
+                code: (chunks) => (
+                  <code className="text-xs text-text-primary">{chunks}</code>
+                ),
+              })}
             </li>
-            <li>Card: idle × trader multiplier only (no fill ladder).</li>
-            <li>
-              If nothing matches on one tier, orders can fall back to the other tier and then to an
-              external provider.
-            </li>
+            <li>{t('routingBulletCard')}</li>
+            <li>{t('routingBulletFallback')}</li>
           </ul>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="rounded-lg border border-border-primary bg-bg-tertiary/40 px-4 py-3">
-            <span className="text-xs text-text-muted">Method</span>
+            <span className="text-xs text-text-muted">{t('labelMethod')}</span>
             <p className="mt-1 font-mono text-sm font-medium text-text-primary">{method}</p>
           </div>
           <div className="rounded-lg border border-border-primary bg-bg-tertiary/40 px-4 py-3">
-            <span className="text-xs text-text-muted">Cascade rating multiplier</span>
+            <span className="text-xs text-text-muted">{t('labelCascadeMultiplier')}</span>
             <p className="mt-1 font-mono text-sm font-medium text-text-primary">{multiplier}</p>
           </div>
         </div>
         {method === 'FORK' ? (
-          <p className="mt-4 text-sm text-text-secondary">
-            FORK (exchange-style) flows often take longer to confirm than direct card transfers.
-            Typical confirmation may be on the order of several minutes rather than one or two.
-          </p>
+          <p className="mt-4 text-sm text-text-secondary">{t('forkNote')}</p>
         ) : null}
         <p className="mt-4 text-sm">
           <Link
             href="/trader/requisites"
             className="text-accent-blue underline-offset-2 hover:underline"
           >
-            View requisites and effective amount ranges
+            {t('requisiteLink')}
           </Link>
-          {' — '}includes cascade-aware min/max per requisite.
+          {t('requisiteLinkSuffix')}
         </p>
       </Card>
 
       <Card>
         <div className="flex items-center gap-3 mb-4">
           <Lock className="h-5 w-5 text-text-muted" />
-          <h2 className="text-lg font-semibold text-text-primary">Security</h2>
+          <h2 className="text-lg font-semibold text-text-primary">{t('securityTitle')}</h2>
         </div>
         <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-border-secondary">
-          <p className="text-sm text-text-muted">Password change & 2FA management coming soon</p>
+          <p className="text-sm text-text-muted">{t('securityPlaceholder')}</p>
         </div>
       </Card>
     </div>

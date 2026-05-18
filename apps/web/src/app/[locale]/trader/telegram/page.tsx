@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import {
   Send,
   Link2,
@@ -39,6 +40,7 @@ interface TelegramSettingsApi {
 }
 
 export default function TelegramPage() {
+  const t = useTranslations('Trader.Telegram');
   const queryClient = useQueryClient();
 
   const { data: settings, isLoading } = useQuery({
@@ -54,9 +56,7 @@ export default function TelegramPage() {
         window.open(`https://t.me/${bot}?start=${encodeURIComponent(data.token)}`, '_blank');
       } else if (data.token) {
         void navigator.clipboard.writeText(data.token);
-        alert(
-          'Connect token copied. Open your Telegram bot and send /start with this token if your deployment uses a custom linking flow.',
-        );
+        alert(t('connectTokenAlert'));
       }
       queryClient.invalidateQueries({ queryKey: traderKeys.telegram() });
     },
@@ -106,8 +106,8 @@ export default function TelegramPage() {
       <div className="flex items-center gap-3">
         <Send className="h-6 w-6 text-accent-blue" />
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Telegram Notifications</h1>
-          <p className="text-sm text-text-muted">Connect your Telegram to receive instant alerts</p>
+          <h1 className="text-2xl font-bold text-text-primary">{t('title')}</h1>
+          <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
       </div>
 
@@ -129,20 +129,18 @@ export default function TelegramPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold text-text-primary">Telegram Bot</h2>
+                <h2 className="text-lg font-semibold text-text-primary">{t('botCardTitle')}</h2>
                 <Badge variant={isConnected ? 'success' : 'muted'} dot>
-                  {isConnected ? 'Connected' : 'Not Connected'}
+                  {isConnected ? t('badgeConnected') : t('badgeNotConnected')}
                 </Badge>
               </div>
               {isConnected && settings?.chatId && (
                 <p className="text-sm text-text-muted">
-                  Chat linked (id <span className="font-mono text-xs">{settings.chatId}</span>)
+                  {t('chatLinked', { chatId: settings.chatId })}
                 </p>
               )}
               {!isConnected && (
-                <p className="text-sm text-text-muted">
-                  Connect the bot to receive notifications about your orders
-                </p>
+                <p className="text-sm text-text-muted">{t('connectHint')}</p>
               )}
             </div>
           </div>
@@ -154,7 +152,7 @@ export default function TelegramPage() {
               loading={disconnectMutation.isPending}
             >
               <Unlink className="h-4 w-4" />
-              Disconnect
+              {t('disconnect')}
             </Button>
           ) : (
             <Button
@@ -162,7 +160,7 @@ export default function TelegramPage() {
               loading={connectMutation.isPending}
             >
               <Link2 className="h-4 w-4" />
-              Connect Bot
+              {t('connectBot')}
             </Button>
           )}
         </div>
@@ -171,7 +169,7 @@ export default function TelegramPage() {
       <Card className={cn(!isConnected && 'opacity-50 pointer-events-none')}>
         <div className="flex items-center gap-2 mb-6">
           <Bell className="h-5 w-5 text-text-muted" />
-          <h2 className="text-lg font-semibold text-text-primary">Notification Preferences</h2>
+          <h2 className="text-lg font-semibold text-text-primary">{t('prefsTitle')}</h2>
         </div>
 
         <div className="space-y-1">
@@ -181,8 +179,8 @@ export default function TelegramPage() {
                 <ArrowDownToLine className="h-4 w-4 text-accent-green" />
               </div>
               <div>
-                <p className="text-sm font-medium text-text-primary">Pay-In Notifications</p>
-                <p className="text-xs text-text-muted">Get alerted when new pay-in orders arrive</p>
+                <p className="text-sm font-medium text-text-primary">{t('payinTitle')}</p>
+                <p className="text-xs text-text-muted">{t('payinDesc')}</p>
               </div>
             </div>
             <Toggle
@@ -198,8 +196,8 @@ export default function TelegramPage() {
                 <ArrowUpFromLine className="h-4 w-4 text-accent-blue" />
               </div>
               <div>
-                <p className="text-sm font-medium text-text-primary">Pay-Out Notifications</p>
-                <p className="text-xs text-text-muted">Get alerted when new pay-out orders arrive</p>
+                <p className="text-sm font-medium text-text-primary">{t('payoutTitle')}</p>
+                <p className="text-xs text-text-muted">{t('payoutDesc')}</p>
               </div>
             </div>
             <Toggle
@@ -215,8 +213,8 @@ export default function TelegramPage() {
                 <AlertTriangle className="h-4 w-4 text-accent-yellow" />
               </div>
               <div>
-                <p className="text-sm font-medium text-text-primary">Appeals Notifications</p>
-                <p className="text-xs text-text-muted">Get alerted when disputes need your attention</p>
+                <p className="text-sm font-medium text-text-primary">{t('appealsTitle')}</p>
+                <p className="text-xs text-text-muted">{t('appealsDesc')}</p>
               </div>
             </div>
             <Toggle
@@ -230,7 +228,7 @@ export default function TelegramPage() {
             <div className="flex items-center gap-2 mb-3 px-4">
               <Wallet className="h-4 w-4 text-text-muted" />
               <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                Balance & settlements (USDT)
+                {t('walletSection')}
               </p>
             </div>
           </div>
@@ -241,10 +239,8 @@ export default function TelegramPage() {
                 <ArrowDownCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <p className="text-sm font-medium text-text-primary">Low Pay-In capacity</p>
-                <p className="text-xs text-text-muted">
-                  When remaining USDT headroom (balance + overdraft) is at or below the operator threshold
-                </p>
+                <p className="text-sm font-medium text-text-primary">{t('lowCapacityTitle')}</p>
+                <p className="text-xs text-text-muted">{t('lowCapacityDesc')}</p>
               </div>
             </div>
             <Toggle
@@ -260,8 +256,8 @@ export default function TelegramPage() {
                 <CircleDollarSign className="h-4 w-4 text-accent-green" />
               </div>
               <div>
-                <p className="text-sm font-medium text-text-primary">Top-up recorded</p>
-                <p className="text-xs text-text-muted">When a USDT top-up is posted to your ledger</p>
+                <p className="text-sm font-medium text-text-primary">{t('topUpTitle')}</p>
+                <p className="text-xs text-text-muted">{t('topUpDesc')}</p>
               </div>
             </div>
             <Toggle
@@ -277,10 +273,8 @@ export default function TelegramPage() {
                 <AlertTriangle className="h-4 w-4 text-red-500" />
               </div>
               <div>
-                <p className="text-sm font-medium text-text-primary">Pay-In capacity exhausted</p>
-                <p className="text-xs text-text-muted">
-                  When there is no USDT headroom left for Pay-In assignment (you and ops may be notified)
-                </p>
+                <p className="text-sm font-medium text-text-primary">{t('capacityExhaustedTitle')}</p>
+                <p className="text-xs text-text-muted">{t('capacityExhaustedDesc')}</p>
               </div>
             </div>
             <Toggle
@@ -295,9 +289,7 @@ export default function TelegramPage() {
       {isConnected && (
         <div className="flex items-center gap-2 rounded-lg bg-accent-green/5 border border-accent-green/20 px-4 py-3">
           <CheckCircle2 className="h-4 w-4 text-accent-green shrink-0" />
-          <p className="text-sm text-text-secondary">
-            Your Telegram bot is active. Notifications will be sent based on your preferences above.
-          </p>
+          <p className="text-sm text-text-secondary">{t('footerActive')}</p>
         </div>
       )}
     </div>
