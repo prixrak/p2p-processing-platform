@@ -19,7 +19,6 @@
     },
     "Shell": {
       "panelBrand": "Panel",
-      "headerTitle": "{role} Panel",
       "signOut": "Sign out",
       "badgePending": "{label}: {count} pending"
     },

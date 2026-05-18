@@ -357,9 +357,13 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
           >
             <Menu className="h-5 w-5" />
           </button>
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary capitalize">
-            {role === 'trader' ? tShell('headerTitle', { role }) : `${role} Panel`}
-          </span>
+          {role === 'trader' || role === 'payout-trader' ? (
+            <div className="min-w-0 flex-1" aria-hidden />
+          ) : (
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary capitalize">
+              {`${role} Panel`}
+            </span>
+          )}
           {role === 'trader' && <TraderLocaleSwitch />}
           {role === 'trader' && <TraderHeaderOrderStatus />}
         </header>

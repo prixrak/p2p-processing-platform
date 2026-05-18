@@ -19,7 +19,6 @@
     },
     "Shell": {
       "panelBrand": "Панель",
-      "headerTitle": "Панель: {role}",
       "signOut": "Вийти",
       "badgePending": "{label}: {count} очікує"
     },
