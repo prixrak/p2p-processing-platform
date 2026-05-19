@@ -32,6 +32,7 @@ import type {
   RequisiteGroupApi,
 } from './types';
 import { defaultRequisiteForm, num, paymentMethodsForPayinCurrency, requisiteGroupCurrencyCode } from './utils';
+import { textMatchesListSearch } from '@/lib/list-search';
 import { TraderRequisitesGroupTable } from './requisite-group-table';
 import {
   TraderAddGroupModal,
@@ -128,21 +129,22 @@ export function TraderRequisitesPage() {
   });
 
   const filteredGroups = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return groups;
     return groups.filter((g) => {
       if (
-        g.name.toLowerCase().includes(q) ||
-        requisiteGroupCurrencyCode(g.currency).toLowerCase().includes(q)
+        textMatchesListSearch(q, g.name, requisiteGroupCurrencyCode(g.currency))
       ) {
         return true;
       }
-      return g.requisites.some(
-        (r) =>
-          r.number.toLowerCase().includes(q) ||
-          r.owner.toLowerCase().includes(q) ||
-          r.cardHolderName.toLowerCase().includes(q) ||
-          (r.bank?.name ?? '').toLowerCase().includes(q),
+      return g.requisites.some((r) =>
+        textMatchesListSearch(
+          q,
+          r.number,
+          r.owner,
+          r.cardHolderName,
+          r.bank?.name,
+        ),
       );
     });
   }, [groups, search]);

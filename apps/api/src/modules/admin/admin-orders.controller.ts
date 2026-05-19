@@ -49,7 +49,7 @@ import { PayinRealtimeService } from '../payin/payin-realtime.service';
 import { PayoutRealtimeService } from '../payout/payout-realtime.service';
 import { AuditService } from '../audit/audit.service';
 import { IsString } from 'class-validator';
-import { buildPayinPayoutOrderSearchOr } from '../../common/order-search-where';
+import { buildPayinOrderSearchOr, buildPayoutOrderSearchOr } from '../../common/order-search-where';
 import { mapAuditRowToAdminStatusHistory } from './admin-order-status-audit-history';
 import { payinOrderListRequisiteFields } from '../../common/payin-order-list-requisite-fields';
 
@@ -123,7 +123,7 @@ export class AdminOrdersController {
       if (status) where.status = status.toUpperCase();
       if (dateFilter.gte || dateFilter.lte) where.createdAt = dateFilter;
       if (search) {
-        where.OR = buildPayinPayoutOrderSearchOr(search, { merchantNameContains: true });
+        where.OR = buildPayinOrderSearchOr(search, { merchantNameContains: true });
       }
       if (merchantFilter) {
         where.merchant = { name: { contains: merchantFilter, mode: 'insensitive' } };
@@ -184,7 +184,7 @@ export class AdminOrdersController {
       if (status) where.status = status.toUpperCase();
       if (dateFilter.gte || dateFilter.lte) where.createdAt = dateFilter;
       if (search) {
-        where.OR = buildPayinPayoutOrderSearchOr(search, { merchantNameContains: true });
+        where.OR = buildPayoutOrderSearchOr(search, { merchantNameContains: true });
       }
       if (merchantFilter) {
         where.merchant = { name: { contains: merchantFilter, mode: 'insensitive' } };
@@ -337,7 +337,10 @@ export class AdminOrdersController {
         order.traderId,
       );
       const hideAssignmentSections = uiStatus === ApplicationLogUiStatus.PENDING;
-      const payinErrorCode = resolvePayinApplicationLogErrorCode(order.status as PayInOrderStatus);
+      const payinErrorCode = resolvePayinApplicationLogErrorCode(
+        order.status as PayInOrderStatus,
+        order.noRequisiteReason,
+      );
 
       return {
         id: order.id,
@@ -405,7 +408,13 @@ export class AdminOrdersController {
           uiStatus === ApplicationLogUiStatus.ERROR && payinErrorCode
             ? {
                 code: payinErrorCode,
-                message: applicationLogErrorMessage('PAYIN', order.status as PayInOrderStatus),
+                message: applicationLogErrorMessage(
+                  'PAYIN',
+                  order.status as PayInOrderStatus,
+                  undefined,
+                  order.noRequisiteReason,
+                ),
+                detail: order.noRequisiteDetail ?? null,
                 at: order.completedAt?.toISOString() ?? order.updatedAt.toISOString(),
               }
             : null,

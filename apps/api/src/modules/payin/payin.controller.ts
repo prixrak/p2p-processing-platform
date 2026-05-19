@@ -74,7 +74,10 @@ export class PayinController {
   }
 
   @Post('update_order_with_proofs')
-  @ApiOperation({ summary: 'Update order status with proof files' })
+  @ApiOperation({
+    summary:
+      'Update order status with payer payment receipt files (stored on the order, not as a dispute appeal)',
+  })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FilesInterceptor('files', MAX_MULTIPART_FILES_PER_REQUEST, {

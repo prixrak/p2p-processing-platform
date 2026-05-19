@@ -238,6 +238,14 @@ export class FilesService {
       });
       if (forkChatLinked) return;
 
+      const payerProofLinked = await this.prisma.payinPayerPaymentProof.findFirst({
+        where: {
+          fileId: file.id,
+          payinOrder: { traderId: actor.traderId },
+        },
+      });
+      if (payerProofLinked) return;
+
       const payoutOwned = await this.prisma.payoutOrder.findFirst({
         where: {
           traderId: actor.traderId,
@@ -271,6 +279,14 @@ export class FilesService {
         },
       });
       if (forkMerchantLinked) return;
+
+      const payerProofMerchantLinked = await this.prisma.payinPayerPaymentProof.findFirst({
+        where: {
+          fileId: file.id,
+          payinOrder: { merchantId: actor.merchantId },
+        },
+      });
+      if (payerProofMerchantLinked) return;
 
       const payoutCompletionProof = await this.prisma.payoutOrder.findFirst({
         where: {
@@ -415,7 +431,7 @@ export class FilesService {
 
   /**
    * Hard delete: removes the S3 object and DB row, but only when the file is not
-   * referenced by any persistent record (appeal proof, pay-in fork chat proof, bank logo,
+   * referenced by any persistent record (appeal proof, pay-in payer payment proof, pay-in fork chat proof, bank logo,
    * pay-out completion proof attachment, or single-column `payout_orders.completion_proof_file_id`).
    *
    * Used by:
@@ -473,12 +489,14 @@ export class FilesService {
   async findFileReferences(fileId: string): Promise<string[]> {
     const [
       appealCount,
+      payerProofCount,
       forkCount,
       bankCount,
       payoutHeadCount,
       payoutAttachmentCount,
     ] = await Promise.all([
       this.prisma.appealProof.count({ where: { fileId } }),
+      this.prisma.payinPayerPaymentProof.count({ where: { fileId } }),
       this.prisma.payinForkChatProof.count({ where: { fileId } }),
       this.prisma.bank.count({ where: { logoFileId: fileId } }),
       this.prisma.payoutOrder.count({ where: { completionProofFileId: fileId } }),
@@ -487,6 +505,7 @@ export class FilesService {
 
     const refs: string[] = [];
     if (appealCount > 0) refs.push('appeal proof');
+    if (payerProofCount > 0) refs.push('pay-in payer payment proof');
     if (forkCount > 0) refs.push('pay-in fork chat proof');
     if (bankCount > 0) refs.push('bank logo');
     if (payoutAttachmentCount > 0) refs.push('pay-out completion proof');

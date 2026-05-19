@@ -164,10 +164,21 @@ export function computeForkAssignBounds(
 }
 
 /**
+ * Maximum Pay-In amount this requisite may accept: manual cap and remaining amount headroom.
+ * Fork autolimit nominal slicing does not lower this cap (see `computeForkAssignBounds` effMax).
+ */
+export function payInAssignMax(inp: ForkAutolimitInputs): number | null {
+  const remainingAmt = inp.limitTotalAmount - inp.usedAmount;
+  const remainingTx = inp.limitTotalOps - inp.usedOps;
+  if (remainingAmt <= 0 || remainingTx <= 0) return null;
+  return roundMoney2(Math.min(inp.manualMax, remainingAmt));
+}
+
+/**
  * Validates Pay-In amount against trader manual limits and remaining requisite headroom.
  * Uses `computeForkAssignBounds` for the **minimum** (Fork autolimit floor). The **maximum** is
- * always `min(manualMax, remainingAmount)` so Fork autolimit nominal slicing cannot block a single
- * order that fits remaining headroom and manual max (e.g. one 20k order when 20k remains).
+ * always `payInAssignMax` so Fork autolimit nominal slicing cannot block a single order that fits
+ * remaining headroom and manual max (e.g. one 20k order when 20k remains).
  */
 export function payInAmountWithinAssignRange(
   inp: ForkAutolimitInputs,
@@ -184,8 +195,15 @@ export function payInAmountWithinAssignRange(
         'Fork/card bounds could not be derived (limits exhausted or incompatible with coverage grid).',
     };
   }
-  const remainingHeadroom = roundMoney2(inp.limitTotalAmount - inp.usedAmount);
-  const assignMax = roundMoney2(Math.min(inp.manualMax, remainingHeadroom));
+  const assignMax = payInAssignMax(inp);
+  if (assignMax === null) {
+    return {
+      ok: false,
+      code: 'EFFECTIVE_BOUNDS_UNAVAILABLE',
+      detail:
+        'Fork/card bounds could not be derived (limits exhausted or incompatible with coverage grid).',
+    };
+  }
   const assignMin = roundMoney2(bounds.effMin);
   const a = roundMoney2(amount);
   if (a < assignMin - MONEY_COMPARE_EPS || a > assignMax + MONEY_COMPARE_EPS) {
@@ -237,6 +255,17 @@ export function approximateOthersEffectiveRange(inp: {
 /** Whether `amount` falls within [min,max] inclusive for assignment checks */
 export function nominalCoveredByRange(amount: number, min: number, max: number): boolean {
   return amount >= min - 1e-9 && amount <= max + 1e-9;
+}
+
+/** True when `amount` matches an in-flight Pay-In already reserved on this requisite. */
+export function payInAmountBlockedOnRequisite(
+  occupiedAmounts: readonly number[],
+  amount: number,
+): boolean {
+  const target = roundMoney2(amount);
+  return occupiedAmounts.some(
+    (a) => Math.abs(roundMoney2(a) - target) <= MONEY_COMPARE_EPS,
+  );
 }
 
 // ─── TZ v3.1 — idle-time race & method-level primary selection ───

@@ -160,9 +160,8 @@ export function TraderPayoutPage({
       queue: 'in_progress',
       page: '1',
       limit: '1',
-      ...(searchParam ? { search: searchParam } : {}),
     }),
-    [searchParam],
+    [],
   );
 
   const historyBadgeParams = useMemo((): Record<string, string> => {
@@ -180,45 +179,36 @@ export function TraderPayoutPage({
     if (debouncedMaxAmount) {
       params.max_amount = normalizeDecimalSeparators(debouncedMaxAmount);
     }
-    if (searchParam) params.search = searchParam;
     return params;
-  }, [
-    statusFilter,
-    dateFrom,
-    dateTo,
-    debouncedMinAmount,
-    debouncedMaxAmount,
-    searchParam,
-  ]);
+  }, [statusFilter, dateFrom, dateTo, debouncedMinAmount, debouncedMaxAmount]);
 
   const poolBadgeParams = useMemo(
     (): Record<string, string> => ({
       page: '1',
       limit: '1',
-      ...(searchParam ? { search: searchParam } : {}),
     }),
-    [searchParam],
+    [],
   );
 
   const { data: inProgressBadge } = useQuery({
     queryKey: payoutCabinetKeys.payoutOrders(qk, inProgressBadgeParams),
     queryFn: () =>
       api.get<PayOutListResponse>(`${apiBase}/orders`, inProgressBadgeParams),
-    enabled: !inProgressListActive,
+    enabled: !inProgressListActive && !searchParam,
     staleTime: 10_000,
   });
 
   const { data: historyBadge } = useQuery({
     queryKey: payoutCabinetKeys.payoutOrders(qk, historyBadgeParams),
     queryFn: () => api.get<PayOutListResponse>(`${apiBase}/orders`, historyBadgeParams),
-    enabled: !historyListActive,
+    enabled: !historyListActive && !searchParam,
     staleTime: 10_000,
   });
 
   const { data: poolBadge } = useQuery({
     queryKey: payoutCabinetKeys.payoutPool(qk, poolBadgeParams),
     queryFn: () => api.get<PayOutListResponse>(`${apiBase}/pool`, poolBadgeParams),
-    enabled: !poolListActive,
+    enabled: !poolListActive && !searchParam,
     staleTime: 10_000,
   });
 

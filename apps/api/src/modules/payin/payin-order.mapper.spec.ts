@@ -37,6 +37,7 @@ describe('payinOrderToOrderDto', () => {
       },
       appeals: [],
       forkChatProofs: [],
+      payerPaymentProofs: [],
       ...overrides,
     } as OrderWithRelations;
   }
@@ -59,6 +60,15 @@ describe('payinOrderToOrderDto', () => {
       code: '',
       bank_name: 'Test Bank',
     });
+  });
+
+  it('maps payer payment proofs on merchant order DTO', () => {
+    const dto = payinOrderToOrderDto(
+      minimalOrder({
+        payerPaymentProofs: [{ fileId: 'merchant-payer-1' }] as never,
+      }),
+    );
+    expect(dto.payer_payment_proof_file_ids).toEqual(['merchant-payer-1']);
   });
 
   it('maps appeals with proofs', () => {
@@ -188,9 +198,19 @@ describe('payinOrderToTraderPayInOrderDto', () => {
       },
       appeals: [],
       forkChatProofs: [],
+      payerPaymentProofs: [],
       ...overrides,
     } as OrderWithRelations;
   }
+
+  it('maps payer payment proofs for trader cabinet', () => {
+    const dto = payinOrderToTraderPayInOrderDto(
+      minimalOrder({
+        payerPaymentProofs: [{ fileId: 'payer-f1' }, { fileId: 'payer-f2' }] as never,
+      }),
+    );
+    expect(dto.payer_payment_proof_file_ids).toEqual(['payer-f1', 'payer-f2']);
+  });
 
   it('excludes merchant economics, request id, and fork audit fields', () => {
     const dto = payinOrderToTraderPayInOrderDto(

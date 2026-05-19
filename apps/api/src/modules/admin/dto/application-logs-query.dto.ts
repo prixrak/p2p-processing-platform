@@ -102,7 +102,7 @@ export class ApplicationLogsQueryDto {
 
   @ApiPropertyOptional({
     description:
-      'Normalized application-log error code (Pay-In: NO_REQUISITE, UPLOAD_FAILED; Pay-Out: FAILED, UPLOAD_FAILED, FOREIGN_CARD, …)',
+      'Normalized application-log error code (Pay-In: NO_REQUISITE, PayinNoRequisiteReason codes, UPLOAD_FAILED; Pay-Out: FAILED, UPLOAD_FAILED, FOREIGN_CARD, …)',
   })
   @IsOptional()
   @IsString()

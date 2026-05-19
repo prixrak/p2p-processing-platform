@@ -116,7 +116,7 @@ Traffic source. Primary interaction is via the External API. Additionally receiv
 |---|----------|---------|
 | 1 | `POST /api/external/v1/payin/upload_order` | Create a new Pay-In order |
 | 2 | `POST /api/external/v1/payin/update_order` | Update order status (VERIFIED / CANCELED, no files) |
-| 3 | `POST /api/external/v1/payin/update_order_with_proofs` | Update order status with proof files (multipart) |
+| 3 | `POST /api/external/v1/payin/update_order_with_proofs` | Update order status with payer receipt files (multipart; stored on the order, not as a dispute appeal) |
 | 4 | `POST /api/external/v1/payin/order_info` | Get order status/details |
 | 5 | `POST /api/external/v1/payin/info` | Get merchant profile & direction parameters |
 | 6 | `POST /api/external/v1/payin/h2h_init` | H2H payment initialization (no redirect to payment page) |
@@ -159,7 +159,7 @@ Traffic source. Primary interaction is via the External API. Additionally receiv
 - Public page at `/pay/{order_uuid}` — no auth required
 - Displays trader requisites, amount, currency
 - Countdown timer to auto-close
-- Optional receipt/screenshot upload
+- Optional receipt/screenshot upload (stored on the order for the trader, not as a dispute appeal)
 - Redirect to merchant's `redirect_url` after confirmation
 
 ---

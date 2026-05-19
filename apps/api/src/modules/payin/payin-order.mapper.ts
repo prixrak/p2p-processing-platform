@@ -45,6 +45,7 @@ export const ORDER_INCLUDE = {
   appeals: { include: { proofs: true } },
   currency: { select: { code: true } },
   forkChatProofs: true,
+  payerPaymentProofs: true,
 } as const;
 
 export type OrderWithRelations = Prisma.PayinOrderGetPayload<{
@@ -99,6 +100,7 @@ export function payinOrderToOrderDto(order: OrderWithRelations): OrderDto {
       bank: order.requisite?.bank?.name ?? '',
       proofs_of_payment: (a.proofs ?? []).map((p) => p.fileId),
     })),
+    payer_payment_proof_file_ids: (order.payerPaymentProofs ?? []).map((p) => p.fileId),
     payment_detail: order.requisite
       ? {
           id: order.requisite.id,
@@ -138,6 +140,7 @@ export function payinOrderToTraderPayInOrderDto(order: OrderWithRelations): Trad
       created_at: Math.floor(a.createdAt.getTime() / 1000),
       proofs_of_payment: (a.proofs ?? []).map((p) => p.fileId),
     })),
+    payer_payment_proof_file_ids: (order.payerPaymentProofs ?? []).map((p) => p.fileId),
     payment_detail: order.requisite
       ? {
           id: order.requisite.id,

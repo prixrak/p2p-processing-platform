@@ -19,23 +19,80 @@ export function normalizeOrderListSearch(raw?: string): string | undefined {
   return term;
 }
 
-export type PayinPayoutOrderSearchOrOptions = {
+/** Distinct search variants for requisite / card matching (raw input plus normalized forms). */
+export function orderListSearchVariants(rawSearch: string): string[] {
+  const term = normalizeOrderListSearch(rawSearch) ?? '';
+  if (!term) return [];
+
+  const variants = new Set<string>([term]);
+  const digitsOnly = term.replace(/\D/g, '');
+  if (digitsOnly.length >= MIN_ORDER_LIST_SEARCH_LEN) {
+    variants.add(digitsOnly);
+  }
+  const alnumCompact = term
+    .replace(/\s+/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+  if (alnumCompact.length >= MIN_ORDER_LIST_SEARCH_LEN) {
+    variants.add(alnumCompact);
+  }
+  return [...variants];
+}
+
+function buildRequestIdSearchOrClauses(variants: string[]): Record<string, unknown>[] {
+  return variants.map((v) => ({
+    requestId: { contains: v, mode: 'insensitive' as const },
+  }));
+}
+
+function buildRequisiteFieldOrClauses(variants: string[]): Record<string, unknown>[] {
+  const or: Record<string, unknown>[] = [];
+  for (const v of variants) {
+    or.push(
+      { number: { contains: v, mode: 'insensitive' as const } },
+      { numberNormalized: { contains: v, mode: 'insensitive' as const } },
+      { owner: { contains: v, mode: 'insensitive' as const } },
+      { cardHolderName: { contains: v, mode: 'insensitive' as const } },
+    );
+  }
+  return or;
+}
+
+export function buildRequisiteRelationSearchFilter(variants: string[]): Record<string, unknown> {
+  return { requisite: { OR: buildRequisiteFieldOrClauses(variants) } };
+}
+
+function buildPayoutRecipientFieldOrClauses(variants: string[]): Record<string, unknown>[] {
+  const or: Record<string, unknown>[] = [];
+  for (const v of variants) {
+    or.push(
+      { detailsNumber: { contains: v, mode: 'insensitive' as const } },
+      { detailsOwner: { contains: v, mode: 'insensitive' as const } },
+      { detailsCode: { contains: v, mode: 'insensitive' as const } },
+    );
+  }
+  return or;
+}
+
+export type OrderListSearchOrOptions = {
   merchantNameContains?: boolean;
 };
 
 /**
- * Builds Prisma `OR` clauses for Pay-In / Pay-Out order list search.
+ * Builds Prisma `OR` clauses for Pay-In order list search.
  * Avoids invalid filters on UUID `id` unless the term is a full UUID (exact match).
  */
-export function buildPayinPayoutOrderSearchOr(
+export function buildPayinOrderSearchOr(
   rawSearch: string,
-  options?: PayinPayoutOrderSearchOrOptions,
+  options?: OrderListSearchOrOptions,
 ): Record<string, unknown>[] {
   const term = normalizeOrderListSearch(rawSearch) ?? '';
   if (!term) return [];
 
+  const variants = orderListSearchVariants(term);
   const or: Record<string, unknown>[] = [
-    { requestId: { contains: term, mode: 'insensitive' as const } },
+    ...buildRequestIdSearchOrClauses(variants),
+    buildRequisiteRelationSearchFilter(variants),
   ];
 
   if (options?.merchantNameContains) {
@@ -51,21 +108,59 @@ export function buildPayinPayoutOrderSearchOr(
   return or;
 }
 
+/**
+ * Builds Prisma `OR` clauses for Pay-Out order list search.
+ * Avoids invalid filters on UUID `id` unless the term is a full UUID (exact match).
+ */
+export function buildPayoutOrderSearchOr(
+  rawSearch: string,
+  options?: OrderListSearchOrOptions,
+): Record<string, unknown>[] {
+  const term = normalizeOrderListSearch(rawSearch) ?? '';
+  if (!term) return [];
+
+  const variants = orderListSearchVariants(term);
+  const or: Record<string, unknown>[] = [
+    ...buildRequestIdSearchOrClauses(variants),
+    ...buildPayoutRecipientFieldOrClauses(variants),
+  ];
+
+  if (options?.merchantNameContains) {
+    or.push({
+      merchant: { name: { contains: term, mode: 'insensitive' as const } },
+    });
+  }
+
+  if (CANONICAL_UUID.test(term)) {
+    or.unshift({ id: term });
+  }
+
+  return or;
+}
+
+/** @deprecated Use {@link buildPayinOrderSearchOr} or {@link buildPayoutOrderSearchOr} for type-safe filters. */
+export type PayinPayoutOrderSearchOrOptions = OrderListSearchOrOptions;
+
+/** @deprecated Use {@link buildPayinOrderSearchOr} or {@link buildPayoutOrderSearchOr} for type-safe filters. */
+export function buildPayinPayoutOrderSearchOr(
+  rawSearch: string,
+  options?: OrderListSearchOrOptions,
+): Record<string, unknown>[] {
+  return buildPayinOrderSearchOr(rawSearch, options);
+}
+
 /** Trader / support appeals list: pay-in order id, request id, merchant name, requisite text. */
 export function buildAppealListSearchOr(rawSearch: string): Record<string, unknown>[] {
   const term = normalizeOrderListSearch(rawSearch) ?? '';
   if (!term) return [];
 
+  const variants = orderListSearchVariants(term);
   const or: Record<string, unknown>[] = [
     ...buildAppealPayinOrderSearchOr(term),
     {
       payinOrder: {
         requisite: {
-          OR: [
-            { number: { contains: term, mode: 'insensitive' as const } },
-            { owner: { contains: term, mode: 'insensitive' as const } },
-            { cardHolderName: { contains: term, mode: 'insensitive' as const } },
-          ],
+          OR: buildRequisiteFieldOrClauses(variants),
         },
       },
     },

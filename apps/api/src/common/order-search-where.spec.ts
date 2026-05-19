@@ -1,8 +1,10 @@
 import {
   buildAppealListSearchOr,
   buildAppealPayinOrderSearchOr,
-  buildPayinPayoutOrderSearchOr,
+  buildPayinOrderSearchOr,
+  buildPayoutOrderSearchOr,
   normalizeOrderListSearch,
+  orderListSearchVariants,
 } from './order-search-where';
 
 describe('normalizeOrderListSearch', () => {
@@ -17,32 +19,58 @@ describe('normalizeOrderListSearch', () => {
   });
 });
 
-describe('buildPayinPayoutOrderSearchOr', () => {
+describe('orderListSearchVariants', () => {
+  it('adds digit-only variant for formatted card numbers', () => {
+    expect(orderListSearchVariants('5375 4112 3456 7890')).toEqual(
+      expect.arrayContaining(['5375 4112 3456 7890', '5375411234567890']),
+    );
+  });
+});
+
+describe('buildPayinOrderSearchOr', () => {
   it('returns empty array for blank search', () => {
-    expect(buildPayinPayoutOrderSearchOr('')).toEqual([]);
-    expect(buildPayinPayoutOrderSearchOr('   ')).toEqual([]);
-    expect(buildPayinPayoutOrderSearchOr('a')).toEqual([]);
+    expect(buildPayinOrderSearchOr('')).toEqual([]);
+    expect(buildPayinOrderSearchOr('   ')).toEqual([]);
+    expect(buildPayinOrderSearchOr('a')).toEqual([]);
   });
 
-  it('uses requestId contains for non-UUID fragments', () => {
-    expect(buildPayinPayoutOrderSearchOr('123')).toEqual([
-      { requestId: { contains: '123', mode: 'insensitive' } },
-    ]);
+  it('uses requestId and requisite fields for non-UUID fragments', () => {
+    const clauses = buildPayinOrderSearchOr('4111');
+    expect(clauses.some((c) => 'requestId' in c)).toBe(true);
+    expect(clauses.some((c) => 'requisite' in c)).toBe(true);
+    expect(clauses.some((c) => 'detailsNumber' in c)).toBe(false);
+  });
+
+  it('searches normalized requisite digits for formatted card input', () => {
+    const clauses = buildPayinOrderSearchOr('5375 4112');
+    const requisiteClause = clauses.find((c) => 'requisite' in c) as {
+      requisite: { OR: Array<{ numberNormalized?: { contains: string } }> };
+    };
+    expect(
+      requisiteClause.requisite.OR.some((c) => c.numberNormalized?.contains === '53754112'),
+    ).toBe(true);
   });
 
   it('prepends exact id match when term is a full UUID', () => {
     const id = '550e8400-e29b-41d4-a716-446655440000';
-    expect(buildPayinPayoutOrderSearchOr(id)).toEqual([
-      { id },
-      { requestId: { contains: id, mode: 'insensitive' } },
-    ]);
+    expect(buildPayinOrderSearchOr(id)).toEqual(expect.arrayContaining([{ id }]));
   });
 
   it('includes merchant name when requested', () => {
-    expect(buildPayinPayoutOrderSearchOr('acme', { merchantNameContains: true })).toEqual([
-      { requestId: { contains: 'acme', mode: 'insensitive' } },
-      { merchant: { name: { contains: 'acme', mode: 'insensitive' } } },
-    ]);
+    expect(buildPayinOrderSearchOr('acme', { merchantNameContains: true })).toEqual(
+      expect.arrayContaining([
+        { merchant: { name: { contains: 'acme', mode: 'insensitive' } } },
+      ]),
+    );
+  });
+});
+
+describe('buildPayoutOrderSearchOr', () => {
+  it('uses requestId and payout recipient fields for non-UUID fragments', () => {
+    const clauses = buildPayoutOrderSearchOr('4111');
+    expect(clauses.some((c) => 'requestId' in c)).toBe(true);
+    expect(clauses.some((c) => 'detailsNumber' in c)).toBe(true);
+    expect(clauses.some((c) => 'requisite' in c)).toBe(false);
   });
 });
 
@@ -52,6 +80,20 @@ describe('buildAppealListSearchOr', () => {
     expect(clauses.some((c) => 'payinOrder' in c && 'requisite' in (c.payinOrder as object))).toBe(
       true,
     );
+  });
+
+  it('searches normalized requisite digits for formatted card input', () => {
+    const clauses = buildAppealListSearchOr('5375 4112');
+    const requisiteClause = clauses.find(
+      (c) => 'payinOrder' in c && 'requisite' in (c.payinOrder as object),
+    ) as {
+      payinOrder: { requisite: { OR: Array<{ numberNormalized?: { contains: string } }> } };
+    };
+    expect(
+      requisiteClause.payinOrder.requisite.OR.some(
+        (c) => c.numberNormalized?.contains === '53754112',
+      ),
+    ).toBe(true);
   });
 
   it('prepends appeal id for full UUID', () => {

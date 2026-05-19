@@ -17,3 +17,22 @@ export function listSearchForQuery(debounced: string): string | undefined {
   if (term.length < MIN_LIST_SEARCH_LENGTH) return undefined;
   return term;
 }
+
+/** Client-side filter: case-insensitive substring plus digit-normalized match for card-like values. */
+export function textMatchesListSearch(
+  query: string,
+  ...values: (string | null | undefined)[]
+): boolean {
+  const q = query.trim();
+  if (!q) return true;
+  const lower = q.toLowerCase();
+  const qDigits = q.replace(/\D/g, '');
+  for (const raw of values) {
+    const v = raw ?? '';
+    if (v.toLowerCase().includes(lower)) return true;
+    if (qDigits.length >= MIN_LIST_SEARCH_LENGTH && v.replace(/\D/g, '').includes(qDigits)) {
+      return true;
+    }
+  }
+  return false;
+}

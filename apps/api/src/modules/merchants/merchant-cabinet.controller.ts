@@ -35,7 +35,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { GenerateApiKeysDto } from './dto';
 import { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
 import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
-import { buildPayinPayoutOrderSearchOr } from '../../common/order-search-where';
+import { buildPayinOrderSearchOr, buildPayoutOrderSearchOr } from '../../common/order-search-where';
 import { payinOrderListRequisiteFields } from '../../common/payin-order-list-requisite-fields';
 import { PayinRealtimeService } from '../payin/payin-realtime.service';
 import { PayoutRealtimeService } from '../payout/payout-realtime.service';
@@ -242,7 +242,7 @@ export class MerchantCabinetController {
       if (status) where.status = status.toUpperCase();
       if (createdAt) where.createdAt = createdAt;
       if (search) {
-        where.OR = buildPayinPayoutOrderSearchOr(search);
+        where.OR = buildPayoutOrderSearchOr(search);
       }
 
       const [orders, total] = await Promise.all([
@@ -282,7 +282,7 @@ export class MerchantCabinetController {
     if (status) where.status = status.toUpperCase();
     if (createdAt) where.createdAt = createdAt;
     if (search) {
-      where.OR = buildPayinPayoutOrderSearchOr(search);
+      where.OR = buildPayinOrderSearchOr(search);
     }
 
     const [orders, total] = await Promise.all([

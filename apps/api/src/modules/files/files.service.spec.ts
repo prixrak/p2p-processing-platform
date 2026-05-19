@@ -24,6 +24,7 @@ function buildPrismaMock(opts: {
   file?: { id: string; s3Key: string; uploadedBy: string | null; originalName?: string; mimeType?: string; sizeBytes?: number } | null;
   counts?: {
     appealProof?: number;
+    payinPayerPaymentProof?: number;
     payinForkChatProof?: number;
     bank?: number;
     payoutOrder?: number;
@@ -34,6 +35,7 @@ function buildPrismaMock(opts: {
   const file = opts.file ?? null;
   const counts = {
     appealProof: 0,
+    payinPayerPaymentProof: 0,
     payinForkChatProof: 0,
     bank: 0,
     payoutOrder: 0,
@@ -46,6 +48,9 @@ function buildPrismaMock(opts: {
       delete: opts.fileDelete ?? jest.fn().mockResolvedValue(file),
     },
     appealProof: { count: jest.fn().mockResolvedValue(counts.appealProof) },
+    payinPayerPaymentProof: {
+      count: jest.fn().mockResolvedValue(counts.payinPayerPaymentProof),
+    },
     payinForkChatProof: { count: jest.fn().mockResolvedValue(counts.payinForkChatProof) },
     bank: { count: jest.fn().mockResolvedValue(counts.bank) },
     payoutOrder: { count: jest.fn().mockResolvedValue(counts.payoutOrder) },

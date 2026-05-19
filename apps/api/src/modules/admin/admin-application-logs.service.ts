@@ -6,6 +6,7 @@ import {
   DirectionType,
   PayInOrderStatus,
   PayOutOrderStatus,
+  PAYIN_NO_REQUISITE_REASON_VALUES,
   applicationLogErrorMessage,
   mapPayinToApplicationLogUiStatus,
   mapPayoutToApplicationLogUiStatus,
@@ -63,6 +64,7 @@ type SqlRow = {
   currency_code: string;
   amount: unknown;
   raw_status: string;
+  no_requisite_reason: string | null;
   trader_reject_reason: string | null;
   partner_ip: string | null;
   external_api_path: string | null;
@@ -126,6 +128,14 @@ export class AdminApplicationLogsService {
         parts.push(Prisma.sql`po.status = 'NO_REQUISITE'`);
       } else if (ec === 'UPLOAD_FAILED') {
         parts.push(Prisma.sql`po.status = 'UPLOAD_FAILED'`);
+      } else if (
+        PAYIN_NO_REQUISITE_REASON_VALUES.includes(
+          ec as (typeof PAYIN_NO_REQUISITE_REASON_VALUES)[number],
+        )
+      ) {
+        parts.push(
+          Prisma.sql`po.status = 'NO_REQUISITE' AND po.no_requisite_reason = ${ec}::"PayinNoRequisiteReason"`,
+        );
       } else {
         parts.push(Prisma.sql`FALSE`);
       }
@@ -212,6 +222,7 @@ SELECT
   cur.code AS currency_code,
   po.amount AS amount,
   po.status::text AS raw_status,
+  po.no_requisite_reason::text AS no_requisite_reason,
   NULL::text AS trader_reject_reason,
   po.partner_ip AS partner_ip,
   po.external_api_path AS external_api_path,
@@ -242,6 +253,7 @@ SELECT
   cur.code AS currency_code,
   p.amount AS amount,
   p.status::text AS raw_status,
+  NULL::text AS no_requisite_reason,
   p.trader_reject_reason::text AS trader_reject_reason,
   p.partner_ip AS partner_ip,
   p.external_api_path AS external_api_path,
@@ -396,10 +408,18 @@ GROUP BY kind
     let errorCode: string | null = null;
     let errorMessage: string | null = null;
     if (kind === 'PAYIN') {
-      errorCode = resolvePayinApplicationLogErrorCode(r.raw_status as PayInOrderStatus);
+      errorCode = resolvePayinApplicationLogErrorCode(
+        r.raw_status as PayInOrderStatus,
+        r.no_requisite_reason,
+      );
       errorMessage =
         uiStatus === ApplicationLogUiStatus.ERROR
-          ? applicationLogErrorMessage('PAYIN', r.raw_status as PayInOrderStatus)
+          ? applicationLogErrorMessage(
+              'PAYIN',
+              r.raw_status as PayInOrderStatus,
+              undefined,
+              r.no_requisite_reason,
+            )
           : null;
     } else {
       errorCode = resolvePayoutApplicationLogErrorCode(
@@ -465,6 +485,7 @@ GROUP BY kind
       currencies: currencies.map((c) => c.code),
       errorCodes: [
         'NO_REQUISITE',
+        ...PAYIN_NO_REQUISITE_REASON_VALUES,
         'UPLOAD_FAILED',
         'FAILED',
         'FOREIGN_CARD',

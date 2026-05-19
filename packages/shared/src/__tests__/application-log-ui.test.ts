@@ -6,7 +6,12 @@ import {
   resolvePayoutApplicationLogErrorCode,
   applicationLogErrorMessage,
 } from '../application-log-ui';
-import { PayInOrderStatus, PayOutOrderStatus, PayoutTraderRejectReason } from '../enums';
+import {
+  PayInOrderStatus,
+  PayOutOrderStatus,
+  PayinNoRequisiteReason,
+  PayoutTraderRejectReason,
+} from '../enums';
 
 describe('application-log-ui', () => {
   describe('mapPayinToApplicationLogUiStatus', () => {
@@ -60,6 +65,12 @@ describe('application-log-ui', () => {
       expect(resolvePayinApplicationLogErrorCode(PayInOrderStatus.NO_REQUISITE)).toBe(
         'NO_REQUISITE',
       );
+      expect(
+        resolvePayinApplicationLogErrorCode(
+          PayInOrderStatus.NO_REQUISITE,
+          PayinNoRequisiteReason.USDT_CAPACITY_INSUFFICIENT,
+        ),
+      ).toBe(PayinNoRequisiteReason.USDT_CAPACITY_INSUFFICIENT);
       expect(resolvePayinApplicationLogErrorCode(PayInOrderStatus.NEW)).toBeNull();
     });
 
@@ -79,6 +90,14 @@ describe('application-log-ui', () => {
       expect(applicationLogErrorMessage('PAYIN', PayInOrderStatus.NO_REQUISITE)).toContain(
         'No active requisite',
       );
+      expect(
+        applicationLogErrorMessage(
+          'PAYIN',
+          PayInOrderStatus.NO_REQUISITE,
+          undefined,
+          PayinNoRequisiteReason.NO_ACTIVE_REQUISITES,
+        ),
+      ).toContain('No active trader requisites');
       expect(
         applicationLogErrorMessage(
           'PAYOUT',

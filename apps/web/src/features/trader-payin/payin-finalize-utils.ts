@@ -63,11 +63,14 @@ export function finalizeOptionsForOrder(order: Pick<TraderPayInOrderDto, 'status
 }
 
 export function orderPayinProofFileIds(row: {
+  payer_payment_proof_file_ids?: string[];
   appeals?: ReadonlyArray<{ proofs_of_payment: string[] }>;
 }): string[] {
-  const ids: string[] = [];
+  const ids: string[] = [...(row.payer_payment_proof_file_ids ?? [])];
   for (const a of row.appeals ?? []) {
-    for (const f of a.proofs_of_payment) ids.push(f);
+    for (const f of a.proofs_of_payment) {
+      if (!ids.includes(f)) ids.push(f);
+    }
   }
   return ids;
 }

@@ -24,6 +24,16 @@ export const PAYIN_PIPELINE_IN_FLIGHT_STATUSES: readonly PayInOrderStatus[] = [
 ] as const;
 
 /**
+ * Pay-In rows on a requisite that block assigning another order with the same fiat amount.
+ * Prevents ambiguous incoming-payment matching for traders (same amount, same card).
+ * Only trader-assigned matching states (NEW / VERIFIED); PENDING and APPEAL do not block.
+ */
+export const PAYIN_REQUISITE_SAME_AMOUNT_BLOCKING_STATUSES: readonly PayInOrderStatus[] = [
+  PayInOrderStatus.NEW,
+  PayInOrderStatus.VERIFIED,
+] as const;
+
+/**
  * Confirmed trader-side outcomes that keep a reserved requisite operation/amount slot.
  * Matches how traders interpret "completed" vs cascade `used_ops` / assignments.
  */

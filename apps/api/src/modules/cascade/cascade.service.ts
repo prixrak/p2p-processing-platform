@@ -21,6 +21,7 @@ import {
   cardCascadeRaceScore,
   cascadeLevelAttemptOrder,
   computeForkAssignBounds,
+  payInAssignMax,
   computeForkAutolimitAutoMaxAmount,
   confirmedPayinFillRatio,
   effectiveIdleMs,
@@ -37,7 +38,9 @@ import {
   normalizeCascadeMethodPercents,
   parseFillMultiplierTiersJson,
   payInAmountWithinAssignRange,
+  payInAmountBlockedOnRequisite,
   PAYIN_PRE_USDT_SETTLEMENT_STATUSES,
+  PAYIN_REQUISITE_SAME_AMOUNT_BLOCKING_STATUSES,
   pickPrimaryCascadeLevelDebt,
   pickPrimaryCascadeLevelStochastic,
   roundMoney2,
@@ -46,6 +49,7 @@ import {
   type CascadeAssignmentLevel,
   type FillMultiplierTier,
   type TraderCascadeMethod,
+  PayinNoRequisiteReason,
 } from '@p2p/shared';
 import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
 import {
@@ -79,6 +83,14 @@ export type CascadeProviderAssignment = {
 
 export type CascadeResult = CascadeTraderAssignment | CascadeProviderAssignment;
 
+export type CascadeNoMatch = {
+  kind: 'none';
+  reason: PayinNoRequisiteReason;
+  detail?: string;
+};
+
+export type CascadePickResult = CascadeResult | CascadeNoMatch;
+
 /** Alias for cascade ranking rows (materialized mirror in Redis per spec §5–6). */
 type ReqSnapshot = CascadeReqSnapshotRow;
 
@@ -97,6 +109,10 @@ function maskRequisiteNumber(num: string): string {
 /** Prisma `PayinStatus` values aligned with {@link PAYIN_PRE_USDT_SETTLEMENT_STATUSES}. */
 const PAYIN_STATUS_PENDING_USDT_SETTLEMENT: PayinStatus[] =
   PAYIN_PRE_USDT_SETTLEMENT_STATUSES.map((s) => s as unknown as PayinStatus);
+
+/** Prisma `PayinStatus` values aligned with {@link PAYIN_REQUISITE_SAME_AMOUNT_BLOCKING_STATUSES}. */
+const PAYIN_STATUS_SAME_AMOUNT_BLOCKING: PayinStatus[] =
+  PAYIN_REQUISITE_SAME_AMOUNT_BLOCKING_STATUSES.map((s) => s as unknown as PayinStatus);
 
 @Injectable()
 export class CascadeService {
@@ -242,6 +258,8 @@ export class CascadeService {
     fillTiers: readonly FillMultiplierTier[] | null,
     idleMsByRequisiteId?: ReadonlyMap<string, number>,
     tryAnyNominal = false,
+    occupiedAmountsOnRequisite: readonly number[] = [],
+    occupiedByRequisiteId: ReadonlyMap<string, readonly number[]> = new Map(),
   ): { ok: true; score: number } | { ok: false; code: string; detail: string } {
     const coverageCounts = new Map<number, number>();
     for (const n of nominalAmounts) {
@@ -260,7 +278,11 @@ export class CascadeService {
           autolimitThreshold: Number(settings.autolimitThreshold),
         });
         if (!range) continue;
-        if (nominalCoveredByRange(n, range.min, range.max)) c++;
+        if (!nominalCoveredByRange(n, range.min, range.max)) continue;
+        if (payInAmountBlockedOnRequisite(occupiedByRequisiteId.get(other.id) ?? [], n)) {
+          continue;
+        }
+        c++;
       }
       coverageCounts.set(n, c);
     }
@@ -287,6 +309,14 @@ export class CascadeService {
         a,
       );
       if (!rangeOk.ok) return rangeOk;
+
+      if (payInAmountBlockedOnRequisite(occupiedAmountsOnRequisite, a)) {
+        return {
+          ok: false,
+          code: 'REQUISITE_SAME_AMOUNT_ACTIVE',
+          detail: `Requisite already has an in-flight Pay-In for amount ${roundMoney2(a).toFixed(2)}.`,
+        };
+      }
 
       if (enforceUsdtCapacity && parserRate !== undefined) {
         const reserved = pendingPayinUsdtDebit.get(row.traderId) ?? 0;
@@ -374,6 +404,7 @@ export class CascadeService {
     fillTiers: readonly FillMultiplierTier[] | null,
     idleMsByRequisiteId?: ReadonlyMap<string, number>,
     tryAnyNominal = false,
+    occupiedByRequisiteId: ReadonlyMap<string, readonly number[]> = new Map(),
   ): Array<{
     id: string;
     score: number;
@@ -405,6 +436,8 @@ export class CascadeService {
           fillTiers,
           idleMsByRequisiteId,
           tryAnyNominal,
+          occupiedByRequisiteId.get(row.id) ?? [],
+          occupiedByRequisiteId,
         );
         if (!ev.ok) return null;
         return {
@@ -416,6 +449,34 @@ export class CascadeService {
       })
       .filter((x): x is NonNullable<typeof x> => x !== null)
       .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+  }
+
+  /** In-flight Pay-In amounts per requisite (blocks duplicate fiat amount on the same card). */
+  private async getOccupiedPayInAmountsByRequisiteId(
+    db: PrismaService | Prisma.TransactionClient,
+    requisiteIds: string[],
+    excludePayinOrderId?: string,
+  ): Promise<Map<string, number[]>> {
+    const unique = [...new Set(requisiteIds)];
+    if (unique.length === 0) return new Map();
+
+    const rows = await db.payinOrder.findMany({
+      where: {
+        requisiteId: { in: unique },
+        status: { in: PAYIN_STATUS_SAME_AMOUNT_BLOCKING },
+        ...(excludePayinOrderId ? { NOT: { id: excludePayinOrderId } } : {}),
+      },
+      select: { requisiteId: true, amount: true },
+    });
+
+    const byRequisite = new Map<string, number[]>();
+    for (const row of rows) {
+      if (!row.requisiteId) continue;
+      const list = byRequisite.get(row.requisiteId) ?? [];
+      list.push(Number(row.amount));
+      byRequisite.set(row.requisiteId, list);
+    }
+    return byRequisite;
   }
 
   private async getPendingPayinUsdtDebitByTrader(
@@ -536,6 +597,11 @@ export class CascadeService {
       ...new Set(reqRows.map((r) => r.id)),
     ]);
 
+    const occupiedByRequisiteId = await this.getOccupiedPayInAmountsByRequisiteId(
+      db,
+      reqRows.map((r) => r.id),
+    );
+
     const snapshots = reqRows.filter((row) => {
       const remAmt = roundMoney2(Number(row.limitTotalAmount) - Number(row.usedAmount));
       if (anyNominal) return remAmt > MONEY_COMPARE_EPS;
@@ -567,6 +633,7 @@ export class CascadeService {
         fillTiers,
         idleMsByRequisiteId,
         anyNominal,
+        occupiedByRequisiteId,
       );
       orderedReqIds.push(...ranked);
     }
@@ -649,6 +716,11 @@ export class CascadeService {
 
     const reqs = this.normalizeAssignmentRows(rawRows);
 
+    const occupiedByRequisiteId = await this.getOccupiedPayInAmountsByRequisiteId(
+      db,
+      reqs.map((r) => r.id),
+    );
+
     const nominals: CoverageNominalRow[] = [];
     for (const n of nominalAmounts) {
       let count = 0;
@@ -665,9 +737,11 @@ export class CascadeService {
           autolimitThreshold: Number(settings.autolimitThreshold),
         });
         if (!range) continue;
-        if (nominalCoveredByRange(n, range.min, range.max)) {
-          count++;
+        if (!nominalCoveredByRange(n, range.min, range.max)) continue;
+        if (payInAmountBlockedOnRequisite(occupiedByRequisiteId.get(row.id) ?? [], n)) {
+          continue;
         }
+        count++;
       }
       nominals.push({ nominal: n, count });
     }
@@ -774,7 +848,11 @@ export class CascadeService {
             autolimitThreshold: Number(settings.autolimitThreshold),
           });
           if (!range) continue;
-          if (nominalCoveredByRange(n, range.min, range.max)) c++;
+          if (!nominalCoveredByRange(n, range.min, range.max)) continue;
+          if (payInAmountBlockedOnRequisite(occupiedByRequisiteId.get(other.id) ?? [], n)) {
+            continue;
+          }
+          c++;
         }
         coverageCounts.set(n, c);
       }
@@ -959,10 +1037,11 @@ export class CascadeService {
       >;
       rng?: () => number;
     },
-  ): Promise<CascadeResult | null> {
+  ): Promise<CascadePickResult> {
     const cascadeStarted = Date.now();
     let redisLockContentionEvents = 0;
     let candidatesTried = 0;
+    let providerOutcome: 'not_attempted' | 'declined' | 'unavailable' = 'not_attempted';
 
     const settings = await tx.cascadeSetting.findFirst({
       orderBy: { updatedAt: 'desc' },
@@ -1043,6 +1122,11 @@ export class CascadeService {
       ...new Set(snapshots.map((r) => r.id)),
     ]);
 
+    const occupiedByRequisiteId = await this.getOccupiedPayInAmountsByRequisiteId(
+      tx,
+      snapshots.map((r) => r.id),
+    );
+
     const applyDebtCredits = async () => {
       const nextCredits = applyCascadeCreditsAfterAssignment(levelCredits, targetsPct, primary);
       await tx.cascadeLevelDebt.upsert({
@@ -1095,6 +1179,11 @@ export class CascadeService {
             landedCascadeLevel: 'PROVIDER',
           };
         }
+        if (bridge?.kind === 'declined') {
+          providerOutcome = 'declined';
+        } else if (bridge?.kind === 'unavailable') {
+          providerOutcome = 'unavailable';
+        }
         continue;
       }
 
@@ -1113,6 +1202,8 @@ export class CascadeService {
         assignNowMs,
         fillTiers,
         idleMsByRequisiteId,
+        false,
+        occupiedByRequisiteId,
       );
 
       for (const cand of ranked) {
@@ -1175,6 +1266,31 @@ export class CascadeService {
           continue;
         }
 
+        const blockingOnRequisite = await tx.payinOrder.findMany({
+          where: {
+            requisiteId: id,
+            status: { in: PAYIN_STATUS_SAME_AMOUNT_BLOCKING },
+          },
+          select: { amount: true },
+        });
+        if (
+          blockingOnRequisite.some(
+            (o) =>
+              Math.abs(roundMoney2(Number(o.amount)) - roundMoney2(params.amount)) <=
+              MONEY_COMPARE_EPS,
+          )
+        ) {
+          await this.redisState.releaseRequisiteLock(id);
+          this.logger.log({
+            msg: 'cascade.same_amount_blocked',
+            event: 'cascade_same_amount_blocked',
+            requisite_id: id,
+            currency: cur,
+            amount: params.amount,
+          });
+          continue;
+        }
+
         await applyDebtCredits();
 
         const duration_ms = Date.now() - cascadeStarted;
@@ -1205,6 +1321,25 @@ export class CascadeService {
       }
     }
 
+    const noMatch = this.classifyPayInNoMatch({
+      reqRows,
+      snapshots,
+      candidatesTried,
+      amount: params.amount,
+      providerOutcome,
+      nominalAmounts,
+      settings,
+      usdtBal,
+      overdraft,
+      pendingPayinUsdtDebit,
+      parserRate: params.parserRate,
+      enforceUsdtCapacity: params.enforceUsdtCapacity,
+      assignNowMs,
+      fillTiers,
+      idleMsByRequisiteId,
+      occupiedByRequisiteId,
+    });
+
     const duration_ms = Date.now() - cascadeStarted;
     this.logger.log({
       msg: 'cascade.assign_exhausted',
@@ -1213,17 +1348,141 @@ export class CascadeService {
       currency: cur,
       amount: params.amount,
       outcome: 'no_match',
+      no_requisite_reason: noMatch.reason,
       redis_lock_contention_events: redisLockContentionEvents,
       candidates_tried: candidatesTried,
+      provider_outcome: providerOutcome,
     });
     this.logger.warn(
-      `No suitable requisite for ${params.amount} ${params.currency} after cascade`,
+      `No suitable requisite for ${params.amount} ${params.currency} after cascade (${noMatch.reason})`,
     );
-    return null;
+    return noMatch;
+  }
+
+  /** Classify why Pay-In cascade could not assign a requisite (persisted on NO_REQUISITE orders). */
+  private classifyPayInNoMatch(args: {
+    reqRows: ReqSnapshot[];
+    snapshots: ReqSnapshot[];
+    candidatesTried: number;
+    amount: number;
+    providerOutcome: 'not_attempted' | 'declined' | 'unavailable';
+    nominalAmounts: number[];
+    settings: CascadeSetting;
+    usdtBal: Map<string, number>;
+    overdraft: Map<string, number>;
+    pendingPayinUsdtDebit: Map<string, number>;
+    parserRate: number | undefined;
+    enforceUsdtCapacity: boolean;
+    assignNowMs: number;
+    fillTiers: readonly FillMultiplierTier[] | null;
+    idleMsByRequisiteId: Map<string, number>;
+    occupiedByRequisiteId: Map<string, number[]>;
+  }): CascadeNoMatch {
+    if (args.reqRows.length === 0) {
+      return {
+        kind: 'none',
+        reason: PayinNoRequisiteReason.NO_ACTIVE_REQUISITES,
+        detail: 'Cascade snapshot has no active requisites for this currency.',
+      };
+    }
+
+    if (args.snapshots.length === 0) {
+      return {
+        kind: 'none',
+        reason: PayinNoRequisiteReason.REQUISITE_TOTAL_LIMIT_EXCEEDED,
+        detail: `No requisite has remaining total amount headroom for ${roundMoney2(args.amount).toFixed(2)}.`,
+      };
+    }
+
+    if (args.candidatesTried > 0) {
+      return {
+        kind: 'none',
+        reason: PayinNoRequisiteReason.ASSIGNMENT_CONTENTION,
+        detail: `Cascade tried ${args.candidatesTried} ranked requisite(s) but none could be locked.`,
+      };
+    }
+
+    const failCounts = new Map<string, number>();
+    let lastFailDetail: string | undefined;
+    let anyEvalOk = false;
+
+    for (const tier of ['FORK', 'CARD'] as const) {
+      for (const row of args.snapshots) {
+        const pm = row.processingMethod as TraderCascadeMethod;
+        if (tier === 'FORK' && pm !== 'FORK') continue;
+        if (tier === 'CARD' && pm !== 'CARD') continue;
+
+        const ev = this.evaluateSnapshotForPayInAmount(
+          row,
+          args.amount,
+          args.snapshots,
+          args.nominalAmounts,
+          args.settings,
+          args.usdtBal,
+          args.overdraft,
+          args.pendingPayinUsdtDebit,
+          args.parserRate,
+          args.enforceUsdtCapacity,
+          args.assignNowMs,
+          tier,
+          args.fillTiers,
+          args.idleMsByRequisiteId,
+          false,
+          args.occupiedByRequisiteId.get(row.id) ?? [],
+          args.occupiedByRequisiteId,
+        );
+        if (ev.ok) {
+          anyEvalOk = true;
+        } else {
+          failCounts.set(ev.code, (failCounts.get(ev.code) ?? 0) + 1);
+          lastFailDetail = ev.detail;
+        }
+      }
+    }
+
+    if (!anyEvalOk) {
+      const usdtFails = failCounts.get('USDT_CAPACITY_INSUFFICIENT') ?? 0;
+      const totalFails = [...failCounts.values()].reduce((a, b) => a + b, 0);
+      if (usdtFails > 0 && usdtFails === totalFails) {
+        return {
+          kind: 'none',
+          reason: PayinNoRequisiteReason.USDT_CAPACITY_INSUFFICIENT,
+          detail: lastFailDetail,
+        };
+      }
+      return {
+        kind: 'none',
+        reason: PayinNoRequisiteReason.NO_MATCHING_AMOUNT_OR_RANGE,
+        detail: lastFailDetail,
+      };
+    }
+
+    if (args.providerOutcome === 'declined') {
+      return {
+        kind: 'none',
+        reason: PayinNoRequisiteReason.PROVIDER_DECLINED,
+        detail: 'External provider bridge declined this Pay-In reservation.',
+      };
+    }
+    if (args.providerOutcome === 'unavailable') {
+      return {
+        kind: 'none',
+        reason: PayinNoRequisiteReason.PROVIDER_UNAVAILABLE,
+        detail: 'External provider bridge is disabled or unavailable.',
+      };
+    }
+
+    return {
+      kind: 'none',
+      reason: PayinNoRequisiteReason.ASSIGNMENT_CONTENTION,
+      detail: lastFailDetail ?? 'Eligible requisites existed but assignment did not complete.',
+    };
   }
 
   /**
-   * Pay-In assignment bounds shown in the trader cabinet (manual limits vs cascade Fork autolimits).
+   * Pay-In assignment bounds shown in the trader cabinet.
+   * eff_min follows Fork autolimit floor when active; eff_max is assignable headroom
+   * (min(manual max, remaining amount)), not the nominal auto_max slice used for coverage.
    */
   async getEffectiveAssignRangesForTrader(traderId: string): Promise<{
     requisites: Array<{
@@ -1394,13 +1653,14 @@ export class CascadeService {
         (nominal) => coverageCounts.get(nominal) ?? 0,
       );
 
+      const assignMax = payInAssignMax(forkInp);
       requisites.push({
         requisite_id: req.id,
         currency: req.currency.code,
         manual_min: manualMin,
         manual_max: manualMax,
         eff_min: bounds ? bounds.effMin : null,
-        eff_max: bounds ? bounds.effMax : null,
+        eff_max: bounds && assignMax !== null ? assignMax : null,
         fork_autolimit_active: isForkAutolimitActive(forkInp),
         participates_in_cascade: bounds !== null,
       });
@@ -2241,6 +2501,10 @@ export class CascadeService {
     const explainIdleMsById = await this.fetchRequisiteIdleMsFromDb(this.prisma, [
       ...new Set(reqRows.map((r) => r.id)),
     ]);
+    const occupiedByRequisiteId = await this.getOccupiedPayInAmountsByRequisiteId(
+      this.prisma,
+      reqRows.map((r) => r.id),
+    );
     const orderedIds = new Set(previewOrdered.ordered.map((o) => o.id));
 
     const allLabelRows = await this.prisma.requisite.findMany({
@@ -2321,6 +2585,8 @@ export class CascadeService {
         fillTiersExplain,
         explainIdleMsById,
         explainAllNominals,
+        occupiedByRequisiteId.get(row.id) ?? [],
+        occupiedByRequisiteId,
       );
       if (!ev.ok) {
         excluded.push({ ...baseLbl, code: ev.code, detail: ev.detail });

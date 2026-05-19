@@ -11,3 +11,4 @@ export * from './balance-v2';
 export * from './cascade-logic';
 export * from './requisite-identity';
 export * from './application-log-ui';
+export * from './payin-no-requisite';

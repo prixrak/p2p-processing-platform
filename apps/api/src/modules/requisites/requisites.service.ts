@@ -103,7 +103,7 @@ export class RequisitesService {
         providerIdempotencyKey: randomUUID(),
       });
 
-      if (!picked || picked.kind === 'provider') return null;
+      if (picked.kind === 'none' || picked.kind === 'provider') return null;
 
       return tx.requisite.findUnique({
         where: { id: picked.requisiteId },

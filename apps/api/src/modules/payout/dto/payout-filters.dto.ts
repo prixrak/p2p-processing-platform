@@ -20,7 +20,8 @@ export class PayoutListFiltersDto {
   status?: string;
 
   @ApiPropertyOptional({
-    description: 'Search by order id (full UUID) or merchant request_id',
+    description:
+      'Search by order id (full UUID), merchant request_id, recipient card/account number, owner, or code',
   })
   @IsOptional()
   @Transform(({ value }) =>

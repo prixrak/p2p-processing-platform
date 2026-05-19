@@ -743,6 +743,17 @@ enum PayinStatus {
   NO_REQUISITE
 }
 
+/// Stored on Pay-In orders with status NO_REQUISITE (cascade could not assign).
+enum PayinNoRequisiteReason {
+  NO_ACTIVE_REQUISITES
+  REQUISITE_TOTAL_LIMIT_EXCEEDED
+  NO_MATCHING_AMOUNT_OR_RANGE
+  USDT_CAPACITY_INSUFFICIENT
+  PROVIDER_DECLINED
+  PROVIDER_UNAVAILABLE
+  ASSIGNMENT_CONTENTION
+}
+
 model PayinOrder {
   id                String      @id @default(uuid()) @db.Uuid
   requestId         String      @map("request_id")
@@ -765,6 +776,10 @@ model PayinOrder {
   rateTraderIn      Decimal?    @map("rate_trader_in") @db.Decimal(12, 6)
   rateAdminIn       Decimal?    @map("rate_admin_in") @db.Decimal(12, 6)
   status            PayinStatus @default(PENDING)
+  /// Why cascade could not assign a requisite when status is NO_REQUISITE.
+  noRequisiteReason PayinNoRequisiteReason? @map("no_requisite_reason")
+  /// Optional English diagnostic snapshot (cascade evaluate detail, truncated).
+  noRequisiteDetail String?     @map("no_requisite_detail") @db.VarChar(512)
   userFullName      String?     @map("user_full_name")
   userIdExternal    String?     @map("user_id_external")
   callbackUrl       String?     @map("callback_url")
@@ -793,6 +808,7 @@ model PayinOrder {
   webhookOutbox WebhookOutbox[]
   trafficDistributionLog TrafficDistributionLog?
   forkChatProofs PayinForkChatProof[]
+  payerPaymentProofs PayinPayerPaymentProof[]
   assignmentLog PayinOrderAssignmentLog?
 
   @@unique([merchantId, requestId])
@@ -971,6 +987,20 @@ model PayinForkChatProof {
   @@map("payin_fork_chat_proofs")
 }
 
+/// Payment receipts uploaded by the payer on the public Pay-In payment page (not appeals).
+model PayinPayerPaymentProof {
+  id           String   @id @default(uuid()) @db.Uuid
+  payinOrderId String   @map("payin_order_id") @db.Uuid
+  fileId       String   @map("file_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  payinOrder PayinOrder @relation(fields: [payinOrderId], references: [id], onDelete: Cascade)
+  file       File       @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@index([payinOrderId])
+  @@map("payin_payer_payment_proofs")
+}
+
 // ─── Files ───
 
 model File {
@@ -985,6 +1015,7 @@ model File {
   uploader     User?         @relation(fields: [uploadedBy], references: [id])
   appealProofs AppealProof[]
   payinForkChatProofs PayinForkChatProof[]
+  payinPayerPaymentProofs PayinPayerPaymentProof[]
   bankLogos    Bank[]
   payoutOrderCompletionProofs PayoutOrder[] @relation("PayoutOrderCompletionProof")
   payoutCompletionProofAttachments PayoutCompletionProofAttachment[]

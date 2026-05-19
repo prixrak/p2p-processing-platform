@@ -49,7 +49,7 @@ import {
   PlatformIncomeOrderType,
   PayoutTraderBalanceTxType,
 } from '@prisma/client';
-import { buildPayinPayoutOrderSearchOr } from '../../common/order-search-where';
+import { buildPayoutOrderSearchOr } from '../../common/order-search-where';
 import { validateCallbackUrl } from '../../common/utils/url-validator';
 import { assertAmountWithinDirectionMinMax } from '../../common/utils/direction-amount-limits.util';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
@@ -342,7 +342,7 @@ export class PayoutService {
     }
 
     if (filters.search) {
-      const searchOr = buildPayinPayoutOrderSearchOr(filters.search) as Prisma.PayoutOrderWhereInput[];
+      const searchOr = buildPayoutOrderSearchOr(filters.search) as Prisma.PayoutOrderWhereInput[];
       if (searchOr.length > 0) {
         const prevAnd = where.AND;
         const andArr = Array.isArray(prevAnd) ? [...prevAnd] : prevAnd ? [prevAnd] : [];

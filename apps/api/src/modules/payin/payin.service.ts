@@ -53,7 +53,7 @@ import {
   rateTraderIn,
 } from '@p2p/shared';
 import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
-import { normalizeOrderListSearch } from '../../common/order-search-where';
+import { buildPayinOrderSearchOr, normalizeOrderListSearch } from '../../common/order-search-where';
 import { validateCallbackUrl } from '../../common/utils/url-validator';
 import { assertAmountWithinDirectionMinMax } from '../../common/utils/direction-amount-limits.util';
 import { buildMerchantProfileDto } from '../../common/utils/merchant-profile.helper';
@@ -215,7 +215,7 @@ export class PayinService {
           attemptProviderTier: this.makePayinProviderTierCallback(),
         });
 
-        if (!picked) {
+        if (picked.kind === 'none') {
           await this.logProviderTierStub(tx, dto.currency, dto.amount);
 
           const merchantFracNr = percentToFraction(commissionPercent);
@@ -243,6 +243,8 @@ export class PayinService {
               rateTraderIn: undefined,
               rateAdminIn: raInNr ?? undefined,
               status: 'NO_REQUISITE',
+              noRequisiteReason: picked.reason,
+              noRequisiteDetail: picked.detail?.slice(0, 512),
               ...payinCompletedAtForHistoryStatus(PayInOrderStatus.NO_REQUISITE),
               userFullName: dto.user_full_name,
               userIdExternal: dto.user_id,
@@ -471,22 +473,21 @@ export class PayinService {
 
     const fileIds = files.length > 0 ? await this.filesService.saveFiles(files) : [];
 
-    return this.applyMerchantStatusUpdate(order, status, { appealProofFileIds: fileIds });
+    return this.applyMerchantStatusUpdate(order, status, { payerPaymentProofFileIds: fileIds });
   }
 
   /**
    * Shared merchant-side status update kernel for `update_order` (no proofs) and
-   * `update_order_with_proofs` (optional appeal attachment).
+   * `update_order_with_proofs` (optional payer receipt attachment).
    *
-   * Validates allowed transitions, persists status + `confirmedAt`, opens an appeal with proofs
-   * when file ids are supplied, emits the merchant webhook, and releases requisite usage on
-   * CANCELED. Behavior is byte-equivalent to the previous two flows when `appealProofFileIds`
-   * is empty / undefined.
+   * Validates allowed transitions, persists status + `confirmedAt`, stores payer payment proofs
+   * when file ids are supplied (same store as the public payment page — not dispute appeals),
+   * emits the merchant webhook, and releases requisite usage on CANCELED.
    */
   private async applyMerchantStatusUpdate(
     order: OrderWithRelations,
     nextStatus: PayInOrderStatus,
-    opts: { appealProofFileIds?: string[] } = {},
+    opts: { payerPaymentProofFileIds?: string[] } = {},
   ): Promise<OrderDto> {
     const allowedMerchantStatuses = [PayInOrderStatus.VERIFIED, PayInOrderStatus.CANCELED];
     if (!allowedMerchantStatuses.includes(nextStatus)) {
@@ -499,7 +500,7 @@ export class PayinService {
       );
     }
 
-    const fileIds = opts.appealProofFileIds ?? [];
+    const fileIds = opts.payerPaymentProofFileIds ?? [];
     const hasProofs = fileIds.length > 0;
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -514,18 +515,9 @@ export class PayinService {
       });
 
       if (hasProofs) {
-        const appeal = await tx.appeal.create({
-          data: {
-            payinOrderId: order.id,
-            paidAmount: Number(order.amount),
-            status: 'OPEN',
-          },
+        await tx.payinPayerPaymentProof.createMany({
+          data: fileIds.map((fileId) => ({ payinOrderId: order.id, fileId })),
         });
-        for (const fileId of fileIds) {
-          await tx.appealProof.create({
-            data: { appealId: appeal.id, fileId },
-          });
-        }
       }
 
       await this.createPayinWebhookEntry(tx, result);
@@ -537,7 +529,7 @@ export class PayinService {
       await this.requisitesService.releaseUsage(order.requisiteId, Number(order.amount));
     }
 
-    // Re-read after the transaction so freshly created appeals/proofs are included in the DTO.
+    // Re-read after the transaction so freshly attached payer proofs are included in the DTO.
     const finalRow = hasProofs
       ? await this.prisma.payinOrder.findUniqueOrThrow({
           where: { id: updated.id },
@@ -554,7 +546,7 @@ export class PayinService {
 
     void this.logPayinStatusChange(order.id, order.status, nextStatus, {
       actorRole: 'MERCHANT',
-      note: hasProofs ? 'Merchant update with proofs' : undefined,
+      note: hasProofs ? 'Merchant update with payer payment receipt(s)' : undefined,
     });
 
     return payinOrderToOrderDto(finalRow);
@@ -637,7 +629,7 @@ export class PayinService {
           attemptProviderTier: this.makePayinProviderTierCallback(),
         });
 
-        if (!picked) {
+        if (picked.kind === 'none') {
           await this.logProviderTierStub(tx, dto.currency, dto.amount);
 
           const merchantFracNr = percentToFraction(commissionPercent);
@@ -665,6 +657,8 @@ export class PayinService {
               rateTraderIn: undefined,
               rateAdminIn: raInNr ?? undefined,
               status: 'NO_REQUISITE',
+              noRequisiteReason: picked.reason,
+              noRequisiteDetail: picked.detail?.slice(0, 512),
               ...payinCompletedAtForHistoryStatus(PayInOrderStatus.NO_REQUISITE),
               userFullName: dto.user_full_name,
               userIdExternal: dto.user_id,
@@ -1135,22 +1129,9 @@ export class PayinService {
   ): Prisma.PayinOrderWhereInput[] {
     if (!q) return [];
 
-    const or: Prisma.PayinOrderWhereInput[] = [
-      { requestId: { contains: q, mode: 'insensitive' } },
-      {
-        requisite: {
-          OR: [
-            { number: { contains: q, mode: 'insensitive' } },
-            { owner: { contains: q, mode: 'insensitive' } },
-            { cardHolderName: { contains: q, mode: 'insensitive' } },
-          ],
-        },
-      },
-    ];
+    const or = buildPayinOrderSearchOr(q) as Prisma.PayinOrderWhereInput[];
 
-    if (uuidValidate(q)) {
-      or.push({ id: q });
-    } else if (idMatchIds && idMatchIds.length > 0) {
+    if (!uuidValidate(q) && idMatchIds && idMatchIds.length > 0) {
       or.push({ id: { in: idMatchIds } });
     }
 
@@ -1592,6 +1573,7 @@ export class PayinService {
         currency: order.currency.code,
         amount: Number(order.amount),
         merchant_id: order.merchantId,
+        no_requisite_reason: order.noRequisiteReason ?? null,
         context,
       });
     }
@@ -1956,18 +1938,9 @@ export class PayinService {
       });
 
       if (fileIds.length > 0) {
-        const appeal = await tx.appeal.create({
-          data: {
-            payinOrderId: orderId,
-            paidAmount: Number(order.amount),
-            status: 'OPEN',
-          },
+        await tx.payinPayerPaymentProof.createMany({
+          data: fileIds.map((fileId) => ({ payinOrderId: orderId, fileId })),
         });
-        for (const fileId of fileIds) {
-          await tx.appealProof.create({
-            data: { appealId: appeal.id, fileId },
-          });
-        }
       }
 
       await this.createPayinWebhookEntry(tx, result);
@@ -1984,7 +1957,10 @@ export class PayinService {
 
     void this.logPayinStatusChange(order.id, order.status, updated.status, {
       actorRole: 'MERCHANT',
-      note: 'Client confirmed order',
+      note:
+        fileIds.length > 0
+          ? 'Client confirmed order with payment receipt(s)'
+          : 'Client confirmed order',
     });
 
     return payinOrderToOrderDto(updated);

@@ -85,6 +85,8 @@ export interface TraderPayInOrderDto {
   requisite_card_holder_name: string;
   bank: string;
   appeals: TraderPayInOrderAppealDto[];
+  /** Receipts uploaded by the payer on the public payment page (not dispute appeals). */
+  payer_payment_proof_file_ids: string[];
   payment_detail: PaymentDetailsShortDto | null;
   trader_processing_method?: 'CARD' | 'FORK' | null;
 }
@@ -127,6 +129,8 @@ export interface OrderDto {
   bank: string;
   redirect_url: string | null;
   appeals: AppealDto[];
+  /** Payer payment receipts (payment page or merchant `update_order_with_proofs`), not dispute appeals. */
+  payer_payment_proof_file_ids: string[];
   payment_detail: PaymentDetailsShortDto | null;
   /** Routing snapshot when a trader requisite was assigned (null when unknown or unset). */
   trader_processing_method?: 'CARD' | 'FORK' | null;

@@ -901,7 +901,7 @@ function ApplicationLogDetailModal({
   const payment = data?.paymentDetails as Record<string, unknown> | null | undefined;
   const stakeholders = data?.stakeholderAmounts as Record<string, unknown> | null | undefined;
   const err = data?.applicationLogError as
-    | { code?: string; message?: string; at?: string }
+    | { code?: string; message?: string; detail?: string | null; at?: string }
     | null
     | undefined;
   const history = data?.statusHistory as
@@ -956,6 +956,9 @@ function ApplicationLogDetailModal({
               <h4 className="text-sm font-semibold text-accent-red">Error details</h4>
               <p className="text-xs font-mono text-text-primary">{err.code}</p>
               <p className="text-sm text-text-primary">{err.message}</p>
+              {err.detail && (
+                <p className="text-xs text-text-muted">{err.detail}</p>
+              )}
               {err.at && (
                 <p className="text-xs text-text-muted">
                   {formatDateTime(new Date(err.at))}

@@ -5,6 +5,7 @@ import {
   PAYIN_PRE_USDT_SETTLEMENT_STATUSES,
   PAYIN_REQUISITE_COMPLETED_STATUSES,
   PAYIN_REQUISITE_NONCOMPLETED_STATUSES,
+  PAYIN_REQUISITE_SAME_AMOUNT_BLOCKING_STATUSES,
 } from '../payin-volume';
 
 describe('PAYIN_IN_FLIGHT_STATUSES', () => {
@@ -39,6 +40,21 @@ describe('requisite volume breakdown status sets', () => {
       ...PAYIN_REQUISITE_NONCOMPLETED_STATUSES,
     ]);
     expect(all.every((s) => covered.has(s))).toBe(true);
+  });
+});
+
+describe('PAYIN_REQUISITE_SAME_AMOUNT_BLOCKING_STATUSES', () => {
+  it('blocks only NEW and VERIFIED on the same requisite', () => {
+    expect(PAYIN_REQUISITE_SAME_AMOUNT_BLOCKING_STATUSES).toEqual([
+      PayInOrderStatus.NEW,
+      PayInOrderStatus.VERIFIED,
+    ]);
+    expect(PAYIN_REQUISITE_SAME_AMOUNT_BLOCKING_STATUSES).not.toContain(
+      PayInOrderStatus.PENDING,
+    );
+    expect(PAYIN_REQUISITE_SAME_AMOUNT_BLOCKING_STATUSES).not.toContain(
+      PayInOrderStatus.APPEAL,
+    );
   });
 });
 

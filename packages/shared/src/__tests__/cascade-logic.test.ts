@@ -6,8 +6,10 @@ import {
   tzRequisiteRatingPercent,
   isForkAutolimitActive,
   nominalCoveredByRange,
+  payInAmountBlockedOnRequisite,
   approximateOthersEffectiveRange,
   payInAmountWithinAssignRange,
+  payInAssignMax,
   effectiveIdleMs,
   newcomerRatingBoostMultiplier,
   fillMultiplierFromConfirmedFill,
@@ -23,6 +25,15 @@ import {
   NEWCOMER_RATING_BOOST,
   type ForkAutolimitInputs,
 } from '../cascade-logic';
+
+describe('payInAmountBlockedOnRequisite', () => {
+  it('detects same fiat amount within half-cent tolerance', () => {
+    expect(payInAmountBlockedOnRequisite([1000, 2000], 1000)).toBe(true);
+    expect(payInAmountBlockedOnRequisite([1000.004], 1000)).toBe(true);
+    expect(payInAmountBlockedOnRequisite([1000], 2000)).toBe(false);
+    expect(payInAmountBlockedOnRequisite([], 500)).toBe(false);
+  });
+});
 
 describe('isForkAutolimitActive', () => {
   const base: ForkAutolimitInputs = {
@@ -103,6 +114,27 @@ describe('computeForkAssignBounds', () => {
     const bounds = computeForkAssignBounds(inp, nominals, () => 1);
     expect(bounds).not.toBeNull();
     expect(bounds!.effMin).toBe(100);
+  });
+});
+
+describe('payInAssignMax', () => {
+  it('returns min(manualMax, remaining) and ignores Fork nominal effMax cap', () => {
+    const inp: ForkAutolimitInputs = {
+      traderMethod: 'FORK',
+      limitTotalAmount: 15000,
+      usedAmount: 12000,
+      usedOps: 6,
+      limitTotalOps: 10,
+      manualMin: 300,
+      manualMax: 5000,
+      autolimitEnabledGlobal: true,
+      autolimitThreshold: 0.25,
+    };
+    const nominals = [300, 400, 500, 700, 800, 1000];
+    const bounds = computeForkAssignBounds(inp, nominals, () => 5);
+    expect(bounds).not.toBeNull();
+    expect(bounds!.effMax).toBeLessThan(3000 - 1e-6);
+    expect(payInAssignMax(inp)).toBe(3000);
   });
 });
 
