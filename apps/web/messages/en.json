@@ -1,4 +1,9 @@
 {
+  "Theme": {
+    "toggleAria": "Toggle color theme",
+    "light": "Light theme",
+    "dark": "Dark theme"
+  },
   "Trader": {
     "Language": {
       "switchAria": "Interface language",

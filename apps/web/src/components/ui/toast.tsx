@@ -89,7 +89,7 @@ function ToastItem({ toast: t }: { toast: Toast }) {
         type="button"
         aria-label="Dismiss"
         onClick={() => remove(t.id)}
-        className="shrink-0 rounded-md p-1 text-text-muted transition-colors hover:bg-black/15 hover:text-text-primary"
+        className="shrink-0 rounded-md p-1 text-text-muted transition-colors hover:bg-bg-hover hover:text-text-primary"
       >
         <X className="h-4 w-4" strokeWidth={2} />
       </button>

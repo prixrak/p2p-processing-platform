@@ -15,6 +15,7 @@ import {
   mergeJsonForSigning,
   utf8FromBase64,
 } from './hmac';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { externalApiUrl } from '@/lib/external-api-url';
 import { emptySigningHeaders, parseUnixNonce, STATUS_OPTIONS } from './playground-helpers';
 import {
@@ -654,20 +655,23 @@ export function App() {
           <h1 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 600, letterSpacing: '-0.02em' }}>
             External API playground
           </h1>
-          <p style={{ margin: '0.2rem 0 0', color: '#8e95a3', fontSize: '0.78rem' }}>
+          <p style={{ margin: '0.2rem 0 0', color: 'var(--pg-muted)', fontSize: '0.78rem' }}>
             <code>/api/external/v1</code> · keys + JSON bodies saved in{' '}
             <code>localStorage</code> · API base{' '}
             <code>NEXT_PUBLIC_API_URL</code>
           </p>
         </div>
-        <button
-          type="button"
-          style={{ ...button, padding: '0.55rem 1.4rem', flexShrink: 0 }}
-          disabled={loading || loadTestRunning}
-          onClick={() => send()}
-        >
-          {loading ? 'Sending…' : 'Send request'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+          <ThemeToggle />
+          <button
+            type="button"
+            style={{ ...button, padding: '0.55rem 1.4rem' }}
+            disabled={loading || loadTestRunning}
+            onClick={() => send()}
+          >
+            {loading ? 'Sending…' : 'Send request'}
+          </button>
+        </div>
       </header>
 
       <div className="pg-main">

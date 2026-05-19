@@ -3,9 +3,9 @@ import { FileQuestion } from 'lucide-react';
 
 export default function NotFound() {
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-[#0a0a0f] px-4">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-surface-primary px-4">
       <div className="mx-auto max-w-md text-center">
-        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-border-primary bg-white/5">
+        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-border-primary bg-surface-tertiary">
           <FileQuestion className="h-8 w-8 text-text-muted" aria-hidden />
         </div>
         <p className="text-sm font-medium text-text-muted">404</p>

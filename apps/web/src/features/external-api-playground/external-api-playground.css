@@ -1,4 +1,27 @@
 .external-api-playground-root {
+  --pg-bg: #f3f4f8;
+  --pg-panel: #ffffff;
+  --pg-panel-border: #dfe2ec;
+  --pg-text: #1a1d26;
+  --pg-link: #2563eb;
+  --pg-focus: #6366f1;
+  --pg-muted: #6b7280;
+  --pg-label: #374151;
+  --pg-input-bg: #ffffff;
+  --pg-input-border: #cdd1de;
+  --pg-input-text: #1a1d26;
+  --pg-pre-bg: #f6f7fb;
+  --pg-pre-border: #dfe2ec;
+  --pg-help-bg: #eef0f6;
+  --pg-help-border: #dfe2ec;
+  --pg-payin-bg: #eef2ff;
+  --pg-payin-border: #c7d2fe;
+  --pg-payin-accent: #4f46e5;
+  --pg-payout-bg: #fffbeb;
+  --pg-payout-border: #fcd34d;
+  --pg-payout-accent: #d97706;
+  --pg-btn-secondary: #e5e7eb;
+
   font-family:
     system-ui,
     -apple-system,
@@ -6,8 +29,33 @@
     Roboto,
     sans-serif;
   line-height: 1.45;
-  color: #e8e8ec;
-  background: #12141a;
+  color: var(--pg-text);
+  background: var(--pg-bg);
+}
+
+.dark .external-api-playground-root {
+  --pg-bg: #12141a;
+  --pg-panel: #1a1d26;
+  --pg-panel-border: #2a2f3c;
+  --pg-text: #e8e8ec;
+  --pg-link: #8ab4ff;
+  --pg-focus: #5c6bc0;
+  --pg-muted: #8b909d;
+  --pg-label: #b4bac8;
+  --pg-input-bg: #0e1016;
+  --pg-input-border: #3a4154;
+  --pg-input-text: #e8e8ec;
+  --pg-pre-bg: #0e1016;
+  --pg-pre-border: #2a2f3c;
+  --pg-help-bg: #141821;
+  --pg-help-border: #2a3040;
+  --pg-payin-bg: #151a24;
+  --pg-payin-border: #2d3f6e;
+  --pg-payin-accent: #5c7cfa;
+  --pg-payout-bg: #181612;
+  --pg-payout-border: #5c4a2a;
+  --pg-payout-accent: #d4a24c;
+  --pg-btn-secondary: #2a3142;
 }
 
 .external-api-playground-root * {
@@ -29,7 +77,7 @@
 }
 
 .external-api-playground-root a {
-  color: #8ab4ff;
+  color: var(--pg-link);
 }
 
 /* Main 3-column workspace: keys | body | (headers + response) */
@@ -76,10 +124,10 @@
 }
 
 .external-api-playground-root .pg-panel {
-  background: #1a1d26;
+  background: var(--pg-panel);
   border-radius: 10px;
   padding: 1rem 1.1rem;
-  border: 1px solid #2a2f3c;
+  border: 1px solid var(--pg-panel-border);
 }
 
 .external-api-playground-root .pg-panel h2,
@@ -91,7 +139,7 @@
 .external-api-playground-root select:focus-visible,
 .external-api-playground-root textarea:focus-visible,
 .external-api-playground-root button:focus-visible {
-  outline: 2px solid #5c6bc0;
+  outline: 2px solid var(--pg-focus);
   outline-offset: 1px;
 }
 

@@ -43,9 +43,9 @@ export function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
 
 function FullScreenSpinner() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#0a0a0f]">
+    <div className="flex min-h-screen items-center justify-center bg-bg-primary">
       <div
-        className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white/80"
+        className="h-8 w-8 animate-spin rounded-full border-2 border-border-primary border-t-text-primary"
         aria-hidden
       />
     </div>

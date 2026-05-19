@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 
-/** Inline styles for External API playground (dark panel UI). */
+/** Inline styles for External API playground — colors follow CSS variables on `.external-api-playground-root`. */
 export const layout = {
   app: {
     height: '100%',
@@ -28,27 +28,27 @@ export const keyGroupPayin: CSSProperties = {
   padding: '0.65rem 0.75rem',
   marginBottom: '0.85rem',
   borderRadius: '8px',
-  border: '1px solid #2d3f6e',
+  border: '1px solid var(--pg-payin-border)',
   borderLeftWidth: '4px',
-  borderLeftColor: '#5c7cfa',
-  background: '#151a24',
+  borderLeftColor: 'var(--pg-payin-accent)',
+  background: 'var(--pg-payin-bg)',
 };
 
 export const keyGroupPayout: CSSProperties = {
   padding: '0.65rem 0.75rem',
   marginBottom: '0.5rem',
   borderRadius: '8px',
-  border: '1px solid #5c4a2a',
+  border: '1px solid var(--pg-payout-border)',
   borderLeftWidth: '4px',
-  borderLeftColor: '#d4a24c',
-  background: '#181612',
+  borderLeftColor: 'var(--pg-payout-accent)',
+  background: 'var(--pg-payout-bg)',
 };
 
 export const keyGroupLabel: CSSProperties = {
   fontSize: '0.68rem',
   textTransform: 'uppercase',
   letterSpacing: '0.08em',
-  color: '#8b909d',
+  color: 'var(--pg-muted)',
   marginBottom: '0.5rem',
   fontWeight: 600,
 };
@@ -57,14 +57,14 @@ export const sectionTitle: CSSProperties = {
   fontSize: '0.75rem',
   textTransform: 'uppercase',
   letterSpacing: '0.06em',
-  color: '#8b909d',
+  color: 'var(--pg-muted)',
   margin: '0 0 0.65rem',
 };
 
 export const label: CSSProperties = {
   display: 'block',
   fontSize: '0.8rem',
-  color: '#b4bac8',
+  color: 'var(--pg-label)',
   marginBottom: '0.25rem',
 };
 
@@ -73,9 +73,9 @@ export const input: CSSProperties = {
   marginBottom: '0.65rem',
   padding: '0.45rem 0.5rem',
   borderRadius: '6px',
-  border: '1px solid #3a4154',
-  background: '#0e1016',
-  color: '#e8e8ec',
+  border: '1px solid var(--pg-input-border)',
+  background: 'var(--pg-input-bg)',
+  color: 'var(--pg-input-text)',
 };
 
 export const inputMono: CSSProperties = {
@@ -105,9 +105,9 @@ export const button: CSSProperties = {
 export const pre: CSSProperties = {
   margin: 0,
   padding: '0.65rem',
-  background: '#0e1016',
+  background: 'var(--pg-pre-bg)',
   borderRadius: '6px',
-  border: '1px solid #2a2f3c',
+  border: '1px solid var(--pg-pre-border)',
   fontSize: '0.75rem',
   overflow: 'auto',
   maxHeight: 'min(70vh, 520px)',
@@ -117,11 +117,11 @@ export const pre: CSSProperties = {
 
 export const block: CSSProperties = { marginBottom: '0.5rem' };
 
-export const fileInput: CSSProperties = { marginBottom: '0.65rem', color: '#b4bac8' };
+export const fileInput: CSSProperties = { marginBottom: '0.65rem', color: 'var(--pg-label)' };
 
 export const help: CSSProperties = {
   fontSize: '0.78rem',
-  color: '#8f96a3',
+  color: 'var(--pg-muted)',
   margin: '0 0 0.65rem',
   lineHeight: 1.45,
 };
@@ -130,9 +130,9 @@ export const helpAside: CSSProperties = {
   ...help,
   margin: '0 0 0.75rem',
   padding: '0.5rem 0.6rem',
-  background: '#141821',
+  background: 'var(--pg-help-bg)',
   borderRadius: '6px',
-  border: '1px solid #2a3040',
+  border: '1px solid var(--pg-help-border)',
 };
 
 export const btnRow: CSSProperties = {
@@ -144,7 +144,7 @@ export const btnRow: CSSProperties = {
 
 export const btnSecondary: CSSProperties = {
   ...button,
-  background: '#2a3142',
+  background: 'var(--pg-btn-secondary)',
   fontWeight: 500,
   fontSize: '0.8rem',
   padding: '0.35rem 0.65rem',

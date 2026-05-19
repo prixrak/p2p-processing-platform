@@ -76,8 +76,8 @@ export function Modal({
       className={clsx(
         'fixed inset-0 z-50 min-h-dvh w-full',
         fullscreen
-          ? 'flex flex-col bg-black/45 backdrop-blur-[2px]'
-          : 'flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm',
+          ? 'flex flex-col bg-overlay backdrop-blur-[2px]'
+          : 'flex items-center justify-center bg-overlay p-4 backdrop-blur-sm',
         overlayClassName,
       )}
       onClick={(e) => {

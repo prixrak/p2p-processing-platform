@@ -11,6 +11,7 @@ import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { payoutCabinetKeys, traderKeys } from '@/lib/query-keys';
 import { Tooltip } from '@/components/ui/tooltip';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { TraderLocaleSwitch } from '@/components/trader-locale-switch';
 import { TraderHeaderCapacityAlerts } from '@/components/trader-header-capacity-alerts';
 import { isNavHrefActive } from '@/lib/nav-active';
@@ -223,7 +224,9 @@ function TraderHeaderOrderStatus() {
         'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors',
         disabled && 'cursor-not-allowed opacity-60',
         accountSuspended && 'bg-surface-tertiary text-text-muted border border-border-primary',
-        !accountSuspended && accepting && 'bg-emerald-950/75 text-emerald-400 ring-1 ring-emerald-500/35',
+        !accountSuspended &&
+          accepting &&
+          'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/75 dark:text-emerald-400 dark:ring-emerald-500/35',
         !accountSuspended && !accepting && 'bg-surface-tertiary text-text-secondary border border-border-primary',
       )}
       aria-pressed={accepting && !accountSuspended}
@@ -272,7 +275,7 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
     <div className="fixed inset-0 z-30 flex overflow-hidden bg-surface-primary">
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-30 bg-overlay lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -325,6 +328,11 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
         </nav>
 
         <div className="border-t border-border-primary p-4">
+          {role !== 'trader' && role !== 'payout-trader' && (
+            <div className="mb-3 hidden justify-end lg:flex">
+              <ThemeToggle />
+            </div>
+          )}
           <div className="mb-3 flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-elevated text-xs font-medium text-text-secondary">
               {user?.email?.charAt(0).toUpperCase() ?? '?'}
@@ -367,6 +375,7 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
               {`${role} Panel`}
             </span>
           )}
+          <ThemeToggle />
           {role === 'trader' && <TraderLocaleSwitch />}
           {role === 'trader' && <TraderHeaderOrderStatus />}
         </header>

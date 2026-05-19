@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Zap, Shield, ArrowRight, Clock3 } from 'lucide-react';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -110,7 +111,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg-primary p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-bg-primary p-4">
+      <div className="pointer-events-auto absolute right-4 top-4 z-10">
+        <ThemeToggle />
+      </div>
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-accent-blue/5 blur-3xl" />
         <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-accent-blue/5 blur-3xl" />
