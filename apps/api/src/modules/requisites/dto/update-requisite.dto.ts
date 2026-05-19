@@ -14,6 +14,13 @@ export class UpdateRequisiteDto {
   @IsOptional()
   owner?: string;
 
+  @ApiPropertyOptional({
+    description: 'Full legal name of the card/account holder (surname, given name, patronymic)',
+  })
+  @IsString()
+  @IsOptional()
+  cardHolderName?: string;
+
   @ApiPropertyOptional({ description: 'Bank code' })
   @IsString()
   @IsOptional()

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useDebouncedValue } from './use-debounced-value';
+import { DEFAULT_INPUT_DEBOUNCE_MS, useDebouncedTextFilter } from './use-debounced-value';
 
 /**
  * Encapsulates the page / search / debounced-search / status-filter state shared by all paginated list
@@ -22,11 +22,14 @@ export function usePaginatedListState<TStatus extends string = string>(opts: {
   /** Extra dependencies that should reset page back to 1 (e.g. tab change). */
   resetWhen?: ReadonlyArray<unknown>;
 }) {
-  const { pageSize, debounceMs = 350, resetWhen = [] } = opts;
+  const { pageSize, debounceMs = DEFAULT_INPUT_DEBOUNCE_MS, resetWhen = [] } = opts;
 
   const [page, setPage] = useState(1);
-  const [searchInput, setSearchInput] = useState('');
-  const debouncedSearch = useDebouncedValue(searchInput, debounceMs, (v) => v.trim());
+  const {
+    value: searchInput,
+    setValue: setSearchInput,
+    debounced: debouncedSearch,
+  } = useDebouncedTextFilter(debounceMs);
   const [statusFilter, setStatusFilter] = useState<TStatus | ''>('');
 
   useEffect(() => {

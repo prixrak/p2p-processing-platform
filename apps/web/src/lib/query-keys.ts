@@ -77,8 +77,9 @@ export const traderKeys = {
     listBucket: 'current' | 'history',
     page: number,
     limit: number,
+    search?: string,
   ) =>
-    [...traderRoot, 'appeals', 'list', listBucket, page, limit] as const,
+    [...traderRoot, 'appeals', 'list', listBucket, page, limit, search ?? ''] as const,
   telegram: () => [...traderRoot, 'telegram'] as const,
   statistics: (period: string) => [...traderRoot, 'statistics', period] as const,
   analytics: (queryParams: unknown) => [...traderRoot, 'analytics', queryParams] as const,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { ArrowDownToLine } from 'lucide-react';
@@ -43,8 +43,11 @@ import {
   PayInReceiptGalleryModal,
 } from './payin-receipt-modals';
 import { PayInOrderDetailModal } from './payin-order-detail-modal';
+import { AppealDecisionConfirmDialog } from '@/components/appeals/appeal-decision-confirm-dialog';
+import type { PendingAppealDecision } from '@/lib/appeal-decision-confirm';
 import { usePaginatedListState } from '@/lib/hooks/use-paginated-list-state';
 import { useSelectedRowSync } from '@/lib/hooks/use-selected-row-sync';
+import { listSearchForQuery } from '@/lib/list-search';
 
 const PAYIN_LIST_PAGE_SIZE = 20;
 
@@ -70,6 +73,39 @@ export function TraderPayInPage() {
   const [viewingProofFileId, setViewingProofFileId] = useState<string | null>(null);
   const [finalizeMenu, setFinalizeMenu] = useState<OrderFinalizeMenuState>(null);
   const [appealDecisionMenu, setAppealDecisionMenu] = useState<AppealDecisionMenuState>(null);
+  const [pendingAppealDecision, setPendingAppealDecision] =
+    useState<PendingAppealDecision | null>(null);
+
+  const appealConfirmLabels = useMemo(
+    () => ({
+      title: t('appealDecision.confirmTitle'),
+      rejectDescription: t('appealDecision.confirmRejectDescription'),
+      acceptDescription: t('appealDecision.confirmAcceptDescription'),
+      rejectLabel: t('appealDecision.confirmRejectLabel'),
+      acceptLabel: t('appealDecision.confirmAcceptLabel'),
+      cancelLabel: t('appealDecision.confirmCancel'),
+    }),
+    [t],
+  );
+
+  const appealAmountLabels = useMemo(
+    () => ({
+      label: t('appealDecision.amountLabel'),
+      hint: t('appealDecision.amountHint'),
+    }),
+    [t],
+  );
+
+  const requestAppealDecision = useCallback(
+    (appealId: string, decision: AppealStatus, order: TraderPayInOrderDto) => {
+      setPendingAppealDecision({
+        appealId,
+        decision,
+        orderAmount: Number(order.amount),
+      });
+    },
+    [],
+  );
   const [finalizeDialog, setFinalizeDialog] = useState<FinalizeDialogState | null>(null);
 
   const statusLabels = useMemo(
@@ -109,7 +145,8 @@ export function TraderPayInPage() {
     limit: String(PAYIN_LIST_PAGE_SIZE),
   };
   if (statusFilter) queryParams.status = statusFilter;
-  if (debouncedSearch) queryParams.search = debouncedSearch;
+  const searchParam = listSearchForQuery(debouncedSearch);
+  if (searchParam) queryParams.search = searchParam;
 
   const { data, isLoading } = useQuery({
     queryKey: traderKeys.payinOrders(queryParams),
@@ -172,9 +209,21 @@ export function TraderPayInPage() {
   });
 
   const resolveAppealMutation = useMutation({
-    mutationFn: ({ appealId, decision }: { appealId: string; decision: AppealStatus }) =>
-      api.patch<AppealDto>(internalPaths.appealResolve(appealId), { decision }),
+    mutationFn: ({
+      appealId,
+      decision,
+      actualAmount,
+    }: {
+      appealId: string;
+      decision: AppealStatus;
+      actualAmount?: number;
+    }) =>
+      api.patch<AppealDto>(internalPaths.appealResolve(appealId), {
+        decision,
+        ...(actualAmount !== undefined ? { actualAmount } : {}),
+      }),
     onSuccess: () => {
+      setPendingAppealDecision(null);
       void queryClient.invalidateQueries({ queryKey: traderKeys.payinOrdersScope });
       void queryClient.invalidateQueries({ queryKey: traderKeys.appealsScope });
       toast.success(t('appealSaved'));
@@ -292,56 +341,54 @@ export function TraderPayInPage() {
           <PayInOrderStatusColumnCell row={row} onOpenReceipts={setReceiptOrder} />
         ),
       },
-      {
-        key: 'actions',
-        header: t('colActions'),
-        className: 'text-end',
-        render: (row: TraderPayInOrderDto) => {
-          const openAppeal = (row.appeals ?? []).find((a) => a.status === AppealStatus.OPEN);
-          const showAppealActions =
-            row.status === PayInOrderStatus.APPEAL && openAppeal !== undefined;
-          const appealBusy =
-            resolveAppealMutation.isPending &&
-            resolveAppealMutation.variables?.appealId === openAppeal?.id;
+      ...(listTab !== 'history'
+        ? [
+            {
+              key: 'actions',
+              header: t('colActions'),
+              className: 'text-end',
+              render: (row: TraderPayInOrderDto) => {
+                const openAppeal = (row.appeals ?? []).find((a) => a.status === AppealStatus.OPEN);
+                const showAppealActions =
+                  row.status === PayInOrderStatus.APPEAL && openAppeal !== undefined;
+                const appealBusy =
+                  resolveAppealMutation.isPending &&
+                  resolveAppealMutation.variables?.appealId === openAppeal?.id;
 
-          return (
-            <div
-              className="flex flex-wrap items-center justify-end gap-2"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {showAppealActions && (
-                <PayInAppealDecisionDropdown
-                  orderId={row.id}
-                  appealId={openAppeal!.id}
-                  menuState={appealDecisionMenu}
-                  setMenuState={setAppealDecisionMenu}
-                  menuAnchor="table"
-                  loading={appealBusy}
-                  onReject={() =>
-                    resolveAppealMutation.mutate({
-                      appealId: openAppeal!.id,
-                      decision: AppealStatus.REJECTED,
-                    })
-                  }
-                  onAccept={() =>
-                    resolveAppealMutation.mutate({
-                      appealId: openAppeal!.id,
-                      decision: AppealStatus.RESOLVED,
-                    })
-                  }
-                />
-              )}
-              <OrderFinalizeDropdown
-                order={row}
-                menuState={finalizeMenu}
-                setMenuState={setFinalizeMenu}
-                menuAnchor="table"
-                onPickKind={(kind) => openFinalize(kind, row)}
-              />
-            </div>
-          );
-        },
-      },
+                return (
+                  <div
+                    className="flex flex-wrap items-center justify-end gap-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {showAppealActions && (
+                      <PayInAppealDecisionDropdown
+                        orderId={row.id}
+                        appealId={openAppeal!.id}
+                        menuState={appealDecisionMenu}
+                        setMenuState={setAppealDecisionMenu}
+                        menuAnchor="table"
+                        loading={appealBusy}
+                        onReject={() =>
+                          requestAppealDecision(openAppeal!.id, AppealStatus.REJECTED, row)
+                        }
+                        onAccept={() =>
+                          requestAppealDecision(openAppeal!.id, AppealStatus.RESOLVED, row)
+                        }
+                      />
+                    )}
+                    <OrderFinalizeDropdown
+                      order={row}
+                      menuState={finalizeMenu}
+                      setMenuState={setFinalizeMenu}
+                      menuAnchor="table"
+                      onPickKind={(kind) => openFinalize(kind, row)}
+                    />
+                  </div>
+                );
+              },
+            },
+          ]
+        : []),
     ],
     [
       t,
@@ -351,7 +398,7 @@ export function TraderPayInPage() {
       resolveAppealMutation.variables?.appealId,
       appealDecisionMenu,
       finalizeMenu,
-      resolveAppealMutation,
+      requestAppealDecision,
     ],
   );
 
@@ -440,6 +487,7 @@ export function TraderPayInPage() {
         appealDecisionMenu={appealDecisionMenu}
         setAppealDecisionMenu={setAppealDecisionMenu}
         resolveAppealMutation={resolveAppealMutation}
+        onAppealDecision={requestAppealDecision}
         onOpenReceipts={setReceiptOrder}
         onClose={() => {
           setFinalizeMenu((m) => (m?.anchor === 'modal' ? null : m));
@@ -458,6 +506,17 @@ export function TraderPayInPage() {
         onApply={() => commitFinalize()}
         confirmMutation={confirmMutation}
         cancelMutation={cancelMutation}
+      />
+
+      <AppealDecisionConfirmDialog
+        pending={pendingAppealDecision}
+        onOpenChange={(open) => !open && setPendingAppealDecision(null)}
+        labels={appealConfirmLabels}
+        amountLabels={appealAmountLabels}
+        loading={resolveAppealMutation.isPending}
+        onConfirm={({ appealId, decision, actualAmount }) =>
+          resolveAppealMutation.mutate({ appealId, decision, actualAmount })
+        }
       />
     </div>
   );

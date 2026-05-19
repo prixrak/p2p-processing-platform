@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useDebouncedTextFilter } from '@/lib/hooks/use-debounced-value';
 import { Eye, FileImage, MessageSquare } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -14,6 +15,11 @@ import { Modal } from '@/components/ui/modal';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs } from '@/components/ui/tabs';
 import { DataTable } from '@/components/ui/data-table';
+import { PendingConfirmDialog } from '@/components/ui/pending-confirm-dialog';
+import {
+  disputeStatusConfirmCopy,
+  type PendingDisputeStatusChange,
+} from '@/lib/dispute-status-confirm';
 import { formatDateTime } from '@/lib/utils';
 
 interface Dispute {
@@ -62,19 +68,29 @@ export default function DisputesPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState('OPEN');
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
+  const {
+    value: searchInput,
+    setValue: setSearchInput,
+    debounced: debouncedSearch,
+  } = useDebouncedTextFilter();
   const [detailId, setDetailId] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [pendingStatusChange, setPendingStatusChange] =
+    useState<PendingDisputeStatusChange | null>(null);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, tab]);
 
   const { data, isLoading } = useQuery({
-    queryKey: supportKeys.disputes(tab, page, search),
+    queryKey: supportKeys.disputes(tab, page, debouncedSearch),
     queryFn: () => {
       const params = new URLSearchParams({
         status: tab,
         page: String(page),
         limit: '20',
       });
-      if (search) params.set('search', search);
+      if (debouncedSearch) params.set('search', debouncedSearch);
       return api.get<DisputesResponse>(internalPaths.supportDisputes(params.toString()));
     },
   });
@@ -98,6 +114,7 @@ export default function DisputesPage() {
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.patch(internalPaths.supportDispute(id), { status }),
     onSuccess: () => {
+      setPendingStatusChange(null);
       queryClient.invalidateQueries({ queryKey: supportKeys.disputesScope });
       queryClient.invalidateQueries({ queryKey: supportKeys.disputeDetails(detailId) });
     },
@@ -196,8 +213,8 @@ export default function DisputesPage() {
       <FilterBar>
         <FilterInput
           label="Search"
-          value={search}
-          onChange={(v) => { setSearch(v); setPage(1); }}
+          value={searchInput}
+          onChange={setSearchInput}
           placeholder="Search by order ID or merchant..."
           className="w-72 min-w-[12rem]"
         />
@@ -307,7 +324,18 @@ export default function DisputesPage() {
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() => updateStatus.mutate({ id: details.id, status: 'IN_PROGRESS' })}
+                      loading={
+                        updateStatus.isPending &&
+                        pendingStatusChange?.id === details.id &&
+                        pendingStatusChange.status === 'IN_PROGRESS'
+                      }
+                      onClick={() =>
+                        setPendingStatusChange({
+                          id: details.id,
+                          status: 'IN_PROGRESS',
+                          orderId: details.orderId,
+                        })
+                      }
                     >
                       Mark In Progress
                     </Button>
@@ -316,7 +344,18 @@ export default function DisputesPage() {
                     <Button
                       variant="success"
                       size="sm"
-                      onClick={() => updateStatus.mutate({ id: details.id, status: 'RESOLVED' })}
+                      loading={
+                        updateStatus.isPending &&
+                        pendingStatusChange?.id === details.id &&
+                        pendingStatusChange.status === 'RESOLVED'
+                      }
+                      onClick={() =>
+                        setPendingStatusChange({
+                          id: details.id,
+                          status: 'RESOLVED',
+                          orderId: details.orderId,
+                        })
+                      }
                     >
                       Resolve
                     </Button>
@@ -335,6 +374,14 @@ export default function DisputesPage() {
           </div>
         )}
       </Modal>
+
+      <PendingConfirmDialog
+        pending={pendingStatusChange}
+        onOpenChange={(open) => !open && setPendingStatusChange(null)}
+        getCopy={disputeStatusConfirmCopy}
+        loading={updateStatus.isPending}
+        onConfirm={({ id, status }) => updateStatus.mutate({ id, status })}
+      />
     </div>
   );
 }

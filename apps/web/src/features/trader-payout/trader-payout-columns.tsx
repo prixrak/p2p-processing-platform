@@ -5,6 +5,8 @@ import { Eye } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { OrderIdCopyCell } from '@/components/ui/order-id-copy-cell';
 import { PayoutOrderStatusBadge } from '@/components/ui/order-status-badge';
+import { OrderStatusColumnWithHistory } from '@/components/ui/order-status-column-with-history';
+import { payoutStatusLabel } from '@/lib/order-status-ui';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { PayOutOrderStatus } from '@p2p/shared';
 import type { PayOutOrderApiDto } from '@p2p/shared';
@@ -67,6 +69,32 @@ function CopyOrderIdCell({ id }: { id: string }) {
   return <OrderIdCopyCell id={id} />;
 }
 
+function PayoutStatusWithHistory({
+  row,
+  statusHistoryPath,
+  t,
+}: {
+  row: PayOutOrderApiDto;
+  statusHistoryPath: (orderId: string) => string;
+  t: PayoutT;
+}) {
+  return (
+    <OrderStatusColumnWithHistory
+      orderId={row.id}
+      fetchPath={statusHistoryPath(row.id)}
+      direction="payout"
+      historyLabel={t('statusHistoryLabel')}
+      modalTitle={t('statusHistoryTitle')}
+      changedByLabel={t('statusHistoryChangedBy')}
+      emptyLabel={t('statusHistoryEmpty')}
+      closeLabel={t('statusHistoryClose')}
+      statusLabel={payoutStatusLabel}
+    >
+      <PayoutOrderStatusBadge status={row.status} />
+    </OrderStatusColumnWithHistory>
+  );
+}
+
 function PoolCloseCountdown({ untilUnix }: { untilUnix: number | null | undefined }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -97,9 +125,10 @@ function PoolCloseCountdown({ untilUnix }: { untilUnix: number | null | undefine
 export function buildPayoutPoolColumns(opts: {
   variant?: PayoutTableVariant;
   takeFromPoolMutation: UseMutationResult<unknown, unknown, string>;
+  statusHistoryPath: (orderId: string) => string;
   t: PayoutT;
 }) {
-  const { takeFromPoolMutation, t } = opts;
+  const { takeFromPoolMutation, statusHistoryPath, t } = opts;
 
   return [
     {
@@ -130,7 +159,9 @@ export function buildPayoutPoolColumns(opts: {
       key: 'status',
       header: t('colStatus'),
       className: 'text-center',
-      render: (row: PayOutOrderApiDto) => <PayoutOrderStatusBadge status={row.status} />,
+      render: (row: PayOutOrderApiDto) => (
+        <PayoutStatusWithHistory row={row} statusHistoryPath={statusHistoryPath} t={t} />
+      ),
     },
     {
       key: 'actions',
@@ -157,6 +188,7 @@ export type PayoutCompleteVars = {
 
 export function buildPayoutOrdersColumns(opts: {
   variant?: PayoutTableVariant;
+  statusHistoryPath: (orderId: string) => string;
   processMutation: UseMutationResult<unknown, unknown, string>;
   completeMutation: UseMutationResult<unknown, unknown, PayoutCompleteVars>;
   cancelMutation: UseMutationResult<unknown, unknown, string>;
@@ -176,6 +208,7 @@ export function buildPayoutOrdersColumns(opts: {
 }) {
   const {
     variant = 'standard',
+    statusHistoryPath,
     processMutation,
     completeMutation,
     cancelMutation,
@@ -260,7 +293,9 @@ export function buildPayoutOrdersColumns(opts: {
       key: 'status',
       header: t('colStatus'),
       className: 'text-center',
-      render: (row: PayOutOrderApiDto) => <PayoutOrderStatusBadge status={row.status} />,
+      render: (row: PayOutOrderApiDto) => (
+        <PayoutStatusWithHistory row={row} statusHistoryPath={statusHistoryPath} t={t} />
+      ),
     },
     {
       key: 'created_at',

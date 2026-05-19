@@ -34,6 +34,13 @@ export class CreateRequisiteDto {
   owner: string;
 
   @ApiProperty({
+    description: 'Full legal name of the card/account holder (surname, given name, patronymic)',
+  })
+  @IsString()
+  @IsNotEmpty()
+  cardHolderName: string;
+
+  @ApiProperty({
     description:
       'Catalog bank ID (required for pay-in routing and merchant-visible bank lists)',
   })

@@ -20,6 +20,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole, DirectionType } from '@p2p/shared';
 import { PrismaService } from '../../config/prisma.service';
+import { PayinService } from '../payin/payin.service';
+import { PayoutService } from '../payout/payout.service';
 import { payinOrderListRequisiteFields } from '../../common/payin-order-list-requisite-fields';
 import { buildAppealPayinOrderSearchOr } from '../../common/order-search-where';
 
@@ -29,7 +31,11 @@ import { buildAppealPayinOrderSearchOr } from '../../common/order-search-where';
 @Roles(UserRole.SUPPORT, UserRole.ADMIN, UserRole.OWNER)
 @Controller('support')
 export class SupportCabinetController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly payinService: PayinService,
+    private readonly payoutService: PayoutService,
+  ) {}
 
   @Get('orders')
   @ApiOperation({ summary: 'List orders (read-only for support)' })
@@ -115,6 +121,7 @@ export class SupportCabinetController {
               type: true,
               number: true,
               owner: true,
+              cardHolderName: true,
               code: true,
               bank: { select: { name: true } },
             },
@@ -142,6 +149,28 @@ export class SupportCabinetController {
       total,
       page: page ?? 1,
       totalPages: Math.max(1, Math.ceil(total / take)),
+    };
+  }
+
+  @Get('orders/:id/status-history')
+  @ApiOperation({ summary: 'Status change timeline for a Pay-In or Pay-Out order' })
+  @ApiQuery({ name: 'type', required: false, enum: DirectionType })
+  async getOrderStatusHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('type') type?: string,
+  ) {
+    const isPayin = !type || type.toUpperCase() !== DirectionType.PAYOUT;
+    const items = isPayin
+      ? await this.payinService.getPayinOrderStatusHistory(id)
+      : await this.payoutService.getPayoutOrderStatusHistory(id);
+
+    return {
+      items: items.map((e) => ({
+        status: e.status,
+        timestamp: e.timestamp.toISOString(),
+        actor: e.actor,
+        note: e.note ?? null,
+      })),
     };
   }
 
@@ -181,7 +210,12 @@ export class SupportCabinetController {
               cardNumber: payinOrder.requisite.number ?? '',
             }
           : undefined,
-        statusHistory: [],
+        statusHistory: (await this.payinService.getPayinOrderStatusHistory(id)).map((e) => ({
+          status: e.status,
+          timestamp: e.timestamp.toISOString(),
+          actor: e.actor,
+          note: e.note ?? null,
+        })),
       };
     }
 
@@ -205,7 +239,12 @@ export class SupportCabinetController {
         status: payoutOrder.status,
         createdAt: payoutOrder.createdAt.toISOString(),
         updatedAt: payoutOrder.updatedAt.toISOString(),
-        statusHistory: [],
+        statusHistory: (await this.payoutService.getPayoutOrderStatusHistory(id)).map((e) => ({
+          status: e.status,
+          timestamp: e.timestamp.toISOString(),
+          actor: e.actor,
+          note: e.note ?? null,
+        })),
       };
     }
 

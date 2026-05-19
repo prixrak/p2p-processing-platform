@@ -439,6 +439,7 @@ export class RequisitesService {
           number: dto.number,
           numberNormalized,
           owner: dto.owner,
+          cardHolderName: dto.cardHolderName,
           bankId: dto.bankId,
           code: dto.code,
           acceptsOtherBanks: dto.acceptsOtherBanks ?? false,
@@ -514,6 +515,7 @@ export class RequisitesService {
       where: { id },
       data: {
         ...(dto.owner !== undefined ? { owner: dto.owner } : {}),
+        ...(dto.cardHolderName !== undefined ? { cardHolderName: dto.cardHolderName } : {}),
         ...(dto.code !== undefined ? { code: dto.code } : {}),
         ...(dto.acceptsOtherBanks !== undefined
           ? { acceptsOtherBanks: dto.acceptsOtherBanks }

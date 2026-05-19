@@ -7,6 +7,7 @@ export interface StatusHistoryEntry {
   status: string;
   timestamp: string;
   actor: string;
+  note?: string | null;
 }
 
 /**
@@ -33,8 +34,9 @@ export function StatusHistoryList({
             <div className="flex items-center gap-2">
               <Badge variant="muted">{h.status}</Badge>
               <span className="text-xs text-text-muted">by {h.actor}</span>
+              {h.note ? <span className="text-xs text-text-muted">{h.note}</span> : null}
             </div>
-            <span className="text-xs text-text-muted">
+            <span className="text-xs text-text-muted tabular-nums">
               {formatDateTime(new Date(h.timestamp))}
             </span>
           </div>

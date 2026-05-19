@@ -14,7 +14,7 @@ function mockResolvedAppeal(overrides: Record<string, unknown>) {
       traderId: 'tp-self',
       amount: 200,
       currency: { code: 'USD' },
-      requisite: { number: '4111', owner: 'ACME', bank: { name: 'Test Bank' } },
+      requisite: { number: '4111', owner: 'ACME', cardHolderName: 'Smith John', bank: { name: 'Test Bank' } },
     },
     ...overrides,
   };
@@ -37,7 +37,7 @@ describe('AppealsService.resolve authorization', () => {
               traderId: 'tp-other',
               amount: 200,
               currency: { code: 'USD' },
-              requisite: { number: 'x', owner: 'y', bank: { name: 'B' } },
+              requisite: { number: 'x', owner: 'y', cardHolderName: '', bank: { name: 'B' } },
             },
           }),
         ),
@@ -79,6 +79,7 @@ describe('AppealsService.resolve authorization', () => {
     expect(payin.settlePayInOrderWhenAppealCloses).toHaveBeenCalledWith(
       'a2',
       AppealStatus.RESOLVED,
+      undefined,
     );
   });
 
@@ -118,6 +119,33 @@ describe('AppealsService.findAll', () => {
     expect(prisma.appeal.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ status: AppealStatus.OPEN }),
+      }),
+    );
+  });
+
+  it('applies search OR when search filter is set', async () => {
+    const prisma = {
+      appeal: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+
+    const service = new AppealsService(prisma as never, mockPayinService() as never);
+    await service.findAll(
+      { listBucket: 'current', page: 1, limit: 10, search: '4111' },
+      'tp-1',
+    );
+
+    expect(prisma.appeal.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              OR: expect.any(Array),
+            }),
+          ]),
+        }),
       }),
     );
   });

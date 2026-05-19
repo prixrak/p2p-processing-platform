@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { useDebouncedTextFilter } from '@/lib/hooks/use-debounced-value';
 import { ownerKeys } from '@/lib/query-keys';
 import { FilterBar, FilterInput, FilterSelect } from '@/components/ui/filters';
 import { Badge } from '@/components/ui/badge';
@@ -49,14 +50,22 @@ const actionColors: Record<string, 'green' | 'yellow' | 'red' | 'blue' | 'defaul
 
 export default function AuditPage() {
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
+  const {
+    value: searchInput,
+    setValue: setSearchInput,
+    debounced: debouncedSearch,
+  } = useDebouncedTextFilter();
   const [actionFilter, setActionFilter] = useState('');
   const [entityFilter, setEntityFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, actionFilter, entityFilter, dateFrom, dateTo]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ownerKeys.audit(page, search, actionFilter, entityFilter, dateFrom, dateTo),
+    queryKey: ownerKeys.audit(page, debouncedSearch, actionFilter, entityFilter, dateFrom, dateTo),
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
@@ -70,7 +79,7 @@ export default function AuditPage() {
         end.setHours(23, 59, 59, 999);
         params.set('to', end.toISOString());
       }
-      const q = search.trim();
+      const q = debouncedSearch;
       if (q && UUID_RE.test(q)) {
         params.set('actorId', q);
       }
@@ -200,15 +209,15 @@ export default function AuditPage() {
       <FilterBar>
         <FilterInput
           label="Actor ID"
-          value={search}
-          onChange={(v) => { setSearch(v); setPage(1); }}
+          value={searchInput}
+          onChange={setSearchInput}
           placeholder="User ID (optional)"
           className="w-60 min-w-[12rem]"
         />
         <FilterSelect
           label="Action"
           value={actionFilter}
-          onChange={(v) => { setActionFilter(v); setPage(1); }}
+          onChange={setActionFilter}
           options={[
             { value: '', label: 'All Actions' },
             { value: 'CREATE', label: 'Create' },
@@ -222,7 +231,7 @@ export default function AuditPage() {
         <FilterSelect
           label="Entity"
           value={entityFilter}
-          onChange={(v) => { setEntityFilter(v); setPage(1); }}
+          onChange={setEntityFilter}
           options={[
             { value: '', label: 'All Entities' },
             { value: 'User', label: 'User' },
@@ -238,14 +247,14 @@ export default function AuditPage() {
           label="From"
           type="date"
           value={dateFrom}
-          onChange={(v) => { setDateFrom(v); setPage(1); }}
+          onChange={setDateFrom}
           className="w-40"
         />
         <FilterInput
           label="To"
           type="date"
           value={dateTo}
-          onChange={(v) => { setDateTo(v); setPage(1); }}
+          onChange={setDateTo}
           className="w-40"
         />
       </FilterBar>

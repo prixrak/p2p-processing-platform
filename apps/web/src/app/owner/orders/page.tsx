@@ -3,7 +3,7 @@
 import { Suspense, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOrderIdUrlParam } from '@/lib/hooks/use-order-id-url-param';
-import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
+import { useDebouncedTextFilter } from '@/lib/hooks/use-debounced-value';
 import { Eye } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -18,8 +18,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { StatusHistoryList } from '@/components/ui/status-history-list';
+import { StaffOrderStatusCell } from '@/components/ui/staff-order-status-cell';
+import { PendingConfirmDialog } from '@/components/ui/pending-confirm-dialog';
 import { Tabs } from '@/components/ui/tabs';
 import { DataTable } from '@/components/ui/data-table';
+import {
+  adminOrderStatusConfirmCopy,
+  type PendingAdminOrderStatusChange,
+} from '@/lib/admin-order-status-confirm';
 import {
   badgeVariantForPayin,
   badgeVariantForPayout,
@@ -75,12 +81,17 @@ function OwnerOrdersPageContent() {
   const [tab, setTab] = useState('PAYIN');
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
-  const [searchInput, setSearchInput] = useState('');
-  const debouncedSearch = useDebouncedValue(searchInput, 350, (v) => v.trim());
+  const {
+    value: searchInput,
+    setValue: setSearchInput,
+    debounced: debouncedSearch,
+  } = useDebouncedTextFilter();
 
   const { orderId: detailOrder, openOrderDetail, closeOrderDetail } = useOrderIdUrlParam({
     validate: (s) => ORDER_ID_UUID_RE.test(s),
   });
+  const [pendingStatusChange, setPendingStatusChange] =
+    useState<PendingAdminOrderStatusChange | null>(null);
 
   const statusFilterOptions = useMemo(
     () => (tab === 'PAYIN' ? payinStatusFilterOptions : payoutStatusFilterOptions),
@@ -112,6 +123,7 @@ function OwnerOrdersPageContent() {
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.patch(internalPaths.adminOrderStatus(id), { status }),
     onSuccess: () => {
+      setPendingStatusChange(null);
       queryClient.invalidateQueries({ queryKey: ownerKeys.ordersScope });
       queryClient.invalidateQueries({ queryKey: ownerKeys.orderDetailsScope });
     },
@@ -164,15 +176,11 @@ function OwnerOrdersPageContent() {
       header: 'Status',
       className: 'text-center',
       render: (o: Order) => (
-        <Badge
-          variant={
-            o.type === 'PAYOUT'
-              ? badgeVariantForPayout(o.status)
-              : badgeVariantForPayin(o.status)
-          }
-        >
-          {o.status}
-        </Badge>
+        <StaffOrderStatusCell
+          orderId={o.id}
+          status={o.status}
+          direction={o.type === 'PAYOUT' ? 'payout' : 'payin'}
+        />
       ),
     },
     {
@@ -204,8 +212,20 @@ function OwnerOrdersPageContent() {
                 size="sm"
                 variant="secondary"
                 className="!px-2 !py-1 text-[10px] font-medium uppercase"
-                loading={updateStatus.isPending}
-                onClick={() => updateStatus.mutate({ id: o.id, status: s })}
+                loading={
+                  updateStatus.isPending &&
+                  updateStatus.variables?.id === o.id &&
+                  updateStatus.variables?.status === s
+                }
+                onClick={() =>
+                  setPendingStatusChange({
+                    id: o.id,
+                    status: s,
+                    orderType: o.type,
+                    amount: o.amount,
+                    currency: o.currency,
+                  })
+                }
               >
                 → {s}
               </Button>
@@ -260,6 +280,14 @@ function OwnerOrdersPageContent() {
         totalPages={data?.totalPages}
         onPageChange={setPage}
         emptyMessage="No orders found"
+      />
+
+      <PendingConfirmDialog
+        pending={pendingStatusChange}
+        onOpenChange={(open) => !open && setPendingStatusChange(null)}
+        getCopy={adminOrderStatusConfirmCopy}
+        loading={updateStatus.isPending}
+        onConfirm={({ id, status }) => updateStatus.mutate({ id, status })}
       />
 
       <Modal

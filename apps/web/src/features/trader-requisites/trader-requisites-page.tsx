@@ -106,6 +106,7 @@ export function TraderRequisitesPage() {
     queryKey: traderKeys.payinAssignRanges,
     queryFn: () =>
       api.get<{ requisites: PayinAssignRangeRow[] }>(internalPaths.traderDashboardPayinAssignRanges),
+    enabled: !archivedTab,
   });
 
   const assignRangeByReqId = useMemo(() => {
@@ -140,6 +141,7 @@ export function TraderRequisitesPage() {
         (r) =>
           r.number.toLowerCase().includes(q) ||
           r.owner.toLowerCase().includes(q) ||
+          r.cardHolderName.toLowerCase().includes(q) ||
           (r.bank?.name ?? '').toLowerCase().includes(q),
       );
     });
@@ -228,6 +230,7 @@ export function TraderRequisitesPage() {
         type: data.type,
         number: data.number,
         owner: data.owner,
+        cardHolderName: data.card_holder_name,
         bankId,
         minAmount: data.min_amount,
         maxAmount: data.max_amount,
@@ -289,6 +292,7 @@ export function TraderRequisitesPage() {
       type: req.type,
       number: req.number,
       owner: req.owner,
+      card_holder_name: req.cardHolderName,
       bank_id: '',
       accepts_other_banks: req.acceptsOtherBanks,
       min_amount: num(req.minAmount),

@@ -32,6 +32,7 @@ export function PayinRequisiteTableCell({ row }: { row: PayinRequisiteListRow })
   const tooltipBody = (
     <div className="space-y-1.5 text-xs leading-snug">
       {requisiteTooltipLine('Owner:', snap.owner ?? '—')}
+      {requisiteTooltipLine('Card holder:', snap.cardHolderName ?? '—')}
       {requisiteTooltipLine('Bank:', snap.bank ?? '—')}
       {requisiteTooltipLine('Type:', snap.type ?? '—')}
     </div>

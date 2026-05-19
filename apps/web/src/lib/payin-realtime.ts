@@ -17,6 +17,7 @@ import {
   type PayoutCabinetScope,
   traderKeys,
 } from '@/lib/query-keys';
+import { useDocumentVisible } from '@/lib/use-document-visible';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
 
@@ -112,41 +113,66 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+type UseSseSubscriptionOptions = {
+  path: string;
+  enabled?: boolean;
+  /** When true, skip streaming until a Bearer token exists (cabinet SSE). */
+  requireAuth?: boolean;
+  onMessage: (raw: string) => void;
+  /** Fires when this tab becomes visible again after being backgrounded. */
+  onVisibleAgain?: () => void;
+};
+
 /**
- * Subscribes to Pay-In updates for the logged-in trader (Bearer token).
- * Invalidates list and dashboard queries when an event arrives; reconnects on disconnect.
+ * Long-lived SSE loop with reconnect. Pauses while the tab is hidden so a second
+ * tab in the same browser is not starved by HTTP/1.1 per-origin connection limits.
  */
-export function usePayinTraderRealtime(queryClient: QueryClient): void {
+function useSseSubscription({
+  path,
+  enabled = true,
+  requireAuth = false,
+  onMessage,
+  onVisibleAgain,
+}: UseSseSubscriptionOptions): void {
+  const visible = useDocumentVisible();
+  const streaming = enabled && visible;
+  const onMessageRef = useRef(onMessage);
+  onMessageRef.current = onMessage;
+  const onVisibleAgainRef = useRef(onVisibleAgain);
+  onVisibleAgainRef.current = onVisibleAgain;
+  const prevStreamingRef = useRef<boolean | null>(null);
+
   useEffect(() => {
+    if (prevStreamingRef.current === null) {
+      prevStreamingRef.current = streaming;
+      return;
+    }
+    if (!prevStreamingRef.current && streaming) {
+      onVisibleAgainRef.current?.();
+    }
+    prevStreamingRef.current = streaming;
+  }, [streaming]);
+
+  useEffect(() => {
+    if (!streaming) return;
+
     const ac = new AbortController();
     let cancelled = false;
 
-    const invalidateDebouncer = createDebouncer(INVALIDATE_DEBOUNCE_MS);
-
     const run = async () => {
       while (!cancelled) {
-        const token = getToken();
-        if (!token) break;
+        const headers: Record<string, string> = {};
+        if (requireAuth) {
+          const token = getToken();
+          if (!token) break;
+          headers.Authorization = `Bearer ${token}`;
+        }
 
         try {
-          await consumeSseStream(internalPaths.traderPayinStream, {
+          await consumeSseStream(path, {
             signal: ac.signal,
-            headers: { Authorization: `Bearer ${token}` },
-            onMessage: (raw) => {
-              try {
-                const evt = JSON.parse(raw) as PayinOrderRealtimeEvent;
-                if (evt.type === PAYIN_ORDER_REALTIME_EVENT_TYPE) {
-                  invalidateDebouncer.schedule(() => {
-                    queryClient.invalidateQueries({ queryKey: traderKeys.payinOrdersScope });
-                    queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
-                    queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
-                    queryClient.invalidateQueries({ queryKey: traderKeys.dashboardStats() });
-                  });
-                }
-              } catch {
-                /* malformed line */
-              }
-            },
+            headers,
+            onMessage: (raw) => onMessageRef.current(raw),
           });
         } catch (e) {
           if ((e as Error).name === 'AbortError' || ac.signal.aborted) break;
@@ -164,10 +190,46 @@ export function usePayinTraderRealtime(queryClient: QueryClient): void {
     void run();
     return () => {
       cancelled = true;
-      invalidateDebouncer.dispose();
       ac.abort();
     };
-  }, [queryClient]);
+  }, [streaming, path, requireAuth]);
+}
+
+/**
+ * Subscribes to Pay-In updates for the logged-in trader (Bearer token).
+ * Invalidates list and dashboard queries when an event arrives; reconnects on disconnect.
+ */
+export function usePayinTraderRealtime(queryClient: QueryClient): void {
+  const invalidateDebouncer = useRef(createDebouncer(INVALIDATE_DEBOUNCE_MS));
+
+  const invalidateAll = () => {
+    invalidateDebouncer.current.schedule(() => {
+      queryClient.invalidateQueries({ queryKey: traderKeys.payinOrdersScope });
+      queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
+      queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
+      queryClient.invalidateQueries({ queryKey: traderKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: traderKeys.requisiteGroupsScope });
+      queryClient.invalidateQueries({ queryKey: traderKeys.payinAssignRanges });
+    });
+  };
+
+  useEffect(() => () => invalidateDebouncer.current.dispose(), []);
+
+  useSseSubscription({
+    path: internalPaths.traderPayinStream,
+    requireAuth: true,
+    onVisibleAgain: invalidateAll,
+    onMessage: (raw) => {
+      try {
+        const evt = JSON.parse(raw) as PayinOrderRealtimeEvent;
+        if (evt.type === PAYIN_ORDER_REALTIME_EVENT_TYPE) {
+          invalidateAll();
+        }
+      } catch {
+        /* malformed line */
+      }
+    },
+  });
 }
 
 /**
@@ -177,71 +239,48 @@ export function usePayoutCabinetRealtime(
   queryClient: QueryClient,
   variant: 'standard' | 'specialist',
 ): void {
-  useEffect(() => {
-    const ac = new AbortController();
-    let cancelled = false;
-    const streamPath =
-      variant === 'specialist' ? internalPaths.payoutSpecialistStream : internalPaths.traderPayoutStream;
-    const qk: PayoutCabinetScope = variant === 'specialist' ? 'payout-trader' : 'trader';
+  const streamPath =
+    variant === 'specialist' ? internalPaths.payoutSpecialistStream : internalPaths.traderPayoutStream;
+  const qk: PayoutCabinetScope = variant === 'specialist' ? 'payout-trader' : 'trader';
+  const invalidateDebouncer = useRef(createDebouncer(INVALIDATE_DEBOUNCE_MS));
 
-    const invalidateDebouncer = createDebouncer(INVALIDATE_DEBOUNCE_MS);
-
-    const run = async () => {
-      while (!cancelled) {
-        const token = getToken();
-        if (!token) break;
-
-        try {
-          await consumeSseStream(streamPath, {
-            signal: ac.signal,
-            headers: { Authorization: `Bearer ${token}` },
-            onMessage: (raw) => {
-              try {
-                const evt = JSON.parse(raw) as PayOutOrderRealtimeEvent;
-                if (evt.type === PAYOUT_ORDER_REALTIME_EVENT_TYPE) {
-                  invalidateDebouncer.schedule(() => {
-                    void queryClient.invalidateQueries({
-                      queryKey: payoutCabinetKeys.payoutOrdersScope(qk),
-                    });
-                    void queryClient.invalidateQueries({
-                      queryKey: [qk, 'payout-pool'],
-                    });
-                    if (variant === 'specialist') {
-                      void queryClient.invalidateQueries({
-                        queryKey: payoutCabinetKeys.specialistSummary(),
-                      });
-                    } else {
-                      void queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
-                      void queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
-                      void queryClient.invalidateQueries({ queryKey: traderKeys.dashboardStats() });
-                    }
-                  });
-                }
-              } catch {
-                /* malformed line */
-              }
-            },
-          });
-        } catch (e) {
-          if ((e as Error).name === 'AbortError' || ac.signal.aborted) break;
-        }
-
-        if (cancelled || ac.signal.aborted) break;
-        try {
-          await sleep(RECONNECT_MS, ac.signal);
-        } catch {
-          break;
-        }
+  const invalidateAll = () => {
+    invalidateDebouncer.current.schedule(() => {
+      void queryClient.invalidateQueries({
+        queryKey: payoutCabinetKeys.payoutOrdersScope(qk),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: [qk, 'payout-pool'],
+      });
+      if (variant === 'specialist') {
+        void queryClient.invalidateQueries({
+          queryKey: payoutCabinetKeys.specialistSummary(),
+        });
+      } else {
+        void queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
+        void queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
+        void queryClient.invalidateQueries({ queryKey: traderKeys.dashboardStats() });
       }
-    };
+    });
+  };
 
-    void run();
-    return () => {
-      cancelled = true;
-      invalidateDebouncer.dispose();
-      ac.abort();
-    };
-  }, [queryClient, variant]);
+  useEffect(() => () => invalidateDebouncer.current.dispose(), []);
+
+  useSseSubscription({
+    path: streamPath,
+    requireAuth: true,
+    onVisibleAgain: invalidateAll,
+    onMessage: (raw) => {
+      try {
+        const evt = JSON.parse(raw) as PayOutOrderRealtimeEvent;
+        if (evt.type === PAYOUT_ORDER_REALTIME_EVENT_TYPE) {
+          invalidateAll();
+        }
+      } catch {
+        /* malformed line */
+      }
+    },
+  });
 }
 
 export function usePayOutTraderRealtime(queryClient: QueryClient): void {
@@ -256,180 +295,111 @@ export function usePayOutSpecialistRealtime(queryClient: QueryClient): void {
  * Trader cabinet: live TRC-20 deposit credits (custodial / monitored addresses).
  */
 export function useTraderWalletDepositRealtime(queryClient: QueryClient): void {
-  useEffect(() => {
-    const ac = new AbortController();
-    let cancelled = false;
+  const invalidateDebouncer = useRef(createDebouncer(INVALIDATE_DEBOUNCE_MS));
 
-    const invalidateDebouncer = createDebouncer(INVALIDATE_DEBOUNCE_MS);
+  const invalidateAll = () => {
+    invalidateDebouncer.current.schedule(() => {
+      void queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
+      void queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
+      void queryClient.invalidateQueries({ queryKey: traderKeys.balanceTransactionsScope });
+    });
+  };
 
-    const run = async () => {
-      while (!cancelled) {
-        const token = getToken();
-        if (!token) break;
+  useEffect(() => () => invalidateDebouncer.current.dispose(), []);
 
-        try {
-          await consumeSseStream(internalPaths.traderWalletEventsStream, {
-            signal: ac.signal,
-            headers: { Authorization: `Bearer ${token}` },
-            onMessage: (raw) => {
-              try {
-                const parsed = JSON.parse(raw) as { type?: string };
-                if (parsed?.type === 'deposit') {
-                  invalidateDebouncer.schedule(() => {
-                    void queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
-                    void queryClient.invalidateQueries({ queryKey: traderKeys.balancesMe() });
-                    void queryClient.invalidateQueries({ queryKey: traderKeys.balanceTransactionsScope });
-                  });
-                }
-              } catch {
-                /* malformed line */
-              }
-            },
-          });
-        } catch (e) {
-          if ((e as Error).name === 'AbortError' || ac.signal.aborted) break;
+  useSseSubscription({
+    path: internalPaths.traderWalletEventsStream,
+    requireAuth: true,
+    onVisibleAgain: invalidateAll,
+    onMessage: (raw) => {
+      try {
+        const parsed = JSON.parse(raw) as { type?: string };
+        if (parsed?.type === 'deposit') {
+          invalidateAll();
         }
-
-        if (cancelled || ac.signal.aborted) break;
-        try {
-          await sleep(RECONNECT_MS, ac.signal);
-        } catch {
-          break;
-        }
+      } catch {
+        /* malformed line */
       }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-      invalidateDebouncer.dispose();
-      ac.abort();
-    };
-  }, [queryClient]);
+    },
+  });
 }
 
 /**
  * Merchant cabinet: Pay-In + Pay-Out order updates (Bearer token).
  */
 export function useMerchantOrdersRealtime(queryClient: QueryClient): void {
-  useEffect(() => {
-    const ac = new AbortController();
-    let cancelled = false;
+  const invalidateDebouncer = useRef(createDebouncer(INVALIDATE_DEBOUNCE_MS));
 
-    const invalidateDebouncer = createDebouncer(INVALIDATE_DEBOUNCE_MS);
+  const invalidateAll = () => {
+    invalidateDebouncer.current.schedule(() => {
+      void queryClient.invalidateQueries({ queryKey: merchantKeys.ordersScope });
+      void queryClient.invalidateQueries({ queryKey: merchantKeys.stats() });
+      void queryClient.invalidateQueries({ queryKey: merchantKeys.balances() });
+      void queryClient.invalidateQueries({ queryKey: merchantKeys.analyticsScope });
+    });
+  };
 
-    const run = async () => {
-      while (!cancelled) {
-        const token = getToken();
-        if (!token) break;
+  useEffect(() => () => invalidateDebouncer.current.dispose(), []);
 
-        try {
-          await consumeSseStream(internalPaths.merchantOrdersStream, {
-            signal: ac.signal,
-            headers: { Authorization: `Bearer ${token}` },
-            onMessage: (raw) => {
-              try {
-                const parsed = JSON.parse(raw) as PayinOrderRealtimeEvent | PayOutOrderRealtimeEvent;
-                if (
-                  parsed.type === PAYIN_ORDER_REALTIME_EVENT_TYPE ||
-                  parsed.type === PAYOUT_ORDER_REALTIME_EVENT_TYPE
-                ) {
-                  invalidateDebouncer.schedule(() => {
-                    void queryClient.invalidateQueries({ queryKey: merchantKeys.ordersScope });
-                    void queryClient.invalidateQueries({ queryKey: merchantKeys.stats() });
-                    void queryClient.invalidateQueries({ queryKey: merchantKeys.balances() });
-                    void queryClient.invalidateQueries({ queryKey: merchantKeys.analyticsScope });
-                  });
-                }
-              } catch {
-                /* malformed line */
-              }
-            },
-          });
-        } catch (e) {
-          if ((e as Error).name === 'AbortError' || ac.signal.aborted) break;
+  useSseSubscription({
+    path: internalPaths.merchantOrdersStream,
+    requireAuth: true,
+    onVisibleAgain: invalidateAll,
+    onMessage: (raw) => {
+      try {
+        const parsed = JSON.parse(raw) as PayinOrderRealtimeEvent | PayOutOrderRealtimeEvent;
+        if (
+          parsed.type === PAYIN_ORDER_REALTIME_EVENT_TYPE ||
+          parsed.type === PAYOUT_ORDER_REALTIME_EVENT_TYPE
+        ) {
+          invalidateAll();
         }
-
-        if (cancelled || ac.signal.aborted) break;
-        try {
-          await sleep(RECONNECT_MS, ac.signal);
-        } catch {
-          break;
-        }
+      } catch {
+        /* malformed line */
       }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-      invalidateDebouncer.dispose();
-      ac.abort();
-    };
-  }, [queryClient]);
+    },
+  });
 }
 
 /**
  * Admin / owner / support: global order lifecycle SSE (JWT). Support uses `/api/admin/orders/stream`.
  */
 export function useStaffOrdersRealtime(queryClient: QueryClient): void {
-  useEffect(() => {
-    const ac = new AbortController();
-    let cancelled = false;
+  const invalidateDebouncer = useRef(createDebouncer(INVALIDATE_DEBOUNCE_MS));
 
-    const invalidateDebouncer = createDebouncer(INVALIDATE_DEBOUNCE_MS);
+  const invalidateAll = () => {
+    invalidateDebouncer.current.schedule(() => {
+      void queryClient.invalidateQueries({ queryKey: adminKeys.ordersScope });
+      void queryClient.invalidateQueries({ queryKey: adminKeys.stats() });
+      void queryClient.invalidateQueries({ queryKey: ownerKeys.ordersScope });
+      void queryClient.invalidateQueries({ queryKey: ownerKeys.orderDetailsScope });
+      void queryClient.invalidateQueries({ queryKey: ownerKeys.stats() });
+      void queryClient.invalidateQueries({ queryKey: supportKeys.ordersScope });
+      void queryClient.invalidateQueries({ queryKey: supportKeys.orderDetailsScope });
+      void queryClient.invalidateQueries({ queryKey: supportKeys.stats() });
+    });
+  };
 
-    const run = async () => {
-      while (!cancelled) {
-        const token = getToken();
-        if (!token) break;
+  useEffect(() => () => invalidateDebouncer.current.dispose(), []);
 
-        try {
-          await consumeSseStream(internalPaths.adminOrdersStream, {
-            signal: ac.signal,
-            headers: { Authorization: `Bearer ${token}` },
-            onMessage: (raw) => {
-              try {
-                const parsed = JSON.parse(raw) as PayinOrderRealtimeEvent | PayOutOrderRealtimeEvent;
-                if (
-                  parsed.type === PAYIN_ORDER_REALTIME_EVENT_TYPE ||
-                  parsed.type === PAYOUT_ORDER_REALTIME_EVENT_TYPE
-                ) {
-                  invalidateDebouncer.schedule(() => {
-                    void queryClient.invalidateQueries({ queryKey: adminKeys.ordersScope });
-                    void queryClient.invalidateQueries({ queryKey: adminKeys.stats() });
-                    void queryClient.invalidateQueries({ queryKey: ownerKeys.ordersScope });
-                    void queryClient.invalidateQueries({ queryKey: ownerKeys.orderDetailsScope });
-                    void queryClient.invalidateQueries({ queryKey: ownerKeys.stats() });
-                    void queryClient.invalidateQueries({ queryKey: supportKeys.ordersScope });
-                    void queryClient.invalidateQueries({ queryKey: supportKeys.orderDetailsScope });
-                    void queryClient.invalidateQueries({ queryKey: supportKeys.stats() });
-                  });
-                }
-              } catch {
-                /* malformed line */
-              }
-            },
-          });
-        } catch (e) {
-          if ((e as Error).name === 'AbortError' || ac.signal.aborted) break;
+  useSseSubscription({
+    path: internalPaths.adminOrdersStream,
+    requireAuth: true,
+    onVisibleAgain: invalidateAll,
+    onMessage: (raw) => {
+      try {
+        const parsed = JSON.parse(raw) as PayinOrderRealtimeEvent | PayOutOrderRealtimeEvent;
+        if (
+          parsed.type === PAYIN_ORDER_REALTIME_EVENT_TYPE ||
+          parsed.type === PAYOUT_ORDER_REALTIME_EVENT_TYPE
+        ) {
+          invalidateAll();
         }
-
-        if (cancelled || ac.signal.aborted) break;
-        try {
-          await sleep(RECONNECT_MS, ac.signal);
-        } catch {
-          break;
-        }
+      } catch {
+        /* malformed line */
       }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-      invalidateDebouncer.dispose();
-      ac.abort();
-    };
-  }, [queryClient]);
+    },
+  });
 }
 
 /**
@@ -443,37 +413,12 @@ export function usePayinOrderRealtime(
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
 
-  useEffect(() => {
-    if (!enabled) return;
-    const ac = new AbortController();
-    let cancelled = false;
-
-    const run = async () => {
-      while (!cancelled) {
-        try {
-          await consumeSseStream(internalPaths.payOrderStream(orderId), {
-            signal: ac.signal,
-            onMessage: () => {
-              onUpdateRef.current();
-            },
-          });
-        } catch (e) {
-          if ((e as Error).name === 'AbortError' || ac.signal.aborted) break;
-        }
-
-        if (cancelled || ac.signal.aborted) break;
-        try {
-          await sleep(RECONNECT_MS, ac.signal);
-        } catch {
-          break;
-        }
-      }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-      ac.abort();
-    };
-  }, [orderId, enabled]);
+  useSseSubscription({
+    path: internalPaths.payOrderStream(orderId),
+    enabled,
+    onVisibleAgain: () => onUpdateRef.current(),
+    onMessage: () => {
+      onUpdateRef.current();
+    },
+  });
 }

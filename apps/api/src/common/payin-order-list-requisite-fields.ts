@@ -5,6 +5,7 @@ type RequisiteForList = {
   type: string;
   number: string;
   owner: string;
+  cardHolderName: string;
   code: string | null;
   bank: { name: string } | null;
 };
@@ -21,6 +22,7 @@ export function payinOrderListRequisiteFields(
     type: string;
     number: string;
     owner: string;
+    card_holder_name: string;
     code: string;
     bank_name: string;
   } | null;
@@ -38,6 +40,7 @@ export function payinOrderListRequisiteFields(
       type: requisite.type,
       number: requisite.number,
       owner: requisite.owner,
+      card_holder_name: requisite.cardHolderName ?? '',
       code: requisite.code ?? '',
       bank_name: requisite.bank?.name ?? '',
     },

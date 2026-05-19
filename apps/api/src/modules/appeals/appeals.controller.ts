@@ -67,6 +67,6 @@ export class AppealsController {
     return this.appealsService.resolve(appealId, dto.decision, {
       role: user.role,
       traderId: user.traderId,
-    });
+    }, dto.actualAmount);
   }
 }

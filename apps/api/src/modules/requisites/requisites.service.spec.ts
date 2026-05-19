@@ -302,6 +302,7 @@ describe('RequisitesService.create', () => {
     type: RequisiteType.CARD,
     number: '4111111111111111',
     owner: 'Jane Doe',
+    cardHolderName: 'Doe Jane Ivanovna',
     bankId: 1,
   };
 

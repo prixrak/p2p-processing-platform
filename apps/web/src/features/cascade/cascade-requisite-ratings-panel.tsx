@@ -8,8 +8,13 @@ import type {
   CascadeAssignmentExplainResponse,
   CascadeStaffRequisiteRatingRow,
   CascadeStaffRequisiteRatingsResponse,
+  CascadeTraderUsdtCapacityRow,
 } from '@p2p/shared';
 import { api } from '@/lib/api';
+import {
+  useDebouncedTextFilter,
+  useDebouncedValue,
+} from '@/lib/hooks/use-debounced-value';
 import { internalPaths } from '@/lib/internal-api';
 import { adminKeys, cascadeKeys, currencyKeys, fetchCurrencyList } from '@/lib/query-keys';
 import { Select, type SelectOption } from '@/components/ui/select';
@@ -66,7 +71,7 @@ function excludedReasonLabel(code: string): string {
     case 'AMOUNT_OUTSIDE_EFFECTIVE_RANGE':
       return 'Effective range';
     case 'USDT_CAPACITY_INSUFFICIENT':
-      return 'USDT capacity';
+      return 'Overdraft / USDT capacity';
     case 'EFFECTIVE_BOUNDS_UNAVAILABLE':
       return 'Bounds';
     case 'LOWER_CASCADE_ORDER':
@@ -250,12 +255,13 @@ export function CascadeRequisiteRatingsPanel({
 }) {
   const [currency, setCurrency] = useState('UAH');
   const [previewAmount, setPreviewAmount] = useState('');
+  const debouncedPreviewAmount = useDebouncedValue(previewAmount, undefined, (v) => v.trim());
   const [method, setMethod] = useState<'ALL' | 'CARD' | 'FORK'>('ALL');
   const [statusFilter, setStatusFilter] = useState<
     'active' | 'all' | 'locked' | 'ineligible' | 'disabled'
   >('active');
   const [autolimit, setAutolimit] = useState<'all' | 'on' | 'off'>('all');
-  const [q, setQ] = useState('');
+  const { value: q, setValue: setQ, debounced: debouncedQ } = useDebouncedTextFilter();
   const [sort, setSort] = useState<'rank' | 'rating' | 'trader' | 'remainder' | 'status'>(
     'rank',
   );
@@ -315,12 +321,12 @@ export function CascadeRequisiteRatingsPanel({
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     p.set('currency', currencyUpper);
-    const pa = previewAmount.trim();
+    const pa = debouncedPreviewAmount;
     if (pa !== '' && !Number.isNaN(Number(pa))) p.set('preview_amount', pa);
     if (method !== 'ALL') p.set('method', method);
     p.set('status', statusFilter);
     if (autolimit !== 'all') p.set('autolimit', autolimit);
-    if (q.trim()) p.set('q', q.trim());
+    if (debouncedQ) p.set('q', debouncedQ);
     if (traderIdFilter.trim()) p.set('trader_id', traderIdFilter.trim());
     p.set('sort', sort);
     p.set('sort_dir', sortDir);
@@ -329,8 +335,8 @@ export function CascadeRequisiteRatingsPanel({
     autolimit,
     currencyUpper,
     method,
-    previewAmount,
-    q,
+    debouncedPreviewAmount,
+    debouncedQ,
     sort,
     sortDir,
     statusFilter,
@@ -338,10 +344,10 @@ export function CascadeRequisiteRatingsPanel({
   ]);
 
   const explainAmountKey = useMemo(() => {
-    const t = previewAmount.trim();
+    const t = debouncedPreviewAmount;
     if (t === '' || Number.isNaN(Number(t))) return 'default';
     return String(Number(t));
-  }, [previewAmount]);
+  }, [debouncedPreviewAmount]);
 
   const explainAmount =
     explainAmountKey === 'default' ? undefined : Number(explainAmountKey);
@@ -390,6 +396,16 @@ export function CascadeRequisiteRatingsPanel({
 
   const data = ratingsQ.data;
   const explain = explainQ.data;
+
+  const traderCapacityById = useMemo(() => {
+    const map = new Map<string, CascadeTraderUsdtCapacityRow>();
+    for (const row of data?.trader_usdt_capacity ?? []) {
+      map.set(row.trader_id, row);
+    }
+    return map;
+  }, [data?.trader_usdt_capacity]);
+
+  const traderCapacityAlerts = data?.trader_usdt_capacity ?? [];
 
   const requisiteDetailQ = useQuery({
     queryKey: ['requisite-detail', detailRequisiteId],
@@ -445,10 +461,10 @@ export function CascadeRequisiteRatingsPanel({
           </li>
           <li>
             <strong className="text-text-primary">Preview amount</strong> is optional: leave it{' '}
-            <strong className="text-text-primary">empty</strong> so the assignment queue shows candidates
-            eligible for <strong className="text-text-primary">any</strong> active coverage nominal. The ratings
-            table still uses Redis snapshot ranks unless you enter a custom preview amount. Enter a Pay-In amount
-            (including <strong className="text-text-primary">0</strong>) to simulate that exact amount only.
+            <strong className="text-text-primary">empty</strong> to show candidates eligible for{' '}
+            <strong className="text-text-primary">any</strong> active coverage nominal in both the assignment
+            queue and the ratings table. Enter a Pay-In amount (including{' '}
+            <strong className="text-text-primary">0</strong>) to simulate that exact amount only.
           </li>
         </ul>
       </Card>
@@ -481,11 +497,8 @@ export function CascadeRequisiteRatingsPanel({
                 </>
               ) : (
                 <>
-                  No custom preview — ranks match Redis snapshot at{' '}
-                  <span className="font-mono text-text-secondary">
-                    {data.cascade_context?.redis_rank_preview_amount ?? '—'} {currencyUpper}
-                  </span>{' '}
-                  (min nominal). Enter Preview amt. to simulate another amount.
+                  All coverage nominals ({currencyUpper}) — enter Preview amt. to simulate a specific
+                  amount.
                 </>
               )}
             </span>
@@ -511,11 +524,7 @@ export function CascadeRequisiteRatingsPanel({
             <Input
               id="cascade-preview-amt"
               className="h-9 min-w-0 text-xs"
-              placeholder={
-                data?.cascade_context
-                  ? `Optional — snapshot ${data.cascade_context.redis_rank_preview_amount}`
-                  : 'Optional'
-              }
+              placeholder="Optional"
               value={previewAmount}
               onChange={(e) => setPreviewAmount(e.target.value)}
             />
@@ -595,6 +604,50 @@ export function CascadeRequisiteRatingsPanel({
           />
         </div>
       </section>
+
+      {traderCapacityAlerts.length > 0 ? (
+        <Card title="Trader USDT capacity alerts" tone="amber" className="bg-surface-secondary/80">
+          <p className="mb-3 text-xs text-text-muted">
+            Pay-In cascade blocks assignment when effective headroom (balance + overdraft − reserved
+            open Pay-In debits) is insufficient. Traders listed here cannot receive new Pay-In until
+            they top up or open orders settle.
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-border-primary">
+            <table className="w-full min-w-[720px] text-left text-xs">
+              <thead className="bg-surface-secondary">
+                <tr className="border-b border-border-primary text-text-muted">
+                  <th className="px-2 py-2">Trader</th>
+                  <th className="px-2 py-2">Ledger USDT</th>
+                  <th className="px-2 py-2">Overdraft</th>
+                  <th className="px-2 py-2">Pending Pay-In</th>
+                  <th className="px-2 py-2">Effective headroom</th>
+                  <th className="px-2 py-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {traderCapacityAlerts.map((row) => (
+                  <tr key={row.trader_id} className="border-b border-border-primary/40">
+                    <td className="px-2 py-1.5 text-text-primary">{row.trader_label}</td>
+                    <td className="px-2 py-1.5 font-mono tabular-nums">{row.balance_usdt}</td>
+                    <td className="px-2 py-1.5 font-mono tabular-nums">{row.overdraft_limit_usdt}</td>
+                    <td className="px-2 py-1.5 font-mono tabular-nums">
+                      {row.pending_payin_debit_usdt}
+                    </td>
+                    <td className="px-2 py-1.5 font-mono tabular-nums">{row.available_usdt}</td>
+                    <td className="px-2 py-1.5">
+                      {row.capacity_exhausted ? (
+                        <Badge variant="danger">Pay-In blocked</Badge>
+                      ) : (
+                        <Badge variant="warning">Low capacity</Badge>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : null}
 
       {explainQ.isError ? (
         <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
@@ -770,6 +823,15 @@ export function CascadeRequisiteRatingsPanel({
                   <td className="px-3 py-2 align-middle">
                     <div className="flex flex-wrap items-center gap-1">
                       <span className="text-text-primary">{row.trader_label}</span>
+                      {traderCapacityById.get(row.trader_id)?.capacity_exhausted ? (
+                        <Badge variant="danger" title="Trader USDT capacity exhausted — Pay-In blocked">
+                          USDT blocked
+                        </Badge>
+                      ) : traderCapacityById.get(row.trader_id)?.low_capacity ? (
+                        <Badge variant="warning" title="Trader USDT headroom is low">
+                          USDT low
+                        </Badge>
+                      ) : null}
                       <Badge variant="muted" className="font-mono text-[10px]">
                         {row.processing_method}
                       </Badge>
@@ -966,6 +1028,12 @@ export function CascadeRequisiteRatingsPanel({
               <p className="text-xs text-text-muted">Owner</p>
               <p>{requisiteDetailQ.data.owner}</p>
             </div>
+            {requisiteDetailQ.data.cardHolderName?.trim() ? (
+              <div>
+                <p className="text-xs text-text-muted">Card holder name</p>
+                <p>{requisiteDetailQ.data.cardHolderName}</p>
+              </div>
+            ) : null}
             {requisiteDetailQ.data.bank?.name ? (
               <div>
                 <p className="text-xs text-text-muted">Bank</p>

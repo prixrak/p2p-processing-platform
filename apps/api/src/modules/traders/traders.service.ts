@@ -6,11 +6,13 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
-import { BalanceTransactionType, Prisma } from '@prisma/client';
+import { BalanceTransactionType, PayinStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
 import type { StatisticsQueryDto } from '../../common/dto/statistics-query.dto';
+import type { GetStatisticsDto } from './dto/get-statistics.dto';
 import { resolveStatisticsWindow } from '../../common/utils/statistics-window';
+import { resolveTraderStatisticsCurrency } from './trader-statistics-currency';
 import { enumerateDaysUTC, statusRecordToLowercase } from '../../common/utils/stats.util';
 import type { UpdateTraderBalanceModelDto } from './dto/update-trader-balance-model.dto';
 import type { UpdateTraderCascadeDto } from './dto/update-trader-cascade.dto';
@@ -30,6 +32,10 @@ import {
   enumerateBucketStartsUtc,
   type TraderCabinetAnalyticsGranularity,
 } from './trader-cabinet-analytics.util';
+import {
+  computeTraderUsdtCapacity,
+  PAYIN_PRE_USDT_SETTLEMENT_STATUSES,
+} from '@p2p/shared';
 
 /** Tron base58check addresses are 34 chars and start with T. */
 export function isValidTronTrc20Address(addr: string): boolean {
@@ -97,19 +103,6 @@ export class TradersService {
     void this.cascadeCoverageCache.invalidateAll();
   }
 
-  private async pickDisplayCurrency(traderId: string): Promise<string> {
-    const balances = await this.prisma.traderBalance.findMany({
-      where: { traderId },
-      orderBy: { currency: { code: 'asc' } },
-      take: 1,
-      include: { currency: { select: { code: true } } },
-    });
-    if (balances.length > 0) {
-      return balances[0].currency.code;
-    }
-    return 'UAH';
-  }
-
   async getProfile(traderId: string) {
     const trader = await this.prisma.traderProfile.findUnique({
       where: { id: traderId },
@@ -159,7 +152,7 @@ export class TradersService {
     });
   }
 
-  async getStatistics(traderId: string, query: StatisticsQueryDto) {
+  async getStatistics(traderId: string, query: GetStatisticsDto) {
     const trader = await this.prisma.traderProfile.findUnique({
       where: { id: traderId },
     });
@@ -168,7 +161,12 @@ export class TradersService {
     }
 
     const window = resolveStatisticsWindow(query);
-    const currency = await this.pickDisplayCurrency(traderId);
+    const currency = await resolveTraderStatisticsCurrency(
+      this.prisma,
+      traderId,
+      window,
+      query.currency,
+    );
     const currencyId = await this.currencies.requireActiveCurrencyIdByCode(currency);
 
     const dateWhere = {
@@ -340,9 +338,12 @@ export class TradersService {
     const granularity: TraderCabinetAnalyticsGranularity = query.granularity ?? 'day';
     const dateBasis = query.dateBasis ?? 'created';
 
-    const rawCur = query.currency?.trim().toUpperCase();
-    const currency =
-      rawCur && rawCur.length >= 3 ? rawCur : await this.pickDisplayCurrency(traderId);
+    const currency = await resolveTraderStatisticsCurrency(
+      this.prisma,
+      traderId,
+      window,
+      query.currency,
+    );
 
     const payinTs =
       dateBasis === 'created'
@@ -847,7 +848,28 @@ export class TradersService {
     const balanceUsdt = Number(row?.amount ?? 0);
     const overdraftLimit = Number(profile.overdraftLimit ?? 0);
     const displayOwnUsdt = Math.max(0, balanceUsdt);
-    const availableForPayinUsdt = balanceUsdt + overdraftLimit;
+
+    const pendingRows = await this.prisma.payinOrder.findMany({
+      where: {
+        traderId: profile.id,
+        status: {
+          in: PAYIN_PRE_USDT_SETTLEMENT_STATUSES.map((s) => s as unknown as PayinStatus),
+        },
+        rateTraderIn: { not: null },
+        currency: { code: 'UAH' },
+      },
+      select: { amount: true, rateTraderIn: true },
+    });
+    let pendingPayinDebitUsdt = 0;
+    for (const o of pendingRows) {
+      const fiat = Number(o.amount);
+      const rt = Number(o.rateTraderIn);
+      if (!(fiat > 0) || !(rt > 0) || !Number.isFinite(fiat) || !Number.isFinite(rt)) {
+        continue;
+      }
+      pendingPayinDebitUsdt += fiat / rt;
+    }
+    pendingPayinDebitUsdt = round4(pendingPayinDebitUsdt);
 
     const thresholdRow = await this.platformSettings.findOne(
       PLATFORM_SETTING_TRADER_PAYIN_LOW_CAPACITY_ALERT_THRESHOLD_USDT,
@@ -858,14 +880,24 @@ export class TradersService {
       payin_low_capacity_alert_threshold_usdt = parsedThr;
     }
 
+    const capacity = computeTraderUsdtCapacity({
+      balanceUsdt,
+      overdraftLimitUsdt: overdraftLimit,
+      pendingPayinDebitUsdt,
+      lowCapacityThresholdUsdt: payin_low_capacity_alert_threshold_usdt,
+    });
+
     return {
       trader_id: profile.id,
       balance_usdt: balanceUsdt,
       overdraft_limit_usdt: overdraftLimit,
       display_own_usdt: displayOwnUsdt,
-      available_for_payin_usdt: availableForPayinUsdt,
+      available_for_payin_usdt: capacity.grossAvailableUsdt,
+      pending_payin_usdt_debit_usdt: capacity.pendingPayinDebitUsdt,
+      effective_available_for_payin_usdt: capacity.effectiveAvailableUsdt,
       payin_low_capacity_alert_threshold_usdt,
-      low_payin_capacity_alert: availableForPayinUsdt <= payin_low_capacity_alert_threshold_usdt,
+      low_payin_capacity_alert: capacity.lowPayinCapacityAlert,
+      payin_capacity_exhausted: capacity.payinCapacityExhausted,
       work_mode: overdraftLimit > 0 ? 'OVERDRAFT' : 'BALANCE',
       usdt_trc20_deposit_address: profile.usdtTrc20DepositAddress,
       usdt_erc20_deposit_address: profile.usdtErc20DepositAddress,

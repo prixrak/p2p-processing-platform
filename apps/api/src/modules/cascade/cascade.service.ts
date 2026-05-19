@@ -42,6 +42,7 @@ import {
   pickPrimaryCascadeLevelStochastic,
   roundMoney2,
   tzRequisiteRatingPercent,
+  computeTraderUsdtCapacity,
   type CascadeAssignmentLevel,
   type FillMultiplierTier,
   type TraderCascadeMethod,
@@ -50,6 +51,7 @@ import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
 import {
   PlatformSettingsService,
   PLATFORM_SETTING_PAYIN_PROVIDER_INTEGRATION_ENABLED,
+  PLATFORM_SETTING_TRADER_PAYIN_LOW_CAPACITY_ALERT_THRESHOLD_USDT,
 } from '../platform-settings/platform-settings.service';
 
 export type CascadeTraderAssignment = {
@@ -1499,10 +1501,26 @@ export class CascadeService {
 
     if (options.preview_amount === undefined) {
       responsePreviewAmount = null;
-      for (const s of payload.snapshots) {
-        const rk = s.redis_meta?.cascade_rank;
-        if (rk != null) rankById.set(s.id, rk);
-        if (s.redis_meta?.is_eligible_preview) eligiblePreview.add(s.id);
+      if (!currencyRow) {
+        eligiblePreview = new Set();
+      } else {
+        const previewRanked = await this.buildOrderedRequisiteIdsForAmount(this.prisma, {
+          currency: cur,
+          currencyId: currencyRow.id,
+          amount: 0,
+          anyNominal: true,
+          parserRate,
+          enforceUsdtCapacity: enforceUsdt,
+          settings,
+          nominalAmounts,
+          reqRows: payload.snapshots.map(strip),
+          levelCredits,
+          nowMs: ratingsNowMs,
+        });
+        for (let i = 0; i < previewRanked.ordered.length; i++) {
+          rankById.set(previewRanked.ordered[i]!.id, i + 1);
+        }
+        eligiblePreview = new Set(previewRanked.ordered.map((o) => o.id));
       }
     } else {
       const previewAmount = options.preview_amount;
@@ -1847,11 +1865,81 @@ export class CascadeService {
       fill_config_fingerprint: fillFingerprint,
     };
 
+    let trader_usdt_capacity:
+      | Array<{
+          trader_id: string;
+          trader_label: string;
+          balance_usdt: number;
+          overdraft_limit_usdt: number;
+          pending_payin_debit_usdt: number;
+          available_usdt: number;
+          capacity_exhausted: boolean;
+          low_capacity: boolean;
+        }>
+      | undefined;
+
+    if (enforceUsdt) {
+      const { usdtBal, overdraft, pendingPayinUsdtDebit } =
+        await this.getUsdtCapacityMaps(this.prisma);
+      const thresholdRow = await this.platformSettings.findOne(
+        PLATFORM_SETTING_TRADER_PAYIN_LOW_CAPACITY_ALERT_THRESHOLD_USDT,
+      );
+      let lowThreshold = 200;
+      const parsedThr = Number(thresholdRow.value);
+      if (Number.isFinite(parsedThr) && parsedThr >= 0) {
+        lowThreshold = parsedThr;
+      }
+
+      const traderLabels = new Map<string, string>();
+      for (const r of dbReqs) {
+        if (!traderLabels.has(r.traderId)) {
+          traderLabels.set(r.traderId, r.trader.user.email ?? r.traderId);
+        }
+      }
+
+      const traderIds = new Set<string>([
+        ...traderLabels.keys(),
+        ...usdtBal.keys(),
+        ...overdraft.keys(),
+      ]);
+
+      trader_usdt_capacity = [...traderIds]
+        .map((traderId) => {
+          const balance = usdtBal.get(traderId) ?? 0;
+          const od = overdraft.get(traderId) ?? 0;
+          const pending = pendingPayinUsdtDebit.get(traderId) ?? 0;
+          const snap = computeTraderUsdtCapacity({
+            balanceUsdt: balance,
+            overdraftLimitUsdt: od,
+            pendingPayinDebitUsdt: pending,
+            lowCapacityThresholdUsdt: lowThreshold,
+          });
+          return {
+            trader_id: traderId,
+            trader_label: traderLabels.get(traderId) ?? traderId,
+            balance_usdt: Math.round(balance * 1e4) / 1e4,
+            overdraft_limit_usdt: Math.round(od * 1e4) / 1e4,
+            pending_payin_debit_usdt: Math.round(pending * 1e4) / 1e4,
+            available_usdt: Math.round(snap.effectiveAvailableUsdt * 1e4) / 1e4,
+            capacity_exhausted: snap.payinCapacityExhausted,
+            low_capacity: snap.lowPayinCapacityAlert && !snap.payinCapacityExhausted,
+          };
+        })
+        .filter((row) => row.capacity_exhausted || row.low_capacity)
+        .sort((a, b) => {
+          if (a.capacity_exhausted !== b.capacity_exhausted) {
+            return a.capacity_exhausted ? -1 : 1;
+          }
+          return a.available_usdt - b.available_usdt;
+        });
+    }
+
     return {
       currency: cur,
       preview_amount: responsePreviewAmount,
       cascade_context,
       rows,
+      ...(trader_usdt_capacity !== undefined ? { trader_usdt_capacity } : {}),
     };
   }
 

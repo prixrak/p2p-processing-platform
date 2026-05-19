@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOrderIdUrlParam } from '@/lib/hooks/use-order-id-url-param';
+import { useDebouncedTextFilter } from '@/lib/hooks/use-debounced-value';
 import { ArrowLeftRight, Eye } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -24,6 +25,7 @@ import { OrderIdCopyCell } from '@/components/ui/order-id-copy-cell';
 import { PayinRequisiteTableCell } from '@/components/ui/payin-requisite-table-cell';
 import { Modal } from '@/components/ui/modal';
 import { StatusHistoryList } from '@/components/ui/status-history-list';
+import { StaffOrderStatusCell } from '@/components/ui/staff-order-status-cell';
 import { isPayinCabinetOrderRow } from '@/lib/is-payin-cabinet-order-row';
 import { buildQueryString, formatCurrency, formatDateTime } from '@/lib/utils';
 import {
@@ -88,8 +90,16 @@ function AdminOrdersPageContent() {
   const [tab, setTab] = useState<OrderListUiTab>(ORDER_LIST_UI_TAB.PAY_IN);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
-  const [merchantFilter, setMerchantFilter] = useState('');
-  const [traderFilter, setTraderFilter] = useState('');
+  const {
+    value: merchantFilter,
+    setValue: setMerchantFilter,
+    debounced: debouncedMerchantFilter,
+  } = useDebouncedTextFilter();
+  const {
+    value: traderFilter,
+    setValue: setTraderFilter,
+    debounced: debouncedTraderFilter,
+  } = useDebouncedTextFilter();
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -104,7 +114,7 @@ function AdminOrdersPageContent() {
 
   useEffect(() => {
     setPage(1);
-  }, [direction, statusFilter, merchantFilter, traderFilter, dateFrom, dateTo]);
+  }, [direction, statusFilter, debouncedMerchantFilter, debouncedTraderFilter, dateFrom, dateTo]);
 
   const statusFilterOptions = useMemo(
     () => (tab === ORDER_LIST_UI_TAB.PAY_IN ? payinStatusFilterOptions : payoutStatusFilterOptions),
@@ -122,8 +132,8 @@ function AdminOrdersPageContent() {
     queryKey: adminKeys.orders({
       direction,
       statusFilter,
-      merchantFilter,
-      traderFilter,
+      merchantFilter: debouncedMerchantFilter,
+      traderFilter: debouncedTraderFilter,
       dateFrom,
       dateTo,
       page,
@@ -134,8 +144,8 @@ function AdminOrdersPageContent() {
         page,
         limit: ADMIN_ORDERS_PAGE_SIZE,
         status: statusFilter,
-        merchant: merchantFilter,
-        trader: traderFilter,
+        merchant: debouncedMerchantFilter,
+        trader: debouncedTraderFilter,
         dateFrom,
         dateTo,
       });
@@ -226,7 +236,13 @@ function AdminOrdersPageContent() {
       key: 'status',
       header: 'Status',
       className: 'text-center',
-      render: (row: Order) => <StatusBadge status={row.status} />,
+      render: (row: Order) => (
+        <StaffOrderStatusCell
+          orderId={row.id}
+          status={row.status}
+          direction={tab === ORDER_LIST_UI_TAB.PAY_IN ? 'payin' : 'payout'}
+        />
+      ),
     },
     {
       key: 'createdAt',

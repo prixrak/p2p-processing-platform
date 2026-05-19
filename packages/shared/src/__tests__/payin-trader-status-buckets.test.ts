@@ -12,4 +12,9 @@ describe('Pay-In trader list status buckets', () => {
     const all = new Set(Object.values(PayInOrderStatus));
     expect(union).toEqual(all);
   });
+
+  it('keeps unresolved appeals in the current bucket', () => {
+    expect(PAYIN_TRADER_CURRENT_STATUSES).toContain(PayInOrderStatus.APPEAL);
+    expect(PAYIN_TRADER_HISTORY_STATUSES).not.toContain(PayInOrderStatus.APPEAL);
+  });
 });

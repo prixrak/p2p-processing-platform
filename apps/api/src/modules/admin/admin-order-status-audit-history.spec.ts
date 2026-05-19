@@ -4,17 +4,18 @@ import { mapAuditRowToAdminStatusHistory } from './admin-order-status-audit-hist
 describe('mapAuditRowToAdminStatusHistory', () => {
   const t0 = new Date('2026-05-18T12:00:00.000Z');
 
-  it('formats ORDER_STATUS_CHANGED with old/new status payload', () => {
+  it('formats ORDER_STATUS_CHANGED with target status', () => {
     expect(
       mapAuditRowToAdminStatusHistory({
         action: AuditAction.ORDER_STATUS_CHANGED,
         createdAt: t0,
-        actor: { email: 'owner@example.com' },
+        actor: { email: 'owner@example.com', role: 'OWNER' },
+        actorRole: 'OWNER',
         oldValue: { status: 'NEW' },
         newValue: { status: 'APPEAL' },
       }),
     ).toEqual({
-      status: 'NEW → APPEAL',
+      status: 'APPEAL',
       timestamp: t0,
       actor: 'owner@example.com',
     });
@@ -26,13 +27,14 @@ describe('mapAuditRowToAdminStatusHistory', () => {
         action: AuditAction.CREATE,
         createdAt: t0,
         actor: null,
+        actorRole: null,
         oldValue: null,
         newValue: null,
       }),
     ).toEqual({
       status: 'CREATE',
       timestamp: t0,
-      actor: 'system',
+      actor: 'System',
     });
   });
 
@@ -41,7 +43,8 @@ describe('mapAuditRowToAdminStatusHistory', () => {
       mapAuditRowToAdminStatusHistory({
         action: AuditAction.ORDER_STATUS_CHANGED,
         createdAt: t0,
-        actor: { email: 'a@test.com' },
+        actor: { email: 'a@test.com', role: 'ADMIN' },
+        actorRole: 'ADMIN',
         oldValue: {},
         newValue: {},
       }),

@@ -28,6 +28,8 @@ export interface PaymentDetailsShortDto {
   type: string;
   number: string;
   owner: string;
+  /** Full legal name of the card/account holder (surname, given name, patronymic). */
+  card_holder_name: string;
   code: string;
   bank_name: string;
   acquiring_url?: string;
@@ -48,6 +50,8 @@ export interface AppealDto {
   requisite_number: string;
   /** Card/account holder name from requisite */
   requisite_owner: string;
+  /** Full legal name of the card/account holder from requisite */
+  requisite_card_holder_name: string;
   /** Bank label for the requisite, if any */
   bank: string;
   proofs_of_payment: string[];
@@ -78,6 +82,7 @@ export interface TraderPayInOrderDto {
   status: PayInOrderStatus;
   requisite_number: string;
   requisite_owner: string;
+  requisite_card_holder_name: string;
   bank: string;
   appeals: TraderPayInOrderAppealDto[];
   payment_detail: PaymentDetailsShortDto | null;
@@ -118,6 +123,7 @@ export interface OrderDto {
   status: PayInOrderStatus;
   requisite_number: string;
   requisite_owner: string;
+  requisite_card_holder_name: string;
   bank: string;
   redirect_url: string | null;
   appeals: AppealDto[];
@@ -375,11 +381,25 @@ export interface CascadeStaffRequisiteRatingRow {
   fill_high: boolean;
 }
 
+/** Staff cascade: trader USDT headroom (balance + overdraft − pending Pay-In debits). */
+export interface CascadeTraderUsdtCapacityRow {
+  trader_id: string;
+  trader_label: string;
+  balance_usdt: number;
+  overdraft_limit_usdt: number;
+  pending_payin_debit_usdt: number;
+  available_usdt: number;
+  capacity_exhausted: boolean;
+  low_capacity: boolean;
+}
+
 export interface CascadeStaffRequisiteRatingsResponse {
   currency: string;
   preview_amount: number | null;
   cascade_context: CascadeStaffRequisitesContext;
   rows: CascadeStaffRequisiteRatingRow[];
+  /** Present for UAH when parser rate is available (USDT capacity enforcement active). */
+  trader_usdt_capacity?: CascadeTraderUsdtCapacityRow[];
 }
 
 /** One slot in the ordered Pay-In cascade queue at a given amount. */

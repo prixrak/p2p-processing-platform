@@ -169,6 +169,24 @@ export class PayinInternalController {
     return this.payinRealtime.streamForTrader(traderId);
   }
 
+  @Get('orders/:orderId/status-history')
+  @Roles(UserRole.TRADER)
+  @ApiOperation({ summary: 'Status change timeline for a Pay-In order assigned to this trader' })
+  async getTraderOrderStatusHistory(
+    @CurrentUser('traderId') traderId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ) {
+    const items = await this.payinService.getPayinOrderStatusHistoryForTrader(traderId, orderId);
+    return {
+      items: items.map((e) => ({
+        status: e.status,
+        timestamp: e.timestamp.toISOString(),
+        actor: e.actor,
+        note: e.note ?? null,
+      })),
+    };
+  }
+
   @Get('orders')
   @Roles(UserRole.TRADER)
   @ApiOperation({ summary: 'List Pay-In orders assigned to the trader' })

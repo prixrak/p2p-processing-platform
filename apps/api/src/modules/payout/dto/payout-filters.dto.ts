@@ -1,7 +1,8 @@
-import { IsOptional, IsNumber, IsString, Min, Max, IsIn, IsDateString } from 'class-validator';
+import { IsOptional, IsNumber, IsString, Min, Max, IsIn, IsDateString, MaxLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { MAX_PAGE_SIZE } from '@p2p/shared';
+import { normalizeOrderListSearch } from '../../../common/order-search-where';
 
 export class PayoutListFiltersDto {
   @ApiPropertyOptional({
@@ -17,6 +18,17 @@ export class PayoutListFiltersDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({
+    description: 'Search by order id (full UUID) or merchant request_id',
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? normalizeOrderListSearch(value) : value,
+  )
+  @IsString()
+  @MaxLength(200)
+  search?: string;
 
   @ApiPropertyOptional({
     description:

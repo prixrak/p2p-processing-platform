@@ -59,6 +59,13 @@ export function TraderRequisitesGroupTable({
         render: (r: RequisiteApiRow) => <span className="break-all">{r.owner}</span>,
       },
       {
+        key: 'cardHolderName',
+        header: t('cardHolderName'),
+        render: (r: RequisiteApiRow) => (
+          <span className="break-all">{r.cardHolderName || '—'}</span>
+        ),
+      },
+      {
         key: 'bank',
         header: t('bank'),
         render: (r: RequisiteApiRow) => r.bank?.name ?? '—',
@@ -147,19 +154,31 @@ export function TraderRequisitesGroupTable({
           const ar = assignRangeByReqId.get(r.id);
           const manualLo = num(r.minAmount);
           const manualHi = num(r.maxAmount);
-          const hasEff = ar && ar.eff_min != null && ar.eff_max != null;
-          const showAssign =
+          const hasEff = ar != null && ar.eff_min != null && ar.eff_max != null;
+          const autolimitPrimary = Boolean(hasEff && ar.fork_autolimit_active);
+          const primaryLo = autolimitPrimary ? ar!.eff_min! : manualLo;
+          const primaryHi = autolimitPrimary ? ar!.eff_max! : manualHi;
+          const effDiffersFromManual =
             hasEff &&
-            (ar!.fork_autolimit_active ||
-              !ar!.participates_in_cascade ||
-              Math.abs(ar!.eff_min! - manualLo) > 0.01 ||
-              Math.abs(ar!.eff_max! - manualHi) > 0.01);
+            (Math.abs(ar!.eff_min! - manualLo) > 0.01 || Math.abs(ar!.eff_max! - manualHi) > 0.01);
+          const showConfiguredSecondary = autolimitPrimary && effDiffersFromManual;
+          const showAssignSecondary =
+            hasEff &&
+            !autolimitPrimary &&
+            (!ar!.participates_in_cascade || effDiffersFromManual);
           return (
             <div className="space-y-0.5">
               <span className="tabular-nums whitespace-nowrap text-xs">
-                {compactAmount(manualLo)} ↔ {compactAmount(manualHi)}
+                {compactAmount(primaryLo)} ↔ {compactAmount(primaryHi)}
               </span>
-              {showAssign ? (
+              {showConfiguredSecondary ? (
+                <div className="text-[10px] leading-tight text-text-muted">
+                  {t('configuredLimits')}{' '}
+                  <span className="tabular-nums text-text-secondary">
+                    {compactAmount(manualLo)} ↔ {compactAmount(manualHi)}
+                  </span>
+                </div>
+              ) : showAssignSecondary ? (
                 <div className="text-[10px] leading-tight text-text-muted">
                   {t('payInAssignment')}{' '}
                   <span className="tabular-nums text-text-secondary">

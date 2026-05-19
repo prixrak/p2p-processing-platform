@@ -82,6 +82,7 @@ export function payinOrderToOrderDto(order: OrderWithRelations): OrderDto {
     status: order.status as PayInOrderStatus,
     requisite_number: order.requisite?.number ?? '',
     requisite_owner: order.requisite?.owner ?? '',
+    requisite_card_holder_name: order.requisite?.cardHolderName ?? '',
     bank: order.requisite?.bank?.name ?? '',
     redirect_url: order.redirectUrl,
     appeals: (order.appeals ?? []).map((a): AppealDto => ({
@@ -94,6 +95,7 @@ export function payinOrderToOrderDto(order: OrderWithRelations): OrderDto {
       paid_amount: Number(a.paidAmount),
       requisite_number: order.requisite?.number ?? '',
       requisite_owner: order.requisite?.owner ?? '',
+      requisite_card_holder_name: order.requisite?.cardHolderName ?? '',
       bank: order.requisite?.bank?.name ?? '',
       proofs_of_payment: (a.proofs ?? []).map((p) => p.fileId),
     })),
@@ -103,6 +105,7 @@ export function payinOrderToOrderDto(order: OrderWithRelations): OrderDto {
           type: order.requisite.type,
           number: order.requisite.number,
           owner: order.requisite.owner,
+          card_holder_name: order.requisite.cardHolderName ?? '',
           code: order.requisite.code ?? '',
           bank_name: order.requisite.bank?.name ?? '',
         }
@@ -127,6 +130,7 @@ export function payinOrderToTraderPayInOrderDto(order: OrderWithRelations): Trad
     status: order.status as PayInOrderStatus,
     requisite_number: order.requisite?.number ?? '',
     requisite_owner: order.requisite?.owner ?? '',
+    requisite_card_holder_name: order.requisite?.cardHolderName ?? '',
     bank: order.requisite?.bank?.name ?? '',
     appeals: (order.appeals ?? []).map((a) => ({
       id: a.id,
@@ -140,6 +144,7 @@ export function payinOrderToTraderPayInOrderDto(order: OrderWithRelations): Trad
           type: order.requisite.type,
           number: order.requisite.number,
           owner: order.requisite.owner,
+          card_holder_name: order.requisite.cardHolderName ?? '',
           code: order.requisite.code ?? '',
           bank_name: order.requisite.bank?.name ?? '',
         }

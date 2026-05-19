@@ -37,6 +37,8 @@ export const internalPaths = {
   adminOrdersStream: '/api/admin/orders/stream',
   adminOrders: (qs: string) => `/api/admin/orders?${qs}`,
   adminOrder: (id: string) => `/api/admin/orders/${id}`,
+  adminOrderStatusHistory: (id: string, type: 'PAYIN' | 'PAYOUT') =>
+    `/api/admin/orders/${id}/status-history?type=${type}`,
   adminOrderStatus: (id: string) => `/api/admin/orders/${id}/status`,
   /** Staff application logs (charts + unified Pay-In/Pay-Out table); append query string */
   adminOrdersLogs: '/api/admin/application-logs',
@@ -78,6 +80,8 @@ export const internalPaths = {
 
   traderPayinStream: '/api/trader/payin/stream',
   traderPayinOrders: '/api/trader/payin/orders',
+  traderPayinOrderStatusHistory: (orderId: string) =>
+    `/api/trader/payin/orders/${orderId}/status-history`,
   traderPayinOrderConfirm: (orderId: string) => `/api/trader/payin/orders/${orderId}/confirm`,
   traderPayinOrderCancel: (orderId: string) => `/api/trader/payin/orders/${orderId}/cancel`,
   traderPayinForkVerification: (orderId: string) =>
@@ -85,6 +89,8 @@ export const internalPaths = {
 
   /** Standard trader Pay-Out cabinet REST prefix (JWT). */
   payoutCabinetTrader: '/api/trader/payout',
+  traderPayoutOrderStatusHistory: (orderId: string) =>
+    `/api/trader/payout/orders/${orderId}/status-history`,
   /** Geo-scoped payout specialist REST + SSE prefix */
   payoutCabinetSpecialist: '/api/payout-trader/payout',
   traderPayoutStream: '/api/trader/payout/stream',
@@ -92,6 +98,8 @@ export const internalPaths = {
   payoutSpecialistSummary: '/api/payout-trader/payout/me/summary',
   payoutSpecialistStatistics: '/api/payout-trader/payout/me/statistics',
   payoutSpecialistNotifications: '/api/payout-trader/payout/me/notifications',
+  payoutSpecialistOrderStatusHistory: (orderId: string) =>
+    `/api/payout-trader/payout/orders/${orderId}/status-history`,
 
   adminPlatformExchangeRate: '/api/admin/platform/exchange-rate',
   adminPlatformIncomeSummary: (qs = '') =>
@@ -224,6 +232,8 @@ export const internalPaths = {
   supportStats: '/api/support/stats',
   supportOrders: (qs: string) => `/api/support/orders?${qs}`,
   supportOrder: (id: string) => `/api/support/orders/${id}`,
+  supportOrderStatusHistory: (id: string, type: 'PAYIN' | 'PAYOUT') =>
+    `/api/support/orders/${id}/status-history?type=${type}`,
   supportDisputes: (qs: string) => `/api/support/disputes?${qs}`,
   supportDispute: (id: string) => `/api/support/disputes/${id}`,
   supportDisputeNotes: (id: string) => `/api/support/disputes/${id}/notes`,

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useDebouncedTextFilter } from '@/lib/hooks/use-debounced-value';
 import { Wallet } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -65,8 +66,16 @@ export default function MerchantBalancesPage() {
   const [sumTo, setSumTo] = useState('');
   const [txFrom, setTxFrom] = useState('');
   const [txTo, setTxTo] = useState('');
-  const [txType, setTxType] = useState('');
+  const {
+    value: txType,
+    setValue: setTxType,
+    debounced: debouncedTxType,
+  } = useDebouncedTextFilter();
   const [txPage, setTxPage] = useState(1);
+
+  useEffect(() => {
+    setTxPage(1);
+  }, [debouncedTxType, txFrom, txTo]);
 
   const summaryQs =
     sumFrom || sumTo
@@ -92,10 +101,10 @@ export default function MerchantBalancesPage() {
   });
   if (txFrom) txParams.set('dateFrom', txFrom);
   if (txTo) txParams.set('dateTo', txTo);
-  if (txType.trim()) txParams.set('type', txType.trim().toUpperCase());
+  if (debouncedTxType) txParams.set('type', debouncedTxType.toUpperCase());
 
   const { data: txData, isLoading: txLoading } = useQuery({
-    queryKey: merchantKeys.balanceTransactions(txPage, txFrom, txTo, txType),
+    queryKey: merchantKeys.balanceTransactions(txPage, txFrom, txTo, debouncedTxType),
     queryFn: () =>
       api.get<{ data: MerchantBalanceTx[]; total: number; page: number; limit: number }>(
         internalPaths.merchantBalanceTransactions(txParams.toString()),
@@ -337,10 +346,7 @@ export default function MerchantBalancesPage() {
           <FilterInput
             label="Type"
             value={txType}
-            onChange={(v) => {
-              setTxType(v);
-              setTxPage(1);
-            }}
+            onChange={setTxType}
             placeholder="PAYIN_CREDIT"
             className="w-40"
           />

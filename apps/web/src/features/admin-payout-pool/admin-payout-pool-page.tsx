@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Percent, Clock, Pencil, Trash2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useEffect, useRef, useState } from 'react';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -32,7 +33,7 @@ interface MerchantRow {
 export function AdminPayoutPoolPage() {
   const qc = useQueryClient();
   const [merchantSearch, setMerchantSearch] = useState('');
-  const [debouncedMerchantSearch, setDebouncedMerchantSearch] = useState('');
+  const debouncedMerchantSearch = useDebouncedValue(merchantSearch, undefined, (v) => v.trim());
   /** Exact `merchants.name` after picking from search; cleared when the input is edited. */
   const [pickedDisplayName, setPickedDisplayName] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -41,11 +42,6 @@ export function AdminPayoutPoolPage() {
   const [editingMerchantId, setEditingMerchantId] = useState<string | null>(null);
   const [assignmentPoolBPercent, setAssignmentPoolBPercent] = useState('');
   const [assignmentActive, setAssignmentActive] = useState(true);
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedMerchantSearch(merchantSearch.trim()), 300);
-    return () => clearTimeout(t);
-  }, [merchantSearch]);
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -88,7 +84,6 @@ export function AdminPayoutPoolPage() {
 
   function resetMerchantAssignmentForm() {
     setMerchantSearch('');
-    setDebouncedMerchantSearch('');
     setPickedDisplayName(null);
     setPickerOpen(false);
     setEditingMerchantId(null);

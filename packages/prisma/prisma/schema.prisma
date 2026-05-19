@@ -679,6 +679,8 @@ model Requisite {
   /// Normalized identifier for cross-platform uniqueness while active (see migrations).
   numberNormalized  String                   @map("number_normalized")
   owner             String
+  /// Full legal name of the card/account holder (surname, given name, patronymic).
+  cardHolderName    String                   @default("") @map("card_holder_name")
   bankId            Int?                     @map("bank_id")
   code              String?
   isActive          Boolean                  @default(true) @map("is_active")

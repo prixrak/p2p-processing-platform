@@ -81,6 +81,9 @@ async function performRefresh(): Promise<boolean> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
 
+  const tokensBefore = `${getToken() ?? ''}|${getRefreshToken() ?? ''}`;
+  refreshAttemptStartedAt = Date.now();
+
   try {
     const res = await fetch(`${API_BASE}${internalPaths.authRefresh}`, {
       method: 'POST',
@@ -90,8 +93,13 @@ async function performRefresh(): Promise<boolean> {
 
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
-        clearTokens();
-        notifySessionTerminated();
+        const tokensAfter = `${getToken() ?? ''}|${getRefreshToken() ?? ''}`;
+        const anotherTabRotatedTokens =
+          tokensAfter !== tokensBefore && !!getRefreshToken();
+        if (!anotherTabRotatedTokens) {
+          clearTokens();
+          notifySessionTerminated();
+        }
       }
       return false;
     }

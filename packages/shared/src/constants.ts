@@ -20,20 +20,20 @@ export const WEBHOOK_RETRY_DELAYS_MS = [
 ];
 export const MAX_PAGE_SIZE = 100;
 
-/** Pay-In orders still in the trader workflow (not settled or closed). */
+/** Pay-In orders still in the trader workflow (not settled, closed, or awaiting appeal resolution). */
 export const PAYIN_TRADER_CURRENT_STATUSES: readonly PayInOrderStatus[] = [
   PayInOrderStatus.PENDING,
   PayInOrderStatus.NEW,
   PayInOrderStatus.VERIFIED,
+  PayInOrderStatus.APPEAL,
 ];
 
-/** Pay-In orders that left the active workflow (paid variants, canceled, appeal, or upload failure). */
+/** Pay-In orders that left the active workflow (paid variants, canceled, or upload failure). */
 export const PAYIN_TRADER_HISTORY_STATUSES: readonly PayInOrderStatus[] = [
   PayInOrderStatus.PAID,
   PayInOrderStatus.UNDERPAID,
   PayInOrderStatus.OVERPAID,
   PayInOrderStatus.CANCELED,
-  PayInOrderStatus.APPEAL,
   PayInOrderStatus.UPLOAD_FAILED,
   PayInOrderStatus.NO_REQUISITE,
 ];

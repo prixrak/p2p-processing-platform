@@ -1,7 +1,8 @@
-import { IsString, IsOptional, IsEnum, IsNumber, Min, Max, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsNumber, Min, Max, IsIn, MaxLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { AppealStatus, MAX_PAGE_SIZE } from '@p2p/shared';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { normalizeOrderListSearch } from '../../../common/order-search-where';
 
 export class AppealFiltersDto {
   @ApiPropertyOptional({ enum: AppealStatus })
@@ -13,6 +14,18 @@ export class AppealFiltersDto {
   @IsOptional()
   @IsString()
   orderId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Search by appeal id, pay-in order id, request id, requisite number, owner, or card holder name',
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? normalizeOrderListSearch(value) : value,
+  )
+  @IsString()
+  @MaxLength(200)
+  search?: string;
 
   @ApiPropertyOptional({
     description:

@@ -121,6 +121,14 @@ export function PayInFinalizeConfirmationModal({
                       {fd.order.requisite_owner || fd.order.payment_detail?.owner || '—'}
                     </span>
                   </div>
+                  <div className="flex flex-col gap-0.5 px-3 py-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                    <span className="shrink-0 text-xs text-text-muted">Card holder name</span>
+                    <span className="break-all text-xs text-text-primary sm:text-end">
+                      {fd.order.requisite_card_holder_name ||
+                        fd.order.payment_detail?.card_holder_name ||
+                        '—'}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="mt-6 flex gap-2">

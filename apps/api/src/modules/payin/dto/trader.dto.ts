@@ -2,6 +2,7 @@ import { IsString, IsOptional, IsNumber, IsEnum, IsPositive, Min, Max, IsIn, Max
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PayInOrderStatus, MAX_PAGE_SIZE } from '@p2p/shared';
 import { Transform, Type } from 'class-transformer';
+import { normalizeOrderListSearch } from '../../../common/order-search-where';
 
 export class TraderOrderFiltersDto {
   @ApiPropertyOptional({ enum: PayInOrderStatus })
@@ -12,7 +13,7 @@ export class TraderOrderFiltersDto {
   @ApiPropertyOptional({
     enum: ['current', 'history'],
     description:
-      'current: PENDING, NEW, VERIFIED; history: PAID, UNDERPAID, OVERPAID, CANCELED, APPEAL, UPLOAD_FAILED',
+      'current: PENDING, NEW, VERIFIED, APPEAL; history: PAID, UNDERPAID, OVERPAID, CANCELED, UPLOAD_FAILED, NO_REQUISITE',
   })
   @IsOptional()
   @Transform(({ value }) => (value === '' ? undefined : value))
@@ -20,14 +21,13 @@ export class TraderOrderFiltersDto {
   list?: 'current' | 'history';
 
   @ApiPropertyOptional({
-    description: 'Search by order id (full or partial UUID), merchant request_id, requisite number, or account owner',
+    description:
+      'Search by order id (full or partial UUID), merchant request_id, requisite number, account owner, or card holder name',
   })
   @IsOptional()
-  @Transform(({ value }) => {
-    if (typeof value !== 'string') return value;
-    const t = value.trim();
-    return t === '' ? undefined : t;
-  })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? normalizeOrderListSearch(value) : value,
+  )
   @IsString()
   @MaxLength(200)
   search?: string;

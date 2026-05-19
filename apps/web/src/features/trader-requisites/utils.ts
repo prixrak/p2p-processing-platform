@@ -119,6 +119,7 @@ export const defaultRequisiteForm: RequisiteFormData = {
   type: RequisiteType.CARD,
   number: '',
   owner: '',
+  card_holder_name: '',
   bank_id: '',
   accepts_other_banks: false,
   min_amount: 100,

@@ -29,6 +29,7 @@ function PayInOrderDetailBody({
   appealDecisionMenu,
   setAppealDecisionMenu,
   resolveAppealMutation,
+  onAppealDecision,
   onPickFinalizeKind,
   onOpenReceipts,
 }: {
@@ -46,8 +47,9 @@ function PayInOrderDetailBody({
       { appealId: string; decision: AppealStatus },
       unknown
     >,
-    'mutate' | 'isPending' | 'variables'
+    'isPending' | 'variables'
   >;
+  onAppealDecision: (appealId: string, decision: AppealStatus, order: TraderPayInOrderDto) => void;
   onPickFinalizeKind: (kind: FinalizeKind, order: TraderPayInOrderDto) => void;
   onOpenReceipts: (order: TraderPayInOrderDto) => void;
 }) {
@@ -127,6 +129,7 @@ function PayInOrderDetailBody({
         </DetailRow>
 
         <DetailRow label={t('owner')} value={snap.owner ?? dash} />
+        <DetailRow label={t('cardHolderName')} value={snap.cardHolderName ?? dash} />
 
         <DetailRow label={t('status')}>
           <div className="flex justify-start">
@@ -144,18 +147,8 @@ function PayInOrderDetailBody({
             setMenuState={setAppealDecisionMenu}
             menuAnchor="modal"
             loading={appealBusy}
-            onReject={() =>
-              resolveAppealMutation.mutate({
-                appealId: openAppeal.id,
-                decision: AppealStatus.REJECTED,
-              })
-            }
-            onAccept={() =>
-              resolveAppealMutation.mutate({
-                appealId: openAppeal.id,
-                decision: AppealStatus.RESOLVED,
-              })
-            }
+            onReject={() => onAppealDecision(openAppeal.id, AppealStatus.REJECTED, order)}
+            onAccept={() => onAppealDecision(openAppeal.id, AppealStatus.RESOLVED, order)}
           />
         ) : null}
         <OrderFinalizeDropdown
@@ -180,6 +173,7 @@ export function PayInOrderDetailModal({
   appealDecisionMenu,
   setAppealDecisionMenu,
   resolveAppealMutation,
+  onAppealDecision,
   onPickFinalizeKind,
   onOpenReceipts,
 }: {
@@ -198,8 +192,9 @@ export function PayInOrderDetailModal({
       { appealId: string; decision: AppealStatus },
       unknown
     >,
-    'mutate' | 'isPending' | 'variables'
+    'isPending' | 'variables'
   >;
+  onAppealDecision: (appealId: string, decision: AppealStatus, order: TraderPayInOrderDto) => void;
   onPickFinalizeKind: (kind: FinalizeKind, order: TraderPayInOrderDto) => void;
   onOpenReceipts: (order: TraderPayInOrderDto) => void;
 }) {
@@ -217,6 +212,7 @@ export function PayInOrderDetailModal({
           appealDecisionMenu={appealDecisionMenu}
           setAppealDecisionMenu={setAppealDecisionMenu}
           resolveAppealMutation={resolveAppealMutation}
+          onAppealDecision={onAppealDecision}
           onPickFinalizeKind={onPickFinalizeKind}
           onOpenReceipts={onOpenReceipts}
         />

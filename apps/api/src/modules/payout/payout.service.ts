@@ -44,6 +44,7 @@ import {
   PlatformIncomeOrderType,
   PayoutTraderBalanceTxType,
 } from '@prisma/client';
+import { buildPayinPayoutOrderSearchOr } from '../../common/order-search-where';
 import { validateCallbackUrl } from '../../common/utils/url-validator';
 import { assertAmountWithinDirectionMinMax } from '../../common/utils/direction-amount-limits.util';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
@@ -72,6 +73,14 @@ import { computePayoutPoolCloseDeadline } from './payout-pool-close-deadline.uti
 import type { ExternalOrderCreationMeta } from '../../common/utils/partner-request-meta';
 import { FilesService } from '../files/files.service';
 import { AuditService } from '../audit/audit.service';
+import {
+  fetchOrderStatusHistory,
+  initialOrderStatusAuditFrom,
+  OrderStatusHistoryEntity,
+  recordOrderStatusChange,
+  withOrderStatusHistoryFallback,
+  type OrderStatusHistoryEntry,
+} from '../../common/order-status-history/order-status-history';
 
 const COMPLETION_PROOF_ATTACHMENTS_INCLUDE = {
   select: { fileId: true, createdAt: true },
@@ -303,28 +312,38 @@ export class PayoutService {
       }
     }
 
-    if (filters.min_amount == null && filters.max_amount == null) return;
+    if (filters.min_amount != null || filters.max_amount != null) {
+      const extraAmt: Prisma.DecimalFilter = {};
+      if (filters.min_amount != null) extraAmt.gte = filters.min_amount;
+      if (filters.max_amount != null) extraAmt.lte = filters.max_amount;
 
-    const extraAmt: Prisma.DecimalFilter = {};
-    if (filters.min_amount != null) extraAmt.gte = filters.min_amount;
-    if (filters.max_amount != null) extraAmt.lte = filters.max_amount;
+      const existing = where.amount;
+      if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+        const merged: Prisma.DecimalFilter = { ...(existing as Prisma.DecimalFilter) };
+        if (extraAmt.gte != null) {
+          const prev = merged.gte != null ? Number(merged.gte) : undefined;
+          merged.gte =
+            prev != null ? Math.max(prev, Number(extraAmt.gte)) : extraAmt.gte;
+        }
+        if (extraAmt.lte != null) {
+          const prev = merged.lte != null ? Number(merged.lte) : undefined;
+          merged.lte =
+            prev != null ? Math.min(prev, Number(extraAmt.lte)) : extraAmt.lte;
+        }
+        where.amount = merged;
+      } else {
+        where.amount = extraAmt;
+      }
+    }
 
-    const existing = where.amount;
-    if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
-      const merged: Prisma.DecimalFilter = { ...(existing as Prisma.DecimalFilter) };
-      if (extraAmt.gte != null) {
-        const prev = merged.gte != null ? Number(merged.gte) : undefined;
-        merged.gte =
-          prev != null ? Math.max(prev, Number(extraAmt.gte)) : extraAmt.gte;
+    if (filters.search) {
+      const searchOr = buildPayinPayoutOrderSearchOr(filters.search) as Prisma.PayoutOrderWhereInput[];
+      if (searchOr.length > 0) {
+        const prevAnd = where.AND;
+        const andArr = Array.isArray(prevAnd) ? [...prevAnd] : prevAnd ? [prevAnd] : [];
+        andArr.push({ OR: searchOr });
+        where.AND = andArr;
       }
-      if (extraAmt.lte != null) {
-        const prev = merged.lte != null ? Number(merged.lte) : undefined;
-        merged.lte =
-          prev != null ? Math.min(prev, Number(extraAmt.lte)) : extraAmt.lte;
-      }
-      where.amount = merged;
-    } else {
-      where.amount = extraAmt;
     }
   }
 
@@ -495,6 +514,8 @@ export class PayoutService {
       });
 
       this.emitPayoutOrderRealtime(order, true);
+
+      this.logPayoutOrderCreated(order.id, order.status);
 
       if (poolType === PayoutPoolType.PAYOUT_SPECIALIST) {
         void this.telegram
@@ -751,6 +772,8 @@ export class PayoutService {
 
     this.emitPayoutOrderRealtime(updated, true);
 
+    void this.logPayoutStatusChange(orderId, 'PENDING', 'PROCESSING', { actorRole: 'TRADER' });
+
     return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
 
@@ -823,6 +846,10 @@ export class PayoutService {
     });
 
     this.emitPayoutOrderRealtime(updated, true);
+
+    void this.logPayoutStatusChange(orderId, 'PENDING', 'PROCESSING', {
+      actorRole: 'PAYOUT_TRADER',
+    });
 
     const full = await this.loadCabinetOrder(orderId);
     return this.toPayOutOrderApiDto(full);
@@ -929,6 +956,8 @@ export class PayoutService {
     });
 
     this.emitPayoutOrderRealtime(updated, true);
+
+    void this.logPayoutStatusChange(orderId, 'PENDING', 'PROCESSING', { actorRole: 'SUPPORT' });
 
     const full = await this.loadCabinetOrder(orderId);
     return this.toPayOutOrderApiDto(full);
@@ -1427,6 +1456,8 @@ export class PayoutService {
 
     this.emitPayoutOrderRealtime(updated, false);
 
+    void this.logPayoutStatusChange(orderId, order.status, 'PROCESSING', { actorRole: 'TRADER' });
+
     return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
 
@@ -1495,6 +1526,8 @@ export class PayoutService {
     });
 
     this.emitPayoutOrderRealtime(updated, false);
+
+    void this.logPayoutStatusChange(orderId, order.status, 'COMPLETED', { actorRole: 'TRADER' });
 
     return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
@@ -1819,6 +1852,8 @@ export class PayoutService {
 
     this.emitPayoutOrderRealtime(updated, false);
 
+    void this.logPayoutStatusChange(orderId, order.status, 'FAILED', { actorRole: 'TRADER' });
+
     return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
 
@@ -1866,6 +1901,8 @@ export class PayoutService {
     void this.purgeUnlinkedPayoutProofFiles(proofIdsToPurge);
 
     this.emitPayoutOrderRealtime(updated, true);
+
+    void this.logPayoutStatusChange(orderId, order.status, 'PENDING', { actorRole: 'TRADER' });
 
     return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
@@ -2036,6 +2073,10 @@ export class PayoutService {
     });
 
     this.emitPayoutOrderRealtime(updated, false);
+
+    void this.logPayoutStatusChange(orderId, order.status, 'COMPLETED', {
+      actorRole: 'PAYOUT_TRADER',
+    });
 
     return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
   }
@@ -2423,5 +2464,84 @@ export class PayoutService {
         ? Math.floor(opts.poolCloseDeadline.getTime() / 1000)
         : null,
     };
+  }
+
+  async getPayoutOrderStatusHistoryForTrader(
+    traderId: string,
+    orderId: string,
+  ): Promise<OrderStatusHistoryEntry[]> {
+    const order = await this.prisma.payoutOrder.findFirst({
+      where: { id: orderId, traderId },
+      select: { id: true, status: true, createdAt: true },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    const history = await fetchOrderStatusHistory(this.prisma, orderId, {
+      orderCreatedAt: order.createdAt,
+    });
+    return withOrderStatusHistoryFallback(history, {
+      status: order.status,
+      createdAt: order.createdAt,
+    });
+  }
+
+  async getPayoutOrderStatusHistoryForSpecialist(
+    payoutTraderId: string,
+    orderId: string,
+  ): Promise<OrderStatusHistoryEntry[]> {
+    const order = await this.prisma.payoutOrder.findFirst({
+      where: { id: orderId, payoutTraderId },
+      select: { id: true, status: true, createdAt: true },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    const history = await fetchOrderStatusHistory(this.prisma, orderId, {
+      orderCreatedAt: order.createdAt,
+    });
+    return withOrderStatusHistoryFallback(history, {
+      status: order.status,
+      createdAt: order.createdAt,
+    });
+  }
+
+  async getPayoutOrderStatusHistory(orderId: string): Promise<OrderStatusHistoryEntry[]> {
+    const order = await this.prisma.payoutOrder.findUnique({
+      where: { id: orderId },
+      select: { id: true, status: true, createdAt: true },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    const history = await fetchOrderStatusHistory(this.prisma, orderId, {
+      orderCreatedAt: order.createdAt,
+    });
+    return withOrderStatusHistoryFallback(history, {
+      status: order.status,
+      createdAt: order.createdAt,
+    });
+  }
+
+  private logPayoutOrderCreated(orderId: string, status: string): void {
+    const { fromStatus, note } = initialOrderStatusAuditFrom(status);
+    void this.logPayoutStatusChange(orderId, fromStatus, status, {
+      actorRole: 'MERCHANT',
+      note,
+    });
+  }
+
+  private logPayoutStatusChange(
+    orderId: string,
+    fromStatus: string,
+    toStatus: string,
+    ctx: { actorId?: string; actorRole?: string; note?: string } = {},
+  ): void {
+    void recordOrderStatusChange(this.audit, {
+      entityType: OrderStatusHistoryEntity.payout,
+      orderId,
+      fromStatus,
+      toStatus,
+      actorId: ctx.actorId ?? null,
+      actorRole: ctx.actorRole ?? null,
+      note: ctx.note ?? null,
+    }).catch(() => undefined);
   }
 }

@@ -12,6 +12,7 @@ import { internalPaths } from '@/lib/internal-api';
 import { payoutCabinetKeys, traderKeys } from '@/lib/query-keys';
 import { Tooltip } from '@/components/ui/tooltip';
 import { TraderLocaleSwitch } from '@/components/trader-locale-switch';
+import { TraderHeaderCapacityAlerts } from '@/components/trader-header-capacity-alerts';
 import { isNavHrefActive } from '@/lib/nav-active';
 import type { PayInListApiResponse } from '@/features/trader-payin/payin-types';
 
@@ -358,7 +359,9 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
             <Menu className="h-5 w-5" />
           </button>
           {role === 'trader' || role === 'payout-trader' ? (
-            <div className="min-w-0 flex-1" aria-hidden />
+            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+              {role === 'trader' ? <TraderHeaderCapacityAlerts /> : null}
+            </div>
           ) : (
             <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary capitalize">
               {`${role} Panel`}

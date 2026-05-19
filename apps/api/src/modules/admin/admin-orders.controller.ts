@@ -44,6 +44,7 @@ import { Observable, merge } from 'rxjs';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { PayinService } from '../payin/payin.service';
+import { PayoutService } from '../payout/payout.service';
 import { PayinRealtimeService } from '../payin/payin-realtime.service';
 import { PayoutRealtimeService } from '../payout/payout-realtime.service';
 import { AuditService } from '../audit/audit.service';
@@ -76,6 +77,7 @@ export class AdminOrdersController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly payinService: PayinService,
+    private readonly payoutService: PayoutService,
     private readonly payinRealtime: PayinRealtimeService,
     private readonly payoutRealtime: PayoutRealtimeService,
     private readonly audit: AuditService,
@@ -148,6 +150,7 @@ export class AdminOrdersController {
                 type: true,
                 number: true,
                 owner: true,
+                cardHolderName: true,
                 code: true,
                 bank: { select: { name: true } },
               },
@@ -243,6 +246,28 @@ export class AdminOrdersController {
     );
   }
 
+  @Get(':id/status-history')
+  @ApiOperation({ summary: 'Status change timeline for a Pay-In or Pay-Out order' })
+  @ApiQuery({ name: 'type', required: false, enum: DirectionType })
+  async getStatusHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('type') type?: string,
+  ) {
+    const isPayin = !type || type.toUpperCase() !== DirectionType.PAYOUT;
+    const items = isPayin
+      ? await this.payinService.getPayinOrderStatusHistory(id)
+      : await this.payoutService.getPayoutOrderStatusHistory(id);
+
+    return {
+      items: items.map((e) => ({
+        status: e.status,
+        timestamp: e.timestamp.toISOString(),
+        actor: e.actor,
+        note: e.note ?? null,
+      })),
+    };
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get order details by ID (payin or payout)' })
   @ApiQuery({ name: 'type', required: false, enum: DirectionType })
@@ -285,7 +310,8 @@ export class AdminOrdersController {
           select: {
             action: true,
             createdAt: true,
-            actor: { select: { email: true } },
+            actorRole: true,
+            actor: { select: { email: true, role: true } },
             oldValue: true,
             newValue: true,
           },
@@ -299,7 +325,8 @@ export class AdminOrdersController {
         select: {
           action: true,
           createdAt: true,
-          actor: { select: { email: true } },
+          actorRole: true,
+          actor: { select: { email: true, role: true } },
           oldValue: true,
           newValue: true,
         },
@@ -346,6 +373,7 @@ export class AdminOrdersController {
                   order.requisite.group.paymentMethod.displayName ?? order.requisite.type,
                 number: order.requisite.number,
                 owner: order.requisite.owner,
+                cardHolderName: order.requisite.cardHolderName ?? '',
                 bankName: order.requisite.bank?.name ?? null,
                 requisiteId: order.requisite.id,
               },
@@ -403,7 +431,8 @@ export class AdminOrdersController {
         select: {
           action: true,
           createdAt: true,
-          actor: { select: { email: true } },
+          actorRole: true,
+          actor: { select: { email: true, role: true } },
           oldValue: true,
           newValue: true,
         },
@@ -519,7 +548,8 @@ export class AdminOrdersController {
     auditLogs: Array<{
       action: string;
       createdAt: Date;
-      actor: { email: string } | null;
+      actorRole: string | null;
+      actor: { email: string; role: string | null } | null;
       oldValue: unknown;
       newValue: unknown;
     }>,

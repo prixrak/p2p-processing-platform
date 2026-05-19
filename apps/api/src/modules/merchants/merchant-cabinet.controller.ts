@@ -299,6 +299,7 @@ export class MerchantCabinetController {
               type: true,
               number: true,
               owner: true,
+              cardHolderName: true,
               code: true,
               bank: { select: { name: true } },
             },

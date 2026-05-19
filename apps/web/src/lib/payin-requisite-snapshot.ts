@@ -5,6 +5,7 @@ export type PayinRequisiteListRow = {
   payment_detail?: PaymentDetailsShortDto | null;
   requisite_number?: string;
   requisite_owner?: string;
+  requisite_card_holder_name?: string;
   bank?: string;
   trader_processing_method?: OrderDto['trader_processing_method'];
 };
@@ -15,6 +16,7 @@ export type PayinRequisiteSnapshot = {
   /** Last four digits when `copyValue` contains digits; otherwise shortened fallback. */
   lastFourDisplay: string | null;
   owner: string | null;
+  cardHolderName: string | null;
   bank: string | null;
   type: string | null;
   hasRequisite: boolean;
@@ -41,6 +43,7 @@ export function payinOrderRequisiteSnapshot(row: PayinRequisiteListRow): PayinRe
   }
 
   const owner = (pd?.owner ?? row.requisite_owner ?? '').trim();
+  const cardHolderName = (pd?.card_holder_name ?? row.requisite_card_holder_name ?? '').trim();
   const bank = (pd?.bank_name ?? row.bank ?? '').trim();
   const type = (pd?.type ?? row.trader_processing_method ?? '').trim();
 
@@ -48,6 +51,7 @@ export function payinOrderRequisiteSnapshot(row: PayinRequisiteListRow): PayinRe
     copyValue,
     lastFourDisplay,
     owner: owner || null,
+    cardHolderName: cardHolderName || null,
     bank: bank || null,
     type: type || null,
     hasRequisite: copyValue.length > 0,

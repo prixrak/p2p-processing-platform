@@ -1,12 +1,27 @@
 import {
+  buildAppealListSearchOr,
   buildAppealPayinOrderSearchOr,
   buildPayinPayoutOrderSearchOr,
+  normalizeOrderListSearch,
 } from './order-search-where';
+
+describe('normalizeOrderListSearch', () => {
+  it('drops single-character terms', () => {
+    expect(normalizeOrderListSearch('a')).toBeUndefined();
+    expect(normalizeOrderListSearch('  x ')).toBeUndefined();
+  });
+
+  it('keeps two+ character terms and uuid fragments', () => {
+    expect(normalizeOrderListSearch('ab')).toBe('ab');
+    expect(normalizeOrderListSearch('550e8400')).toBe('550e8400');
+  });
+});
 
 describe('buildPayinPayoutOrderSearchOr', () => {
   it('returns empty array for blank search', () => {
     expect(buildPayinPayoutOrderSearchOr('')).toEqual([]);
     expect(buildPayinPayoutOrderSearchOr('   ')).toEqual([]);
+    expect(buildPayinPayoutOrderSearchOr('a')).toEqual([]);
   });
 
   it('uses requestId contains for non-UUID fragments', () => {
@@ -28,6 +43,20 @@ describe('buildPayinPayoutOrderSearchOr', () => {
       { requestId: { contains: 'acme', mode: 'insensitive' } },
       { merchant: { name: { contains: 'acme', mode: 'insensitive' } } },
     ]);
+  });
+});
+
+describe('buildAppealListSearchOr', () => {
+  it('includes appeal id and requisite fields for a text term', () => {
+    const clauses = buildAppealListSearchOr('4111');
+    expect(clauses.some((c) => 'payinOrder' in c && 'requisite' in (c.payinOrder as object))).toBe(
+      true,
+    );
+  });
+
+  it('prepends appeal id for full UUID', () => {
+    const id = '550e8400-e29b-41d4-a716-446655440000';
+    expect(buildAppealListSearchOr(id)[0]).toEqual({ id });
   });
 });
 

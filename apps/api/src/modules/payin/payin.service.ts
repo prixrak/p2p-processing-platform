@@ -53,6 +53,7 @@ import {
   rateTraderIn,
 } from '@p2p/shared';
 import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
+import { normalizeOrderListSearch } from '../../common/order-search-where';
 import { validateCallbackUrl } from '../../common/utils/url-validator';
 import { assertAmountWithinDirectionMinMax } from '../../common/utils/direction-amount-limits.util';
 import { buildMerchantProfileDto } from '../../common/utils/merchant-profile.helper';
@@ -88,6 +89,15 @@ import { payinCompletedAtForHistoryStatus } from './payin-history-completion';
 import type { ExternalOrderCreationMeta } from '../../common/utils/partner-request-meta';
 import { randomUUID } from 'node:crypto';
 import { PayinProviderService } from '../payin-provider/payin-provider.service';
+import { AuditService } from '../audit/audit.service';
+import {
+  fetchOrderStatusHistory,
+  initialOrderStatusAuditFrom,
+  OrderStatusHistoryEntity,
+  recordOrderStatusChange,
+  withOrderStatusHistoryFallback,
+  type OrderStatusHistoryEntry,
+} from '../../common/order-status-history/order-status-history';
 
 @Injectable()
 export class PayinService {
@@ -108,6 +118,7 @@ export class PayinService {
     private readonly telegram: TelegramService,
     private readonly currencies: CurrenciesService,
     private readonly payinProviderService: PayinProviderService,
+    private readonly audit: AuditService,
   ) {}
 
   private emitPayinOrderRealtime(order: {
@@ -416,6 +427,8 @@ export class PayinService {
         });
       }
 
+      this.logPayinOrderCreated(order.id, order.status as PayInOrderStatus);
+
       return {
         order: payinOrderToOrderDto(order),
         form_uri: `${config.app.frontendUrl}/pay/${order.id}`,
@@ -537,6 +550,11 @@ export class PayinService {
       traderId: finalRow.traderId,
       merchantId: finalRow.merchantId,
       status: finalRow.status as PayInOrderStatus,
+    });
+
+    void this.logPayinStatusChange(order.id, order.status, nextStatus, {
+      actorRole: 'MERCHANT',
+      note: hasProofs ? 'Merchant update with proofs' : undefined,
     });
 
     return payinOrderToOrderDto(finalRow);
@@ -830,6 +848,8 @@ export class PayinService {
         });
       }
 
+      this.logPayinOrderCreated(order.id, order.status as PayInOrderStatus);
+
       return { order: payinOrderToOrderDto(order) };
     } catch (error) {
       this.handleUniqueConstraint(error);
@@ -943,6 +963,10 @@ export class PayinService {
       status: updated.status as PayInOrderStatus,
     });
 
+    void this.logPayinStatusChange(order.id, fromAppealStatus, updated.status, {
+      actorRole: 'MERCHANT',
+    });
+
     return payinOrderToOrderDto(updated);
   }
 
@@ -1037,7 +1061,7 @@ export class PayinService {
       return { items: [], total: 0, page, limit };
     }
 
-    const q = filters.search?.trim() ?? '';
+    const q = normalizeOrderListSearch(filters.search) ?? '';
     let idMatchIds: string[] | undefined;
     if (q && !uuidValidate(q)) {
       const compact = q.replace(/-/g, '');
@@ -1118,6 +1142,7 @@ export class PayinService {
           OR: [
             { number: { contains: q, mode: 'insensitive' } },
             { owner: { contains: q, mode: 'insensitive' } },
+            { cardHolderName: { contains: q, mode: 'insensitive' } },
           ],
         },
       },
@@ -1170,6 +1195,10 @@ export class PayinService {
       status: updated.status as PayInOrderStatus,
     });
 
+    void this.logPayinStatusChange(order.id, order.status, updated.status, {
+      actorRole: 'TRADER',
+    });
+
     return payinOrderToOrderDto(updated);
   }
 
@@ -1182,6 +1211,7 @@ export class PayinService {
   async settlePayInOrderWhenAppealCloses(
     appealId: string,
     decision: AppealStatus.RESOLVED | AppealStatus.REJECTED,
+    actualAmount?: number,
   ): Promise<OrderWithRelations> {
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
       const appealRow = await tx.appeal.findUnique({ where: { id: appealId } });
@@ -1190,9 +1220,14 @@ export class PayinService {
         throw new BadRequestException(`Appeal is already ${appealRow.status}`);
       }
 
+      const appealPaidUpdate =
+        decision === AppealStatus.RESOLVED && actualAmount !== undefined
+          ? { paidAmount: actualAmount }
+          : {};
+
       await tx.appeal.update({
         where: { id: appealId },
-        data: { status: decision as never },
+        data: { status: decision as never, ...appealPaidUpdate },
       });
 
       const order = await tx.payinOrder.findUnique({
@@ -1228,7 +1263,8 @@ export class PayinService {
         return result;
       }
 
-      const reported = Number(appealRow.paidAmount);
+      const reported =
+        actualAmount !== undefined ? actualAmount : Number(appealRow.paidAmount);
       const orderAmt = Number(order.amount);
       let targetStatus: PayInOrderStatus;
       if (reported === orderAmt) {
@@ -1260,6 +1296,13 @@ export class PayinService {
       merchantId: updatedOrder.merchantId,
       status: updatedOrder.status as PayInOrderStatus,
     });
+
+    void this.logPayinStatusChange(
+      updatedOrder.id,
+      PayInOrderStatus.APPEAL,
+      updatedOrder.status,
+      { actorRole: 'SUPPORT' },
+    );
 
     this.logger.log({
       msg: 'payin.appeal_settlement',
@@ -1377,7 +1420,27 @@ export class PayinService {
     }
 
     if (willPaid) {
-      await this.creditBalancesOnPaid(tx, order, paidCredit);
+      if (fromStatus === PayInOrderStatus.APPEAL) {
+        const existingIncome = await tx.platformIncome.findUnique({
+          where: {
+            orderId_orderType: {
+              orderId: order.id,
+              orderType: PlatformIncomeOrderType.PAYIN,
+            },
+          },
+        });
+        if (existingIncome) {
+          const prevSettled = Number(existingIncome.orderAmountLocal);
+          const delta = paidCredit - prevSettled;
+          if (Math.abs(delta) >= 1e-9) {
+            await this.adjustBalancesOnPaidAppealDelta(tx, order, delta, paidCredit);
+          }
+        } else {
+          await this.creditBalancesOnPaid(tx, order, paidCredit);
+        }
+      } else {
+        await this.creditBalancesOnPaid(tx, order, paidCredit);
+      }
     }
 
     await this.createPayinWebhookEntry(tx, result);
@@ -1424,6 +1487,10 @@ export class PayinService {
       traderId: updated.traderId,
       merchantId: updated.merchantId,
       status: updated.status as PayInOrderStatus,
+    });
+
+    void this.logPayinStatusChange(order.id, order.status, updated.status, {
+      actorRole: 'TRADER',
     });
 
     return payinOrderToOrderDto(updated);
@@ -1484,6 +1551,10 @@ export class PayinService {
         traderId: row.traderId,
         merchantId: row.merchantId,
         status: row.status as PayInOrderStatus,
+      });
+      void this.logPayinStatusChange(snapshot.id, snapshot.status, row.status, {
+        actorRole: 'SYSTEM',
+        note: 'Trader deactivated',
       });
     }
 
@@ -1705,6 +1776,143 @@ export class PayinService {
     );
   }
 
+  /**
+   * Applies merchant/trader/platform ledger deltas when an appeal is resolved to a paid outcome
+   * and the order was already settled before APPEAL (platform_income row exists).
+   *
+   * RISK: `deltaLocal` may be negative (underpaid correction); overdraft is checked only when
+   * the trader USDT debit increases.
+   */
+  private async adjustBalancesOnPaidAppealDelta(
+    tx: Prisma.TransactionClient,
+    order: OrderWithRelations,
+    deltaLocal: number,
+    finalPaidLocal: number,
+  ): Promise<void> {
+    if (
+      order.currency.code !== 'UAH' ||
+      order.parserRate == null ||
+      order.rateTraderIn == null ||
+      order.rateAdminIn == null ||
+      !order.traderId
+    ) {
+      throw new BadRequestException(
+        'Pay-In settlement requires UAH with parser rate snapshots (rateTraderIn, rateAdminIn) and an assigned trader.',
+      );
+    }
+
+    const usdtId = await this.currencies.getUsdtCurrencyId();
+    const P = Number(order.parserRate);
+    const rt = Number(order.rateTraderIn);
+    const ra = Number(order.rateAdminIn);
+    const merchantFrac = percentToFraction(Number(order.commissionPercent));
+    const traderProfile = await tx.traderProfile.findUniqueOrThrow({
+      where: { id: order.traderId },
+      select: { payinRate: true, overdraftLimit: true },
+    });
+    const traderPayinFrac = Number(traderProfile.payinRate);
+    const overdraftLimitUsdt = Number(traderProfile.overdraftLimit ?? 0);
+
+    const merchantCreditDelta = creditFiatMerchantPayin(deltaLocal, merchantFrac);
+    const debitUsdtDelta = debitUsdtPayin(deltaLocal, rt);
+    const marginUsdtFinal = platformMarginUsdtPayin(finalPaidLocal, rt, ra);
+    const marginLocalFinal = platformMarginLocal(marginUsdtFinal, P);
+
+    if (deltaLocal > 1e-9) {
+      const existingTraderBal = await tx.traderBalance.findUnique({
+        where: {
+          traderId_currencyId: { traderId: order.traderId, currencyId: usdtId },
+        },
+        select: { amount: true },
+      });
+      const ledgerUsdtBefore = Number(existingTraderBal?.amount ?? 0);
+      if (ledgerUsdtBefore - debitUsdtDelta < -overdraftLimitUsdt - 1e-9) {
+        throw new BadRequestException(
+          `Pay-In appeal adjustment would exceed the trader USDT overdraft limit (${overdraftLimitUsdt}): current=${ledgerUsdtBefore}, additional_debit=${debitUsdtDelta.toFixed(4)}`,
+        );
+      }
+    }
+
+    await tx.merchantBalance.upsert({
+      where: {
+        merchantId_currencyId: {
+          merchantId: order.merchantId,
+          currencyId: order.currencyId,
+        },
+      },
+      create: {
+        merchantId: order.merchantId,
+        currencyId: order.currencyId,
+        amount: merchantCreditDelta,
+      },
+      update: { amount: { increment: merchantCreditDelta } },
+    });
+
+    await tx.merchantBalanceTransaction.create({
+      data: {
+        merchantId: order.merchantId,
+        type: MerchantBalanceTransactionType.PAYIN_CREDIT,
+        amount: merchantCreditDelta,
+        currencyId: order.currencyId,
+        referenceId: order.id,
+        comment: `Pay-in appeal adjustment order ${order.id} (delta ${deltaLocal} local)`,
+      },
+    });
+
+    await tx.traderBalance.upsert({
+      where: {
+        traderId_currencyId: {
+          traderId: order.traderId,
+          currencyId: usdtId,
+        },
+      },
+      create: {
+        traderId: order.traderId,
+        currencyId: usdtId,
+        amount: -debitUsdtDelta,
+      },
+      update: { amount: { increment: -debitUsdtDelta } },
+    });
+
+    await this.balanceTxService.record({
+      traderId: order.traderId,
+      type: BalanceTransactionType.PAYIN_DEBIT,
+      amount: Math.abs(debitUsdtDelta),
+      currency: 'USDT',
+      referenceId: order.id,
+      comment:
+        deltaLocal >= 0
+          ? `Pay-in appeal additional USDT debit for order ${order.id}`
+          : `Pay-in appeal USDT credit (reversal) for order ${order.id}`,
+      tx,
+    });
+
+    await tx.platformIncome.update({
+      where: {
+        orderId_orderType: {
+          orderId: order.id,
+          orderType: PlatformIncomeOrderType.PAYIN,
+        },
+      },
+      data: {
+        orderAmountLocal: finalPaidLocal,
+        incomeUsdt: marginUsdtFinal,
+        incomeLocal: marginLocalFinal,
+        traderRatePct: traderPayinFrac,
+        merchantCommissionPct: merchantFrac,
+      },
+    });
+
+    this.logger.log({
+      msg: 'payin.appeal_balance_delta',
+      order_id: order.id,
+      delta_local: deltaLocal,
+      final_paid_local: finalPaidLocal,
+      merchant_credit_delta: merchantCreditDelta,
+      trader_usdt_delta: -debitUsdtDelta,
+    });
+  }
+
   private handleUniqueConstraint(error: unknown): never | void {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -1772,6 +1980,11 @@ export class PayinService {
       traderId: updated.traderId,
       merchantId: updated.merchantId,
       status: updated.status as PayInOrderStatus,
+    });
+
+    void this.logPayinStatusChange(order.id, order.status, updated.status, {
+      actorRole: 'MERCHANT',
+      note: 'Client confirmed order',
     });
 
     return payinOrderToOrderDto(updated);
@@ -1880,6 +2093,8 @@ export class PayinService {
       return { ok: false, error: 'invalid_transition' };
     }
 
+    const fromStatus = order.status as PayInOrderStatus;
+
     await this.prisma.$transaction(async (tx) => {
       const fresh = await tx.payinOrder.findUnique({
         where: { id: orderId },
@@ -1921,6 +2136,11 @@ export class PayinService {
         include: ORDER_INCLUDE,
       });
       await this.createPayinWebhookEntry(tx, result);
+    });
+
+    void this.logPayinStatusChange(orderId, fromStatus, target, {
+      actorRole: 'SYSTEM',
+      note: 'Provider webhook',
     });
 
     return { ok: true };
@@ -1996,6 +2216,66 @@ export class PayinService {
       merchant_credit: merchantCredit,
       currency: order.currency.code,
     });
+  }
+
+  async getPayinOrderStatusHistoryForTrader(
+    traderId: string,
+    orderId: string,
+  ): Promise<OrderStatusHistoryEntry[]> {
+    const order = await this.prisma.payinOrder.findFirst({
+      where: { id: orderId, traderId },
+      select: { id: true, status: true, createdAt: true },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    const history = await fetchOrderStatusHistory(this.prisma, orderId, {
+      orderCreatedAt: order.createdAt,
+    });
+    return withOrderStatusHistoryFallback(history, {
+      status: order.status,
+      createdAt: order.createdAt,
+    });
+  }
+
+  async getPayinOrderStatusHistory(orderId: string): Promise<OrderStatusHistoryEntry[]> {
+    const order = await this.prisma.payinOrder.findUnique({
+      where: { id: orderId },
+      select: { id: true, status: true, createdAt: true },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    const history = await fetchOrderStatusHistory(this.prisma, orderId, {
+      orderCreatedAt: order.createdAt,
+    });
+    return withOrderStatusHistoryFallback(history, {
+      status: order.status,
+      createdAt: order.createdAt,
+    });
+  }
+
+  private logPayinOrderCreated(orderId: string, status: PayInOrderStatus): void {
+    const { fromStatus, note } = initialOrderStatusAuditFrom(status);
+    void this.logPayinStatusChange(orderId, fromStatus, status, {
+      actorRole: 'MERCHANT',
+      note,
+    });
+  }
+
+  private logPayinStatusChange(
+    orderId: string,
+    fromStatus: string,
+    toStatus: string,
+    ctx: { actorId?: string; actorRole?: string; note?: string } = {},
+  ): void {
+    void recordOrderStatusChange(this.audit, {
+      entityType: OrderStatusHistoryEntity.payin,
+      orderId,
+      fromStatus,
+      toStatus,
+      actorId: ctx.actorId ?? null,
+      actorRole: ctx.actorRole ?? null,
+      note: ctx.note ?? null,
+    }).catch(() => undefined);
   }
 
   /** Observability when provider traffic share is non-zero but integration is absent. */

@@ -1,8 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  DEFAULT_INPUT_DEBOUNCE_MS,
+  useDebouncedTextFilter,
+  useDebouncedValue,
+} from '@/lib/hooks/use-debounced-value';
 import { Download, Eye, Info } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -73,11 +78,37 @@ export default function SettlementsPage() {
   >('any');
   const [participantId, setParticipantId] = useState('');
   const [currency, setCurrency] = useState('');
+  const debouncedCurrency = useDebouncedValue(
+    currency,
+    DEFAULT_INPUT_DEBOUNCE_MS,
+    (v) => v.trim().toUpperCase(),
+  );
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [minAmount, setMinAmount] = useState('');
-  const [maxAmount, setMaxAmount] = useState('');
+  const {
+    value: minAmount,
+    setValue: setMinAmount,
+    debounced: debouncedMinAmount,
+  } = useDebouncedTextFilter();
+  const {
+    value: maxAmount,
+    setValue: setMaxAmount,
+    debounced: debouncedMaxAmount,
+  } = useDebouncedTextFilter();
   const pageSize = 20;
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    tab,
+    participantRole,
+    participantId,
+    debouncedCurrency,
+    dateFrom,
+    dateTo,
+    debouncedMinAmount,
+    debouncedMaxAmount,
+  ]);
 
   const { data: traders = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: staffTraderKeys.traderOptions('owner'),
@@ -111,11 +142,11 @@ export default function SettlementsPage() {
       page,
       participantRole,
       participantId,
-      currency,
+      debouncedCurrency,
       dateFrom,
       dateTo,
-      minAmount,
-      maxAmount,
+      debouncedMinAmount,
+      debouncedMaxAmount,
     ),
     queryFn: () => {
       const params = new URLSearchParams({
@@ -130,11 +161,11 @@ export default function SettlementsPage() {
       if (participantRole === 'merchant' && participantId.trim()) {
         params.set('merchantId', participantId.trim());
       }
-      if (currency.trim()) params.set('currency', currency.trim().toUpperCase());
+      if (debouncedCurrency) params.set('currency', debouncedCurrency);
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
-      if (minAmount.trim()) params.set('minAmount', minAmount.trim());
-      if (maxAmount.trim()) params.set('maxAmount', maxAmount.trim());
+      if (debouncedMinAmount) params.set('minAmount', debouncedMinAmount);
+      if (debouncedMaxAmount) params.set('maxAmount', debouncedMaxAmount);
 
       return api.get<SettlementsResponse>(`${internalPaths.settlements}?${params}`);
     },
@@ -380,10 +411,7 @@ export default function SettlementsPage() {
         <FilterInput
           label="Currency"
           value={currency}
-          onChange={(v) => {
-            setCurrency(v.toUpperCase());
-            setPage(1);
-          }}
+          onChange={(v) => setCurrency(v.toUpperCase())}
           placeholder="UAH"
           className="w-28"
         />
@@ -391,38 +419,26 @@ export default function SettlementsPage() {
           type="date"
           label="From"
           value={dateFrom}
-          onChange={(v) => {
-            setDateFrom(v);
-            setPage(1);
-          }}
+          onChange={setDateFrom}
           className="w-40"
         />
         <FilterInput
           type="date"
           label="To"
           value={dateTo}
-          onChange={(v) => {
-            setDateTo(v);
-            setPage(1);
-          }}
+          onChange={setDateTo}
           className="w-40"
         />
         <FilterInput
           label="Min amount"
           value={minAmount}
-          onChange={(v) => {
-            setMinAmount(v);
-            setPage(1);
-          }}
+          onChange={setMinAmount}
           className="w-28"
         />
         <FilterInput
           label="Max amount"
           value={maxAmount}
-          onChange={(v) => {
-            setMaxAmount(v);
-            setPage(1);
-          }}
+          onChange={setMaxAmount}
           className="w-28"
         />
       </FilterBar>

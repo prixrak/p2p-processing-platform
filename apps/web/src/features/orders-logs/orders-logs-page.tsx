@@ -971,6 +971,10 @@ function ApplicationLogDetailModal({
                 <DetailRow label="Type" value={String(payment.requisiteType ?? payment.paymentMethodLabel ?? '—')} />
                 <DetailRow label="Number" value={String(payment.number ?? '—')} mono />
                 <DetailRow label="Owner" value={String(payment.owner ?? '—')} />
+                <DetailRow
+                  label="Card holder name"
+                  value={String(payment.cardHolderName ?? '—')}
+                />
                 <DetailRow label="Bank" value={String(payment.bankName ?? '—')} />
                 {payment.requisiteId != null && (
                   <DetailRow label="Requisite ID" value={String(payment.requisiteId)} mono />

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
+import { useDebouncedTextFilter } from '@/lib/hooks/use-debounced-value';
 import { ArrowLeftRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -59,8 +59,11 @@ export default function MerchantOrdersPage() {
   const [tab, setTab] = useState<OrderListUiTab>(ORDER_LIST_UI_TAB.PAY_IN);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
-  const [searchInput, setSearchInput] = useState('');
-  const debouncedSearch = useDebouncedValue(searchInput, 350, (v) => v.trim());
+  const {
+    value: searchInput,
+    setValue: setSearchInput,
+    debounced: debouncedSearch,
+  } = useDebouncedTextFilter();
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [showFilters, setShowFilters] = useState(false);

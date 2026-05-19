@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useDebouncedTextFilter } from '@/lib/hooks/use-debounced-value';
+import { FilterInput } from '@/components/ui/filters';
+import { listSearchForQuery } from '@/lib/list-search';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -92,8 +95,21 @@ export function TraderPayoutPage({
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [minAmount, setMinAmount] = useState('');
-  const [maxAmount, setMaxAmount] = useState('');
+  const {
+    value: minAmount,
+    setValue: setMinAmount,
+    debounced: debouncedMinAmount,
+  } = useDebouncedTextFilter();
+  const {
+    value: maxAmount,
+    setValue: setMaxAmount,
+    debounced: debouncedMaxAmount,
+  } = useDebouncedTextFilter();
+  const {
+    value: searchInput,
+    setValue: setSearchInput,
+    debounced: debouncedSearch,
+  } = useDebouncedTextFilter();
   const [selectedOrder, setSelectedOrder] = useState<PayOutOrderApiDto | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -109,24 +125,38 @@ export function TraderPayoutPage({
 
   useEffect(() => {
     setHistoryPage(1);
-  }, [statusFilter, dateFrom, dateTo, minAmount, maxAmount]);
+  }, [statusFilter, dateFrom, dateTo, debouncedMinAmount, debouncedMaxAmount]);
+
+  const searchParam = listSearchForQuery(debouncedSearch);
+
+  useEffect(() => {
+    setPoolPage(1);
+    setInProgressPage(1);
+    setHistoryPage(1);
+  }, [searchParam]);
 
   const inProgressParams: Record<string, string> = {
     queue: 'in_progress',
     page: String(inProgressPage),
     limit: String(PAYOUT_LIST_PAGE_SIZE),
+    ...(searchParam ? { search: searchParam } : {}),
   };
 
   const poolParams: Record<string, string> = {
     page: String(poolPage),
     limit: String(PAYOUT_LIST_PAGE_SIZE),
+    ...(searchParam ? { search: searchParam } : {}),
   };
+
+  /** Fetch inactive tabs only while an order detail modal is open (keeps row data in sync after actions). */
+  const prefetchForOpenModal = !!selectedOrder;
 
   const { data: inProgressData, isLoading: inProgressLoading } =
     useQuery({
       queryKey: payoutCabinetKeys.payoutOrders(qk, inProgressParams),
       queryFn: () =>
         api.get<PayOutListResponse>(`${apiBase}/orders`, inProgressParams),
+      enabled: activeTab === 'in_progress' || prefetchForOpenModal,
     });
 
   const historyListParams: Record<string, string> = {
@@ -137,17 +167,24 @@ export function TraderPayoutPage({
   if (statusFilter) historyListParams.status = statusFilter;
   if (dateFrom) historyListParams.date_from = dateFrom;
   if (dateTo) historyListParams.date_to = dateTo;
-  if (minAmount.trim()) historyListParams.min_amount = normalizeDecimalSeparators(minAmount.trim());
-  if (maxAmount.trim()) historyListParams.max_amount = normalizeDecimalSeparators(maxAmount.trim());
+  if (debouncedMinAmount) {
+    historyListParams.min_amount = normalizeDecimalSeparators(debouncedMinAmount);
+  }
+  if (debouncedMaxAmount) {
+    historyListParams.max_amount = normalizeDecimalSeparators(debouncedMaxAmount);
+  }
+  if (searchParam) historyListParams.search = searchParam;
 
   const { data: historyData, isLoading: historyLoading } = useQuery({
     queryKey: payoutCabinetKeys.payoutOrders(qk, historyListParams),
     queryFn: () => api.get<PayOutListResponse>(`${apiBase}/orders`, historyListParams),
+    enabled: activeTab === 'history' || prefetchForOpenModal,
   });
 
   const { data: poolData, isLoading: poolLoading } = useQuery({
     queryKey: payoutCabinetKeys.payoutPool(qk, poolParams),
     queryFn: () => api.get<PayOutListResponse>(`${apiBase}/pool`, poolParams),
+    enabled: activeTab === 'new' || prefetchForOpenModal,
   });
 
   const poolLimit = poolData?.limit ?? PAYOUT_LIST_PAGE_SIZE;
@@ -273,20 +310,30 @@ export function TraderPayoutPage({
     [t],
   );
 
+  const statusHistoryPath = useMemo(
+    () =>
+      isSpecialist
+        ? internalPaths.payoutSpecialistOrderStatusHistory
+        : internalPaths.traderPayoutOrderStatusHistory,
+    [isSpecialist],
+  );
+
   const poolColumns = useMemo(
     () =>
       buildPayoutPoolColumns({
         variant: isSpecialist ? 'specialist' : 'standard',
         takeFromPoolMutation,
+        statusHistoryPath,
         t,
       }),
-    [isSpecialist, takeFromPoolMutation, t],
+    [isSpecialist, takeFromPoolMutation, statusHistoryPath, t],
   );
 
   const ordersColumns = useMemo(
     () =>
       buildPayoutOrdersColumns({
         variant: isSpecialist ? 'specialist' : 'standard',
+        statusHistoryPath,
         processMutation,
         completeMutation,
         cancelMutation,
@@ -298,6 +345,7 @@ export function TraderPayoutPage({
       }),
     [
       isSpecialist,
+      statusHistoryPath,
       processMutation,
       completeMutation,
       cancelMutation,
@@ -429,6 +477,14 @@ export function TraderPayoutPage({
           )}
         </div>
       </div>
+
+      <FilterInput
+        label={t('searchLabel')}
+        value={searchInput}
+        onChange={setSearchInput}
+        placeholder={t('searchPlaceholder')}
+        className="max-w-2xl"
+      />
 
       {showFilters && (
         <Card>

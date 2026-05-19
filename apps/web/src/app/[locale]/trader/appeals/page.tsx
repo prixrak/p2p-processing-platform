@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useDebouncedTextFilter } from '@/lib/hooks/use-debounced-value';
+import { FilterInput } from '@/components/ui/filters';
+import { listSearchForQuery } from '@/lib/list-search';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
-import { AlertTriangle, Eye } from 'lucide-react';
+import { AlertTriangle, ExternalLink, Eye, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +25,8 @@ import { PayinRequisiteTableCell } from '@/components/ui/payin-requisite-table-c
 import { formatCurrency, formatDate, formatDateFull } from '@/lib/utils';
 import { AppealStatus } from '@p2p/shared';
 import type { AppealDto } from '@p2p/shared';
+import { AppealDecisionConfirmDialog } from '@/components/appeals/appeal-decision-confirm-dialog';
+import type { PendingAppealDecision } from '@/lib/appeal-decision-confirm';
 
 interface AppealsListResponse {
   items: AppealDto[];
@@ -60,28 +65,82 @@ export default function AppealsPage() {
   const [listTab, setListTab] = useState<'current' | 'history'>('current');
   const [currentPage, setCurrentPage] = useState(1);
   const [historyPage, setHistoryPage] = useState(1);
+  const {
+    value: searchInput,
+    setValue: setSearchInput,
+    debounced: debouncedSearch,
+  } = useDebouncedTextFilter();
   const [selectedAppeal, setSelectedAppeal] = useState<AppealDto | null>(null);
   const [viewingProof, setViewingProof] = useState<string | null>(null);
+  const [proofGalleryAppeal, setProofGalleryAppeal] = useState<AppealDto | null>(null);
+  const [pendingAppealDecision, setPendingAppealDecision] =
+    useState<PendingAppealDecision | null>(null);
+
+  const appealConfirmLabels = useMemo(
+    () => ({
+      title: t('confirmTitle'),
+      rejectDescription: t('confirmRejectDescription'),
+      acceptDescription: t('confirmAcceptDescription'),
+      rejectLabel: t('confirmRejectLabel'),
+      acceptLabel: t('confirmAcceptLabel'),
+      cancelLabel: t('confirmCancel'),
+    }),
+    [t],
+  );
+
+  const appealAmountLabels = useMemo(
+    () => ({
+      label: t('confirmAmountLabel'),
+      hint: t('confirmAmountHint'),
+    }),
+    [t],
+  );
+
+  const openAppealDecision = useCallback((appeal: AppealDto, decision: AppealStatus) => {
+    setPendingAppealDecision({
+      appealId: appeal.id,
+      decision,
+      orderAmount: appeal.order_amount,
+      defaultPaidAmount:
+        decision === AppealStatus.RESOLVED ? appeal.paid_amount : undefined,
+    });
+  }, []);
+
+  /** Load the inactive bucket only while a detail modal is open so resolve/sync still sees fresh rows. */
+  const prefetchForOpenModal = !!selectedAppeal;
+  const searchParam = listSearchForQuery(debouncedSearch);
+
+  const currentQueryKey = traderKeys.appealsQuery('current', currentPage, APPEALS_PAGE_SIZE, searchParam);
+  const historyQueryKey = traderKeys.appealsQuery('history', historyPage, APPEALS_PAGE_SIZE, searchParam);
 
   const { data: currentData, isLoading: currentLoading } = useQuery({
-    queryKey: traderKeys.appealsQuery('current', currentPage, APPEALS_PAGE_SIZE),
+    queryKey: currentQueryKey,
     queryFn: () =>
       api.get<AppealsListResponse>(internalPaths.appeals, {
         listBucket: 'current',
         page: String(currentPage),
         limit: String(APPEALS_PAGE_SIZE),
+        ...(searchParam ? { search: searchParam } : {}),
       }),
+    enabled: listTab === 'current' || prefetchForOpenModal,
   });
 
   const { data: historyData, isLoading: historyLoading } = useQuery({
-    queryKey: traderKeys.appealsQuery('history', historyPage, APPEALS_PAGE_SIZE),
+    queryKey: historyQueryKey,
     queryFn: () =>
       api.get<AppealsListResponse>(internalPaths.appeals, {
         listBucket: 'history',
         page: String(historyPage),
         limit: String(APPEALS_PAGE_SIZE),
+        ...(searchParam ? { search: searchParam } : {}),
       }),
+    enabled: listTab === 'history' || prefetchForOpenModal,
   });
+
+  useEffect(() => {
+    setCurrentPage(1);
+    setHistoryPage(1);
+  }, [searchParam, listTab]);
 
   const activeBucket = listTab === 'current' ? currentData : historyData;
   const activeLoading = listTab === 'current' ? currentLoading : historyLoading;
@@ -109,9 +168,21 @@ export default function AppealsPage() {
   }, [historyPage, historyTotalPages]);
 
   const resolveAppeal = useMutation({
-    mutationFn: ({ id, decision }: { id: string; decision: AppealStatus }) =>
-      api.patch<AppealDto>(internalPaths.appealResolve(id), { decision }),
+    mutationFn: ({
+      id,
+      decision,
+      actualAmount,
+    }: {
+      id: string;
+      decision: AppealStatus;
+      actualAmount?: number;
+    }) =>
+      api.patch<AppealDto>(internalPaths.appealResolve(id), {
+        decision,
+        ...(actualAmount !== undefined ? { actualAmount } : {}),
+      }),
     onSuccess: (updated) => {
+      setPendingAppealDecision(null);
       void queryClient.invalidateQueries({ queryKey: traderKeys.appealsScope });
       void queryClient.invalidateQueries({ queryKey: traderKeys.payinOrdersScope });
       setSelectedAppeal((prev) => (prev?.id === updated.id ? updated : prev));
@@ -128,8 +199,8 @@ export default function AppealsPage() {
   const listData =
     listTab === 'current' ? (currentData?.items ?? []) : (historyData?.items ?? []);
 
-  const columns = useMemo(
-    () => [
+  const columns = useMemo(() => {
+    const base = [
       {
         key: 'id',
         header: t('colAppealId'),
@@ -155,6 +226,7 @@ export default function AppealsPage() {
             row={{
               requisite_number: row.requisite_number,
               requisite_owner: row.requisite_owner,
+              requisite_card_holder_name: row.requisite_card_holder_name,
               bank: row.bank,
             }}
           />
@@ -198,12 +270,26 @@ export default function AppealsPage() {
       {
         key: 'proofs',
         header: t('colProofs'),
-        className: 'text-end tabular-nums',
-        render: (row: AppealDto) => (
-          <span className="text-text-muted text-sm">
-            {t('proofFiles', { count: row.proofs_of_payment.length })}
-          </span>
-        ),
+        className: 'w-12 text-center',
+        render: (row: AppealDto) => {
+          const proofCount = row.proofs_of_payment.length;
+          if (proofCount === 0) {
+            return <span className="text-sm text-text-muted">{t('dash')}</span>;
+          }
+          return (
+            <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+              <IconButton
+                label={t('proofViewLabel', { count: proofCount })}
+                tooltipWide
+                variant="ghost"
+                className="!min-h-8 !min-w-8 shrink-0 !p-1.5 text-text-primary hover:bg-bg-hover"
+                onClick={() => setProofGalleryAppeal(row)}
+              >
+                <FileText className="h-4 w-4" strokeWidth={2} />
+              </IconButton>
+            </div>
+          );
+        },
       },
       {
         key: 'created_at',
@@ -212,7 +298,10 @@ export default function AppealsPage() {
           <span className="text-text-muted text-sm">{formatDate(row.created_at)}</span>
         ),
       },
-      {
+    ];
+
+    if (listTab === 'current') {
+      base.push({
         key: 'actions',
         header: t('colActions'),
         className: 'text-end w-12',
@@ -223,10 +312,11 @@ export default function AppealsPage() {
             </IconButton>
           </div>
         ),
-      },
-    ],
-    [t],
-  );
+      });
+    }
+
+    return base;
+  }, [t, listTab]);
 
   const totalCount = activeBucket?.total ?? listData.length;
 
@@ -256,6 +346,14 @@ export default function AppealsPage() {
           />
         </div>
       </div>
+
+      <FilterInput
+        label={t('searchLabel')}
+        value={searchInput}
+        onChange={setSearchInput}
+        placeholder={t('searchPlaceholder')}
+        className="max-w-2xl"
+      />
 
       <Table
         columns={columns}
@@ -298,6 +396,10 @@ export default function AppealsPage() {
               <DetailRow label={t('modalBank')} value={selectedAppeal.bank || t('dash')} />
               <DetailRow label={t('requisiteNumber')} value={selectedAppeal.requisite_number || t('dash')} mono />
               <DetailRow label={t('cardOwner')} value={selectedAppeal.requisite_owner || t('dash')} />
+              <DetailRow
+                label={t('cardHolderName')}
+                value={selectedAppeal.requisite_card_holder_name || t('dash')}
+              />
               <DetailRow label={t('colStatus')}>
                 <Badge variant={appealStatusVariant[selectedAppeal.status]} dot>
                   {appealStatusLabel(t, selectedAppeal.status)}
@@ -324,29 +426,58 @@ export default function AppealsPage() {
                   variant="secondary"
                   size="sm"
                   loading={resolveAppeal.isPending}
-                  onClick={() =>
-                    resolveAppeal.mutate({
-                      id: selectedAppeal.id,
-                      decision: AppealStatus.REJECTED,
-                    })
-                  }
+                  onClick={() => openAppealDecision(selectedAppeal, AppealStatus.REJECTED)}
                 >
                   {t('rejectAppeal')}
                 </Button>
                 <Button
                   size="sm"
                   loading={resolveAppeal.isPending}
-                  onClick={() =>
-                    resolveAppeal.mutate({
-                      id: selectedAppeal.id,
-                      decision: AppealStatus.RESOLVED,
-                    })
-                  }
+                  onClick={() => openAppealDecision(selectedAppeal, AppealStatus.RESOLVED)}
                 >
                   {t('acceptResolved')}
                 </Button>
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!proofGalleryAppeal}
+        onClose={() => setProofGalleryAppeal(null)}
+        title={t('proofGalleryTitle')}
+        size="lg"
+      >
+        {proofGalleryAppeal && proofGalleryAppeal.proofs_of_payment.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-xs text-text-muted">
+              {t('colAppealId')}{' '}
+              <span className="break-all font-mono text-xs text-text-secondary">
+                {proofGalleryAppeal.id}
+              </span>
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              {proofGalleryAppeal.proofs_of_payment.map((fileId) => (
+                <button
+                  key={fileId}
+                  type="button"
+                  onClick={() => setViewingProof(fileId)}
+                  className="group relative cursor-pointer overflow-hidden rounded-lg border border-border-primary bg-bg-secondary transition-colors hover:border-accent-blue"
+                >
+                  <div className="pointer-events-none aspect-video max-h-36">
+                    <AuthorizedFilePreview
+                      path={internalPaths.fileById(fileId)}
+                      alt={t('proofAlt')}
+                      className="h-full max-h-36"
+                    />
+                  </div>
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
+                    <ExternalLink className="h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </Modal>
@@ -367,6 +498,17 @@ export default function AppealsPage() {
           </div>
         )}
       </Modal>
+
+      <AppealDecisionConfirmDialog
+        pending={pendingAppealDecision}
+        onOpenChange={(open) => !open && setPendingAppealDecision(null)}
+        labels={appealConfirmLabels}
+        amountLabels={appealAmountLabels}
+        loading={resolveAppeal.isPending}
+        onConfirm={({ appealId, decision, actualAmount }) =>
+          resolveAppeal.mutate({ id: appealId, decision, actualAmount })
+        }
+      />
     </div>
   );
 }

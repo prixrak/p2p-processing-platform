@@ -367,6 +367,10 @@ export const requisiteCreateSchema = z
     type: z.nativeEnum(RequisiteType),
     number: z.string(),
     owner: z.string().trim().min(2, 'Enter the account owner name'),
+    card_holder_name: z
+      .string()
+      .trim()
+      .min(2, 'Enter the card holder full name (surname, given name, patronymic)'),
     bank_id: z
       .string()
       .trim()

@@ -1,8 +1,9 @@
 'use client';
 
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useOrderIdUrlParam } from '@/lib/hooks/use-order-id-url-param';
+import { useDebouncedTextFilter } from '@/lib/hooks/use-debounced-value';
 import { Eye } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -15,6 +16,7 @@ import { FilterFieldsRow, ListPageHeader } from '@/components/ui/list-page-tools
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { StatusHistoryList } from '@/components/ui/status-history-list';
+import { SupportOrderStatusCell } from '@/components/ui/staff-order-status-cell';
 import { Tabs } from '@/components/ui/tabs';
 import { DataTable } from '@/components/ui/data-table';
 import {
@@ -71,8 +73,16 @@ function SupportOrdersPageContent() {
   const [tab, setTab] = useState('PAYIN');
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
-  const [merchantFilter, setMerchantFilter] = useState('');
-  const [traderFilter, setTraderFilter] = useState('');
+  const {
+    value: merchantFilter,
+    setValue: setMerchantFilter,
+    debounced: debouncedMerchantFilter,
+  } = useDebouncedTextFilter();
+  const {
+    value: traderFilter,
+    setValue: setTraderFilter,
+    debounced: debouncedTraderFilter,
+  } = useDebouncedTextFilter();
 
   const { orderId: detailOrder, openOrderDetail, closeOrderDetail } = useOrderIdUrlParam({
     validate: (s) => ORDER_ID_UUID_RE.test(s),
@@ -83,16 +93,26 @@ function SupportOrdersPageContent() {
     [tab],
   );
 
+  useEffect(() => {
+    setPage(1);
+  }, [tab, statusFilter, debouncedMerchantFilter, debouncedTraderFilter]);
+
   const { data, isLoading } = useQuery({
-    queryKey: supportKeys.orders(tab, page, statusFilter, merchantFilter, traderFilter),
+    queryKey: supportKeys.orders(
+      tab,
+      page,
+      statusFilter,
+      debouncedMerchantFilter,
+      debouncedTraderFilter,
+    ),
     queryFn: () => {
       const qs = buildQueryString({
         type: tab,
         page,
         limit: 20,
         status: statusFilter,
-        merchant: merchantFilter,
-        trader: traderFilter,
+        merchant: debouncedMerchantFilter,
+        trader: debouncedTraderFilter,
       });
       return api.get<OrdersResponse>(internalPaths.supportOrders(qs));
     },
@@ -151,15 +171,11 @@ function SupportOrdersPageContent() {
       header: 'Status',
       className: 'text-center',
       render: (o: Order) => (
-        <Badge
-          variant={
-            o.type === 'PAYOUT'
-              ? badgeVariantForPayout(o.status)
-              : badgeVariantForPayin(o.status)
-          }
-        >
-          {o.status}
-        </Badge>
+        <SupportOrderStatusCell
+          orderId={o.id}
+          status={o.status}
+          direction={o.type === 'PAYOUT' ? 'payout' : 'payin'}
+        />
       ),
     },
     {
@@ -220,20 +236,14 @@ function SupportOrdersPageContent() {
         <FilterInput
           label="Merchant"
           value={merchantFilter}
-          onChange={(v) => {
-            setMerchantFilter(v);
-            setPage(1);
-          }}
+          onChange={setMerchantFilter}
           placeholder="Merchant name..."
           className="min-w-0 w-full sm:flex-1 sm:basis-[12rem] sm:max-w-xs"
         />
         <FilterInput
           label="Trader"
           value={traderFilter}
-          onChange={(v) => {
-            setTraderFilter(v);
-            setPage(1);
-          }}
+          onChange={setTraderFilter}
           placeholder="Trader name..."
           className="min-w-0 w-full sm:flex-1 sm:basis-[12rem] sm:max-w-xs"
         />

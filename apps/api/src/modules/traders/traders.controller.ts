@@ -63,13 +63,13 @@ export class TradersController {
   @ApiQuery({ name: 'period', required: false, enum: ['24h', '7d', '30d', '90d'] })
   @ApiQuery({ name: 'dateFrom', required: false })
   @ApiQuery({ name: 'dateTo', required: false })
+  @ApiQuery({ name: 'currency', required: false, description: 'Fiat/order currency (omit to infer)' })
   @ApiOkResponse({ type: TraderStatisticsResponseDto })
   async getMyStatistics(
-    @CurrentUser('id') userId: string,
+    @CurrentUser('traderId') traderId: string,
     @Query() dto: GetStatisticsDto,
   ) {
-    const profile = await this.tradersService.getProfileByUserId(userId);
-    return this.tradersService.getStatistics(profile.id, dto);
+    return this.tradersService.getStatistics(traderId, dto);
   }
 
   @Get('me/analytics')

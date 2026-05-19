@@ -6,6 +6,7 @@ export * from './external-api';
 export * from './audit';
 export * from './state-machines';
 export * from './payin-volume';
+export * from './trader-usdt-capacity';
 export * from './balance-v2';
 export * from './cascade-logic';
 export * from './requisite-identity';

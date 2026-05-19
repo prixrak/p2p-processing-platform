@@ -16,6 +16,7 @@ export interface RequisiteApiRow {
   type: RequisiteType;
   number: string;
   owner: string;
+  cardHolderName: string;
   isActive: boolean;
   /** Persisted disable reason (`LIMIT_*` vs `MANUAL`) when inactive. */
   disabledReason?: RequisiteDisabledReason | string | null;
@@ -79,6 +80,7 @@ export interface RequisiteFormData {
   type: RequisiteType;
   number: string;
   owner: string;
+  card_holder_name: string;
   bank_id: string;
   accepts_other_banks: boolean;
   min_amount: number;

@@ -103,6 +103,9 @@ export function PaymentClient({ order }: PaymentClientProps) {
 
   const cardNumber = currentOrder.payment_detail?.number ?? currentOrder.requisite_number;
   const ownerName = currentOrder.payment_detail?.owner ?? currentOrder.requisite_owner;
+  const cardHolderName =
+    currentOrder.payment_detail?.card_holder_name ?? currentOrder.requisite_card_holder_name;
+  const recipientName = cardHolderName?.trim() || ownerName;
   const bankName = currentOrder.payment_detail?.bank_name ?? currentOrder.bank;
   const bankCode = currentOrder.payment_detail?.code;
   const currencyCode = (currentOrder.currency ?? '').trim() || 'UAH';
@@ -282,7 +285,7 @@ export function PaymentClient({ order }: PaymentClientProps) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs text-text-muted">Recipient</p>
-              <p className="mt-0.5 text-sm font-medium text-text-primary">{ownerName}</p>
+              <p className="mt-0.5 text-sm font-medium text-text-primary">{recipientName}</p>
             </div>
           </div>
 

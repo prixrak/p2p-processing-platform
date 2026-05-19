@@ -111,6 +111,24 @@ export class PayoutInternalController {
     return this.payoutService.getPool(traderId, filters);
   }
 
+  @Get('orders/:orderId/status-history')
+  @Roles(UserRole.TRADER)
+  @ApiOperation({ summary: 'Status change timeline for a Pay-Out order assigned to this trader' })
+  async getTraderOrderStatusHistory(
+    @CurrentUser('traderId') traderId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ) {
+    const items = await this.payoutService.getPayoutOrderStatusHistoryForTrader(traderId, orderId);
+    return {
+      items: items.map((e) => ({
+        status: e.status,
+        timestamp: e.timestamp.toISOString(),
+        actor: e.actor,
+        note: e.note ?? null,
+      })),
+    };
+  }
+
   @Get('orders')
   @Roles(UserRole.TRADER)
   @ApiOperation({
@@ -330,6 +348,27 @@ export class PayoutSpecialistInternalController {
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
     return this.payoutService.getSpecialistSettlementHistory(payoutTraderId, page, limit);
+  }
+
+  @Get('orders/:orderId/status-history')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'Status change timeline for a Pay-Out order assigned to this specialist' })
+  async getSpecialistOrderStatusHistory(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ) {
+    const items = await this.payoutService.getPayoutOrderStatusHistoryForSpecialist(
+      payoutTraderId,
+      orderId,
+    );
+    return {
+      items: items.map((e) => ({
+        status: e.status,
+        timestamp: e.timestamp.toISOString(),
+        actor: e.actor,
+        note: e.note ?? null,
+      })),
+    };
   }
 
   @Get('orders/csv')

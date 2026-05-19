@@ -352,6 +352,13 @@ export function TraderAddRequisiteModal({
           onChange={(e) => setForm({ ...form, owner: e.target.value })}
           error={errors.owner}
         />
+        <Input
+          label="Card holder name"
+          placeholder="Surname Given name Patronymic"
+          value={form.card_holder_name}
+          onChange={(e) => setForm({ ...form, card_holder_name: e.target.value })}
+          error={errors.card_holder_name}
+        />
         <Select
           label="Bank"
           placeholder={bankOptions.length ? 'Select a bank' : undefined}

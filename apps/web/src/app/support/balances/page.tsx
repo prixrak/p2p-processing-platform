@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
+import { useDebouncedTextFilter } from '@/lib/hooks/use-debounced-value';
 import { supportKeys } from '@/lib/query-keys';
 import { Tabs } from '@/components/ui/tabs';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
@@ -31,13 +32,21 @@ interface BalancesResponse {
 export default function BalancesPage() {
   const [tab, setTab] = useState('traders');
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
+  const {
+    value: searchInput,
+    setValue: setSearchInput,
+    debounced: debouncedSearch,
+  } = useDebouncedTextFilter();
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, tab]);
 
   const { data, isLoading } = useQuery({
-    queryKey: supportKeys.balances(tab, page, search),
+    queryKey: supportKeys.balances(tab, page, debouncedSearch),
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
-      if (search) params.set('search', search);
+      if (debouncedSearch) params.set('search', debouncedSearch);
       return api.get<BalancesResponse>(internalPaths.supportBalances(tab, params.toString()));
     },
   });
@@ -115,14 +124,14 @@ export default function BalancesPage() {
           { key: 'merchants', label: 'Merchant Balances' },
         ]}
         active={tab}
-        onChange={(k) => { setTab(k); setPage(1); setSearch(''); }}
+        onChange={(k) => { setTab(k); setPage(1); setSearchInput(''); }}
       />
 
       <FilterBar>
         <FilterInput
           label="Search"
-          value={search}
-          onChange={(v) => { setSearch(v); setPage(1); }}
+          value={searchInput}
+          onChange={setSearchInput}
           placeholder={`Search ${tab}...`}
           className="w-64 min-w-[12rem]"
         />

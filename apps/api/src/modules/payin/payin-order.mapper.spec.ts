@@ -31,6 +31,7 @@ describe('payinOrderToOrderDto', () => {
         type: 'CARD',
         number: '4111',
         owner: 'John Doe',
+        cardHolderName: 'Doe John Petrovich',
         code: null,
         bank: { name: 'Test Bank' },
       },
@@ -54,6 +55,7 @@ describe('payinOrderToOrderDto', () => {
       type: 'CARD',
       number: '4111',
       owner: 'John Doe',
+      card_holder_name: 'Doe John Petrovich',
       code: '',
       bank_name: 'Test Bank',
     });
@@ -180,6 +182,7 @@ describe('payinOrderToTraderPayInOrderDto', () => {
         type: 'CARD',
         number: '4111',
         owner: 'John Doe',
+        cardHolderName: 'Doe John Petrovich',
         code: null,
         bank: { name: 'Test Bank' },
       },

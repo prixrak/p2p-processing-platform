@@ -11,6 +11,8 @@ import { AppealStatus, PayInOrderStatus } from '@p2p/shared';
 import type { TraderPayInOrderDto } from '@p2p/shared';
 import { cn } from '@/lib/utils';
 import { payinStatusLabel } from '@/lib/order-status-ui';
+import { OrderStatusColumnWithHistory } from '@/components/ui/order-status-column-with-history';
+import { internalPaths } from '@/lib/internal-api';
 import { orderPayinProofFileIds } from './payin-finalize-utils';
 import { payinDeadlineElapsedShowsCanceled } from './payin-countdown-utils';
 
@@ -208,15 +210,29 @@ export function PayInOrderStatusColumnCell({
 
   return (
     <div className="flex max-w-full flex-row flex-nowrap items-center justify-center gap-1 py-0.5">
-      <span className="inline-flex min-w-0 max-w-full flex-row flex-nowrap items-center justify-center gap-1">
-        {!appealCarriesPrimaryStatus && (
-          <PayinOrderStatusBadge
-            status={row.status}
-            label={statusLabels[row.status as PayInOrderStatus] ?? payinStatusLabel(row.status)}
-          />
-        )}
-        <AppealInlineSummary row={row} shortLabels={appealCarriesPrimaryStatus} />
-      </span>
+      <OrderStatusColumnWithHistory
+        orderId={row.id}
+        fetchPath={internalPaths.traderPayinOrderStatusHistory(row.id)}
+        direction="payin"
+        historyLabel={t('statusHistoryLabel')}
+        modalTitle={t('statusHistoryTitle')}
+        changedByLabel={t('statusHistoryChangedBy')}
+        emptyLabel={t('statusHistoryEmpty')}
+        closeLabel={t('statusHistoryClose')}
+        statusLabel={(status) =>
+          statusLabels[status as PayInOrderStatus] ?? payinStatusLabel(status)
+        }
+      >
+        <span className="inline-flex min-w-0 max-w-full flex-row flex-nowrap items-center justify-center gap-1">
+          {!appealCarriesPrimaryStatus && (
+            <PayinOrderStatusBadge
+              status={row.status}
+              label={statusLabels[row.status as PayInOrderStatus] ?? payinStatusLabel(row.status)}
+            />
+          )}
+          <AppealInlineSummary row={row} shortLabels={appealCarriesPrimaryStatus} />
+        </span>
+      </OrderStatusColumnWithHistory>
       {hasProofs ? (
         <IconButton
           label={t('proofViewLabel', { count: proofCount })}

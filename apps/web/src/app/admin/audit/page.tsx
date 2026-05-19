@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { ScrollText } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -35,13 +36,20 @@ const UUID_RE =
 
 export default function AuditLogPage() {
   const [actorFilter, setActorFilter] = useState('');
+  const debouncedActorFilter = useDebouncedValue(actorFilter, undefined, (v) => v.trim());
   const [actionFilter, setActionFilter] = useState('');
   const [entityFilter, setEntityFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
   const { data: entries = [], isLoading } = useQuery<AuditEntry[]>({
-    queryKey: adminKeys.audit({ actorFilter, actionFilter, entityFilter, dateFrom, dateTo }),
+    queryKey: adminKeys.audit({
+      actorFilter: debouncedActorFilter,
+      actionFilter,
+      entityFilter,
+      dateFrom,
+      dateTo,
+    }),
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set('page', '1');
@@ -54,8 +62,8 @@ export default function AuditLogPage() {
         end.setHours(23, 59, 59, 999);
         params.set('to', end.toISOString());
       }
-      if (actorFilter && UUID_RE.test(actorFilter)) {
-        params.set('actorId', actorFilter);
+      if (debouncedActorFilter && UUID_RE.test(debouncedActorFilter)) {
+        params.set('actorId', debouncedActorFilter);
       }
 
       const res = await api.get<{

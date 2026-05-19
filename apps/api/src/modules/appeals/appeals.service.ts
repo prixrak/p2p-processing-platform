@@ -10,6 +10,7 @@ import { PrismaService } from '../../config/prisma.service';
 import { PayinService } from '../payin/payin.service';
 import { AppealStatus, UserRole } from '@p2p/shared';
 import type { AppealDto } from '@p2p/shared';
+import { buildAppealListSearchOr } from '../../common/order-search-where';
 import { AppealFiltersDto } from './dto';
 
 const APPEAL_INCLUDE = {
@@ -73,6 +74,16 @@ export class AppealsService {
       ...(traderId ? { payinOrder: { traderId } } : {}),
     };
 
+    if (filters.search) {
+      const searchOr = buildAppealListSearchOr(filters.search) as Prisma.AppealWhereInput[];
+      if (searchOr.length > 0) {
+        const prevAnd = where.AND;
+        const andArr = Array.isArray(prevAnd) ? [...prevAnd] : prevAnd ? [prevAnd] : [];
+        andArr.push({ OR: searchOr });
+        where.AND = andArr;
+      }
+    }
+
     const [items, total] = await Promise.all([
       this.prisma.appeal.findMany({
         where,
@@ -96,6 +107,7 @@ export class AppealsService {
     appealId: string,
     decision: AppealStatus,
     actor: AppealResolveActor,
+    actualAmount?: number,
   ): Promise<AppealDto> {
     const appeal = await this.prisma.appeal.findUnique({
       where: { id: appealId },
@@ -122,9 +134,14 @@ export class AppealsService {
       throw new BadRequestException('Decision must be RESOLVED or REJECTED');
     }
 
+    if (actualAmount !== undefined && decision !== AppealStatus.RESOLVED) {
+      throw new BadRequestException('actualAmount is only allowed when resolving an appeal');
+    }
+
     await this.payinService.settlePayInOrderWhenAppealCloses(
       appealId,
       decision as AppealStatus.RESOLVED | AppealStatus.REJECTED,
+      actualAmount,
     );
 
     const updated = await this.prisma.appeal.findUnique({
@@ -165,6 +182,7 @@ export class AppealsService {
       paid_amount: Number(appeal.paidAmount),
       requisite_number: req?.number ?? '',
       requisite_owner: req?.owner ?? '',
+      requisite_card_holder_name: req?.cardHolderName ?? '',
       bank: req?.bank?.name ?? '',
       proofs_of_payment: (appeal.proofs ?? []).map((p) => p.fileId),
     };

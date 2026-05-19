@@ -1,8 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  DEFAULT_INPUT_DEBOUNCE_MS,
+  useDebouncedTextFilter,
+  useDebouncedValue,
+} from '@/lib/hooks/use-debounced-value';
 import { Download, Info, Landmark } from 'lucide-react';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
@@ -63,11 +68,37 @@ export default function SettlementsPage() {
   const [participantId, setParticipantId] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'CREDIT' | 'DEBIT'>('ALL');
   const [currency, setCurrency] = useState('');
+  const debouncedCurrency = useDebouncedValue(
+    currency,
+    DEFAULT_INPUT_DEBOUNCE_MS,
+    (v) => v.trim().toUpperCase(),
+  );
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [minAmount, setMinAmount] = useState('');
-  const [maxAmount, setMaxAmount] = useState('');
+  const {
+    value: minAmount,
+    setValue: setMinAmount,
+    debounced: debouncedMinAmount,
+  } = useDebouncedTextFilter();
+  const {
+    value: maxAmount,
+    setValue: setMaxAmount,
+    debounced: debouncedMaxAmount,
+  } = useDebouncedTextFilter();
   const pageSize = 50;
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    participantRole,
+    participantId,
+    typeFilter,
+    debouncedCurrency,
+    dateFrom,
+    dateTo,
+    debouncedMinAmount,
+    debouncedMaxAmount,
+  ]);
 
   const { data: traders = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: staffTraderKeys.traderOptions('admin'),
@@ -100,11 +131,11 @@ export default function SettlementsPage() {
     participantRole,
     participantId,
     typeFilter,
-    currency,
+    debouncedCurrency,
     dateFrom,
     dateTo,
-    minAmount,
-    maxAmount,
+    debouncedMinAmount,
+    debouncedMaxAmount,
   );
 
   const query = useQuery({
@@ -122,11 +153,11 @@ export default function SettlementsPage() {
         params.set('merchantId', participantId.trim());
       }
       if (typeFilter !== 'ALL') params.set('type', typeFilter);
-      if (currency.trim()) params.set('currency', currency.trim().toUpperCase());
+      if (debouncedCurrency) params.set('currency', debouncedCurrency);
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
-      if (minAmount.trim()) params.set('minAmount', minAmount.trim());
-      if (maxAmount.trim()) params.set('maxAmount', maxAmount.trim());
+      if (debouncedMinAmount) params.set('minAmount', debouncedMinAmount);
+      if (debouncedMaxAmount) params.set('maxAmount', debouncedMaxAmount);
 
       const res = await api.get<{ data: SettlementRow[]; total: number; page: number; limit: number }>(
         `${internalPaths.settlements}?${params}`,
@@ -386,18 +417,12 @@ export default function SettlementsPage() {
                 { value: 'DEBIT', label: 'DEBIT' },
               ]}
               value={typeFilter}
-              onChange={(e) => {
-                setTypeFilter(e.target.value as typeof typeFilter);
-                setPage(1);
-              }}
+              onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}
             />
             <FilterInput
               label="Currency"
               value={currency}
-              onChange={(v) => {
-                setCurrency(v.toUpperCase());
-                setPage(1);
-              }}
+              onChange={(v) => setCurrency(v.toUpperCase())}
               placeholder="USDT"
               className="w-28"
             />
@@ -405,39 +430,27 @@ export default function SettlementsPage() {
               type="date"
               label="From"
               value={dateFrom}
-              onChange={(v) => {
-                setDateFrom(v);
-                setPage(1);
-              }}
+              onChange={setDateFrom}
               className="w-40"
             />
             <FilterInput
               type="date"
               label="To"
               value={dateTo}
-              onChange={(v) => {
-                setDateTo(v);
-                setPage(1);
-              }}
+              onChange={setDateTo}
               className="w-40"
             />
             <FilterInput
               label="Min amount"
               value={minAmount}
-              onChange={(v) => {
-                setMinAmount(v);
-                setPage(1);
-              }}
+              onChange={setMinAmount}
               placeholder="0"
               className="w-28"
             />
             <FilterInput
               label="Max amount"
               value={maxAmount}
-              onChange={(v) => {
-                setMaxAmount(v);
-                setPage(1);
-              }}
+              onChange={setMaxAmount}
               placeholder="∞"
               className="w-28"
             />

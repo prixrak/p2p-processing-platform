@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { ArrowDownCircle, ArrowUpCircle, DollarSign, MinusCircle } from 'lucide-react';
@@ -14,6 +14,7 @@ import { PaginationControls } from '@/components/ui/pagination-controls';
 import { FilterBar, FilterInput } from '@/components/ui/filters';
 import { Select } from '@/components/ui/select';
 import { formatDateTime } from '@/lib/utils';
+import { clsx } from 'clsx';
 
 interface BalanceTx {
   id: string;
@@ -33,10 +34,13 @@ interface UsdtWallet {
   overdraft_limit_usdt: number;
   display_own_usdt: number;
   available_for_payin_usdt: number;
+  effective_available_for_payin_usdt?: number;
+  pending_payin_usdt_debit_usdt?: number;
+  payin_capacity_exhausted?: boolean;
   work_mode: string;
   usdt_trc20_deposit_address: string | null;
   usdt_erc20_deposit_address: string | null;
-  /** Operator-configured threshold; alert when `available_for_payin_usdt` is at or below this. */
+  /** Operator-configured threshold; alert when effective headroom is at or below this. */
   payin_low_capacity_alert_threshold_usdt?: number;
   low_payin_capacity_alert?: boolean;
 }
@@ -116,10 +120,17 @@ export default function BalanceHistoryPage() {
 
   const txList = data?.data ?? [];
   const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / 30);
+  const totalPages = Math.max(1, Math.ceil(total / 30));
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const threshold = wallet?.payin_low_capacity_alert_threshold_usdt ?? 200;
-  const showLowCapacityBanner = !!wallet?.low_payin_capacity_alert;
+  const effectiveAvailable =
+    wallet?.effective_available_for_payin_usdt ?? wallet?.available_for_payin_usdt;
+  const showExhaustedBanner = !!wallet?.payin_capacity_exhausted;
+  const showLowCapacityBanner = !!wallet?.low_payin_capacity_alert && !showExhaustedBanner;
 
   const columns = useMemo(
     () => [
@@ -211,12 +222,27 @@ export default function BalanceHistoryPage() {
         <p className="mt-1 text-sm text-text-muted">{t('subtitle')}</p>
       </div>
 
+      {showExhaustedBanner ? (
+        <div className="rounded-xl border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm text-red-950 dark:border-red-400/35 dark:text-red-100">
+          <p className="font-medium">{t('capacityExhaustedTitle')}</p>
+          <p className="mt-1 text-xs leading-relaxed opacity-95">
+            {t('capacityExhaustedIntro')}{' '}
+            <span className="font-mono">{effectiveAvailable!.toLocaleString()} USDT</span>{' '}
+            {t('capacityExhaustedOutro')}{' '}
+            <a href="#wallet-deposit-instructions" className="font-medium underline">
+              {t('lowCapacityDepositLink')}
+            </a>
+            .
+          </p>
+        </div>
+      ) : null}
+
       {showLowCapacityBanner ? (
         <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:border-amber-400/35 dark:text-amber-100">
           <p className="font-medium">{t('lowCapacityTitle')}</p>
           <p className="mt-1 text-xs leading-relaxed opacity-95">
             {t('lowCapacityIntro')}{' '}
-            <span className="font-mono">{wallet!.available_for_payin_usdt.toLocaleString()} USDT</span>
+            <span className="font-mono">{effectiveAvailable!.toLocaleString()} USDT</span>
             {Number.isFinite(threshold) ? (
               <>
                 {' '}
@@ -264,6 +290,23 @@ export default function BalanceHistoryPage() {
             <div>
               <p className="text-xs text-text-muted">{t('availablePayin')}</p>
               <p className="font-mono text-accent-green">{wallet.available_for_payin_usdt.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-xs text-text-muted">{t('effectiveAvailablePayin')}</p>
+              <p
+                className={clsx(
+                  'font-mono',
+                  wallet.payin_capacity_exhausted ? 'text-red-400' : 'text-text-primary',
+                )}
+              >
+                {(wallet.effective_available_for_payin_usdt ?? wallet.available_for_payin_usdt).toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-text-muted">{t('pendingPayinReserve')}</p>
+              <p className="font-mono text-text-primary">
+                {(wallet.pending_payin_usdt_debit_usdt ?? 0).toLocaleString()}
+              </p>
             </div>
             <div className="sm:col-span-2">
               <p className="text-xs text-text-muted">{t('ledgerUsdt')}</p>
