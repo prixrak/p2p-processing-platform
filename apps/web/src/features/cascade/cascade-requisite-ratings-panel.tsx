@@ -414,6 +414,7 @@ export function CascadeRequisiteRatingsPanel({
         id: string;
         number: string;
         owner: string;
+        cardHolderName?: string | null;
         isActive: boolean;
         minAmount: string;
         maxAmount: string;

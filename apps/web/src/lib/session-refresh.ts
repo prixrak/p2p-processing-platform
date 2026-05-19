@@ -82,7 +82,6 @@ async function performRefresh(): Promise<boolean> {
   if (!refreshToken) return false;
 
   const tokensBefore = `${getToken() ?? ''}|${getRefreshToken() ?? ''}`;
-  refreshAttemptStartedAt = Date.now();
 
   try {
     const res = await fetch(`${API_BASE}${internalPaths.authRefresh}`, {

@@ -12,6 +12,7 @@ interface BadgeProps {
   /** Renders instead of the dot when provided (same size as icon-sized dots elsewhere). */
   leadingIcon?: ReactNode;
   className?: string;
+  title?: string;
 }
 
 const variantStyles: Record<BadgeVariant, string> = {
@@ -40,11 +41,12 @@ const colorToVariant: Record<BadgeColor, BadgeVariant> = {
   default: 'default',
 };
 
-export function Badge({ children, variant, color, dot, leadingIcon, className }: BadgeProps) {
+export function Badge({ children, variant, color, dot, leadingIcon, className, title }: BadgeProps) {
   const resolved = variant ?? (color ? colorToVariant[color] : 'default');
   const showDot = dot && leadingIcon == null;
   return (
     <span
+      title={title}
       className={clsx(
         'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap',
         variantStyles[resolved],
