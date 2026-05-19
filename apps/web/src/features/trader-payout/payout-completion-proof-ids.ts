@@ -1,7 +1,7 @@
-import type { PayOutOrderApiDto } from '@p2p/shared';
+import type { PayOutOrderCabinetDto } from '@p2p/shared';
 
 /** Resolves completion proof file ids (multi-file list, else single `completion_proof_file_id`). */
-export function payoutCompletionProofFileIds(order: PayOutOrderApiDto): string[] {
+export function payoutCompletionProofFileIds(order: PayOutOrderCabinetDto): string[] {
   if (order.completion_proof_file_ids && order.completion_proof_file_ids.length > 0) {
     return order.completion_proof_file_ids;
   }

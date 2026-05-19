@@ -217,6 +217,33 @@ export interface PayOutOrderApiDto {
   trader_reject_other_note?: string | null;
 }
 
+/** Recipient fields exposed in trader / specialist cabinets (table + detail modal). */
+export interface PayOutCabinetDetailsDto {
+  number: string;
+  owner?: string;
+}
+
+/**
+ * Pay-Out order payload for trader and specialist cabinets.
+ * Omits merchant settlement fields (rate, fees, request_id, etc.).
+ */
+export interface PayOutOrderCabinetDto {
+  id: string;
+  created_at: number;
+  start_at: number | null;
+  currency: string;
+  details: PayOutCabinetDetailsDto;
+  amount: number;
+  status: PayOutOrderStatus;
+  completion_proof_file_ids?: string[];
+  /** @deprecated Prefer `completion_proof_file_ids`; kept as first id when present. */
+  completion_proof_file_id?: string;
+  pool_close_deadline_at?: number | null;
+  requisites_visible?: boolean;
+  amount_usdt_estimate?: number | null;
+  payment_method_name?: string | null;
+}
+
 // --- Common Models ---
 
 export interface DirectionBalanceDto {

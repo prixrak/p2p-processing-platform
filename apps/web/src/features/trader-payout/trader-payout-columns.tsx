@@ -9,7 +9,7 @@ import { OrderStatusColumnWithHistory } from '@/components/ui/order-status-colum
 import { payoutStatusLabel } from '@/lib/order-status-ui';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { PayOutOrderStatus } from '@p2p/shared';
-import type { PayOutOrderApiDto } from '@p2p/shared';
+import type { PayOutOrderCabinetDto } from '@p2p/shared';
 import { formatCurrency, formatDate, formatDurationShort, formatCountdownRemaining, cn } from '@/lib/utils';
 import { TraderPayoutWorkflowActions, type PayoutRejectVars } from './trader-payout-workflow-actions';
 import { TraderPayoutTakeFromPoolButton } from './trader-payout-take-from-pool-button';
@@ -18,7 +18,7 @@ export type PayoutTableVariant = 'standard' | 'specialist';
 
 type PayoutT = any;
 
-function LiveElapsed({
+export function PayoutProcessingElapsed({
   fromUnix,
   warnAfterSec,
   critAfterSec,
@@ -74,7 +74,7 @@ function PayoutStatusWithHistory({
   statusHistoryPath,
   t,
 }: {
-  row: PayOutOrderApiDto;
+  row: PayOutOrderCabinetDto;
   statusHistoryPath: (orderId: string) => string;
   t: PayoutT;
 }) {
@@ -95,7 +95,7 @@ function PayoutStatusWithHistory({
   );
 }
 
-function PoolCloseCountdown({ untilUnix }: { untilUnix: number | null | undefined }) {
+export function PayoutPoolCloseCountdown({ untilUnix }: { untilUnix: number | null | undefined }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (untilUnix == null) return;
@@ -135,21 +135,21 @@ export function buildPayoutPoolColumns(opts: {
       key: 'id',
       header: t('colId'),
       className: 'font-mono tabular-nums text-end',
-      render: (row: PayOutOrderApiDto) => <CopyOrderIdCell id={row.id} />,
+      render: (row: PayOutOrderCabinetDto) => <CopyOrderIdCell id={row.id} />,
     },
     {
       key: 'pool_close',
       header: t('colTimeToClose'),
       className: 'text-end',
-      render: (row: PayOutOrderApiDto) => (
-        <PoolCloseCountdown untilUnix={row.pool_close_deadline_at} />
+      render: (row: PayOutOrderCabinetDto) => (
+        <PayoutPoolCloseCountdown untilUnix={row.pool_close_deadline_at} />
       ),
     },
     {
       key: 'amount',
       header: t('colAmount'),
       className: 'text-end tabular-nums',
-      render: (row: PayOutOrderApiDto) => (
+      render: (row: PayOutOrderCabinetDto) => (
         <span className="font-semibold text-accent-blue">
           {formatCurrency(row.amount, row.currency)}
         </span>
@@ -159,7 +159,7 @@ export function buildPayoutPoolColumns(opts: {
       key: 'status',
       header: t('colStatus'),
       className: 'text-center',
-      render: (row: PayOutOrderApiDto) => (
+      render: (row: PayOutOrderCabinetDto) => (
         <PayoutStatusWithHistory row={row} statusHistoryPath={statusHistoryPath} t={t} />
       ),
     },
@@ -167,7 +167,7 @@ export function buildPayoutPoolColumns(opts: {
       key: 'actions',
       header: t('colActions'),
       className: 'text-end',
-      render: (row: PayOutOrderApiDto) => (
+      render: (row: PayOutOrderCabinetDto) => (
         <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
           <TraderPayoutTakeFromPoolButton
             order={row}
@@ -194,16 +194,16 @@ export function buildPayoutOrdersColumns(opts: {
   cancelMutation: UseMutationResult<unknown, unknown, string>;
   rejectMutation: UseMutationResult<unknown, unknown, PayoutRejectVars>;
   attachCompletionProofMutation?: UseMutationResult<
-    PayOutOrderApiDto,
+    PayOutOrderCabinetDto,
     unknown,
     { orderId: string; fileIds: string[] }
   >;
   detachCompletionProofMutation?: UseMutationResult<
-    PayOutOrderApiDto,
+    PayOutOrderCabinetDto,
     unknown,
     { orderId: string; fileId: string }
   >;
-  onView: (row: PayOutOrderApiDto) => void;
+  onView: (row: PayOutOrderCabinetDto) => void;
   t: PayoutT;
 }) {
   const {
@@ -224,14 +224,14 @@ export function buildPayoutOrdersColumns(opts: {
     key: 'id',
     header: t('colId'),
     className: 'font-mono tabular-nums text-end',
-    render: (row: PayOutOrderApiDto) => <CopyOrderIdCell id={row.id} />,
+    render: (row: PayOutOrderCabinetDto) => <CopyOrderIdCell id={row.id} />,
   };
 
   const amountCol = {
     key: 'amount',
     header: t('colAmount'),
     className: 'text-end tabular-nums',
-    render: (row: PayOutOrderApiDto) => (
+    render: (row: PayOutOrderCabinetDto) => (
       <span className="font-medium">{formatCurrency(row.amount, row.currency)}</span>
     ),
   };
@@ -242,7 +242,7 @@ export function buildPayoutOrdersColumns(opts: {
           key: 'usdt_est',
           header: t('colUsdtEstimate'),
           className: 'text-end tabular-nums text-sm',
-          render: (row: PayOutOrderApiDto) => (
+          render: (row: PayOutOrderCabinetDto) => (
             <span className="text-text-secondary">
               {row.amount_usdt_estimate != null ? row.amount_usdt_estimate.toFixed(2) : '—'}
             </span>
@@ -251,16 +251,16 @@ export function buildPayoutOrdersColumns(opts: {
         {
           key: 'method',
           header: t('colMethod'),
-          render: (row: PayOutOrderApiDto) => (
+          render: (row: PayOutOrderCabinetDto) => (
             <span className="text-xs text-text-secondary">{row.payment_method_name ?? '—'}</span>
           ),
         },
         {
           key: 'active',
           header: t('colActive'),
-          render: (row: PayOutOrderApiDto) =>
+          render: (row: PayOutOrderCabinetDto) =>
             row.status === PayOutOrderStatus.PROCESSING ? (
-              <LiveElapsed fromUnix={row.start_at} warnAfterSec={180} critAfterSec={600} />
+              <PayoutProcessingElapsed fromUnix={row.start_at} warnAfterSec={180} critAfterSec={600} />
             ) : (
               <span className="text-text-muted">—</span>
             ),
@@ -273,14 +273,14 @@ export function buildPayoutOrdersColumns(opts: {
       key: 'currency',
       header: t('colCurrency'),
       className: 'text-center',
-      render: (row: PayOutOrderApiDto) => (
+      render: (row: PayOutOrderCabinetDto) => (
         <span className="text-text-secondary">{row.currency}</span>
       ),
     },
     {
       key: 'recipient',
       header: t('colRecipient'),
-      render: (row: PayOutOrderApiDto) => (
+      render: (row: PayOutOrderCabinetDto) => (
         <div className="flex flex-col">
           <span className="font-mono text-xs">{row.details.number}</span>
           {row.details.owner && (
@@ -293,14 +293,14 @@ export function buildPayoutOrdersColumns(opts: {
       key: 'status',
       header: t('colStatus'),
       className: 'text-center',
-      render: (row: PayOutOrderApiDto) => (
+      render: (row: PayOutOrderCabinetDto) => (
         <PayoutStatusWithHistory row={row} statusHistoryPath={statusHistoryPath} t={t} />
       ),
     },
     {
       key: 'created_at',
       header: t('colCreated'),
-      render: (row: PayOutOrderApiDto) => (
+      render: (row: PayOutOrderCabinetDto) => (
         <span className="text-text-muted text-sm">{formatDate(row.created_at)}</span>
       ),
     },
@@ -308,7 +308,7 @@ export function buildPayoutOrdersColumns(opts: {
       key: 'actions',
       header: t('colAction'),
       className: 'text-end',
-      render: (row: PayOutOrderApiDto) => (
+      render: (row: PayOutOrderCabinetDto) => (
         <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
           <TraderPayoutWorkflowActions
             key={`payout-actions-${row.id}`}

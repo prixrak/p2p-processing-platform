@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { PayOutOrderStatus, PayoutTraderRejectReason, MAX_PAYOUT_COMPLETION_PROOF_FILES } from '@p2p/shared';
-import type { PayOutOrderApiDto } from '@p2p/shared';
+import type { PayOutOrderCabinetDto } from '@p2p/shared';
 import { Button } from '@/components/ui/button';
 import { FileUpload } from '@/components/ui/file-upload';
 import { IconButton } from '@/components/ui/icon-button';
@@ -104,20 +104,20 @@ export function TraderPayoutWorkflowActions({
   detachCompletionProofMutation,
   layout = 'cell',
 }: {
-  order: PayOutOrderApiDto;
+  order: PayOutOrderCabinetDto;
   processMutation: UseMutationResult<unknown, unknown, string>;
   completeMutation: UseMutationResult<unknown, unknown, PayoutCompleteVars>;
   cancelMutation: UseMutationResult<unknown, unknown, string>;
   rejectMutation: UseMutationResult<unknown, unknown, PayoutRejectVars>;
   /** When set, PROCESSING and COMPLETED orders can append proof files via POST .../completion-proof. */
   attachCompletionProofMutation?: UseMutationResult<
-    PayOutOrderApiDto,
+    PayOutOrderCabinetDto,
     unknown,
     { orderId: string; fileIds: string[] }
   >;
   /** When set, attached proofs can be removed via DELETE .../completion-proof/:fileId. */
   detachCompletionProofMutation?: UseMutationResult<
-    PayOutOrderApiDto,
+    PayOutOrderCabinetDto,
     unknown,
     { orderId: string; fileId: string }
   >;

@@ -27,7 +27,12 @@ import {
   MAX_PAYOUT_COMPLETION_PROOF_FILES,
   UserRole,
 } from '@p2p/shared';
-import type { PayOutOrderApiDto, ProfileDto, DetailsDto } from '@p2p/shared';
+import type {
+  PayOutOrderApiDto,
+  PayOutOrderCabinetDto,
+  ProfileDto,
+  DetailsDto,
+} from '@p2p/shared';
 import {
   creditUsdtPayout,
   debitFiatMerchantPayout,
@@ -612,7 +617,7 @@ export class PayoutService {
 
     return {
       orders: items.map((o) =>
-        this.toPayOutOrderApiDto(o, {
+        this.toPayOutOrderCabinetDto(o, {
           poolListing: true,
           poolCloseDeadline: computePayoutPoolCloseDeadline({
             poolType: o.poolType,
@@ -677,7 +682,7 @@ export class PayoutService {
 
     return {
       orders: items.map((o) =>
-        this.toPayOutOrderApiDto(o, {
+        this.toPayOutOrderCabinetDto(o, {
           poolListing: true,
           poolCloseDeadline: computePayoutPoolCloseDeadline({
             poolType: o.poolType,
@@ -696,7 +701,7 @@ export class PayoutService {
 
   // ─── Internal: traderTakeFromPool ─── (trader self-assigns from pool; PENDING → PROCESSING)
 
-  async traderTakeFromPool(traderId: string, orderId: string): Promise<PayOutOrderApiDto> {
+  async traderTakeFromPool(traderId: string, orderId: string): Promise<PayOutOrderCabinetDto> {
     const trader = await this.prisma.traderProfile.findUnique({
       where: { id: traderId },
       include: { user: { select: { isActive: true } } },
@@ -774,13 +779,13 @@ export class PayoutService {
 
     void this.logPayoutStatusChange(orderId, 'PENDING', 'PROCESSING', { actorRole: 'TRADER' });
 
-    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+    return this.toPayOutOrderCabinetDto(await this.loadCabinetOrder(orderId));
   }
 
   async specialistTakeFromPool(
     payoutTraderId: string,
     orderId: string,
-  ): Promise<PayOutOrderApiDto> {
+  ): Promise<PayOutOrderCabinetDto> {
     const profile = await this.prisma.payoutTraderProfile.findUnique({
       where: { id: payoutTraderId },
       include: {
@@ -852,7 +857,7 @@ export class PayoutService {
     });
 
     const full = await this.loadCabinetOrder(orderId);
-    return this.toPayOutOrderApiDto(full);
+    return this.toPayOutOrderCabinetDto(full);
   }
 
   // ─── Internal: assignToTrader ─── (admin/support assigns from pool to a trader or specialist)
@@ -998,7 +1003,7 @@ export class PayoutService {
     ]);
 
     return {
-      orders: items.map((o) => this.toPayOutOrderApiDto(o)),
+      orders: items.map((o) => this.toPayOutOrderCabinetDto(o)),
       total,
       page,
       limit,
@@ -1429,7 +1434,7 @@ export class PayoutService {
     return [header, ...lines].join('\n');
   }
 
-  async traderStartProcessing(traderId: string, orderId: string): Promise<PayOutOrderApiDto> {
+  async traderStartProcessing(traderId: string, orderId: string): Promise<PayOutOrderCabinetDto> {
     const order = await this.prisma.payoutOrder.findFirst({
       where: { id: orderId, traderId, status: 'NEW' },
     });
@@ -1458,7 +1463,7 @@ export class PayoutService {
 
     void this.logPayoutStatusChange(orderId, order.status, 'PROCESSING', { actorRole: 'TRADER' });
 
-    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+    return this.toPayOutOrderCabinetDto(await this.loadCabinetOrder(orderId));
   }
 
   // ─── Internal: traderComplete ───
@@ -1468,7 +1473,7 @@ export class PayoutService {
     orderId: string,
     userId: string,
     dto?: SpecialistCompleteDto,
-  ): Promise<PayOutOrderApiDto> {
+  ): Promise<PayOutOrderCabinetDto> {
     const proofIds = this.normalizeCompletionProofIds(dto);
     if (proofIds.length > MAX_PAYOUT_COMPLETION_PROOF_FILES) {
       throw new BadRequestException(
@@ -1529,7 +1534,7 @@ export class PayoutService {
 
     void this.logPayoutStatusChange(orderId, order.status, 'COMPLETED', { actorRole: 'TRADER' });
 
-    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+    return this.toPayOutOrderCabinetDto(await this.loadCabinetOrder(orderId));
   }
 
   /**
@@ -1616,7 +1621,7 @@ export class PayoutService {
     userId: string,
     orderId: string,
     dto: AttachCompletionProofDto,
-  ): Promise<PayOutOrderApiDto> {
+  ): Promise<PayOutOrderCabinetDto> {
     return this.attachCompletionProofs(
       { kind: 'TRADER', traderId },
       userId,
@@ -1633,7 +1638,7 @@ export class PayoutService {
     userId: string,
     orderId: string,
     dto: AttachCompletionProofDto,
-  ): Promise<PayOutOrderApiDto> {
+  ): Promise<PayOutOrderCabinetDto> {
     return this.attachCompletionProofs(
       { kind: 'PAYOUT_TRADER', payoutTraderId },
       userId,
@@ -1647,7 +1652,7 @@ export class PayoutService {
     userId: string,
     orderId: string,
     dto: AttachCompletionProofDto,
-  ): Promise<PayOutOrderApiDto> {
+  ): Promise<PayOutOrderCabinetDto> {
     const ids = this.normalizeCompletionProofIds(dto);
     if (ids.length === 0) {
       throw new BadRequestException('At least one proof file id is required');
@@ -1675,7 +1680,7 @@ export class PayoutService {
     });
 
     this.emitPayoutOrderRealtime(updated, false);
-    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+    return this.toPayOutOrderCabinetDto(await this.loadCabinetOrder(orderId));
   }
 
   /**
@@ -1690,7 +1695,7 @@ export class PayoutService {
     userId: string,
     orderId: string,
     fileId: string,
-  ): Promise<PayOutOrderApiDto> {
+  ): Promise<PayOutOrderCabinetDto> {
     return this.detachCompletionProof(
       { kind: 'TRADER', traderId },
       userId,
@@ -1706,7 +1711,7 @@ export class PayoutService {
     userId: string,
     orderId: string,
     fileId: string,
-  ): Promise<PayOutOrderApiDto> {
+  ): Promise<PayOutOrderCabinetDto> {
     return this.detachCompletionProof(
       { kind: 'PAYOUT_TRADER', payoutTraderId },
       userId,
@@ -1722,7 +1727,7 @@ export class PayoutService {
     userRole: string,
     orderId: string,
     fileId: string,
-  ): Promise<PayOutOrderApiDto> {
+  ): Promise<PayOutOrderCabinetDto> {
     const notFoundMessage =
       scope.kind === 'TRADER'
         ? 'Order not found or not assigned to this trader'
@@ -1801,12 +1806,12 @@ export class PayoutService {
     });
     this.emitPayoutOrderRealtime(order, false);
 
-    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+    return this.toPayOutOrderCabinetDto(await this.loadCabinetOrder(orderId));
   }
 
   // ─── Internal: traderFail ───
 
-  async traderFail(traderId: string, orderId: string, dto: TraderFailDto): Promise<PayOutOrderApiDto> {
+  async traderFail(traderId: string, orderId: string, dto: TraderFailDto): Promise<PayOutOrderCabinetDto> {
     const order = await this.prisma.payoutOrder.findFirst({
       where: { id: orderId, traderId },
     });
@@ -1854,13 +1859,13 @@ export class PayoutService {
 
     void this.logPayoutStatusChange(orderId, order.status, 'FAILED', { actorRole: 'TRADER' });
 
-    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+    return this.toPayOutOrderCabinetDto(await this.loadCabinetOrder(orderId));
   }
 
   /**
    * Standard trader releases assigned work back to the shared PENDING pool (no merchant refund).
    */
-  async traderCancelToPool(traderId: string, orderId: string): Promise<PayOutOrderApiDto> {
+  async traderCancelToPool(traderId: string, orderId: string): Promise<PayOutOrderCabinetDto> {
     const order = await this.prisma.payoutOrder.findFirst({
       where: { id: orderId, traderId, poolType: PayoutPoolType.STANDARD },
     });
@@ -1904,7 +1909,7 @@ export class PayoutService {
 
     void this.logPayoutStatusChange(orderId, order.status, 'PENDING', { actorRole: 'TRADER' });
 
-    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+    return this.toPayOutOrderCabinetDto(await this.loadCabinetOrder(orderId));
   }
 
   /**
@@ -1970,7 +1975,7 @@ export class PayoutService {
   async specialistStartProcessing(
     payoutTraderId: string,
     orderId: string,
-  ): Promise<PayOutOrderApiDto> {
+  ): Promise<PayOutOrderCabinetDto> {
     const order = await this.prisma.payoutOrder.findFirst({
       where: {
         id: orderId,
@@ -1985,7 +1990,7 @@ export class PayoutService {
     }
 
     if (order.status === 'PROCESSING') {
-      return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+      return this.toPayOutOrderCabinetDto(await this.loadCabinetOrder(orderId));
     }
 
     if (!isValidPayOutTransition(order.status as PayOutOrderStatus, PayOutOrderStatus.PROCESSING)) {
@@ -2007,7 +2012,7 @@ export class PayoutService {
 
     this.emitPayoutOrderRealtime(updated, false);
 
-    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+    return this.toPayOutOrderCabinetDto(await this.loadCabinetOrder(orderId));
   }
 
   async specialistComplete(
@@ -2015,7 +2020,7 @@ export class PayoutService {
     orderId: string,
     specialistUserId: string,
     dto?: SpecialistCompleteDto,
-  ): Promise<PayOutOrderApiDto> {
+  ): Promise<PayOutOrderCabinetDto> {
     const proofIds = this.normalizeCompletionProofIds(dto);
     if (proofIds.length > MAX_PAYOUT_COMPLETION_PROOF_FILES) {
       throw new BadRequestException(
@@ -2078,7 +2083,7 @@ export class PayoutService {
       actorRole: 'PAYOUT_TRADER',
     });
 
-    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+    return this.toPayOutOrderCabinetDto(await this.loadCabinetOrder(orderId));
   }
 
   /**
@@ -2087,7 +2092,7 @@ export class PayoutService {
   async specialistCancelToPool(
     payoutTraderId: string,
     orderId: string,
-  ): Promise<PayOutOrderApiDto> {
+  ): Promise<PayOutOrderCabinetDto> {
     const order = await this.prisma.payoutOrder.findFirst({
       where: { id: orderId, payoutTraderId, poolType: PayoutPoolType.PAYOUT_SPECIALIST },
     });
@@ -2130,14 +2135,14 @@ export class PayoutService {
 
     this.emitPayoutOrderRealtime(updated, true);
 
-    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+    return this.toPayOutOrderCabinetDto(await this.loadCabinetOrder(orderId));
   }
 
   async specialistFail(
     payoutTraderId: string,
     orderId: string,
     dto: TraderFailDto,
-  ): Promise<PayOutOrderApiDto> {
+  ): Promise<PayOutOrderCabinetDto> {
     const order = await this.prisma.payoutOrder.findFirst({
       where: { id: orderId, payoutTraderId },
     });
@@ -2189,7 +2194,7 @@ export class PayoutService {
 
     this.emitPayoutOrderRealtime(updated, false);
 
-    return this.toPayOutOrderApiDto(await this.loadCabinetOrder(orderId));
+    return this.toPayOutOrderCabinetDto(await this.loadCabinetOrder(orderId));
   }
 
   // ─── Private helpers ───
@@ -2466,17 +2471,70 @@ export class PayoutService {
     };
   }
 
+  private toPayOutOrderCabinetDto(
+    order: PayoutOrderApiSource,
+    opts?: { poolListing?: boolean; poolCloseDeadline?: Date | null },
+  ): PayOutOrderCabinetDto {
+    const full = this.toPayOutOrderApiDto(order, opts);
+    const details: PayOutOrderCabinetDto['details'] = {
+      number: full.details.number,
+      ...(full.details.owner ? { owner: full.details.owner } : {}),
+    };
+
+    const cabinet: PayOutOrderCabinetDto = {
+      id: full.id,
+      created_at: full.created_at,
+      start_at: full.start_at,
+      currency: full.currency,
+      details,
+      amount: full.amount,
+      status: full.status,
+      ...(full.completion_proof_file_ids?.length
+        ? {
+            completion_proof_file_ids: full.completion_proof_file_ids,
+            completion_proof_file_id: full.completion_proof_file_id,
+          }
+        : {}),
+      ...(full.pool_close_deadline_at != null
+        ? { pool_close_deadline_at: full.pool_close_deadline_at }
+        : {}),
+      ...(full.requisites_visible === false ? { requisites_visible: false } : {}),
+      ...(full.amount_usdt_estimate != null
+        ? { amount_usdt_estimate: full.amount_usdt_estimate }
+        : {}),
+      ...(full.payment_method_name != null
+        ? { payment_method_name: full.payment_method_name }
+        : {}),
+    };
+
+    return cabinet;
+  }
+
   async getPayoutOrderStatusHistoryForTrader(
     traderId: string,
     orderId: string,
   ): Promise<OrderStatusHistoryEntry[]> {
-    const order = await this.prisma.payoutOrder.findFirst({
-      where: { id: orderId, traderId },
-      select: { id: true, status: true, createdAt: true },
-    });
-    if (!order) throw new NotFoundException('Order not found');
+    const order = await this.resolvePayoutOrderForTraderStatusHistory(traderId, orderId);
+    return this.buildPayoutOrderStatusHistory(order);
+  }
 
-    const history = await fetchOrderStatusHistory(this.prisma, orderId, {
+  async getPayoutOrderStatusHistoryForSpecialist(
+    payoutTraderId: string,
+    orderId: string,
+  ): Promise<OrderStatusHistoryEntry[]> {
+    const order = await this.resolvePayoutOrderForSpecialistStatusHistory(
+      payoutTraderId,
+      orderId,
+    );
+    return this.buildPayoutOrderStatusHistory(order);
+  }
+
+  private async buildPayoutOrderStatusHistory(order: {
+    id: string;
+    status: string;
+    createdAt: Date;
+  }): Promise<OrderStatusHistoryEntry[]> {
+    const history = await fetchOrderStatusHistory(this.prisma, order.id, {
       orderCreatedAt: order.createdAt,
     });
     return withOrderStatusHistoryFallback(history, {
@@ -2485,23 +2543,113 @@ export class PayoutService {
     });
   }
 
-  async getPayoutOrderStatusHistoryForSpecialist(
-    payoutTraderId: string,
+  /**
+   * Traders may view status history for assigned orders or unassigned pool orders
+   * they are allowed to see (same visibility rules as getPool / take-from-pool).
+   */
+  private async resolvePayoutOrderForTraderStatusHistory(
+    traderId: string,
     orderId: string,
-  ): Promise<OrderStatusHistoryEntry[]> {
-    const order = await this.prisma.payoutOrder.findFirst({
-      where: { id: orderId, payoutTraderId },
-      select: { id: true, status: true, createdAt: true },
+  ): Promise<{ id: string; status: string; createdAt: Date }> {
+    const order = await this.prisma.payoutOrder.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        traderId: true,
+        payoutTraderId: true,
+        poolType: true,
+        amount: true,
+      },
     });
     if (!order) throw new NotFoundException('Order not found');
 
-    const history = await fetchOrderStatusHistory(this.prisma, orderId, {
-      orderCreatedAt: order.createdAt,
+    if (order.traderId === traderId) {
+      return order;
+    }
+
+    if (
+      order.status !== PayoutStatus.PENDING ||
+      order.traderId != null ||
+      order.payoutTraderId != null ||
+      order.poolType !== PayoutPoolType.STANDARD
+    ) {
+      throw new NotFoundException('Order not found');
+    }
+
+    const trader = await this.prisma.traderProfile.findUnique({
+      where: { id: traderId },
+      include: { user: { select: { isActive: true } } },
     });
-    return withOrderStatusHistoryFallback(history, {
-      status: order.status,
-      createdAt: order.createdAt,
+    if (!trader?.user?.isActive || !trader.isActive || !trader.acceptingOrders) {
+      throw new NotFoundException('Order not found');
+    }
+
+    const amount = Number(order.amount);
+    const minLimit = Number(trader.payoutMinLimit);
+    const maxLimit = Number(trader.payoutMaxLimit);
+    if (minLimit > 0 && amount < minLimit) {
+      throw new NotFoundException('Order not found');
+    }
+    if (maxLimit > 0 && amount > maxLimit) {
+      throw new NotFoundException('Order not found');
+    }
+
+    return order;
+  }
+
+  /**
+   * Pay-Out specialists may view status history for assigned orders or pool B listings
+   * visible in getSpecialistPool.
+   */
+  private async resolvePayoutOrderForSpecialistStatusHistory(
+    payoutTraderId: string,
+    orderId: string,
+  ): Promise<{ id: string; status: string; createdAt: Date }> {
+    const order = await this.prisma.payoutOrder.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        traderId: true,
+        payoutTraderId: true,
+        poolType: true,
+        currency: { select: { code: true } },
+      },
     });
+    if (!order) throw new NotFoundException('Order not found');
+
+    if (order.payoutTraderId === payoutTraderId) {
+      return order;
+    }
+
+    if (
+      order.status !== PayoutStatus.PENDING ||
+      order.traderId != null ||
+      order.payoutTraderId != null ||
+      order.poolType !== PayoutPoolType.PAYOUT_SPECIALIST
+    ) {
+      throw new NotFoundException('Order not found');
+    }
+
+    const profile = await this.prisma.payoutTraderProfile.findUnique({
+      where: { id: payoutTraderId },
+      include: {
+        country: { include: { currency: true } },
+        user: { select: { isActive: true } },
+      },
+    });
+    if (!profile?.user?.isActive || !profile.isActive) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (order.currency.code !== profile.country.currency.code) {
+      throw new NotFoundException('Order not found');
+    }
+
+    return order;
   }
 
   async getPayoutOrderStatusHistory(orderId: string): Promise<OrderStatusHistoryEntry[]> {
@@ -2510,14 +2658,7 @@ export class PayoutService {
       select: { id: true, status: true, createdAt: true },
     });
     if (!order) throw new NotFoundException('Order not found');
-
-    const history = await fetchOrderStatusHistory(this.prisma, orderId, {
-      orderCreatedAt: order.createdAt,
-    });
-    return withOrderStatusHistoryFallback(history, {
-      status: order.status,
-      createdAt: order.createdAt,
-    });
+    return this.buildPayoutOrderStatusHistory(order);
   }
 
   private logPayoutOrderCreated(orderId: string, status: string): void {

@@ -1,24 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import type { PayOutOrderApiDto } from '@p2p/shared';
-import { DetailsType, PayOutOrderStatus } from '@p2p/shared';
+import type { PayOutOrderCabinetDto } from '@p2p/shared';
+import { PayOutOrderStatus } from '@p2p/shared';
 import {
   mergeCompletionProofUploadIdsForComplete,
   payoutCompletionProofFileIds,
 } from './payout-completion-proof-ids';
 
-const base: PayOutOrderApiDto = {
+const base: PayOutOrderCabinetDto = {
   id: '00000000-0000-0000-0000-000000000001',
-  request_id: 'req-1',
   created_at: 0,
   start_at: null,
-  end_at: null,
   currency: 'UAH',
-  details: { type: DetailsType.CARD, number: '4111' },
+  details: { number: '4111' },
   amount: 100,
   status: PayOutOrderStatus.COMPLETED,
-  rate: 1,
-  partner_amount: 100,
-  percent_fee: 0,
 };
 
 describe('payoutCompletionProofFileIds', () => {

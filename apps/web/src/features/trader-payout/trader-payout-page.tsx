@@ -26,7 +26,7 @@ import { internalPaths } from '@/lib/internal-api';
 import { cn } from '@/lib/utils';
 import { getToken } from '@/lib/auth';
 import { PAYOUT_TRADER_HISTORY_STATUSES, PayoutTraderRejectReason } from '@p2p/shared';
-import type { PayOutOrderApiDto } from '@p2p/shared';
+import type { PayOutOrderCabinetDto } from '@p2p/shared';
 import { buildPayoutOrdersColumns, buildPayoutPoolColumns, type PayoutCompleteVars } from './trader-payout-columns';
 import type { PayoutRejectVars } from './trader-payout-workflow-actions';
 import { TraderPayoutOrderDetailModal } from './trader-payout-order-detail-modal';
@@ -37,7 +37,7 @@ import {
 } from '@/lib/query-keys';
 
 interface PayOutListResponse {
-  orders: PayOutOrderApiDto[];
+  orders: PayOutOrderCabinetDto[];
   total: number;
   page: number;
   limit: number;
@@ -110,7 +110,7 @@ export function TraderPayoutPage({
     setValue: setSearchInput,
     debounced: debouncedSearch,
   } = useDebouncedTextFilter();
-  const [selectedOrder, setSelectedOrder] = useState<PayOutOrderApiDto | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<PayOutOrderCabinetDto | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
   const [poolPage, setPoolPage] = useState(1);
@@ -151,12 +151,83 @@ export function TraderPayoutPage({
   /** Fetch inactive tabs only while an order detail modal is open (keeps row data in sync after actions). */
   const prefetchForOpenModal = !!selectedOrder;
 
+  const inProgressListActive = activeTab === 'in_progress' || prefetchForOpenModal;
+  const historyListActive = activeTab === 'history' || prefetchForOpenModal;
+  const poolListActive = activeTab === 'new' || prefetchForOpenModal;
+
+  const inProgressBadgeParams = useMemo(
+    (): Record<string, string> => ({
+      queue: 'in_progress',
+      page: '1',
+      limit: '1',
+      ...(searchParam ? { search: searchParam } : {}),
+    }),
+    [searchParam],
+  );
+
+  const historyBadgeParams = useMemo((): Record<string, string> => {
+    const params: Record<string, string> = {
+      queue: 'history',
+      page: '1',
+      limit: '1',
+    };
+    if (statusFilter) params.status = statusFilter;
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    if (debouncedMinAmount) {
+      params.min_amount = normalizeDecimalSeparators(debouncedMinAmount);
+    }
+    if (debouncedMaxAmount) {
+      params.max_amount = normalizeDecimalSeparators(debouncedMaxAmount);
+    }
+    if (searchParam) params.search = searchParam;
+    return params;
+  }, [
+    statusFilter,
+    dateFrom,
+    dateTo,
+    debouncedMinAmount,
+    debouncedMaxAmount,
+    searchParam,
+  ]);
+
+  const poolBadgeParams = useMemo(
+    (): Record<string, string> => ({
+      page: '1',
+      limit: '1',
+      ...(searchParam ? { search: searchParam } : {}),
+    }),
+    [searchParam],
+  );
+
+  const { data: inProgressBadge } = useQuery({
+    queryKey: payoutCabinetKeys.payoutOrders(qk, inProgressBadgeParams),
+    queryFn: () =>
+      api.get<PayOutListResponse>(`${apiBase}/orders`, inProgressBadgeParams),
+    enabled: !inProgressListActive,
+    staleTime: 10_000,
+  });
+
+  const { data: historyBadge } = useQuery({
+    queryKey: payoutCabinetKeys.payoutOrders(qk, historyBadgeParams),
+    queryFn: () => api.get<PayOutListResponse>(`${apiBase}/orders`, historyBadgeParams),
+    enabled: !historyListActive,
+    staleTime: 10_000,
+  });
+
+  const { data: poolBadge } = useQuery({
+    queryKey: payoutCabinetKeys.payoutPool(qk, poolBadgeParams),
+    queryFn: () => api.get<PayOutListResponse>(`${apiBase}/pool`, poolBadgeParams),
+    enabled: !poolListActive,
+    staleTime: 10_000,
+  });
+
   const { data: inProgressData, isLoading: inProgressLoading } =
     useQuery({
       queryKey: payoutCabinetKeys.payoutOrders(qk, inProgressParams),
       queryFn: () =>
         api.get<PayOutListResponse>(`${apiBase}/orders`, inProgressParams),
-      enabled: activeTab === 'in_progress' || prefetchForOpenModal,
+      enabled: inProgressListActive,
     });
 
   const historyListParams: Record<string, string> = {
@@ -178,14 +249,22 @@ export function TraderPayoutPage({
   const { data: historyData, isLoading: historyLoading } = useQuery({
     queryKey: payoutCabinetKeys.payoutOrders(qk, historyListParams),
     queryFn: () => api.get<PayOutListResponse>(`${apiBase}/orders`, historyListParams),
-    enabled: activeTab === 'history' || prefetchForOpenModal,
+    enabled: historyListActive,
   });
 
   const { data: poolData, isLoading: poolLoading } = useQuery({
     queryKey: payoutCabinetKeys.payoutPool(qk, poolParams),
     queryFn: () => api.get<PayOutListResponse>(`${apiBase}/pool`, poolParams),
-    enabled: activeTab === 'new' || prefetchForOpenModal,
+    enabled: poolListActive,
   });
+
+  const poolTotal = poolListActive ? (poolData?.total ?? 0) : (poolBadge?.total ?? 0);
+  const inProgressTotal = inProgressListActive
+    ? (inProgressData?.total ?? 0)
+    : (inProgressBadge?.total ?? 0);
+  const historyTotal = historyListActive
+    ? (historyData?.total ?? 0)
+    : (historyBadge?.total ?? 0);
 
   const poolLimit = poolData?.limit ?? PAYOUT_LIST_PAGE_SIZE;
   const poolTotalPages = Math.max(1, Math.ceil((poolData?.total ?? 0) / poolLimit));
@@ -281,7 +360,7 @@ export function TraderPayoutPage({
 
   const attachCompletionProofMutation = useMutation({
     mutationFn: async ({ orderId, fileIds }: { orderId: string; fileIds: string[] }) =>
-      api.post<PayOutOrderApiDto>(`${apiBase}/orders/${orderId}/completion-proof`, {
+      api.post<PayOutOrderCabinetDto>(`${apiBase}/orders/${orderId}/completion-proof`, {
         completion_proof_file_ids: fileIds,
       }),
     onSuccess: (updated) => {
@@ -292,7 +371,7 @@ export function TraderPayoutPage({
 
   const detachCompletionProofMutation = useMutation({
     mutationFn: async ({ orderId, fileId }: { orderId: string; fileId: string }) =>
-      api.delete<PayOutOrderApiDto>(
+      api.delete<PayOutOrderCabinetDto>(
         `${apiBase}/orders/${orderId}/completion-proof/${fileId}`,
       ),
     onSuccess: (updated) => {
@@ -382,21 +461,14 @@ export function TraderPayoutPage({
   const headerSubtitle = useMemo(() => {
     if (activeTab === 'new') {
       return isSpecialist
-        ? t('subtitleGeoPool', { count: poolData?.total ?? 0 })
-        : t('subtitleSharedPool', { count: poolData?.total ?? 0 });
+        ? t('subtitleGeoPool', { count: poolTotal })
+        : t('subtitleSharedPool', { count: poolTotal });
     }
     if (activeTab === 'in_progress') {
-      return t('subtitleInProgress', { count: inProgressData?.total ?? 0 });
+      return t('subtitleInProgress', { count: inProgressTotal });
     }
-    return t('subtitleHistory', { count: historyData?.total ?? 0 });
-  }, [
-    activeTab,
-    historyData?.total,
-    inProgressData?.total,
-    isSpecialist,
-    poolData?.total,
-    t,
-  ]);
+    return t('subtitleHistory', { count: historyTotal });
+  }, [activeTab, historyTotal, inProgressTotal, isSpecialist, poolTotal, t]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -426,9 +498,9 @@ export function TraderPayoutPage({
             >
               <Layers className="h-4 w-4" />
               {t('tabNew')}
-              {(poolData?.total ?? 0) > 0 && (
+              {poolTotal > 0 && (
                 <span className="ml-1 rounded-full bg-accent-blue px-2 py-0.5 text-xs text-white">
-                  {poolData?.total}
+                  {poolTotal}
                 </span>
               )}
             </button>
@@ -444,9 +516,9 @@ export function TraderPayoutPage({
             >
               <ListTodo className="h-4 w-4" />
               {t('tabInProgress')}
-              {(inProgressData?.total ?? 0) > 0 && (
+              {inProgressTotal > 0 && (
                 <span className="ml-1 rounded-full bg-bg-tertiary px-2 py-0.5 text-xs text-text-secondary">
-                  {inProgressData?.total}
+                  {inProgressTotal}
                 </span>
               )}
             </button>
@@ -462,9 +534,9 @@ export function TraderPayoutPage({
             >
               <History className="h-4 w-4" />
               {t('tabHistory')}
-              {(historyData?.total ?? 0) > 0 && (
+              {historyTotal > 0 && (
                 <span className="ml-1 rounded-full bg-bg-tertiary px-2 py-0.5 text-xs text-text-secondary">
-                  {historyData?.total}
+                  {historyTotal}
                 </span>
               )}
             </button>
@@ -627,6 +699,7 @@ export function TraderPayoutPage({
 
       <TraderPayoutOrderDetailModal
         selectedOrder={selectedOrder}
+        variant={variant}
         onClose={() => setSelectedOrder(null)}
         takeFromPoolMutation={takeFromPoolMutation}
         processMutation={processMutation}

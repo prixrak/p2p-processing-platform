@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Play, AlertTriangle } from 'lucide-react';
 import type { UseMutationResult } from '@tanstack/react-query';
-import type { PayOutOrderApiDto } from '@p2p/shared';
+import type { PayOutOrderCabinetDto } from '@p2p/shared';
 import { IconButton } from '@/components/ui/icon-button';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -16,7 +16,7 @@ export function TraderPayoutTakeFromPoolButton({
   layout,
   onConfirmed,
 }: {
-  order: PayOutOrderApiDto;
+  order: PayOutOrderCabinetDto;
   takeFromPoolMutation: UseMutationResult<unknown, unknown, string>;
   layout: 'icon' | 'toolbar';
   /** Optional hook after user confirms take (for example closing a parent modal). */
