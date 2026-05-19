@@ -222,14 +222,14 @@ function TraderHeaderOrderStatus() {
         if (!disabled) mutation.mutate(!accepting);
       }}
       className={clsx(
-        'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors',
-        disabled && 'cursor-not-allowed opacity-60',
-        accountSuspended && 'bg-surface-tertiary text-text-muted border border-border-primary',
-        !accountSuspended &&
-          accepting &&
-          'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/75 dark:text-emerald-400 dark:ring-emerald-500/35',
-        !accountSuspended && !accepting && 'bg-surface-tertiary text-text-secondary border border-border-primary',
-      )}
+          'inline-flex h-9 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition-colors sm:px-3',
+          disabled && 'cursor-not-allowed opacity-60',
+          accountSuspended && 'bg-surface-tertiary text-text-muted border border-border-primary',
+          !accountSuspended &&
+            accepting &&
+            'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/75 dark:text-emerald-400 dark:ring-emerald-500/35',
+          !accountSuspended && !accepting && 'bg-surface-tertiary text-text-secondary border border-border-primary',
+        )}
       aria-pressed={accepting && !accountSuspended}
       aria-label={
         accountSuspended
@@ -244,7 +244,7 @@ function TraderHeaderOrderStatus() {
       ) : (
         <Power className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
       )}
-      <span>{label}</span>
+      <span className="hidden sm:inline">{label}</span>
       <span
         className={clsx(
           'h-2 w-2 shrink-0 rounded-full',
@@ -356,19 +356,20 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
       <main className="flex flex-1 flex-col overflow-hidden">
         <header
           className={clsx(
-            'flex h-16 shrink-0 items-center gap-3 border-b border-border-primary bg-surface-secondary/50 px-4 backdrop-blur-sm sm:px-6',
+            'flex h-14 shrink-0 items-center gap-2 border-b border-border-primary bg-surface-secondary/50 px-3 backdrop-blur-sm sm:h-16 sm:gap-3 sm:px-6',
             role === 'trader' || role === 'payout-trader' ? '' : 'lg:hidden',
           )}
         >
           <button
             type="button"
             onClick={() => setSidebarOpen(true)}
-            className="rounded-lg p-2 text-text-secondary hover:bg-surface-tertiary lg:hidden"
+            className="rounded-lg p-2.5 text-text-secondary hover:bg-surface-tertiary lg:hidden"
+            aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
           </button>
           {role === 'trader' || role === 'payout-trader' ? (
-            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto overscroll-x-contain">
               {role === 'trader' ? (
                 <>
                   <TraderHeaderBalance />
@@ -381,14 +382,14 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
               {`${role} Panel`}
             </span>
           )}
-          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-3">
             <ThemeToggle />
             {role === 'trader' && <TraderLocaleSwitch />}
             {role === 'trader' && <TraderHeaderOrderStatus />}
           </div>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-surface-primary">
-          <div className="mx-auto max-w-7xl p-6">{children}</div>
+          <div className="mx-auto max-w-7xl p-4 sm:p-6">{children}</div>
         </div>
       </main>
     </div>

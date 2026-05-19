@@ -49,6 +49,7 @@ export function TraderRequisitesGroupTable({
       {
         key: 'number',
         header: t('accountNumber'),
+        mobilePrimary: true,
         render: (r: RequisiteApiRow) => (
           <span className="font-mono text-xs sm:text-sm">{r.number}</span>
         ),
@@ -68,6 +69,7 @@ export function TraderRequisitesGroupTable({
       {
         key: 'bank',
         header: t('bank'),
+        mobilePrimary: true,
         render: (r: RequisiteApiRow) => r.bank?.name ?? '—',
       },
       {

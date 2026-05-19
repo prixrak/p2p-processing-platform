@@ -75,7 +75,7 @@ export function TraderHeaderCapacityAlerts() {
         ) : (
           <Wallet className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
         )}
-        <span className="truncate">{label}</span>
+        <span className="truncate sm:max-w-none max-w-[8rem]">{label}</span>
       </Link>
     </Tooltip>
   );

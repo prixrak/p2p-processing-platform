@@ -339,7 +339,7 @@ export function TraderRequisitesPage() {
         <div className="flex items-center gap-3">
           <CreditCard className="h-6 w-6 text-accent-blue" />
           <div>
-            <h1 className="text-2xl font-bold text-text-primary">{t('title')}</h1>
+            <h1 className="text-xl font-bold text-text-primary sm:text-2xl">{t('title')}</h1>
             <p className="text-sm text-text-muted">{t('subtitle')}</p>
           </div>
         </div>

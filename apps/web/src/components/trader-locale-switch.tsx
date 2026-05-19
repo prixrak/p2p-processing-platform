@@ -119,17 +119,20 @@ export function TraderLocaleSwitch() {
         aria-haspopup="listbox"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-primary bg-surface-tertiary px-2.5 text-text-primary transition-colors',
+          'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border-primary bg-surface-tertiary px-2 text-text-primary transition-colors sm:px-2.5',
           'hover:border-border-secondary hover:bg-surface-elevated',
           open && 'border-border-secondary bg-surface-elevated ring-1 ring-accent-blue/25',
         )}
       >
         <Globe2 className="h-4 w-4 shrink-0 text-accent-blue" aria-hidden />
-        <span className="max-w-[5.5rem] truncate text-xs font-medium">
+        <span className="hidden max-w-[5.5rem] truncate text-xs font-medium sm:inline">
           {locale === 'uk' ? t('uk') : t('en')}
         </span>
         <ChevronDown
-          className={cn('h-3.5 w-3.5 shrink-0 text-text-muted transition-transform', open && 'rotate-180')}
+          className={cn(
+            'hidden h-3.5 w-3.5 shrink-0 text-text-muted transition-transform sm:block',
+            open && 'rotate-180',
+          )}
           aria-hidden
         />
       </button>

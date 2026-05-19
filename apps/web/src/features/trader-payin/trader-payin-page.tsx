@@ -273,6 +273,7 @@ export function TraderPayInPage() {
         key: 'id',
         header: t('colOrderId'),
         className: 'min-w-[8rem]',
+        mobilePrimary: true,
         render: (row: TraderPayInOrderDto) => <CopyOrderIdCell id={row.id} />,
       },
       {
@@ -311,6 +312,7 @@ export function TraderPayInPage() {
         key: 'amount',
         header: t('colPaymentAmount'),
         className: 'text-end tabular-nums align-top',
+        mobilePrimary: true,
         render: (row: TraderPayInOrderDto) => (
           <div className="flex flex-col items-end gap-0.5 leading-tight">
             <span className="font-semibold text-text-primary">
@@ -337,6 +339,7 @@ export function TraderPayInPage() {
         key: 'status',
         header: t('colStatus'),
         className: 'text-center align-top',
+        mobilePrimary: true,
         render: (row: TraderPayInOrderDto) => (
           <PayInOrderStatusColumnCell row={row} onOpenReceipts={setReceiptOrder} />
         ),
@@ -409,7 +412,7 @@ export function TraderPayInPage() {
           <div className="flex items-center gap-3">
             <ArrowDownToLine className="h-6 w-6 text-accent-green" />
             <div>
-              <h1 className="text-2xl font-bold text-text-primary">{t('title')}</h1>
+              <h1 className="text-xl font-bold text-text-primary sm:text-2xl">{t('title')}</h1>
               <p className="text-sm text-text-muted">
                 {listTab === 'current' ? t('subtitleCurrent') : t('subtitleHistory')}{' '}
                 <span className="text-text-secondary">{t('inView', { count: data?.total ?? 0 })}</span>

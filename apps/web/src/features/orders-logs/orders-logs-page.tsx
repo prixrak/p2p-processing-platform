@@ -412,7 +412,7 @@ export function OrdersLogsPageView({
     <div className="space-y-8 animate-fade-in">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+          <h1 className="text-xl font-bold text-text-primary flex items-center gap-2 sm:text-2xl">
             <LineChart size={24} />
             Orders logs
           </h1>
@@ -424,7 +424,7 @@ export function OrdersLogsPageView({
       </div>
 
       <FilterBar className="flex-wrap items-end gap-3">
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex w-full gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x snap-mandatory sm:flex-wrap sm:overflow-visible sm:pb-0 sm:mx-0 sm:px-0">
           {(
             [
               ['today', 'Today'],
@@ -441,6 +441,7 @@ export function OrdersLogsPageView({
                 !hasCustomRange && filters.datePreset === id ? 'primary' : 'secondary'
               }
               type="button"
+              className="shrink-0 snap-start"
               onClick={() => applyPreset(id)}
             >
               {label}
@@ -614,6 +615,7 @@ export function OrdersLogsPageView({
           {
             key: 'requestId',
             header: 'Request ID',
+            mobilePrimary: true,
             render: (row) => (
               <OrderIdCopyCell id={row.requestId} label="Request ID" />
             ),
@@ -641,6 +643,7 @@ export function OrdersLogsPageView({
           {
             key: 'amount',
             header: 'Amount',
+            mobilePrimary: true,
             render: (row) => (
               <span className="tabular-nums">
                 {row.amount.toLocaleString(undefined, { maximumFractionDigits: 4 })}{' '}
@@ -651,17 +654,20 @@ export function OrdersLogsPageView({
           {
             key: 'uiStatus',
             header: 'Status',
+            mobilePrimary: true,
             render: (row) => uiStatusBadge(row.uiStatus),
           },
           {
             key: 'errorMessage',
             header: 'Error reason',
+            hideOnMobile: true,
             render: (row) => row.errorMessage ?? '—',
             className: 'max-w-[14rem] truncate',
           },
           {
             key: 'externalApiPath',
             header: 'API path',
+            hideOnMobile: true,
             render: (row) => (
               <span className="font-mono text-[11px] max-w-[11rem] truncate block">
                 {row.externalApiPath ?? '—'}
@@ -671,6 +677,7 @@ export function OrdersLogsPageView({
           {
             key: 'partnerIp',
             header: 'Partner IP',
+            hideOnMobile: true,
             render: (row) => row.partnerIp ?? '—',
             className: 'font-mono text-xs',
           },
@@ -689,6 +696,7 @@ export function OrdersLogsPageView({
         page={filters.page}
         totalPages={totalPages}
         onPageChange={(p) => setFilters((f) => ({ ...f, page: p }))}
+        onRowClick={(row) => setSelected(row)}
         emptyMessage="No order logs in this period"
       />
 

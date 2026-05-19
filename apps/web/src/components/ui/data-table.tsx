@@ -4,17 +4,17 @@ import { useState, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Tooltip } from '@/components/ui/tooltip';
 import { PaginationControls } from '@/components/ui/pagination-controls';
+import {
+  DefaultMobileTableCard,
+  MobileTableCardList,
+  type TableColumn,
+} from '@/components/ui/mobile-table-cards';
 import { cn } from '@/lib/utils';
 
-interface Column<T> {
-  key: string;
-  header: string;
-  render?: (row: T) => ReactNode;
-  className?: string;
-}
+export type DataTableColumn<T> = TableColumn<T>;
 
 interface DataTableProps<T> {
-  columns: Column<T>[];
+  columns: TableColumn<T>[];
   data: T[];
   isLoading?: boolean;
   emptyMessage?: string;
@@ -25,6 +25,8 @@ interface DataTableProps<T> {
   expandable?: (row: T) => ReactNode;
   onRowClick?: (row: T) => void;
   className?: string;
+  mobileLayout?: 'cards' | 'scroll';
+  mobileCardRender?: (row: T) => ReactNode;
 }
 
 export function DataTable<T>({
@@ -39,8 +41,11 @@ export function DataTable<T>({
   expandable,
   onRowClick,
   className,
+  mobileLayout = 'cards',
+  mobileCardRender,
 }: DataTableProps<T>) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const useMobileCards = mobileLayout === 'cards' && !expandable;
 
   const toggleRow = (key: string) => {
     setExpandedRows((prev) => {
@@ -71,7 +76,25 @@ export function DataTable<T>({
 
   return (
     <div className={cn('space-y-4', className)}>
-      <div className="bg-bg-card border border-border-primary rounded-xl overflow-x-auto">
+      {useMobileCards ? (
+        <MobileTableCardList
+          data={data}
+          keyExtractor={(row, index) => getKey(row, index)}
+          emptyMessage={emptyMessage}
+          onRowClick={onRowClick}
+          renderCard={
+            mobileCardRender ??
+            ((row) => <DefaultMobileTableCard row={row} columns={columns} />)
+          }
+        />
+      ) : null}
+
+      <div
+        className={cn(
+          'bg-bg-card border border-border-primary rounded-xl overflow-x-auto',
+          useMobileCards && 'hidden md:block',
+        )}
+      >
         <div className="min-w-0">
           <table className="w-full text-sm">
             <thead>
@@ -143,7 +166,7 @@ function TableRow<T>({
   onRowClick,
 }: {
   row: T;
-  columns: Column<T>[];
+  columns: TableColumn<T>[];
   expandable?: (row: T) => ReactNode;
   isExpanded: boolean;
   onToggle: () => void;

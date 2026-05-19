@@ -466,7 +466,7 @@ export function TraderPayoutPage({
         <div className="flex items-center gap-3">
           <ArrowUpFromLine className="h-6 w-6 text-accent-blue" />
           <div>
-            <h1 className="text-2xl font-bold text-text-primary">{t('title')}</h1>
+            <h1 className="text-xl font-bold text-text-primary sm:text-2xl">{t('title')}</h1>
             <p className="text-sm text-text-muted">{headerSubtitle}</p>
           </div>
         </div>
@@ -475,12 +475,12 @@ export function TraderPayoutPage({
             <Filter className="h-4 w-4" />
             {t('filters')}
           </Button>
-          <div className="flex flex-wrap gap-1 rounded-lg bg-bg-secondary p-1 w-fit">
+          <div className="flex w-full max-w-full gap-1 overflow-x-auto rounded-lg bg-bg-secondary p-1 sm:w-fit sm:flex-wrap sm:overflow-visible">
             <button
               type="button"
               onClick={() => navigateTab('new')}
               className={cn(
-                'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+                'flex shrink-0 items-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition-colors sm:gap-2 sm:px-4 sm:text-sm',
                 activeTab === 'new'
                   ? 'bg-bg-primary text-text-primary shadow-sm'
                   : 'text-text-muted hover:text-text-primary',
@@ -498,7 +498,7 @@ export function TraderPayoutPage({
               type="button"
               onClick={() => navigateTab('in_progress')}
               className={cn(
-                'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+                'flex shrink-0 items-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition-colors sm:gap-2 sm:px-4 sm:text-sm',
                 activeTab === 'in_progress'
                   ? 'bg-bg-primary text-text-primary shadow-sm'
                   : 'text-text-muted hover:text-text-primary',
@@ -516,7 +516,7 @@ export function TraderPayoutPage({
               type="button"
               onClick={() => navigateTab('history')}
               className={cn(
-                'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+                'flex shrink-0 items-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition-colors sm:gap-2 sm:px-4 sm:text-sm',
                 activeTab === 'history'
                   ? 'bg-bg-primary text-text-primary shadow-sm'
                   : 'text-text-muted hover:text-text-primary',

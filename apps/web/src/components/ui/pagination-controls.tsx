@@ -49,12 +49,17 @@ export function PaginationControls({
 
   if (variant === 'minimal') {
     return (
-      <div className={cn('flex items-center justify-between text-sm text-text-muted', className)}>
-        {showCaption ? <span>{caption}</span> : <span />}
-        <div className="flex gap-2">
+      <div
+        className={cn(
+          'flex flex-col gap-3 text-sm text-text-muted sm:flex-row sm:items-center sm:justify-between',
+          className,
+        )}
+      >
+        {showCaption ? <span className="min-w-0">{caption}</span> : <span />}
+        <div className="flex shrink-0 gap-2 self-end sm:self-auto">
           <button
             type="button"
-            className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
+            className="min-h-11 rounded bg-bg-secondary px-3 py-2 disabled:opacity-40 sm:min-h-0 sm:py-1"
             onClick={() => onPageChange(Math.max(1, page - 1))}
             disabled={!canPrev}
           >
@@ -62,7 +67,7 @@ export function PaginationControls({
           </button>
           <button
             type="button"
-            className="rounded bg-bg-secondary px-3 py-1 disabled:opacity-40"
+            className="min-h-11 rounded bg-bg-secondary px-3 py-2 disabled:opacity-40 sm:min-h-0 sm:py-1"
             onClick={() => onPageChange(Math.min(totalPages, page + 1))}
             disabled={!canNext}
           >
@@ -74,16 +79,21 @@ export function PaginationControls({
   }
 
   return (
-    <div className={cn('flex items-center justify-between', className)}>
-      {showCaption ? <p className="text-sm text-text-muted">{caption}</p> : <span />}
-      <div className="flex gap-2">
+    <div
+      className={cn(
+        'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between',
+        className,
+      )}
+    >
+      {showCaption ? <p className="min-w-0 text-sm text-text-muted">{caption}</p> : <span />}
+      <div className="flex shrink-0 gap-2 self-end sm:self-auto">
         <Tooltip content="Previous page" side="top">
           <span className="inline-flex">
             <button
               type="button"
               onClick={() => onPageChange(page - 1)}
               disabled={!canPrev}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-border-primary bg-bg-secondary px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg border border-border-primary bg-bg-secondary px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:py-1.5"
             >
               <ChevronLeft className="h-4 w-4" /> Previous
             </button>
@@ -95,7 +105,7 @@ export function PaginationControls({
               type="button"
               onClick={() => onPageChange(page + 1)}
               disabled={!canNext}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-border-primary bg-bg-secondary px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg border border-border-primary bg-bg-secondary px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:py-1.5"
             >
               Next <ChevronRight className="h-4 w-4" />
             </button>

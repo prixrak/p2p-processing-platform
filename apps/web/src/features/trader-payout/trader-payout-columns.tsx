@@ -135,6 +135,7 @@ export function buildPayoutPoolColumns(opts: {
       key: 'id',
       header: t('colId'),
       className: 'font-mono tabular-nums text-end',
+      mobilePrimary: true,
       render: (row: PayOutOrderCabinetDto) => <CopyOrderIdCell id={row.id} />,
     },
     {
@@ -149,6 +150,7 @@ export function buildPayoutPoolColumns(opts: {
       key: 'amount',
       header: t('colAmount'),
       className: 'text-end tabular-nums',
+      mobilePrimary: true,
       render: (row: PayOutOrderCabinetDto) => (
         <span className="font-semibold text-accent-blue">
           {formatCurrency(row.amount, row.currency)}
@@ -159,6 +161,7 @@ export function buildPayoutPoolColumns(opts: {
       key: 'status',
       header: t('colStatus'),
       className: 'text-center',
+      mobilePrimary: true,
       render: (row: PayOutOrderCabinetDto) => (
         <PayoutStatusWithHistory row={row} statusHistoryPath={statusHistoryPath} t={t} />
       ),
@@ -224,6 +227,7 @@ export function buildPayoutOrdersColumns(opts: {
     key: 'id',
     header: t('colId'),
     className: 'font-mono tabular-nums text-end',
+    mobilePrimary: true,
     render: (row: PayOutOrderCabinetDto) => <CopyOrderIdCell id={row.id} />,
   };
 
@@ -231,6 +235,7 @@ export function buildPayoutOrdersColumns(opts: {
     key: 'amount',
     header: t('colAmount'),
     className: 'text-end tabular-nums',
+    mobilePrimary: true,
     render: (row: PayOutOrderCabinetDto) => (
       <span className="font-medium">{formatCurrency(row.amount, row.currency)}</span>
     ),
@@ -293,6 +298,7 @@ export function buildPayoutOrdersColumns(opts: {
       key: 'status',
       header: t('colStatus'),
       className: 'text-center',
+      mobilePrimary: true,
       render: (row: PayOutOrderCabinetDto) => (
         <PayoutStatusWithHistory row={row} statusHistoryPath={statusHistoryPath} t={t} />
       ),
