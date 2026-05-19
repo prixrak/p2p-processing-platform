@@ -238,16 +238,8 @@ export class TronDepositPollerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async pollPerAccount(): Promise<void> {
-    const traders = await this.prisma.traderProfile.findMany({
-      where: {
-        usdtTrc20DepositAddress: { not: null },
-        NOT: { usdtTrc20DepositAddress: '' },
-        isActive: true,
-      },
-      select: { id: true, usdtTrc20DepositAddress: true },
-    });
-
-    if (traders.length === 0) return;
+    const addrIndex = await this.buildTronDepositAddressIndex();
+    if (addrIndex.size === 0) return;
 
     const currentBlock = await this.trongrid.getNowBlockNumber();
     if (currentBlock === null) {
@@ -255,48 +247,15 @@ export class TronDepositPollerService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const minConf = Math.max(1, config.tron.minConfirmations);
-    const minAmt = config.tron.minAmountUsdt;
-    const blockCache = new Map<string, number | null>();
-
-    for (const t of traders) {
-      const addr = t.usdtTrc20DepositAddress!.trim();
-      if (!addr) continue;
-      const rows = await this.trongrid.listRecentUsdtTrc20(addr);
-      for (const row of rows) {
-        const txId = row.transaction_id;
-        const to = row.to ?? '';
-        const from = row.from ?? '';
-        if (!txId || to !== addr) continue;
-        if (from === addr) continue;
-
-        const raw = row.value ?? '0';
-        const amountUsdt = Number(raw) / 1e6;
-        if (!Number.isFinite(amountUsdt) || amountUsdt < minAmt) continue;
-
-        let txBlock = blockCache.get(txId);
-        if (txBlock === undefined) {
-          txBlock = await this.trongrid.getTxBlockNumber(txId);
-          blockCache.set(txId, txBlock);
-        }
-        if (txBlock === null) continue;
-
-        const confirmations = currentBlock - txBlock + 1;
-        if (confirmations < 1) continue;
-
-        const result = await this.walletDeposits.observeAndMaybeCredit(
-          t.id,
-          txId,
-          amountUsdt,
-          confirmations,
-          minConf,
-          null,
-          BlockchainNetwork.TRC20,
-          { toAddress: addr, blockNumber: txBlock },
+    for (const [addr, traderId] of addrIndex) {
+      const { credited } = await this.walletDeposits.reconcileTrc20IncomingForAddress(
+        traderId,
+        addr,
+      );
+      if (credited > 0) {
+        this.logger.log(
+          `Tron TOP_UP trader=${traderId} address=${addr} credited_count=${credited}`,
         );
-        if (result.status === 'credited') {
-          this.logger.log(`Tron TOP_UP trader=${t.id} tx=${txId} amount=${amountUsdt}`);
-        }
       }
     }
 

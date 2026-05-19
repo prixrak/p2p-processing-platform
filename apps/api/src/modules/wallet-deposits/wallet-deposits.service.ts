@@ -13,7 +13,8 @@ import {
 import { PrismaService } from '../../config/prisma.service';
 import { BalanceTransactionsService } from '../balance-transactions/balance-transactions.service';
 import type { WalletDepositConfirmDto } from '../admin/dto/wallet-deposit-confirm.dto';
-import { TrongridClient } from './trongrid.client';
+import { config } from '@p2p/config';
+import { TrongridClient, normalizeTronAddress } from './trongrid.client';
 import { WalletDepositEventsService } from './wallet-deposit-events.service';
 import { CurrenciesService } from '../currencies/currencies.service';
 
@@ -45,6 +46,89 @@ export class WalletDepositsService {
     private readonly trongrid: TrongridClient,
     private readonly currencies: CurrenciesService,
   ) {}
+
+  /**
+   * Scan recent TRC-20 transfers to `depositAddress` and credit any incoming USDT not yet in `wallet_deposits`.
+   * Used by the deposit poller and before sweep so funds are never moved to cold storage without TOP_UP.
+   */
+  async reconcileTrc20IncomingForAddress(
+    traderId: string,
+    depositAddress: string,
+  ): Promise<{ credited: number; pending: number }> {
+    const addr = normalizeTronAddress(depositAddress);
+    if (!addr) {
+      return { credited: 0, pending: 0 };
+    }
+
+    const currentBlock = await this.trongrid.getNowBlockNumber();
+    if (currentBlock === null) {
+      return { credited: 0, pending: 0 };
+    }
+
+    const minConf = Math.max(1, config.tron.minConfirmations);
+    const minAmt = config.tron.minAmountUsdt;
+    const rows = await this.trongrid.listRecentUsdtTrc20(addr);
+    const blockCache = new Map<string, number | null>();
+    let credited = 0;
+    let pending = 0;
+
+    for (const row of rows) {
+      const txId = row.transaction_id;
+      if (!txId) continue;
+
+      const toNorm = normalizeTronAddress(row.to ?? '');
+      const fromNorm = normalizeTronAddress(row.from ?? '');
+      if (!toNorm || toNorm !== addr) continue;
+      if (fromNorm === addr) continue;
+
+      const raw = row.value ?? '0';
+      const amountUsdt = Number(raw) / 1e6;
+      if (!Number.isFinite(amountUsdt) || amountUsdt < minAmt) continue;
+
+      let txBlock = blockCache.get(txId);
+      if (txBlock === undefined) {
+        txBlock = await this.trongrid.getTxBlockNumber(txId);
+        blockCache.set(txId, txBlock);
+      }
+      if (txBlock === null) continue;
+
+      const confirmations = currentBlock - txBlock + 1;
+      if (confirmations < 1) continue;
+
+      const result = await this.observeAndMaybeCredit(
+        traderId,
+        txId,
+        amountUsdt,
+        confirmations,
+        minConf,
+        null,
+        BlockchainNetwork.TRC20,
+        { toAddress: addr, blockNumber: txBlock },
+      );
+      if (result.status === 'credited') {
+        credited += 1;
+      } else if (result.status === 'pending') {
+        pending += 1;
+      }
+    }
+
+    return { credited, pending };
+  }
+
+  /** True when this trader still has on-chain deposits observed but not yet credited (TOP_UP). */
+  async hasUncreditedTrc20Deposits(traderId: string, depositAddress: string): Promise<boolean> {
+    const addr = normalizeTronAddress(depositAddress);
+    if (!addr) return false;
+
+    const count = await this.prisma.walletDeposit.count({
+      where: {
+        traderId,
+        status: { in: ['PENDING', 'CONFIRMED'] },
+        OR: [{ toAddress: addr }, { toAddress: null }],
+      },
+    });
+    return count > 0;
+  }
 
   /**
    * If confirmations are below threshold, upsert PENDING. Otherwise credit once (idempotent by tx_hash).

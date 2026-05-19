@@ -172,18 +172,49 @@ export class TrongridClient {
 
   /**
    * Confirmed TRC-20 transfers involving `address` (mainnet USDT contract).
+   * Paginates with TronGrid `fingerprint` up to `maxPages` (default from config).
    */
-  async listRecentUsdtTrc20(address: string): Promise<Trc20Row[]> {
+  async listRecentUsdtTrc20(address: string, maxPages?: number): Promise<Trc20Row[]> {
     const account = address?.trim() ?? '';
     if (!account) {
       return [];
     }
     const contract = config.tron.usdtTrc20Contract;
     const limit = Math.min(200, Math.max(5, config.tron.trc20FetchLimit));
+    const pages = Math.max(1, Math.min(20, maxPages ?? config.tron.trc20FetchMaxPages));
+    const merged: Trc20Row[] = [];
+    const seen = new Set<string>();
+    let fingerprint: string | undefined;
+
+    for (let page = 0; page < pages; page++) {
+      const { rows, nextFingerprint } = await this.fetchUsdtTrc20Page(account, contract, limit, fingerprint);
+      for (const row of rows) {
+        const txId = row.transaction_id ?? '';
+        const key = txId || JSON.stringify(row);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(row);
+      }
+      if (!nextFingerprint) break;
+      fingerprint = nextFingerprint;
+    }
+    return merged;
+  }
+
+  private async fetchUsdtTrc20Page(
+    account: string,
+    contract: string,
+    limit: number,
+    fingerprint?: string,
+  ): Promise<{ rows: Trc20Row[]; nextFingerprint?: string }> {
     const url = new URL(`${config.tron.baseUrl}/v1/accounts/${account}/transactions/trc20`);
     url.searchParams.set('only_confirmed', 'true');
     url.searchParams.set('limit', String(limit));
     url.searchParams.set('contract_address', contract);
+    url.searchParams.set('order_by', 'block_timestamp,desc');
+    if (fingerprint) {
+      url.searchParams.set('fingerprint', fingerprint);
+    }
 
     try {
       const res = await fetch(url.toString(), {
@@ -203,10 +234,15 @@ export class TrongridClient {
           statusText: res.statusText,
           level: 'warn',
         });
-        return [];
+        return { rows: [] };
       }
-      const j = (await res.json()) as { data?: Trc20Row[] };
-      return Array.isArray(j.data) ? j.data : [];
+      const j = (await res.json()) as {
+        data?: Trc20Row[];
+        meta?: { fingerprint?: string; next_fingerprint?: string };
+      };
+      const rows = Array.isArray(j.data) ? j.data : [];
+      const nextFingerprint = j.meta?.fingerprint ?? j.meta?.next_fingerprint;
+      return { rows, nextFingerprint: nextFingerprint || undefined };
     } catch (e) {
       logExternalFailure(this.logger, {
         integration: 'TronGrid',
@@ -218,7 +254,7 @@ export class TrongridClient {
         error: e,
         level: 'warn',
       });
-      return [];
+      return { rows: [] };
     }
   }
 

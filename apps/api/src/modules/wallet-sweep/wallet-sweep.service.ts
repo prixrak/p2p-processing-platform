@@ -7,6 +7,7 @@ import { PrismaService } from '../../config/prisma.service';
 import { createRedisConnectionOptions } from '../../common/redis-connection-options';
 import { HashicorpVaultService } from '../trader-wallets/hashicorp-vault.service';
 import { TrongridClient } from '../wallet-deposits/trongrid.client';
+import { WalletDepositsService } from '../wallet-deposits/wallet-deposits.service';
 import { TronEnergyDelegationService } from './tron-energy-delegation.service';
 import {
   applySignatureHexToUnsigned,
@@ -48,6 +49,7 @@ export class WalletSweepService implements OnModuleInit, OnModuleDestroy {
     private readonly trongrid: TrongridClient,
     private readonly vault: HashicorpVaultService,
     private readonly energyDelegation: TronEnergyDelegationService,
+    private readonly walletDeposits: WalletDepositsService,
   ) {}
 
   onModuleInit(): void {
@@ -162,6 +164,32 @@ export class WalletSweepService implements OnModuleInit, OnModuleDestroy {
     let logId: string | null = null;
     let energyDelegated = false;
     try {
+      const reconcile = await this.walletDeposits.reconcileTrc20IncomingForAddress(
+        traderId,
+        fromAddress,
+      );
+      if (reconcile.credited > 0) {
+        this.logger.log(
+          `Tron sweep: credited ${reconcile.credited} deposit(s) before sweep trader=${traderId}`,
+        );
+      }
+      if (reconcile.pending > 0) {
+        this.logger.warn(
+          `Tron sweep deferred: ${reconcile.pending} deposit(s) awaiting confirmations trader=${traderId}`,
+        );
+        return;
+      }
+      const stillUncredited = await this.walletDeposits.hasUncreditedTrc20Deposits(
+        traderId,
+        fromAddress,
+      );
+      if (stillUncredited) {
+        this.logger.warn(
+          `Tron sweep deferred: uncredited wallet_deposit row(s) trader=${traderId} address=${fromAddress}`,
+        );
+        return;
+      }
+
       const balance = await this.trongrid.getAccountUsdtTrc20Balance(fromAddress);
       if (balance === null) {
         this.logger.warn(`sweep: could not read balance ${fromAddress.slice(0, 6)}…`);

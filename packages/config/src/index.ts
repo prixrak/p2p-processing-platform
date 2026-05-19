@@ -99,8 +99,10 @@ export const config = {
     ),
     minConfirmations: parseInt(optional('TRON_USDT_MIN_CONFIRMATIONS', '19'), 10),
     minAmountUsdt: parseFloat(optional('TRON_DEPOSIT_MIN_USDT', '1')),
-    /** Ignore transfers below this (spam / dust). */
-    trc20FetchLimit: parseInt(optional('TRON_TRC20_FETCH_LIMIT', '30'), 10),
+    /** Per-page limit for `GET .../transactions/trc20` (TronGrid max 200). */
+    trc20FetchLimit: parseInt(optional('TRON_TRC20_FETCH_LIMIT', '200'), 10),
+    /** Pages of TRC-20 history to scan per address per poll / pre-sweep reconcile. */
+    trc20FetchMaxPages: parseInt(optional('TRON_TRC20_FETCH_MAX_PAGES', '5'), 10),
     /** Alert owner (Telegram) if TronGrid poll has not succeeded within this window. */
     staleAlertMinutes: parseInt(optional('TRON_DEPOSIT_STALE_ALERT_MINUTES', '15'), 10),
     lastSuccessRedisKey: optional('TRON_DEPOSIT_LAST_SUCCESS_REDIS_KEY', 'tron:deposit:last_success_ms'),
