@@ -44,7 +44,7 @@ import {
 @ApiTags('Pay-Out (External)')
 @ApiSecurity('hmac-auth')
 @UseGuards(HmacAuthGuard)
-@Throttle({ default: { limit: 30, ttl: 60000 } })
+@Throttle({ default: { limit: 120, ttl: 60000 } })
 @Controller('external/v1/payout')
 export class PayoutController {
   constructor(private readonly payoutService: PayoutService) {}

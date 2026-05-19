@@ -49,7 +49,7 @@ import { SseStream } from '../../common/decorators/sse-stream.decorator';
 @ApiTags('Pay-In (External)')
 @ApiSecurity('hmac-auth')
 @UseGuards(HmacAuthGuard)
-@Throttle({ default: { limit: 30, ttl: 60000 } })
+@Throttle({ default: { limit: 120, ttl: 60000 } })
 @Controller('external/v1/payin')
 export class PayinController {
   constructor(private readonly payinService: PayinService) {}
