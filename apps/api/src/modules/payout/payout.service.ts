@@ -779,7 +779,16 @@ export class PayoutService {
 
     void this.logPayoutStatusChange(orderId, 'PENDING', 'PROCESSING', { actorRole: 'TRADER' });
 
-    return this.toPayOutOrderCabinetDto(await this.loadCabinetOrder(orderId));
+    const full = await this.loadCabinetOrder(orderId);
+    void this.telegram
+      .notifyNewPayout(traderId, {
+        id: full.id,
+        amount: Number(full.amount),
+        currency: full.currency.code,
+      })
+      .catch(() => undefined);
+
+    return this.toPayOutOrderCabinetDto(full);
   }
 
   async specialistTakeFromPool(
@@ -965,6 +974,16 @@ export class PayoutService {
     void this.logPayoutStatusChange(orderId, 'PENDING', 'PROCESSING', { actorRole: 'SUPPORT' });
 
     const full = await this.loadCabinetOrder(orderId);
+    if (dto.traderId) {
+      void this.telegram
+        .notifyNewPayout(dto.traderId, {
+          id: full.id,
+          amount: Number(full.amount),
+          currency: full.currency.code,
+        })
+        .catch(() => undefined);
+    }
+
     return this.toPayOutOrderApiDto(full);
   }
 

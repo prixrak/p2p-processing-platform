@@ -248,6 +248,15 @@ export const config = {
   },
   telegram: {
     botToken: optional('TELEGRAM_BOT_TOKEN', ''),
+    /** Public @username without @ — shown in cabinets and deep links. */
+    botUsername: optional(
+      'TELEGRAM_BOT_USERNAME',
+      optional('NEXT_PUBLIC_TELEGRAM_BOT_USERNAME', ''),
+    ).replace(/^@/, ''),
+    /** Public HTTPS webhook URL (e.g. https://api.example.com/api/telegram/bot/webhook). Empty = long polling. */
+    webhookUrl: optional('TELEGRAM_WEBHOOK_URL', ''),
+    /** Optional secret sent as X-Telegram-Bot-Api-Secret-Token when webhook is configured. */
+    webhookSecret: optional('TELEGRAM_WEBHOOK_SECRET', ''),
   },
   app: {
     port: parseInt(optional('PORT', '3001'), 10),

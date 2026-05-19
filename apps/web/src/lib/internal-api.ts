@@ -214,6 +214,11 @@ export const internalPaths = {
   /** Trader Telegram integration (JWT). */
   telegramSettings: '/api/telegram/settings',
   telegramConnect: '/api/telegram/connect',
+  telegramStream: '/api/telegram/stream',
+  /** Pay-Out specialist Telegram integration (JWT). */
+  payoutTraderTelegramSettings: '/api/telegram/payout-trader/settings',
+  payoutTraderTelegramConnect: '/api/telegram/payout-trader/connect',
+  payoutTraderTelegramStream: '/api/telegram/payout-trader/stream',
 
   /** Appeals — GET returns `{ items, total, page, limit }`. */
   appeals: '/api/appeals',

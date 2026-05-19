@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import {
@@ -23,6 +24,8 @@ import { Toggle } from '@/components/ui/toggle';
 import { api } from '@/lib/api';
 import { internalPaths } from '@/lib/internal-api';
 import { traderKeys } from '@/lib/query-keys';
+import { getTelegramBotUrl } from '@/lib/telegram-bot';
+import { TelegramBotIdentity } from '@/components/telegram-bot-identity';
 import { cn } from '@/lib/utils';
 
 /** Matches Prisma / GET /api/telegram/settings response. */
@@ -37,28 +40,38 @@ interface TelegramSettingsApi {
   notifyTopUpConfirm: boolean;
   notifyPayinCapacityExhausted: boolean;
   isActive: boolean;
+  botUsername: string | null;
 }
 
 export default function TelegramPage() {
   const t = useTranslations('Trader.Telegram');
   const queryClient = useQueryClient();
+  const [awaitingConnect, setAwaitingConnect] = useState(false);
 
   const { data: settings, isLoading } = useQuery({
     queryKey: traderKeys.telegram(),
     queryFn: () => api.get<TelegramSettingsApi>(internalPaths.telegramSettings),
   });
 
+  const isConnected = Boolean(settings?.isActive && settings?.chatId);
+  const isAwaitingConnect = awaitingConnect && !isConnected;
+
+  useEffect(() => {
+    if (isConnected) setAwaitingConnect(false);
+  }, [isConnected]);
+
   const connectMutation = useMutation({
-    mutationFn: () => api.post<{ token: string }>(internalPaths.telegramConnect),
+    mutationFn: () =>
+      api.post<{ token: string; botUsername: string | null }>(internalPaths.telegramConnect),
     onSuccess: (data) => {
-      const bot = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME?.replace(/^@/, '');
-      if (bot && data.token) {
-        window.open(`https://t.me/${bot}?start=${encodeURIComponent(data.token)}`, '_blank');
+      setAwaitingConnect(true);
+      const url = getTelegramBotUrl(data.token, data.botUsername ?? settings?.botUsername);
+      if (url) {
+        window.open(url, '_blank');
       } else if (data.token) {
         void navigator.clipboard.writeText(data.token);
         alert(t('connectTokenAlert'));
       }
-      queryClient.invalidateQueries({ queryKey: traderKeys.telegram() });
     },
   });
 
@@ -99,8 +112,6 @@ export default function TelegramPage() {
     );
   }
 
-  const isConnected = Boolean(settings?.isActive && settings?.chatId);
-
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center gap-3">
@@ -110,6 +121,13 @@ export default function TelegramPage() {
           <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
       </div>
+
+      {isAwaitingConnect && (
+        <div className="flex items-center gap-2 rounded-lg bg-accent-blue/5 border border-accent-blue/20 px-4 py-3">
+          <Loader2 className="h-4 w-4 animate-spin text-accent-blue shrink-0" />
+          <p className="text-sm text-text-secondary">{t('connectingHint')}</p>
+        </div>
+      )}
 
       <Card>
         <div className="flex items-center justify-between">
@@ -130,8 +148,12 @@ export default function TelegramPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-semibold text-text-primary">{t('botCardTitle')}</h2>
-                <Badge variant={isConnected ? 'success' : 'muted'} dot>
-                  {isConnected ? t('badgeConnected') : t('badgeNotConnected')}
+                <Badge variant={isConnected ? 'success' : isAwaitingConnect ? 'warning' : 'muted'} dot>
+                  {isConnected
+                    ? t('badgeConnected')
+                    : isAwaitingConnect
+                      ? t('badgeConnecting')
+                      : t('badgeNotConnected')}
                 </Badge>
               </div>
               {isConnected && settings?.chatId && (
@@ -142,6 +164,12 @@ export default function TelegramPage() {
               {!isConnected && (
                 <p className="text-sm text-text-muted">{t('connectHint')}</p>
               )}
+              <TelegramBotIdentity
+                className="mt-2"
+                label={t('botIdentityLabel')}
+                notConfiguredHint={t('botNotConfigured')}
+                username={settings?.botUsername}
+              />
             </div>
           </div>
 
@@ -157,7 +185,8 @@ export default function TelegramPage() {
           ) : (
             <Button
               onClick={() => connectMutation.mutate()}
-              loading={connectMutation.isPending}
+              loading={connectMutation.isPending || isAwaitingConnect}
+              disabled={isAwaitingConnect}
             >
               <Link2 className="h-4 w-4" />
               {t('connectBot')}

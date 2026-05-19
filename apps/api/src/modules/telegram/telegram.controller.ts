@@ -5,21 +5,28 @@ import {
   Post,
   Body,
   UseGuards,
+  MessageEvent,
 } from '@nestjs/common';
+import { Observable } from 'rxjs';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { TelegramService } from './telegram.service';
+import { TelegramRealtimeService } from './telegram-realtime.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '@p2p/shared';
+import { SseStream } from '../../common/decorators/sse-stream.decorator';
 
 @ApiTags('Telegram')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('telegram')
 export class TelegramController {
-  constructor(private readonly telegramService: TelegramService) {}
+  constructor(
+    private readonly telegramService: TelegramService,
+    private readonly telegramRealtime: TelegramRealtimeService,
+  ) {}
 
   @Get('settings')
   @Roles(UserRole.TRADER)
@@ -51,8 +58,15 @@ export class TelegramController {
   @Roles(UserRole.TRADER)
   @ApiOperation({ summary: 'Generate a connect token for linking Telegram' })
   async connect(@CurrentUser('traderId') traderId: string) {
-    const token = this.telegramService.generateConnectToken(traderId);
-    return { token };
+    const token = await this.telegramService.generateConnectToken(traderId);
+    return this.telegramService.createConnectResponse(token);
+  }
+
+  @SseStream('stream')
+  @Roles(UserRole.TRADER)
+  @ApiOperation({ summary: 'SSE stream for Telegram link events (trader cabinet)' })
+  streamForTrader(@CurrentUser('traderId') traderId: string): Observable<MessageEvent> {
+    return this.telegramRealtime.streamForTrader(traderId);
   }
 
   @Get('payout-trader/settings')
@@ -81,13 +95,16 @@ export class TelegramController {
   @Roles(UserRole.PAYOUT_TRADER)
   @ApiOperation({ summary: 'Generate a connect token (Pay-Out specialist Telegram)' })
   async connectPayoutTrader(@CurrentUser('payoutTraderId') payoutTraderId: string) {
-    const token = this.telegramService.generatePayoutTraderConnectToken(payoutTraderId);
-    return { token };
+    const token = await this.telegramService.generatePayoutTraderConnectToken(payoutTraderId);
+    return this.telegramService.createConnectResponse(token);
   }
 
-  @Post('bot/connect')
-  @ApiOperation({ summary: 'Telegram bot callback to link a chat via token' })
-  async botConnect(@Body() body: { token: string; chatId: string }) {
-    return this.telegramService.handleBotConnect(body.token, body.chatId);
+  @SseStream('payout-trader/stream')
+  @Roles(UserRole.PAYOUT_TRADER)
+  @ApiOperation({ summary: 'SSE stream for Telegram link events (Pay-Out specialist)' })
+  streamForPayoutTrader(
+    @CurrentUser('payoutTraderId') payoutTraderId: string,
+  ): Observable<MessageEvent> {
+    return this.telegramRealtime.streamForPayoutTrader(payoutTraderId);
   }
 }

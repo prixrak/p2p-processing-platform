@@ -908,7 +908,7 @@ export class PayinService {
     const prevReceivedForAppeal =
       order.receivedFiatAmount != null ? Number(order.receivedFiatAmount) : 0;
 
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const { updated, appealId } = await this.prisma.$transaction(async (tx) => {
       const appeal = await tx.appeal.create({
         data: {
           payinOrderId: order.id,
@@ -947,7 +947,7 @@ export class PayinService {
 
       await this.createPayinWebhookEntry(tx, result);
 
-      return result;
+      return { updated: result, appealId: appeal.id };
     });
 
     this.emitPayinOrderRealtime({
@@ -956,6 +956,16 @@ export class PayinService {
       merchantId: updated.merchantId,
       status: updated.status as PayInOrderStatus,
     });
+
+    if (updated.traderId) {
+      void this.telegram
+        .notifyAppeal(updated.traderId, {
+          id: appealId,
+          orderId: order.id,
+          paidAmount: dto.paid_amount,
+        })
+        .catch(() => undefined);
+    }
 
     void this.logPayinStatusChange(order.id, fromAppealStatus, updated.status, {
       actorRole: 'MERCHANT',

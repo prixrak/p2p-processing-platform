@@ -305,5 +305,6 @@ export const specialistCabinetKeys = {
   summary: () => [...payoutTraderRoot, 'summary'] as const,
   settlements: (page: number) => [...payoutTraderRoot, 'settlements', page] as const,
   notifications: () => [...payoutTraderRoot, 'notifications'] as const,
+  telegram: () => [...payoutTraderRoot, 'telegram'] as const,
   statistics: (params: unknown) => [...payoutTraderRoot, 'statistics', params] as const,
 };

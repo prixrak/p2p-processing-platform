@@ -237,7 +237,9 @@ All variables are in `.env.example`. Key ones:
 | `JWT_SECRET`          | `dev-jwt-secret-change-me...`                       | **Change in production!**                       |
 | `S3_ENDPOINT`         | `http://localhost:9000`                             | MinIO locally, remove for AWS S3                |
 | `S3_ACCESS_KEY_ID`    | `minioadmin`                                        | MinIO default / AWS IAM key                     |
-| `TELEGRAM_BOT_TOKEN`  | (empty)                                             | Optional, for notifications                     |
+| `TELEGRAM_BOT_TOKEN`  | (empty)                                             | Optional; enables trader/specialist notifications |
+| `TELEGRAM_WEBHOOK_URL`| (empty)                                             | Production webhook; empty = long polling (dev)    |
+| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` | (empty)                         | Web: Connect Bot deep link (`apps/web/.env.local`) |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:3001`                             | API URL for frontend (in `apps/web/.env.local`) |
 
 ---

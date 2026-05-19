@@ -3,8 +3,10 @@ import type { QueryClient } from '@tanstack/react-query';
 import {
   PAYIN_ORDER_REALTIME_EVENT_TYPE,
   PAYOUT_ORDER_REALTIME_EVENT_TYPE,
+  TELEGRAM_LINKED_REALTIME_EVENT_TYPE,
   type PayinOrderRealtimeEvent,
   type PayOutOrderRealtimeEvent,
+  type TelegramLinkedRealtimeEvent,
 } from '@p2p/shared';
 import { getToken } from '@/lib/auth';
 import { internalPaths } from '@/lib/internal-api';
@@ -13,6 +15,7 @@ import {
   merchantKeys,
   ownerKeys,
   payoutCabinetKeys,
+  specialistCabinetKeys,
   supportKeys,
   type PayoutCabinetScope,
   traderKeys,
@@ -289,6 +292,58 @@ export function usePayOutTraderRealtime(queryClient: QueryClient): void {
 
 export function usePayOutSpecialistRealtime(queryClient: QueryClient): void {
   usePayoutCabinetRealtime(queryClient, 'specialist');
+}
+
+/** Trader or Pay-Out specialist cabinet: push when Telegram bot linking completes. */
+export function useTelegramCabinetRealtime(
+  queryClient: QueryClient,
+  variant: 'trader' | 'specialist',
+): void {
+  const streamPath =
+    variant === 'specialist'
+      ? internalPaths.payoutTraderTelegramStream
+      : internalPaths.telegramStream;
+  const queryKey =
+    variant === 'specialist' ? specialistCabinetKeys.telegram() : traderKeys.telegram();
+
+  const applyLinked = (evt: TelegramLinkedRealtimeEvent) => {
+    queryClient.setQueryData(queryKey, (current: Record<string, unknown> | undefined) =>
+      current
+        ? {
+            ...current,
+            chatId: evt.chatId,
+            isActive: evt.isActive,
+          }
+        : current,
+    );
+    void queryClient.invalidateQueries({ queryKey });
+  };
+
+  useSseSubscription({
+    path: streamPath,
+    requireAuth: true,
+    onVisibleAgain: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
+    onMessage: (raw) => {
+      try {
+        const evt = JSON.parse(raw) as TelegramLinkedRealtimeEvent;
+        if (evt.type === TELEGRAM_LINKED_REALTIME_EVENT_TYPE) {
+          applyLinked(evt);
+        }
+      } catch {
+        /* malformed line */
+      }
+    },
+  });
+}
+
+export function useTraderTelegramRealtime(queryClient: QueryClient): void {
+  useTelegramCabinetRealtime(queryClient, 'trader');
+}
+
+export function usePayoutTraderTelegramRealtime(queryClient: QueryClient): void {
+  useTelegramCabinetRealtime(queryClient, 'specialist');
 }
 
 /**

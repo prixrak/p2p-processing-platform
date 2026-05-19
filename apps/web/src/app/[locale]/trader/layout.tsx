@@ -20,6 +20,7 @@ import { DashboardShell, type NavItem } from '@/components/dashboard-shell';
 import {
   usePayOutTraderRealtime,
   usePayinTraderRealtime,
+  useTraderTelegramRealtime,
   useTraderWalletDepositRealtime,
 } from '@/lib/payin-realtime';
 
@@ -46,6 +47,7 @@ export default function TraderLayout({ children }: { children: React.ReactNode }
   usePayinTraderRealtime(queryClient);
   usePayOutTraderRealtime(queryClient);
   useTraderWalletDepositRealtime(queryClient);
+  useTraderTelegramRealtime(queryClient);
 
   return (
     <AuthGuard allowedRoles={TRADER_ALLOWED}>

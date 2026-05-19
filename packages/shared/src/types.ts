@@ -157,6 +157,15 @@ export interface PayinOrderRealtimeEvent {
   merchantId: string;
 }
 
+export const TELEGRAM_LINKED_REALTIME_EVENT_TYPE = 'telegram_linked' as const;
+
+/** Push to cabinet SSE when a Telegram chat is linked via the bot. */
+export interface TelegramLinkedRealtimeEvent {
+  type: typeof TELEGRAM_LINKED_REALTIME_EVENT_TYPE;
+  chatId: string;
+  isActive: boolean;
+}
+
 export interface H2HOrderResponseDto {
   order: OrderDto;
 }

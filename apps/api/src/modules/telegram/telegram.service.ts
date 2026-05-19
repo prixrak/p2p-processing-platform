@@ -13,14 +13,16 @@ import {
   logExternalFailure,
   logHttpResponseFailure,
 } from '../../common/utils/external-error-log';
+import { TelegramRealtimeService } from './telegram-realtime.service';
 
 type ConnectTokenEntry = {
   traderId?: string;
   payoutTraderId?: string;
-  expiresAt: number;
 };
 
 const HANDBOOK_ALERT_THROTTLE_SEC = 8 * 3600;
+const CONNECT_TOKEN_TTL_SEC = 10 * 60;
+const CONNECT_TOKEN_KEY_PREFIX = 'p2p:tg:connect:';
 
 @Injectable()
 export class TelegramService {
@@ -28,8 +30,13 @@ export class TelegramService {
   private readonly botToken: string;
   private readonly apiBase = 'https://api.telegram.org';
 
-  /** Short-lived connect tokens for traders or Pay-Out specialists. */
-  private readonly connectTokens = new Map<string, ConnectTokenEntry>();
+  /** Short-lived connect tokens for traders or Pay-Out specialists (Redis; in-memory fallback). */
+  private connectRedis: Redis | null = null;
+  private connectRedisInitAttempted = false;
+  private readonly memConnectTokens = new Map<
+    string,
+    ConnectTokenEntry & { expiresAt: number }
+  >();
 
   /** Dedup low-capacity / exhausted alerts (Redis preferred; in-memory fallback for dev / Redis outage). */
   private redis: Redis | null = null;
@@ -40,6 +47,7 @@ export class TelegramService {
     private readonly prisma: PrismaService,
     private readonly platformSettings: PlatformSettingsService,
     private readonly currencies: CurrenciesService,
+    private readonly telegramRealtime: TelegramRealtimeService,
   ) {
     this.botToken = config.telegram.botToken;
   }
@@ -95,13 +103,13 @@ export class TelegramService {
       where: { traderId },
     });
 
-    if (!settings) {
-      return this.prisma.telegramSettings.create({
+    const row =
+      settings ??
+      (await this.prisma.telegramSettings.create({
         data: { traderId },
-      });
-    }
+      }));
 
-    return settings;
+    return this.withBotUsername(row);
   }
 
   async updateSettings(
@@ -116,7 +124,7 @@ export class TelegramService {
       isActive?: boolean;
     },
   ) {
-    return this.prisma.telegramSettings.upsert({
+    const row = await this.prisma.telegramSettings.upsert({
       where: { traderId },
       update: dto,
       create: {
@@ -124,6 +132,7 @@ export class TelegramService {
         ...dto,
       },
     });
+    return this.withBotUsername(row);
   }
 
   async getPayoutTraderSettings(payoutTraderId: string) {
@@ -131,13 +140,13 @@ export class TelegramService {
       where: { payoutTraderId },
     });
 
-    if (!settings) {
-      return this.prisma.payoutTraderTelegramSettings.create({
+    const row =
+      settings ??
+      (await this.prisma.payoutTraderTelegramSettings.create({
         data: { payoutTraderId },
-      });
-    }
+      }));
 
-    return settings;
+    return this.withBotUsername(row);
   }
 
   async updatePayoutTraderSettings(
@@ -148,7 +157,7 @@ export class TelegramService {
       isActive?: boolean;
     },
   ) {
-    return this.prisma.payoutTraderTelegramSettings.upsert({
+    const row = await this.prisma.payoutTraderTelegramSettings.upsert({
       where: { payoutTraderId },
       update: dto,
       create: {
@@ -156,44 +165,121 @@ export class TelegramService {
         ...dto,
       },
     });
+    return this.withBotUsername(row);
   }
 
-  generateConnectToken(traderId: string): string {
+  getPublicBotUsername(): string | null {
+    const username = config.telegram.botUsername.trim();
+    return username || null;
+  }
+
+  createConnectResponse(token: string) {
+    return {
+      token,
+      botUsername: this.getPublicBotUsername(),
+    };
+  }
+
+  private withBotUsername<T extends object>(row: T) {
+    return {
+      ...row,
+      botUsername: this.getPublicBotUsername(),
+    };
+  }
+
+  async generateConnectToken(traderId: string): Promise<string> {
     return this.storeConnectToken({ traderId });
   }
 
-  generatePayoutTraderConnectToken(payoutTraderId: string): string {
+  async generatePayoutTraderConnectToken(payoutTraderId: string): Promise<string> {
     return this.storeConnectToken({ payoutTraderId });
   }
 
-  private storeConnectToken(entry: Omit<ConnectTokenEntry, 'expiresAt'>): string {
+  private getConnectRedis(): Redis | null {
+    if (this.connectRedisInitAttempted) return this.connectRedis;
+    this.connectRedisInitAttempted = true;
+    try {
+      const r = new Redis({
+        host: config.redis.host,
+        port: config.redis.port,
+        maxRetriesPerRequest: 2,
+        lazyConnect: true,
+        enableOfflineQueue: false,
+      });
+      this.connectRedis = r;
+    } catch {
+      this.connectRedis = null;
+    }
+    return this.connectRedis;
+  }
+
+  private async storeConnectToken(entry: ConnectTokenEntry): Promise<string> {
     const token = randomBytes(32).toString('hex');
-    const expiresAt = Date.now() + 10 * 60 * 1000;
-
-    this.connectTokens.set(token, { ...entry, expiresAt });
-
-    for (const [key, val] of this.connectTokens) {
-      if (val.expiresAt < Date.now()) {
-        this.connectTokens.delete(key);
+    const payload = JSON.stringify(entry);
+    const r = this.getConnectRedis();
+    if (r) {
+      try {
+        await r.set(
+          `${CONNECT_TOKEN_KEY_PREFIX}${token}`,
+          payload,
+          'EX',
+          CONNECT_TOKEN_TTL_SEC,
+        );
+        return token;
+      } catch {
+        // fall through to memory
       }
     }
 
+    this.memConnectTokens.set(token, {
+      ...entry,
+      expiresAt: Date.now() + CONNECT_TOKEN_TTL_SEC * 1000,
+    });
+    this.pruneMemConnectTokens();
     return token;
   }
 
+  private pruneMemConnectTokens(): void {
+    const now = Date.now();
+    for (const [key, val] of this.memConnectTokens) {
+      if (val.expiresAt < now) {
+        this.memConnectTokens.delete(key);
+      }
+    }
+  }
+
+  private async consumeConnectToken(
+    token: string,
+  ): Promise<ConnectTokenEntry | null> {
+    const r = this.getConnectRedis();
+    if (r) {
+      try {
+        const key = `${CONNECT_TOKEN_KEY_PREFIX}${token}`;
+        const raw = await r.get(key);
+        if (!raw) return null;
+        await r.del(key);
+        return JSON.parse(raw) as ConnectTokenEntry;
+      } catch {
+        // fall through to memory
+      }
+    }
+
+    const entry = this.memConnectTokens.get(token);
+    if (!entry || entry.expiresAt < Date.now()) {
+      this.memConnectTokens.delete(token);
+      return null;
+    }
+    this.memConnectTokens.delete(token);
+    const { expiresAt: _expiresAt, ...rest } = entry;
+    return rest;
+  }
+
   async handleBotConnect(token: string, chatId: string) {
-    const entry = this.connectTokens.get(token);
+    const entry = await this.consumeConnectToken(token);
 
     if (!entry) {
       throw new BadRequestException('Invalid or expired connect token');
     }
-
-    if (entry.expiresAt < Date.now()) {
-      this.connectTokens.delete(token);
-      throw new BadRequestException('Connect token has expired');
-    }
-
-    this.connectTokens.delete(token);
 
     if (entry.traderId) {
       const settings = await this.prisma.telegramSettings.upsert({
@@ -209,6 +295,11 @@ export class TelegramService {
       this.logger.log(
         `Telegram linked for trader ${entry.traderId}, chatId ${chatId}`,
       );
+
+      void this.telegramRealtime.publishTraderLinked(entry.traderId, {
+        chatId,
+        isActive: true,
+      });
 
       return settings;
     }
@@ -227,6 +318,11 @@ export class TelegramService {
       this.logger.log(
         `Telegram linked for Pay-Out specialist ${entry.payoutTraderId}, chatId ${chatId}`,
       );
+
+      void this.telegramRealtime.publishPayoutTraderLinked(entry.payoutTraderId, {
+        chatId,
+        isActive: true,
+      });
 
       return settings;
     }
@@ -353,8 +449,8 @@ export class TelegramService {
         port: config.redis.port,
         maxRetriesPerRequest: 2,
         lazyConnect: true,
+        enableOfflineQueue: false,
       });
-      void r.connect().catch(() => undefined);
       this.redis = r;
     } catch {
       this.redis = null;
