@@ -41,6 +41,13 @@
       "ariaOnline": "Online — click to pause new orders",
       "ariaOffline": "Offline — click to receive new orders"
     },
+    "HeaderBalance": {
+      "availableShort": "Avail.",
+      "reservedShort": "Locked",
+      "tooltip": "{available} USDT available for new Pay-In after reservations; {reserved} USDT reserved by open Pay-In orders. Open Balance page.",
+      "tooltipLoading": "Loading USDT capacity…",
+      "ariaLabel": "USDT capacity: {available} available, {reserved} reserved in open Pay-In"
+    },
     "HeaderCapacity": {
       "exhaustedLabel": "Pay-In blocked — USDT capacity exhausted",
       "exhaustedTooltip": "New Pay-In orders cannot be assigned: remaining headroom is {available} USDT ({pending} USDT reserved for open Pay-In). Top up on the Balance page to resume.",

@@ -13,6 +13,7 @@ import { payoutCabinetKeys, traderKeys } from '@/lib/query-keys';
 import { Tooltip } from '@/components/ui/tooltip';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { TraderLocaleSwitch } from '@/components/trader-locale-switch';
+import { TraderHeaderBalance } from '@/components/trader-header-balance';
 import { TraderHeaderCapacityAlerts } from '@/components/trader-header-capacity-alerts';
 import { isNavHrefActive } from '@/lib/nav-active';
 import type { PayInListApiResponse } from '@/features/trader-payin/payin-types';
@@ -368,16 +369,23 @@ export function DashboardShell({ children, navItems, role }: DashboardShellProps
           </button>
           {role === 'trader' || role === 'payout-trader' ? (
             <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
-              {role === 'trader' ? <TraderHeaderCapacityAlerts /> : null}
+              {role === 'trader' ? (
+                <>
+                  <TraderHeaderBalance />
+                  <TraderHeaderCapacityAlerts />
+                </>
+              ) : null}
             </div>
           ) : (
             <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary capitalize">
               {`${role} Panel`}
             </span>
           )}
-          <ThemeToggle />
-          {role === 'trader' && <TraderLocaleSwitch />}
-          {role === 'trader' && <TraderHeaderOrderStatus />}
+          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+            <ThemeToggle />
+            {role === 'trader' && <TraderLocaleSwitch />}
+            {role === 'trader' && <TraderHeaderOrderStatus />}
+          </div>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-surface-primary">
           <div className="mx-auto max-w-7xl p-6">{children}</div>

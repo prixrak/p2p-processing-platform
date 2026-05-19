@@ -41,6 +41,13 @@
       "ariaOnline": "Онлайн — натисніть, щоб призупинити нові заявки",
       "ariaOffline": "Офлайн — натисніть, щоб приймати нові заявки"
     },
+    "HeaderBalance": {
+      "availableShort": "Дост.",
+      "reservedShort": "Забито",
+      "tooltip": "{available} USDT доступно для нових Pay-In після резервів; {reserved} USDT зарезервовано відкритими Pay-In. Відкрити сторінку «Баланс».",
+      "tooltipLoading": "Завантаження місткості USDT…",
+      "ariaLabel": "Місткість USDT: доступно {available}, зарезервовано {reserved} у відкритих Pay-In"
+    },
     "HeaderCapacity": {
       "exhaustedLabel": "Pay-In заблоковано — ліміт USDT вичерпано",
       "exhaustedTooltip": "Нові Pay-In не можуть бути призначені: залишок місткості {available} USDT ({pending} USDT зарезервовано під відкриті Pay-In). Поповніть баланс на сторінці «Баланс».",
