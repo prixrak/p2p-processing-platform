@@ -28,6 +28,7 @@ export const AuditAction = {
   CREATE_USER: 'CREATE_USER',
   UPDATE_USER: 'UPDATE_USER',
   DEACTIVATE_USER: 'DEACTIVATE_USER',
+  DELETE_USER: 'DELETE_USER',
   LOCK: 'LOCK',
   UNLOCK: 'UNLOCK',
   /** Cascade idle anchor reset because requisite min/max nominal range changed (TZ observability). */

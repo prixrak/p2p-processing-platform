@@ -160,6 +160,35 @@ export class UsersService {
    * inactive user → lock; reactivation (was inactive, now active) → unlock.
    * Does not clear a manual lock on an already-active merchant (e.g. email-only PATCH).
    */
+  /** Side effects when a cabinet account is disabled (soft delete / deactivate). */
+  private async applyUserDeactivationSideEffects(
+    userId: string,
+    role: UserRole,
+    previousIsActive: boolean,
+  ) {
+    if (role === UserRole.TRADER) {
+      const profile = await this.prisma.traderProfile.findUnique({
+        where: { userId },
+        select: { id: true, isActive: true },
+      });
+      if (profile?.isActive) {
+        await this.tradersService.deactivate(profile.id);
+      }
+    }
+
+    if (role === UserRole.PAYOUT_TRADER) {
+      const result = await this.prisma.payoutTraderProfile.updateMany({
+        where: { userId, isActive: true },
+        data: { isActive: false },
+      });
+      if (result.count > 0) {
+        this.logger.warn(`Pay-Out specialist profile for user ${userId} deactivated`);
+      }
+    }
+
+    await this.syncMerchantLockWithLinkedUser(userId, role, false, previousIsActive);
+  }
+
   private async syncMerchantLockWithLinkedUser(
     userId: string,
     role: UserRole,
@@ -501,15 +530,150 @@ export class UsersService {
       }
     }
 
-    await this.syncMerchantLockWithLinkedUser(
-      id,
-      updated.role as UserRole,
-      updated.isActive,
-      existing.isActive,
-    );
+    if (data.isActive === false && existing.isActive) {
+      await this.applyUserDeactivationSideEffects(id, updated.role as UserRole, existing.isActive);
+    } else {
+      await this.syncMerchantLockWithLinkedUser(
+        id,
+        updated.role as UserRole,
+        updated.isActive,
+        existing.isActive,
+      );
+    }
 
     this.logger.log(`User ${id} updated`);
     return updated;
+  }
+
+  private async collectPermanentDeleteBlockers(userId: string): Promise<string[]> {
+    const blockers: string[] = [];
+
+    const merchant = await this.prisma.merchant.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (merchant) {
+      const [payinCount, payoutCount, settlementCount] = await Promise.all([
+        this.prisma.payinOrder.count({ where: { merchantId: merchant.id } }),
+        this.prisma.payoutOrder.count({ where: { merchantId: merchant.id } }),
+        this.prisma.settlement.count({ where: { merchantId: merchant.id } }),
+      ]);
+      if (payinCount > 0) {
+        blockers.push(`${payinCount} Pay-In order(s) linked to this merchant`);
+      }
+      if (payoutCount > 0) {
+        blockers.push(`${payoutCount} Pay-Out order(s) linked to this merchant`);
+      }
+      if (settlementCount > 0) {
+        blockers.push(`${settlementCount} settlement(s) linked to this merchant`);
+      }
+    }
+
+    const traderProfile = await this.prisma.traderProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (traderProfile) {
+      const [payinCount, payoutCount, settlementCount] = await Promise.all([
+        this.prisma.payinOrder.count({ where: { traderId: traderProfile.id } }),
+        this.prisma.payoutOrder.count({ where: { traderId: traderProfile.id } }),
+        this.prisma.settlement.count({ where: { traderId: traderProfile.id } }),
+      ]);
+      if (payinCount > 0) {
+        blockers.push(`${payinCount} Pay-In order(s) assigned to this trader`);
+      }
+      if (payoutCount > 0) {
+        blockers.push(`${payoutCount} Pay-Out order(s) assigned to this trader`);
+      }
+      if (settlementCount > 0) {
+        blockers.push(`${settlementCount} settlement(s) linked to this trader`);
+      }
+    }
+
+    const payoutTraderProfile = await this.prisma.payoutTraderProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (payoutTraderProfile) {
+      const [payoutCount, settlementCount] = await Promise.all([
+        this.prisma.payoutOrder.count({ where: { payoutTraderId: payoutTraderProfile.id } }),
+        this.prisma.settlement.count({ where: { payoutTraderId: payoutTraderProfile.id } }),
+      ]);
+      if (payoutCount > 0) {
+        blockers.push(`${payoutCount} Pay-Out order(s) assigned to this specialist`);
+      }
+      if (settlementCount > 0) {
+        blockers.push(`${settlementCount} settlement(s) linked to this specialist`);
+      }
+    }
+
+    const referralProfile = await this.prisma.referralProfile.findUnique({
+      where: { userId },
+      select: { id: true, balance: true },
+    });
+    if (referralProfile) {
+      if (Number(referralProfile.balance) !== 0) {
+        blockers.push('Referral balance is not zero');
+      }
+    }
+
+    return blockers;
+  }
+
+  /**
+   * Hard-delete an inactive cabinet account. Owner-only. Blocked when orders or settlements still reference the profile.
+   */
+  async purge(id: string) {
+    const existing = await this.findById(id);
+    if (existing.role === UserRole.OWNER) {
+      throw new ForbiddenException('Owner accounts cannot be permanently deleted');
+    }
+    if (existing.isActive) {
+      throw new ConflictException('Deactivate the cabinet before permanent deletion');
+    }
+
+    const blockers = await this.collectPermanentDeleteBlockers(id);
+    if (blockers.length > 0) {
+      throw new ConflictException(
+        `Cabinet cannot be permanently deleted: ${blockers.join('; ')}`,
+      );
+    }
+
+    const referralProfile = await this.prisma.referralProfile.findUnique({
+      where: { userId: id },
+      select: { id: true },
+    });
+
+    await this.prisma.$transaction(async (tx) => {
+      if (referralProfile) {
+        await tx.user.updateMany({
+          where: { referredById: referralProfile.id },
+          data: { referredById: null },
+        });
+      }
+
+      await tx.auditLog.updateMany({
+        where: { actorId: id },
+        data: { actorId: null },
+      });
+      await tx.file.updateMany({
+        where: { uploadedBy: id },
+        data: { uploadedBy: null },
+      });
+      await tx.balanceTransaction.updateMany({
+        where: { createdById: id },
+        data: { createdById: null },
+      });
+      await tx.settlement.updateMany({
+        where: { adminId: id },
+        data: { adminId: null },
+      });
+
+      await tx.user.delete({ where: { id } });
+    });
+
+    this.logger.warn(`User ${id} permanently deleted`);
+    return { id, deleted: true };
   }
 
   async deactivate(id: string) {
@@ -524,22 +688,9 @@ export class UsersService {
       select: USER_SELECT,
     });
 
-    if (user.role === UserRole.TRADER) {
-      const profile = await this.prisma.traderProfile.findUnique({
-        where: { userId: id },
-        select: { id: true, isActive: true },
-      });
-      if (profile?.isActive) {
-        await this.tradersService.deactivate(profile.id);
-      }
+    if (existing.isActive) {
+      await this.applyUserDeactivationSideEffects(id, user.role as UserRole, existing.isActive);
     }
-
-    await this.syncMerchantLockWithLinkedUser(
-      id,
-      user.role as UserRole,
-      user.isActive,
-      existing.isActive,
-    );
 
     this.logger.log(`User ${id} deactivated`);
     return user;

@@ -89,6 +89,18 @@ export class UsersController {
     });
   }
 
+  @Delete(':id/permanent')
+  @Roles(UserRole.OWNER)
+  @ApiOperation({
+    summary: 'Permanently delete an inactive cabinet (owner only)',
+    description:
+      'Hard-deletes the user row and cascaded profiles when no orders or settlements block removal. Cabinet must be deactivated first.',
+  })
+  @Audited(AuditAction.DELETE_USER, AuditEntityType.User)
+  async purge(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usersService.purge(id);
+  }
+
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Deactivate user (soft delete)' })

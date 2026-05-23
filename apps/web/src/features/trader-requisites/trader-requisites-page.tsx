@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -13,6 +13,7 @@ import {
   Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ListPageRefreshButton } from '@/components/ui/list-page-tools';
 import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -42,15 +43,20 @@ import {
   TraderRequisiteHistoryModal,
 } from './requisite-modals';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { PaginationControls } from '@/components/ui/pagination-controls';
 import { Tabs } from '@/components/ui/tabs';
+import { DEFAULT_LIST_PAGE_SIZE, type ListPageSize } from '@/lib/list-pagination';
 
 export function TraderRequisitesPage() {
   const t = useTranslations('Trader.Requisites');
+  const tCommon = useTranslations('Trader.Common');
   const queryClient = useQueryClient();
   const traderLabel = getUserFromToken()?.email?.split('@')[0] ?? 'Trader';
 
   const [archivedTab, setArchivedTab] = useState(false);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<ListPageSize>(DEFAULT_LIST_PAGE_SIZE);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const [showAddGroupModal, setShowAddGroupModal] = useState(false);
@@ -95,7 +101,7 @@ export function TraderRequisitesPage() {
 
   const groupsQueryKey = traderKeys.requisiteGroups(archivedTab);
 
-  const { data: groups = [], isLoading } = useQuery({
+  const { data: groups = [], isLoading, isFetching: groupsFetching } = useQuery({
     queryKey: groupsQueryKey,
     queryFn: () =>
       api.get<RequisiteGroupApi[]>(
@@ -103,7 +109,7 @@ export function TraderRequisitesPage() {
       ),
   });
 
-  const { data: assignRangesData } = useQuery({
+  const { data: assignRangesData, isFetching: assignRangesFetching } = useQuery({
     queryKey: traderKeys.payinAssignRanges,
     queryFn: () =>
       api.get<{ requisites: PayinAssignRangeRow[] }>(internalPaths.traderDashboardPayinAssignRanges),
@@ -148,6 +154,22 @@ export function TraderRequisitesPage() {
       );
     });
   }, [groups, search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, archivedTab, pageSize]);
+
+  const totalGroups = filteredGroups.length;
+  const totalPages = Math.max(1, Math.ceil(totalGroups / pageSize));
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const paginatedGroups = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredGroups.slice(start, start + pageSize);
+  }, [filteredGroups, page, pageSize]);
 
   const groupCreatePmOptions = useMemo(() => {
     return paymentMethodsForPayinCurrency(paymentMethods, groupForm.currency).map((p) => ({
@@ -344,6 +366,10 @@ export function TraderRequisitesPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+          <ListPageRefreshButton
+            isRefreshing={groupsFetching || (!archivedTab && assignRangesFetching)}
+            onRefresh={invalidateGroups}
+          />
           <Tabs
             tabs={[
               { key: 'current', label: t('tabCurrent') },
@@ -393,7 +419,7 @@ export function TraderRequisitesPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {filteredGroups.map((g) => {
+          {paginatedGroups.map((g) => {
             const isOpen = expanded[g.id] ?? true;
             const created = formatDateTime(new Date(g.createdAt));
             return (
@@ -536,6 +562,20 @@ export function TraderRequisitesPage() {
           })}
         </div>
       )}
+
+      {!isLoading && filteredGroups.length > 0 ? (
+        <PaginationControls
+          page={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          totalItems={totalGroups}
+          itemLabel={t('itemLabel')}
+          variant="minimal"
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+          rowsPerPageLabel={tCommon('rowsPerPage')}
+        />
+      ) : null}
 
       <TraderAddGroupModal
         open={showAddGroupModal}

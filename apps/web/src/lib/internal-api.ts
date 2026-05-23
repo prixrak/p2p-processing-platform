@@ -166,6 +166,7 @@ export const internalPaths = {
 
   users: '/api/users',
   user: (id: string) => `/api/users/${id}`,
+  userPermanentDelete: (id: string) => `/api/users/${id}/permanent`,
 
   banksAdmin: '/api/banks/admin',
   /** Multipart field name: `file`. Returns `{ id, ... }`. */
@@ -202,6 +203,10 @@ export const internalPaths = {
   merchantDirections: (merchantId: string) => `/api/merchants/${merchantId}/directions`,
   merchantDirection: (merchantId: string, id: string) => `/api/merchants/${merchantId}/directions/${id}`,
   merchantDirectionTiers: (merchantId: string, id: string) => `/api/merchants/${merchantId}/directions/${id}/tiers`,
+  merchantDirectionBlockedAmounts: (merchantId: string, directionId: string) =>
+    `/api/merchants/${merchantId}/directions/${directionId}/blocked-amounts`,
+  merchantDirectionBlockedAmount: (merchantId: string, directionId: string, blockedAmountId: string) =>
+    `/api/merchants/${merchantId}/directions/${directionId}/blocked-amounts/${blockedAmountId}`,
 
   // Referral management (staff: admin & owner) and REFERRAL cabinet
   referrals: '/api/referrals',

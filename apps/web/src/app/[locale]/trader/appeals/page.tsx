@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDebouncedTextFilter } from '@/lib/hooks/use-debounced-value';
 import { FilterInput } from '@/components/ui/filters';
+import { DEFAULT_LIST_PAGE_SIZE, type ListPageSize } from '@/lib/list-pagination';
 import { listSearchForQuery } from '@/lib/list-search';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { AlertTriangle, ExternalLink, Eye, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ListPageRefreshButton } from '@/components/ui/list-page-tools';
 import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Table } from '@/components/ui/table';
@@ -41,7 +43,7 @@ const appealStatusVariant: Record<AppealStatus, 'warning' | 'success' | 'danger'
   [AppealStatus.REJECTED]: 'danger',
 };
 
-const APPEALS_PAGE_SIZE = 20;
+const APPEALS_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
 function appealStatusLabel(
   t: (key: 'appealStatuses.OPEN' | 'appealStatuses.RESOLVED' | 'appealStatuses.REJECTED') => string,
@@ -61,10 +63,12 @@ function appealStatusLabel(
 
 export default function AppealsPage() {
   const t = useTranslations('Trader.Appeals');
+  const tCommon = useTranslations('Trader.Common');
   const queryClient = useQueryClient();
   const [listTab, setListTab] = useState<'current' | 'history'>('current');
   const [currentPage, setCurrentPage] = useState(1);
   const [historyPage, setHistoryPage] = useState(1);
+  const [pageSize, setPageSize] = useState<ListPageSize>(APPEALS_PAGE_SIZE);
   const {
     value: searchInput,
     setValue: setSearchInput,
@@ -110,28 +114,28 @@ export default function AppealsPage() {
   const prefetchForOpenModal = !!selectedAppeal;
   const searchParam = listSearchForQuery(debouncedSearch);
 
-  const currentQueryKey = traderKeys.appealsQuery('current', currentPage, APPEALS_PAGE_SIZE, searchParam);
-  const historyQueryKey = traderKeys.appealsQuery('history', historyPage, APPEALS_PAGE_SIZE, searchParam);
+  const currentQueryKey = traderKeys.appealsQuery('current', currentPage, pageSize, searchParam);
+  const historyQueryKey = traderKeys.appealsQuery('history', historyPage, pageSize, searchParam);
 
-  const { data: currentData, isLoading: currentLoading } = useQuery({
+  const { data: currentData, isLoading: currentLoading, isFetching: currentFetching } = useQuery({
     queryKey: currentQueryKey,
     queryFn: () =>
       api.get<AppealsListResponse>(internalPaths.appeals, {
         listBucket: 'current',
         page: String(currentPage),
-        limit: String(APPEALS_PAGE_SIZE),
+        limit: String(pageSize),
         ...(searchParam ? { search: searchParam } : {}),
       }),
     enabled: listTab === 'current' || prefetchForOpenModal,
   });
 
-  const { data: historyData, isLoading: historyLoading } = useQuery({
+  const { data: historyData, isLoading: historyLoading, isFetching: historyFetching } = useQuery({
     queryKey: historyQueryKey,
     queryFn: () =>
       api.get<AppealsListResponse>(internalPaths.appeals, {
         listBucket: 'history',
         page: String(historyPage),
-        limit: String(APPEALS_PAGE_SIZE),
+        limit: String(pageSize),
         ...(searchParam ? { search: searchParam } : {}),
       }),
     enabled: listTab === 'history' || prefetchForOpenModal,
@@ -140,7 +144,7 @@ export default function AppealsPage() {
   useEffect(() => {
     setCurrentPage(1);
     setHistoryPage(1);
-  }, [searchParam, listTab]);
+  }, [searchParam, listTab, pageSize]);
 
   const activeBucket = listTab === 'current' ? currentData : historyData;
   const activeLoading = listTab === 'current' ? currentLoading : historyLoading;
@@ -148,15 +152,15 @@ export default function AppealsPage() {
   const setActivePage = listTab === 'current' ? setCurrentPage : setHistoryPage;
 
   const activeLimit =
-    activeBucket?.limit && activeBucket.limit > 0 ? activeBucket.limit : APPEALS_PAGE_SIZE;
+    activeBucket?.limit && activeBucket.limit > 0 ? activeBucket.limit : pageSize;
   const activeTotalPages = Math.max(1, Math.ceil((activeBucket?.total ?? 0) / activeLimit));
 
   const currentLimit =
-    currentData?.limit && currentData.limit > 0 ? currentData.limit : APPEALS_PAGE_SIZE;
+    currentData?.limit && currentData.limit > 0 ? currentData.limit : pageSize;
   const currentTotalPages = Math.max(1, Math.ceil((currentData?.total ?? 0) / currentLimit));
 
   const historyLimit =
-    historyData?.limit && historyData.limit > 0 ? historyData.limit : APPEALS_PAGE_SIZE;
+    historyData?.limit && historyData.limit > 0 ? historyData.limit : pageSize;
   const historyTotalPages = Math.max(1, Math.ceil((historyData?.total ?? 0) / historyLimit));
 
   useEffect(() => {
@@ -336,6 +340,12 @@ export default function AppealsPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+          <ListPageRefreshButton
+            isRefreshing={listTab === 'current' ? currentFetching : historyFetching}
+            onRefresh={() =>
+              queryClient.invalidateQueries({ queryKey: traderKeys.appealsScope })
+            }
+          />
           <Tabs
             tabs={[
               { key: 'current', label: t('tabCurrent') },
@@ -371,6 +381,9 @@ export default function AppealsPage() {
         totalItems={activeBucket?.total ?? 0}
         itemLabel={t('itemLabel')}
         variant="minimal"
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+        rowsPerPageLabel={tCommon('rowsPerPage')}
       />
 
       <Modal

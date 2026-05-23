@@ -31,3 +31,18 @@ export function computeTraderPayinFinalizeMenuPosition(
 
   return { top, left };
 }
+
+/**
+ * Resolves a menu trigger when duplicate nodes share the same selector (e.g. mobile + desktop table rows).
+ * `querySelector` alone would return the first node, often a `display: none` card with a zero rect.
+ */
+export function queryVisibleAnchorTrigger(selector: string): HTMLElement | null {
+  const nodes = document.querySelectorAll<HTMLElement>(selector);
+  for (const node of nodes) {
+    const rect = node.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      return node;
+    }
+  }
+  return null;
+}

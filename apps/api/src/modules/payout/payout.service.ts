@@ -411,6 +411,12 @@ export class PayoutService {
       dto.currency,
       dto.amount,
     );
+    await this.merchantDirections.assertOrderAmountNotBlocked(
+      merchantId,
+      PrismaDirectionType.PAYOUT,
+      dto.currency,
+      dto.amount,
+    );
 
     const merchantPct =
       (await this.merchantDirections.getEffectiveCommissionPercent(

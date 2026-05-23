@@ -10,6 +10,7 @@ import {
   type SetStateAction,
 } from 'react';
 import { Hash } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
@@ -63,6 +64,7 @@ export function TraderAddGroupModal({
   createGroupMutation: UseMutationResult<unknown, unknown, void>;
   onSubmit: () => void;
 }) {
+  const t = useTranslations('Trader.Requisites.modals');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -73,7 +75,7 @@ export function TraderAddGroupModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Add payment method group"
+      title={t('addGroup.title')}
       size="md"
       closeOnBackdropClick={false}
     >
@@ -91,14 +93,14 @@ export function TraderAddGroupModal({
         }}
       >
         <Input
-          label="Name"
-          placeholder="e.g. Monobank cards"
+          label={t('addGroup.nameLabel')}
+          placeholder={t('addGroup.namePlaceholder')}
           value={groupForm.name}
           onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
           error={errors.name}
         />
         <Select
-          label="Currency"
+          label={t('addGroup.currencyLabel')}
           options={currencyOptions.length ? currencyOptions : [{ value: 'UAH', label: 'UAH' }]}
           value={groupForm.currency}
           onChange={(e) =>
@@ -111,8 +113,8 @@ export function TraderAddGroupModal({
           error={errors.currency}
         />
         <Select
-          label="Catalog payment method"
-          placeholder={pmOptions.length ? 'Select a payment method' : undefined}
+          label={t('addGroup.paymentMethodLabel')}
+          placeholder={pmOptions.length ? t('addGroup.paymentMethodPlaceholder') : undefined}
           options={pmOptions}
           value={groupForm.payment_method_id}
           onChange={(e) => setGroupForm({ ...groupForm, payment_method_id: e.target.value })}
@@ -120,20 +122,17 @@ export function TraderAddGroupModal({
           required
         />
         {!pmOptions.length ? (
-          <p className="text-sm text-text-muted">
-            No Pay-In catalog payment methods exist for this currency. Ask an administrator to add
-            one before creating a group.
-          </p>
+          <p className="text-sm text-text-muted">{t('addGroup.noPaymentMethods')}</p>
         ) : null}
         {createGroupMutation.isError ? (
           <FormAlert>{errorMessageFromUnknown(createGroupMutation.error)}</FormAlert>
         ) : null}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
+            {t('cancel')}
           </Button>
           <Button type="submit" loading={createGroupMutation.isPending}>
-            Create group
+            {t('addGroup.submit')}
           </Button>
         </div>
       </form>
@@ -165,6 +164,7 @@ export function TraderEditGroupModal({
   >;
   onSubmit: () => void;
 }) {
+  const t = useTranslations('Trader.Requisites.modals');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -175,7 +175,7 @@ export function TraderEditGroupModal({
     <Modal
       open={!!editingGroup}
       onClose={onClose}
-      title="Edit payment method group"
+      title={t('editGroup.title')}
       size="md"
       closeOnBackdropClick={false}
     >
@@ -194,14 +194,14 @@ export function TraderEditGroupModal({
           }}
         >
           <Input
-            label="Name"
+            label={t('editGroup.nameLabel')}
             value={groupEditForm.name}
             onChange={(e) => setGroupEditForm({ ...groupEditForm, name: e.target.value })}
             error={errors.name}
           />
           <Select
-            label="Catalog payment method"
-            placeholder={pmOptions.length ? 'Select a payment method' : undefined}
+            label={t('editGroup.paymentMethodLabel')}
+            placeholder={pmOptions.length ? t('editGroup.paymentMethodPlaceholder') : undefined}
             options={pmOptions}
             value={groupEditForm.payment_method_id}
             onChange={(e) =>
@@ -211,20 +211,17 @@ export function TraderEditGroupModal({
             required
           />
           {!pmOptions.length ? (
-            <p className="text-sm text-text-muted">
-              No Pay-In payment methods match this group&apos;s currency. Add a catalog method or
-              contact support.
-            </p>
+            <p className="text-sm text-text-muted">{t('editGroup.noPaymentMethods')}</p>
           ) : null}
           {updateGroupMutation.isError ? (
             <FormAlert>{errorMessageFromUnknown(updateGroupMutation.error)}</FormAlert>
           ) : null}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={onClose}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button type="submit" loading={updateGroupMutation.isPending}>
-              Save
+              {t('save')}
             </Button>
           </div>
         </form>
@@ -254,6 +251,7 @@ export function TraderAddRequisiteModal({
   >;
   onSubmit: (groupId: string) => void;
 }) {
+  const t = useTranslations('Trader.Requisites.modals');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const requisiteNumberInputRef = useRef<HTMLInputElement>(null);
   const requisiteNumberCaretRef = useRef<number | null>(null);
@@ -286,7 +284,7 @@ export function TraderAddRequisiteModal({
     <Modal
       open={!!addRequisiteGroupId}
       onClose={onClose}
-      title="Add requisite"
+      title={t('addRequisite.title')}
       size="md"
       closeOnBackdropClick={false}
     >
@@ -305,10 +303,10 @@ export function TraderAddRequisiteModal({
         className="space-y-4"
       >
         <Select
-          label="Type"
+          label={t('addRequisite.typeLabel')}
           options={[
-            { value: RequisiteType.CARD, label: 'Card' },
-            { value: RequisiteType.IBAN, label: 'IBAN' },
+            { value: RequisiteType.CARD, label: t('addRequisite.typeCard') },
+            { value: RequisiteType.IBAN, label: t('addRequisite.typeIban') },
           ]}
           value={form.type}
           onChange={(e) => {
@@ -331,11 +329,15 @@ export function TraderAddRequisiteModal({
         />
         <Input
           ref={requisiteNumberInputRef}
-          label={form.type === RequisiteType.CARD ? 'Card number' : 'IBAN'}
+          label={
+            form.type === RequisiteType.CARD
+              ? t('addRequisite.cardNumberLabel')
+              : t('addRequisite.ibanLabel')
+          }
           placeholder={
             form.type === RequisiteType.CARD
-              ? '0000 0000 0000 0000'
-              : 'UA00 0000 0000 0000 0000 0000 00000'
+              ? t('addRequisite.cardNumberPlaceholder')
+              : t('addRequisite.ibanPlaceholder')
           }
           className="font-mono tabular-nums tracking-wide"
           inputMode={form.type === RequisiteType.CARD ? 'numeric' : 'text'}
@@ -346,22 +348,22 @@ export function TraderAddRequisiteModal({
           error={errors.number}
         />
         <Input
-          label="Owner name"
-          placeholder="Account owner"
+          label={t('addRequisite.ownerNameLabel')}
+          placeholder={t('addRequisite.ownerNamePlaceholder')}
           value={form.owner}
           onChange={(e) => setForm({ ...form, owner: e.target.value })}
           error={errors.owner}
         />
         <Input
-          label="Card holder name"
-          placeholder="Surname Given name Patronymic"
+          label={t('addRequisite.cardHolderNameLabel')}
+          placeholder={t('addRequisite.cardHolderNamePlaceholder')}
           value={form.card_holder_name}
           onChange={(e) => setForm({ ...form, card_holder_name: e.target.value })}
           error={errors.card_holder_name}
         />
         <Select
-          label="Bank"
-          placeholder={bankOptions.length ? 'Select a bank' : undefined}
+          label={t('addRequisite.bankLabel')}
+          placeholder={bankOptions.length ? t('addRequisite.bankPlaceholder') : undefined}
           options={bankOptions}
           value={form.bank_id}
           onChange={(e) => setForm({ ...form, bank_id: e.target.value })}
@@ -369,10 +371,7 @@ export function TraderAddRequisiteModal({
           required
         />
         {!bankOptions.length ? (
-          <p className="text-sm text-text-muted">
-            No banks are available in the catalog yet. Ask an administrator to add banks before
-            creating a requisite.
-          </p>
+          <p className="text-sm text-text-muted">{t('addRequisite.noBanks')}</p>
         ) : null}
         <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
           <input
@@ -381,18 +380,18 @@ export function TraderAddRequisiteModal({
             checked={form.accepts_other_banks}
             onChange={(e) => setForm({ ...form, accepts_other_banks: e.target.checked })}
           />
-          Accept transfers from other banks
+          {t('addRequisite.acceptOtherBanks')}
         </label>
         <div className="grid grid-cols-2 gap-4">
           <NumberInput
-            label="Min amount"
+            label={t('addRequisite.minAmountLabel')}
             variant="amount"
             value={form.min_amount}
             onChange={(e) => setForm({ ...form, min_amount: parseDecimalInput(e.target.value) || 0 })}
             error={errors.min_amount}
           />
           <NumberInput
-            label="Max amount"
+            label={t('addRequisite.maxAmountLabel')}
             variant="amount"
             value={form.max_amount}
             onChange={(e) => setForm({ ...form, max_amount: parseDecimalInput(e.target.value) || 0 })}
@@ -401,14 +400,14 @@ export function TraderAddRequisiteModal({
         </div>
         <div className="grid grid-cols-2 gap-4">
           <NumberInput
-            label="Volume limit"
+            label={t('addRequisite.volumeLimitLabel')}
             variant="amount"
             value={form.limit_amount}
             onChange={(e) => setForm({ ...form, limit_amount: parseDecimalInput(e.target.value) || 0 })}
             error={errors.limit_amount}
           />
           <NumberInput
-            label="Operations limit"
+            label={t('addRequisite.operationsLimitLabel')}
             variant="integer"
             value={form.limit_operations}
             onChange={(e) => setForm({ ...form, limit_operations: Number(e.target.value) })}
@@ -420,10 +419,10 @@ export function TraderAddRequisiteModal({
         ) : null}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
+            {t('cancel')}
           </Button>
           <Button type="submit" loading={createMutation.isPending}>
-            Create requisite
+            {t('addRequisite.submit')}
           </Button>
         </div>
       </form>
@@ -457,6 +456,7 @@ export function TraderEditRequisiteLimitsModal({
   >;
   onSubmit: () => void;
 }) {
+  const t = useTranslations('Trader.Requisites.modals');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -467,7 +467,7 @@ export function TraderEditRequisiteLimitsModal({
     <Modal
       open={!!editingRequisite}
       onClose={onClose}
-      title="Edit requisite limits"
+      title={t('editLimits.title')}
       size="md"
       closeOnBackdropClick={false}
     >
@@ -506,18 +506,18 @@ export function TraderEditRequisiteLimitsModal({
               checked={form.accepts_other_banks}
               onChange={(e) => setForm({ ...form, accepts_other_banks: e.target.checked })}
             />
-            Accept transfers from other banks
+            {t('editLimits.acceptOtherBanks')}
           </label>
           <div className="grid grid-cols-2 gap-4">
             <NumberInput
-              label="Min amount"
+              label={t('editLimits.minAmountLabel')}
               variant="amount"
               value={form.min_amount}
               onChange={(e) => setForm({ ...form, min_amount: parseDecimalInput(e.target.value) || 0 })}
               error={errors.min_amount}
             />
             <NumberInput
-              label="Max amount"
+              label={t('editLimits.maxAmountLabel')}
               variant="amount"
               value={form.max_amount}
               onChange={(e) => setForm({ ...form, max_amount: parseDecimalInput(e.target.value) || 0 })}
@@ -526,14 +526,14 @@ export function TraderEditRequisiteLimitsModal({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <NumberInput
-              label="Volume limit"
+              label={t('editLimits.volumeLimitLabel')}
               variant="amount"
               value={form.limit_amount}
               onChange={(e) => setForm({ ...form, limit_amount: parseDecimalInput(e.target.value) || 0 })}
               error={errors.limit_amount}
             />
             <NumberInput
-              label="Operations limit"
+              label={t('editLimits.operationsLimitLabel')}
               variant="integer"
               value={form.limit_operations}
               onChange={(e) => setForm({ ...form, limit_operations: Number(e.target.value) })}
@@ -545,10 +545,10 @@ export function TraderEditRequisiteLimitsModal({
           ) : null}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={onClose}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button type="submit" loading={updateLimitsMutation.isPending}>
-              Save changes
+              {t('saveChanges')}
             </Button>
           </div>
         </form>
@@ -558,6 +558,7 @@ export function TraderEditRequisiteLimitsModal({
 }
 
 function RequisiteAuditSnapshots({ oldRaw, newRaw }: { oldRaw: unknown; newRaw: unknown }) {
+  const t = useTranslations('Trader.Requisites.modals.history');
   const oldRec = sanitizeAuditSnapshotForDisplay(oldRaw);
   const newRec = sanitizeAuditSnapshotForDisplay(newRaw);
   const changes = listAuditFieldChanges(oldRec, newRec);
@@ -566,7 +567,7 @@ function RequisiteAuditSnapshots({ oldRaw, newRaw }: { oldRaw: unknown; newRaw: 
     return (
       <div className="mt-2 space-y-2">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-          Changed fields
+          {t('changedFields')}
         </p>
         <div className="space-y-2">
           {changes.map((c) => (
@@ -577,11 +578,11 @@ function RequisiteAuditSnapshots({ oldRaw, newRaw }: { oldRaw: unknown; newRaw: 
               <p className="text-[11px] text-text-muted">{c.label}</p>
               <div className="mt-1 grid gap-2 sm:grid-cols-2">
                 <div>
-                  <span className="text-[10px] uppercase text-text-muted">Before</span>
+                  <span className="text-[10px] uppercase text-text-muted">{t('before')}</span>
                   <p className="break-words text-text-secondary">{c.before}</p>
                 </div>
                 <div>
-                  <span className="text-[10px] uppercase text-text-muted">After</span>
+                  <span className="text-[10px] uppercase text-text-muted">{t('after')}</span>
                   <p className="break-words text-text-primary">{c.after}</p>
                 </div>
               </div>
@@ -597,7 +598,7 @@ function RequisiteAuditSnapshots({ oldRaw, newRaw }: { oldRaw: unknown; newRaw: 
       <div className="mt-2 grid gap-4 md:grid-cols-2">
         {oldRec ? (
           <div>
-            <p className="mb-2 text-[11px] font-semibold text-text-muted">Previous state</p>
+            <p className="mb-2 text-[11px] font-semibold text-text-muted">{t('previousState')}</p>
             <dl className="max-h-52 space-y-2 overflow-y-auto pr-1 text-xs">
               {Object.entries(oldRec)
                 .sort(([a], [b]) => a.localeCompare(b))
@@ -612,7 +613,7 @@ function RequisiteAuditSnapshots({ oldRaw, newRaw }: { oldRaw: unknown; newRaw: 
         ) : null}
         {newRec ? (
           <div>
-            <p className="mb-2 text-[11px] font-semibold text-text-muted">New state</p>
+            <p className="mb-2 text-[11px] font-semibold text-text-muted">{t('newState')}</p>
             <dl className="max-h-52 space-y-2 overflow-y-auto pr-1 text-xs">
               {Object.entries(newRec)
                 .sort(([a], [b]) => a.localeCompare(b))
@@ -630,9 +631,7 @@ function RequisiteAuditSnapshots({ oldRaw, newRaw }: { oldRaw: unknown; newRaw: 
   }
 
   return (
-    <p className="mt-2 text-text-muted">
-      No field snapshots were recorded for this entry (metadata-only log).
-    </p>
+    <p className="mt-2 text-text-muted">{t('noSnapshots')}</p>
   );
 }
 
@@ -647,20 +646,22 @@ export function TraderRequisiteHistoryModal({
   historyLoading: boolean;
   items: AuditItem[] | undefined;
 }) {
+  const t = useTranslations('Trader.Requisites.modals.history');
+
   return (
     <Modal
       open={!!historyRequisiteId}
       onClose={onClose}
-      title="Requisite history"
-      subtitle={historyRequisiteId ? `Requisite ID: ${historyRequisiteId}` : undefined}
+      title={t('title')}
+      subtitle={historyRequisiteId ? t('subtitle', { id: historyRequisiteId }) : undefined}
       size="xl"
       closeOnBackdropClick={false}
     >
       <div className="max-h-[min(70vh,720px)] overflow-y-auto space-y-3">
         {historyLoading ? (
-          <p className="text-sm text-text-muted">Loading…</p>
+          <p className="text-sm text-text-muted">{t('loading')}</p>
         ) : !items?.length ? (
-          <p className="text-sm text-text-muted">No audit entries for this requisite yet.</p>
+          <p className="text-sm text-text-muted">{t('empty')}</p>
         ) : (
           items.map((row) => (
             <div
@@ -674,7 +675,7 @@ export function TraderRequisiteHistoryModal({
                 </span>
               </div>
               <p className="mt-1 text-text-muted">
-                {row.actor ? `${row.actor.email} (${row.actor.role})` : 'Actor not recorded'}
+                {row.actor ? `${row.actor.email} (${row.actor.role})` : t('actorNotRecorded')}
               </p>
               <RequisiteAuditSnapshots oldRaw={row.oldValue} newRaw={row.newValue} />
             </div>

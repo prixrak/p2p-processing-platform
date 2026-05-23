@@ -17,7 +17,6 @@ import {
   PayInAppealDecisionDropdown,
   type AppealDecisionMenuState,
 } from './payin-appeal-decision-dropdown';
-import type { FinalizeKind } from './payin-types';
 import { CountdownTimer, PayInOrderStatusColumnCell } from './payin-order-cells';
 
 function PayInOrderDetailBody({
@@ -29,8 +28,6 @@ function PayInOrderDetailBody({
   appealDecisionMenu,
   setAppealDecisionMenu,
   resolveAppealMutation,
-  onAppealDecision,
-  onPickFinalizeKind,
   onOpenReceipts,
 }: {
   order: TraderPayInOrderDto;
@@ -49,8 +46,6 @@ function PayInOrderDetailBody({
     >,
     'isPending' | 'variables'
   >;
-  onAppealDecision: (appealId: string, decision: AppealStatus, order: TraderPayInOrderDto) => void;
-  onPickFinalizeKind: (kind: FinalizeKind, order: TraderPayInOrderDto) => void;
   onOpenReceipts: (order: TraderPayInOrderDto) => void;
 }) {
   const t = useTranslations('Trader.Payin.detail');
@@ -147,8 +142,6 @@ function PayInOrderDetailBody({
             setMenuState={setAppealDecisionMenu}
             menuAnchor="modal"
             loading={appealBusy}
-            onReject={() => onAppealDecision(openAppeal.id, AppealStatus.REJECTED, order)}
-            onAccept={() => onAppealDecision(openAppeal.id, AppealStatus.RESOLVED, order)}
           />
         ) : null}
         <OrderFinalizeDropdown
@@ -156,7 +149,6 @@ function PayInOrderDetailBody({
           menuState={finalizeMenu}
           setMenuState={setFinalizeMenu}
           menuAnchor="modal"
-          onPickKind={(kind) => onPickFinalizeKind(kind, order)}
         />
       </div>
     </div>
@@ -173,8 +165,6 @@ export function PayInOrderDetailModal({
   appealDecisionMenu,
   setAppealDecisionMenu,
   resolveAppealMutation,
-  onAppealDecision,
-  onPickFinalizeKind,
   onOpenReceipts,
 }: {
   selectedOrder: TraderPayInOrderDto | null;
@@ -194,8 +184,6 @@ export function PayInOrderDetailModal({
     >,
     'isPending' | 'variables'
   >;
-  onAppealDecision: (appealId: string, decision: AppealStatus, order: TraderPayInOrderDto) => void;
-  onPickFinalizeKind: (kind: FinalizeKind, order: TraderPayInOrderDto) => void;
   onOpenReceipts: (order: TraderPayInOrderDto) => void;
 }) {
   const t = useTranslations('Trader.Payin.detail');
@@ -212,8 +200,6 @@ export function PayInOrderDetailModal({
           appealDecisionMenu={appealDecisionMenu}
           setAppealDecisionMenu={setAppealDecisionMenu}
           resolveAppealMutation={resolveAppealMutation}
-          onAppealDecision={onAppealDecision}
-          onPickFinalizeKind={onPickFinalizeKind}
           onOpenReceipts={onOpenReceipts}
         />
       ) : null}

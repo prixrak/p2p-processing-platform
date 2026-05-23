@@ -1,7 +1,9 @@
 'use client';
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Select } from '@/components/ui/select';
 import { Tooltip } from '@/components/ui/tooltip';
+import { listPageSizeOptions, type ListPageSize } from '@/lib/list-pagination';
 import { cn } from '@/lib/utils';
 
 /**
@@ -25,6 +27,9 @@ export function PaginationControls({
   showCaption = true,
   /** Override caption text — useful when phrasing differs ("Showing page X of Y …"). */
   captionOverride,
+  pageSize,
+  onPageSizeChange,
+  rowsPerPageLabel = 'Rows per page',
 }: {
   page: number;
   totalPages: number;
@@ -35,8 +40,13 @@ export function PaginationControls({
   className?: string;
   showCaption?: boolean;
   captionOverride?: string;
+  pageSize?: number;
+  onPageSizeChange?: (pageSize: ListPageSize) => void;
+  rowsPerPageLabel?: string;
 }) {
-  if (totalPages <= 1) return null;
+  const showPageSize = pageSize != null && onPageSizeChange != null;
+
+  if (totalPages <= 1 && !showPageSize) return null;
 
   const canPrev = page > 1;
   const canNext = page < totalPages;
@@ -44,8 +54,24 @@ export function PaginationControls({
   const caption = captionOverride
     ? captionOverride
     : totalItems != null
-      ? `Page ${page} of ${totalPages} (${totalItems} ${itemLabel})`
-      : `Page ${page} of ${totalPages}`;
+      ? totalPages > 1
+        ? `Page ${page} of ${totalPages} (${totalItems} ${itemLabel})`
+        : `${totalItems} ${itemLabel}`
+      : totalPages > 1
+        ? `Page ${page} of ${totalPages}`
+        : '';
+
+  const pageSizeSelect = showPageSize ? (
+    <Select
+      label={rowsPerPageLabel}
+      labelClassName="text-xs text-text-muted sr-only"
+      rootClassName="gap-1 w-auto flex-row items-center"
+      className="!min-h-9 !py-1.5 min-w-[5rem]"
+      options={listPageSizeOptions()}
+      value={String(pageSize)}
+      onChange={(e) => onPageSizeChange(Number(e.target.value) as ListPageSize)}
+    />
+  ) : null;
 
   if (variant === 'minimal') {
     return (
@@ -55,7 +81,11 @@ export function PaginationControls({
           className,
         )}
       >
-        {showCaption ? <span className="min-w-0">{caption}</span> : <span />}
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          {showCaption && caption ? <span className="min-w-0">{caption}</span> : null}
+          {pageSizeSelect}
+        </div>
+        {totalPages > 1 ? (
         <div className="flex shrink-0 gap-2 self-end sm:self-auto">
           <button
             type="button"
@@ -74,6 +104,7 @@ export function PaginationControls({
             Next →
           </button>
         </div>
+        ) : null}
       </div>
     );
   }
@@ -85,7 +116,13 @@ export function PaginationControls({
         className,
       )}
     >
-      {showCaption ? <p className="min-w-0 text-sm text-text-muted">{caption}</p> : <span />}
+      <div className="flex min-w-0 flex-wrap items-center gap-3">
+        {showCaption && caption ? (
+          <p className="min-w-0 text-sm text-text-muted">{caption}</p>
+        ) : null}
+        {pageSizeSelect}
+      </div>
+      {totalPages > 1 ? (
       <div className="flex shrink-0 gap-2 self-end sm:self-auto">
         <Tooltip content="Previous page" side="top">
           <span className="inline-flex">
@@ -112,6 +149,7 @@ export function PaginationControls({
           </span>
         </Tooltip>
       </div>
+      ) : null}
     </div>
   );
 }

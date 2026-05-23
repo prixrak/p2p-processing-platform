@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDebouncedTextFilter } from '@/lib/hooks/use-debounced-value';
 import { FilterInput } from '@/components/ui/filters';
+import { DEFAULT_LIST_PAGE_SIZE, type ListPageSize } from '@/lib/list-pagination';
 import { listSearchForQuery } from '@/lib/list-search';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -16,6 +17,7 @@ import {
   Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ListPageRefreshButton } from '@/components/ui/list-page-tools';
 import { Card } from '@/components/ui/card';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { Table } from '@/components/ui/table';
@@ -43,7 +45,7 @@ interface PayOutListResponse {
   limit: number;
 }
 
-const PAYOUT_LIST_PAGE_SIZE = 20;
+const PAYOUT_LIST_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
 type TabType = 'new' | 'in_progress' | 'history';
 
@@ -65,6 +67,9 @@ export function TraderPayoutPage({
   const qk: PayoutCabinetScope = isSpecialist ? 'payout-trader' : 'trader';
   const apiPublicBase = process.env.NEXT_PUBLIC_API_URL ?? '';
   const t = useTranslations('Trader.Payout');
+  const tCommon = useTranslations('Trader.Common');
+
+  const [pageSize, setPageSize] = useState<ListPageSize>(PAYOUT_LIST_PAGE_SIZE);
 
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 
@@ -133,18 +138,18 @@ export function TraderPayoutPage({
     setPoolPage(1);
     setInProgressPage(1);
     setHistoryPage(1);
-  }, [searchParam]);
+  }, [searchParam, pageSize]);
 
   const inProgressParams: Record<string, string> = {
     queue: 'in_progress',
     page: String(inProgressPage),
-    limit: String(PAYOUT_LIST_PAGE_SIZE),
+    limit: String(pageSize),
     ...(searchParam ? { search: searchParam } : {}),
   };
 
   const poolParams: Record<string, string> = {
     page: String(poolPage),
-    limit: String(PAYOUT_LIST_PAGE_SIZE),
+    limit: String(pageSize),
     ...(searchParam ? { search: searchParam } : {}),
   };
 
@@ -223,7 +228,7 @@ export function TraderPayoutPage({
   const historyListParams: Record<string, string> = {
     queue: 'history',
     page: String(historyPage),
-    limit: String(PAYOUT_LIST_PAGE_SIZE),
+    limit: String(pageSize),
   };
   if (statusFilter) historyListParams.status = statusFilter;
   if (dateFrom) historyListParams.date_from = dateFrom;
@@ -256,14 +261,14 @@ export function TraderPayoutPage({
     ? (historyData?.total ?? 0)
     : (historyBadge?.total ?? 0);
 
-  const poolLimit = poolData?.limit ?? PAYOUT_LIST_PAGE_SIZE;
+  const poolLimit = poolData?.limit ?? pageSize;
   const poolTotalPages = Math.max(1, Math.ceil((poolData?.total ?? 0) / poolLimit));
-  const inProgressLimit = inProgressData?.limit ?? PAYOUT_LIST_PAGE_SIZE;
+  const inProgressLimit = inProgressData?.limit ?? pageSize;
   const inProgressTotalPages = Math.max(
     1,
     Math.ceil((inProgressData?.total ?? 0) / inProgressLimit),
   );
-  const historyLimit = historyData?.limit ?? PAYOUT_LIST_PAGE_SIZE;
+  const historyLimit = historyData?.limit ?? pageSize;
   const historyTotalPages = Math.max(1, Math.ceil((historyData?.total ?? 0) / historyLimit));
 
   useEffect(() => {
@@ -460,6 +465,15 @@ export function TraderPayoutPage({
     return t('subtitleHistory', { count: historyTotal });
   }, [activeTab, historyTotal, inProgressTotal, isSpecialist, poolTotal, t]);
 
+  const payoutRefreshing =
+    queryClient.isFetching({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) }) > 0 ||
+    queryClient.isFetching({ queryKey: [qk, 'payout-pool'] }) > 0;
+
+  const refreshPayout = () => {
+    void queryClient.invalidateQueries({ queryKey: payoutCabinetKeys.payoutOrdersScope(qk) });
+    void queryClient.invalidateQueries({ queryKey: [qk, 'payout-pool'] });
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -471,6 +485,7 @@ export function TraderPayoutPage({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+          <ListPageRefreshButton isRefreshing={payoutRefreshing} onRefresh={refreshPayout} />
           <Button variant="secondary" size="sm" onClick={() => setShowFilters(!showFilters)}>
             <Filter className="h-4 w-4" />
             {t('filters')}
@@ -631,6 +646,9 @@ export function TraderPayoutPage({
             itemLabel={t('itemLabel')}
             variant="minimal"
             className="mt-4"
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+            rowsPerPageLabel={tCommon('rowsPerPage')}
           />
         </Card>
       )}
@@ -657,6 +675,9 @@ export function TraderPayoutPage({
             itemLabel={t('itemLabel')}
             variant="minimal"
             className="mt-4"
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+            rowsPerPageLabel={tCommon('rowsPerPage')}
           />
         </Card>
       )}
@@ -683,6 +704,9 @@ export function TraderPayoutPage({
             itemLabel={t('itemLabel')}
             variant="minimal"
             className="mt-4"
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+            rowsPerPageLabel={tCommon('rowsPerPage')}
           />
         </Card>
       )}

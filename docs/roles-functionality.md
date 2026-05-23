@@ -81,6 +81,11 @@ Manages the operational activity of the platform. Full access to all trader data
 - Full audit log access (shared with Owner)
 - All significant actions are logged: status changes, balance operations, requisite actions, logins, settings changes, webhook requests/responses
 
+### 2.6 Merchant Controls (shared with Owner)
+- Configure per-merchant order amount limits (min/max) per direction and currency
+- Block specific order amounts from a merchant (exact amount match → order rejected at creation)
+- All changes are audit-logged (who, what, when, previous value)
+
 ---
 
 ## 3. Support
@@ -139,6 +144,17 @@ Traffic source. Primary interaction is via the External API. Additionally receiv
 - Two auth versions: v1 (standard) and v2 (extended, with `api_url` + `nonce` in body)
 - Special multipart auth scheme for file-upload endpoints
 
+### 4.3.1 Order Amount Validation (at creation)
+
+Before a Pay-In or Pay-Out order is accepted and assigned to a trader, the platform validates the requested amount against merchant-specific rules configured by Owner/Admin:
+
+| Check | Description | On failure |
+|-------|-------------|------------|
+| **Min / max limits** | Amount must fall within `minAmount`–`maxAmount` for the active merchant direction (direction + currency) | `4xx` — order not created |
+| **Blocked amounts** | Amount must not appear on the merchant's blocked-amount list for that direction + currency | `4xx` — order not created |
+
+Limits and blocked amounts are returned in merchant profile `/info` responses where applicable (TBD — extend `ProfileDto` / `DirectionBalanceDto` or document as admin-only).
+
 ### 4.4 Webhook Notifications (inbound to merchant)
 - Receive POST callbacks on `callback_url` for every order status change
 - Webhook body signed with HMAC-SHA512 (X-Webhook-Signature header)
@@ -177,6 +193,44 @@ Full unrestricted access to all platform functions. Inherits all Administrator f
 ### 5.3 Merchant Management
 - Connect / disconnect merchants
 - Configure merchant terms and commissions
+- Configure order amount limits and blocked amounts (see §5.3.1–5.3.2)
+
+#### 5.3.1 Order Amount Limits (Min / Max)
+
+Per-merchant limits on order amounts the merchant may submit via the External API. Limits are scoped **per direction and currency** (Pay-In UAH, Pay-Out UAH, etc.) — the same model as `MerchantDirection`.
+
+| Aspect | Rule |
+|--------|------|
+| **Who can manage** | Owner, Administrator |
+| **When to set** | At merchant onboarding (direction setup) and editable later from the merchant management UI |
+| **Scope** | `directionType` + `currency` (one row per merchant direction) |
+| **Fields** | `minAmount`, `maxAmount` (fiat amount in direction currency) |
+| **Zero convention** | `0` = no bound (same as trader requisite limits and existing admin defaults) |
+| **Validation point** | External API order creation (`upload_order`, `order_upload`, H2H init) — **before** trader assignment |
+| **Out-of-range behavior** | Request rejected with `4xx` (`ErrorDetails`); order is **not** created and no trader is assigned |
+| **Applies to** | Pay-In and Pay-Out |
+| **Audit** | Create/update of limits must write an audit log entry |
+
+> **Implementation note:** `MerchantDirection.minAmount` / `maxAmount` and `assertOrderAmountWithinActiveMerchantDirection` already enforce this for active directions. Product/UI work: expose min/max on merchant create and edit flows in Owner/Admin cabinets.
+
+#### 5.3.2 Blocked Order Amounts
+
+Allow Owner/Admin to block **specific exact amounts** from a merchant so that any order with that amount is automatically rejected.
+
+| Aspect | Rule |
+|--------|------|
+| **Who can manage** | Owner, Administrator |
+| **Scope** | Per merchant; optionally scoped per `directionType` + `currency` (recommended — same granularity as min/max) |
+| **Match rule** | **Exact amount match** in direction currency (e.g. block `300` → every Pay-In UAH order for exactly `300.00` is rejected; `299.99` / `300.01` are not blocked by this rule) |
+| **Validation point** | External API order creation — checked **after** auth/signature and **after** min/max validation, **before** trader assignment |
+| **Reject behavior** | Order is **not** created (or created only as a failed upload record — TBD); merchant receives `4xx` with a stable `ErrorDetails` code (e.g. `AMOUNT_BLOCKED`) |
+| **Applies to** | Pay-In and Pay-Out |
+| **UI** | List of blocked amounts per merchant with add / remove; optional note/reason per entry |
+| **Audit** | Add/remove blocked amount must write an audit log entry |
+
+**Example:** Merchant sends many fraudulent Pay-In orders for exactly `300 UAH`. Admin adds `300` to the blocked list for Pay-In / UAH. All subsequent `300 UAH` Pay-In uploads from that merchant are rejected immediately.
+
+**Interaction with min/max:** Blocked-amount check runs in addition to min/max — an amount can be within range but still blocked.
 
 ### 5.4 Global Platform Settings
 - Global financial settings
@@ -234,6 +288,7 @@ Full unrestricted access to all platform functions. Inherits all Administrator f
 | `DetailsDto` | Recipient requisites for Pay-Out |
 | `ProfileDto` | Merchant profile (/info endpoints) |
 | `DirectionBalanceDto` | Direction parameters inside ProfileDto |
+| `MerchantBlockedAmount` | Blocked exact order amount per merchant direction (TBD) |
 | `PayInCheckAvailabilityResponseDto` | H2H availability check result |
 | `PaymentBankApiDto` | Bank object (banks endpoint) |
 | `WebhookDto` | Webhook notification envelope |
@@ -264,7 +319,8 @@ Full unrestricted access to all platform functions. Inherits all Administrator f
 | Webhook log + manual resend | | | | x | |
 | Merchant cabinet (monitor) | | | | x | |
 | Manage users & roles | | | | | x |
-| Manage merchants | | | | | x |
+| Manage merchants | | x | | | x |
+| Merchant min/max & blocked amounts | | x | | | x |
 | Global financial settings | | | | | x |
 | Manage directions & currencies | | | | | x |
 | Full audit log | | x | | | x |

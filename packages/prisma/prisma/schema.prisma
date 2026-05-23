@@ -392,11 +392,26 @@ model MerchantDirection {
   paymentMethod   PaymentMethod?   @relation(fields: [paymentMethodId], references: [id])
   currency        Currency         @relation(fields: [currencyId], references: [id], onDelete: Restrict)
   commissionTiers MerchantCommissionTier[]
+  blockedAmounts  MerchantBlockedAmount[]
 
   @@unique([merchantId, directionType, currencyId])
   @@index([merchantId, directionType])
   @@index([currencyId])
   @@map("merchant_directions")
+}
+
+model MerchantBlockedAmount {
+  id                  String   @id @default(uuid()) @db.Uuid
+  merchantDirectionId String   @map("merchant_direction_id") @db.Uuid
+  amount              Decimal  @db.Decimal(18, 4)
+  note                String?
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  merchantDirection MerchantDirection @relation(fields: [merchantDirectionId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantDirectionId, amount])
+  @@index([merchantDirectionId])
+  @@map("merchant_blocked_amounts")
 }
 
 // ─── Merchant Commission Tiers ───

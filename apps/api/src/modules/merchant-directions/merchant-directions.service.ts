@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
@@ -12,10 +13,14 @@ import {
   CreateMerchantDirectionDto,
   UpdateMerchantDirectionDto,
   UpsertCommissionTiersDto,
+  CreateMerchantBlockedAmountDto,
 } from './dto/merchant-direction.dto';
-import type { Currency, MerchantDirection } from '@prisma/client';
+import type { Currency, MerchantDirection, MerchantBlockedAmount } from '@prisma/client';
 
-type MerchantDirectionWithCurrency = MerchantDirection & { currency: Currency };
+type MerchantDirectionWithCurrency = MerchantDirection & {
+  currency: Currency;
+  blockedAmounts?: MerchantBlockedAmount[];
+};
 
 @Injectable()
 export class MerchantDirectionsService {
@@ -27,16 +32,27 @@ export class MerchantDirectionsService {
   ) {}
 
   private toApiMerchantDirection(row: MerchantDirectionWithCurrency) {
-    const { currency, ...rest } = row;
+    const { currency, blockedAmounts, ...rest } = row;
     return {
       ...rest,
       currency: currency.code,
+      blockedAmounts: (blockedAmounts ?? []).map((b) => ({
+        id: b.id,
+        amount: b.amount,
+        note: b.note,
+        createdAt: b.createdAt,
+      })),
     };
+  }
+
+  private static amountsEqual(a: number, b: unknown): boolean {
+    return Math.abs(a - Number(b)) < 1e-4;
   }
 
   private dirInclude() {
     return {
       commissionTiers: { orderBy: { amountFrom: 'asc' as const } },
+      blockedAmounts: { orderBy: { amount: 'asc' as const } },
       paymentMethod: true,
       currency: true,
     } as const;
@@ -126,6 +142,83 @@ export class MerchantDirectionsService {
   async remove(id: string) {
     await this.findOne(id);
     return this.prisma.merchantDirection.delete({ where: { id } });
+  }
+
+  // ── Blocked order amounts ─────────────────────────────────────────────────
+
+  async addBlockedAmount(directionId: string, dto: CreateMerchantBlockedAmountDto) {
+    const direction = await this.findOne(directionId);
+    if (dto.amount <= 0) {
+      throw new BadRequestException('Blocked amount must be greater than zero');
+    }
+
+    try {
+      await this.prisma.merchantBlockedAmount.create({
+        data: {
+          merchantDirectionId: directionId,
+          amount: dto.amount,
+          note: dto.note?.trim() || null,
+        },
+      });
+    } catch (err: unknown) {
+      if (
+        typeof err === 'object' &&
+        err !== null &&
+        'code' in err &&
+        (err as { code: string }).code === 'P2002'
+      ) {
+        throw new ConflictException(
+          `Amount ${dto.amount} is already blocked for this merchant direction`,
+        );
+      }
+      throw err;
+    }
+
+    return this.findOne(directionId);
+  }
+
+  async removeBlockedAmount(directionId: string, blockedAmountId: string) {
+    await this.findOne(directionId);
+    const row = await this.prisma.merchantBlockedAmount.findFirst({
+      where: { id: blockedAmountId, merchantDirectionId: directionId },
+    });
+    if (!row) {
+      throw new NotFoundException(`Blocked amount ${blockedAmountId} not found`);
+    }
+    await this.prisma.merchantBlockedAmount.delete({ where: { id: blockedAmountId } });
+    return this.findOne(directionId);
+  }
+
+  /**
+   * Rejects external orders whose amount exactly matches a blocked value for the merchant direction.
+   * Applies even when the direction is inactive (fraud control independent of commission routing).
+   *
+   * RISK NOTE: Changing match tolerance or scope gates merchant API volume.
+   */
+  async assertOrderAmountNotBlocked(
+    merchantId: string,
+    directionType: DirectionType,
+    currency: string,
+    amount: number,
+  ): Promise<void> {
+    const currencyId = await this.currencies.requireActiveCurrencyIdByCode(currency);
+    const row = await this.prisma.merchantDirection.findUnique({
+      where: {
+        merchantId_directionType_currencyId: { merchantId, directionType, currencyId },
+      },
+      include: { blockedAmounts: true },
+    });
+
+    if (!row?.blockedAmounts.length) return;
+
+    const blocked = row.blockedAmounts.some((b) =>
+      MerchantDirectionsService.amountsEqual(amount, b.amount),
+    );
+    if (blocked) {
+      throw new BadRequestException(
+        `Order amount ${amount} is blocked for this merchant (${directionType} ${currency})`,
+      );
+    }
   }
 
   // ── Commission Tiers ────────────────────────────────────────────────────────

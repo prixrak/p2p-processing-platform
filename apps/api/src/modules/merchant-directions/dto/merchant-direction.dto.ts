@@ -98,3 +98,15 @@ export class UpsertCommissionTiersDto {
   @Type(() => CommissionTierDto)
   tiers!: CommissionTierDto[];
 }
+
+export class CreateMerchantBlockedAmountDto {
+  @ApiProperty({ example: 300, description: 'Exact order amount to reject' })
+  @IsNumber()
+  @Min(0.0001)
+  amount!: number;
+
+  @ApiPropertyOptional({ example: 'Fraud pattern' })
+  @IsOptional()
+  @IsString()
+  note?: string;
+}

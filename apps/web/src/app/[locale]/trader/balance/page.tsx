@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { ArrowDownCircle, ArrowUpCircle, DollarSign, MinusCircle } from 'lucide-react';
+import { ListPageRefreshButton } from '@/components/ui/list-page-tools';
 import { api } from '@/lib/api';
 import { formatErrorMessage } from '@/lib/format-error';
 import { internalPaths } from '@/lib/internal-api';
@@ -73,6 +74,7 @@ const isNeutralTx = (type: string) => type === 'OVERDRAFT_SET';
 
 export default function BalanceHistoryPage() {
   const t = useTranslations('Trader.Balance');
+  const queryClient = useQueryClient();
   const [currency, setCurrency] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -99,12 +101,13 @@ export default function BalanceHistoryPage() {
     isLoading: walletLoading,
     isError: walletError,
     error: walletErrorDetail,
+    isFetching: walletFetching,
   } = useQuery({
     queryKey: traderKeys.usdtWallet(),
     queryFn: () => api.get<UsdtWallet>(internalPaths.traderUsdtWallet),
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching: transactionsFetching } = useQuery({
     queryKey: traderKeys.balanceTransactions(page, currency, dateFrom, dateTo, txType),
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: '30' });
@@ -215,11 +218,20 @@ export default function BalanceHistoryPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold text-text-primary">
-          <DollarSign className="h-6 w-6" /> {t('title')}
-        </h1>
-        <p className="mt-1 text-sm text-text-muted">{t('subtitle')}</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-text-primary">
+            <DollarSign className="h-6 w-6" /> {t('title')}
+          </h1>
+          <p className="mt-1 text-sm text-text-muted">{t('subtitle')}</p>
+        </div>
+        <ListPageRefreshButton
+          isRefreshing={walletFetching || transactionsFetching}
+          onRefresh={() => {
+            void queryClient.invalidateQueries({ queryKey: traderKeys.usdtWallet() });
+            void queryClient.invalidateQueries({ queryKey: traderKeys.balanceTransactionsScope });
+          }}
+        />
       </div>
 
       {showExhaustedBanner ? (

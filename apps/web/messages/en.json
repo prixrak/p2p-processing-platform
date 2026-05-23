@@ -27,6 +27,11 @@
       "signOut": "Sign out",
       "badgePending": "{label}: {count} pending"
     },
+    "Common": {
+      "refresh": "Refresh",
+      "refreshing": "Refreshing…",
+      "rowsPerPage": "Rows per page"
+    },
     "HeaderStatus": {
       "loadingTooltip": "Loading your availability status…",
       "errorTooltip": "Could not load status. Refresh the page or try again.",
@@ -329,6 +334,7 @@
       "loading": "Loading…",
       "emptyArchived": "No archived groups.",
       "emptyCurrent": "No payment method groups yet. Create one to add requisites.",
+      "itemLabel": "groups",
       "created": "Created",
       "trader": "Trader",
       "name": "Name",
@@ -378,6 +384,72 @@
         "actions": "Actions",
         "editLimits": "Edit requisite limits",
         "viewHistory": "View requisite history"
+      },
+      "modals": {
+        "cancel": "Cancel",
+        "save": "Save",
+        "saveChanges": "Save changes",
+        "addGroup": {
+          "title": "Add payment method group",
+          "nameLabel": "Name",
+          "namePlaceholder": "e.g. Monobank cards",
+          "currencyLabel": "Currency",
+          "paymentMethodLabel": "Catalog payment method",
+          "paymentMethodPlaceholder": "Select a payment method",
+          "noPaymentMethods": "No Pay-In catalog payment methods exist for this currency. Ask an administrator to add one before creating a group.",
+          "submit": "Create group"
+        },
+        "editGroup": {
+          "title": "Edit payment method group",
+          "nameLabel": "Name",
+          "paymentMethodLabel": "Catalog payment method",
+          "paymentMethodPlaceholder": "Select a payment method",
+          "noPaymentMethods": "No Pay-In payment methods match this group's currency. Add a catalog method or contact support."
+        },
+        "addRequisite": {
+          "title": "Add requisite",
+          "typeLabel": "Type",
+          "typeCard": "Card",
+          "typeIban": "IBAN",
+          "cardNumberLabel": "Card number",
+          "ibanLabel": "IBAN",
+          "cardNumberPlaceholder": "0000 0000 0000 0000",
+          "ibanPlaceholder": "UA00 0000 0000 0000 0000 0000 00000",
+          "ownerNameLabel": "Owner name",
+          "ownerNamePlaceholder": "Account owner",
+          "cardHolderNameLabel": "Card holder name",
+          "cardHolderNamePlaceholder": "Surname Given name Patronymic",
+          "bankLabel": "Bank",
+          "bankPlaceholder": "Select a bank",
+          "noBanks": "No banks are available in the catalog yet. Ask an administrator to add banks before creating a requisite.",
+          "acceptOtherBanks": "Accept transfers from other banks",
+          "minAmountLabel": "Min amount",
+          "maxAmountLabel": "Max amount",
+          "volumeLimitLabel": "Volume limit",
+          "operationsLimitLabel": "Operations limit",
+          "submit": "Create requisite"
+        },
+        "editLimits": {
+          "title": "Edit requisite limits",
+          "acceptOtherBanks": "Accept transfers from other banks",
+          "minAmountLabel": "Min amount",
+          "maxAmountLabel": "Max amount",
+          "volumeLimitLabel": "Volume limit",
+          "operationsLimitLabel": "Operations limit"
+        },
+        "history": {
+          "title": "Requisite history",
+          "subtitle": "Requisite ID: {id}",
+          "loading": "Loading…",
+          "empty": "No audit entries for this requisite yet.",
+          "actorNotRecorded": "Actor not recorded",
+          "changedFields": "Changed fields",
+          "before": "Before",
+          "after": "After",
+          "previousState": "Previous state",
+          "newState": "New state",
+          "noSnapshots": "No field snapshots were recorded for this entry (metadata-only log)."
+        }
       }
     },
     "Payout": {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { computeTraderPayinFinalizeMenuPosition } from './order-finalize-dropdown-position';
+import {
+  computeTraderPayinFinalizeMenuPosition,
+  queryVisibleAnchorTrigger,
+} from './order-finalize-dropdown-position';
 
 describe('computeTraderPayinFinalizeMenuPosition', () => {
   it('places the menu below the trigger when there is room', () => {

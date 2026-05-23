@@ -15,6 +15,7 @@ import {
   ToggleRight,
   UserPlus,
   Settings,
+  Trash2,
 } from 'lucide-react';
 import { UserRole } from '@p2p/shared';
 import { api } from '@/lib/api';
@@ -242,11 +243,17 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
     id: string;
     email: string;
     nextActive: boolean;
+    role: UserRole;
+  } | null>(null);
+  const [pendingPermanentDelete, setPendingPermanentDelete] = useState<{
+    id: string;
+    email: string;
   } | null>(null);
 
   const [directionsMerchant, setDirectionsMerchant] = useState<{
     id: string;
     name: string;
+    showAddDirection?: boolean;
   } | null>(null);
 
   const [merchantProfileCreateModal, setMerchantProfileCreateModal] = useState<{
@@ -353,6 +360,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         setDirectionsMerchant({
           id: result.merchantProfile.id,
           name: result.merchantProfile.name,
+          showAddDirection: true,
         });
       }
       if (result.createdRole === UserRole.TRADER) {
@@ -366,6 +374,19 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
       api.patch<UsersApiRow>(internalPaths.user(id), { isActive }),
     onSuccess: () => invalidateDirectory(),
   });
+
+  const deactivateCabinet = useMutation({
+    mutationFn: (id: string) => api.delete<UsersApiRow>(internalPaths.user(id)),
+    onSuccess: () => invalidateDirectory(),
+  });
+
+  const purgeCabinet = useMutation({
+    mutationFn: (id: string) =>
+      api.delete<{ id: string; deleted: true }>(internalPaths.userPermanentDelete(id)),
+    onSuccess: () => invalidateDirectory(),
+  });
+
+  const isOwnerCabinet = queryKeyPrefix === 'owner';
 
   const traderToggle = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
@@ -394,7 +415,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
       invalidateDirectory();
       setMerchantProfileCreateModal(null);
       setMerchantProfileCreateName('');
-      setDirectionsMerchant({ id: merchant.id, name: merchant.name });
+      setDirectionsMerchant({ id: merchant.id, name: merchant.name, showAddDirection: true });
     },
   });
 
@@ -510,7 +531,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
           {u.role === UserRole.MERCHANT && u.merchant ? (
             <>
               <IconButton
-                label="Directions & commissions"
+                label="Merchant controls (limits, blocked amounts, commissions)"
                 variant="ghost"
                 onClick={() => setDirectionsMerchant({ id: u.merchant!.id, name: u.merchant!.name })}
               >
@@ -597,26 +618,75 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
               <UserPlus className="h-4 w-4" />
             </IconButton>
           ) : null}
-          <IconButton
-            label={
-              u.role === UserRole.OWNER && u.isActive
-                ? 'Owner accounts cannot be deactivated'
-                : u.isActive
-                  ? 'Deactivate user'
-                  : 'Activate user'
-            }
-            variant={u.isActive ? 'danger' : 'success'}
-            disabled={u.role === UserRole.OWNER && u.isActive}
-            onClick={() =>
-              setPendingStatusToggle({
-                id: u.id,
-                email: u.email,
-                nextActive: !u.isActive,
-              })
-            }
-          >
-            {u.isActive ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
-          </IconButton>
+          {isOwnerCabinet && u.isActive && u.role !== UserRole.OWNER ? (
+            <IconButton
+              label="Deactivate cabinet"
+              variant="danger"
+              onClick={() =>
+                setPendingStatusToggle({
+                  id: u.id,
+                  email: u.email,
+                  nextActive: false,
+                  role: u.role,
+                })
+              }
+            >
+              <ShieldOff className="h-4 w-4" />
+            </IconButton>
+          ) : null}
+          {isOwnerCabinet && !u.isActive && u.role !== UserRole.OWNER ? (
+            <>
+              <IconButton
+                label="Activate cabinet"
+                variant="success"
+                onClick={() =>
+                  setPendingStatusToggle({
+                    id: u.id,
+                    email: u.email,
+                    nextActive: true,
+                    role: u.role,
+                  })
+                }
+              >
+                <ShieldCheck className="h-4 w-4" />
+              </IconButton>
+              <IconButton
+                label="Permanently delete cabinet"
+                variant="danger"
+                onClick={() =>
+                  setPendingPermanentDelete({
+                    id: u.id,
+                    email: u.email,
+                  })
+                }
+              >
+                <Trash2 className="h-4 w-4" />
+              </IconButton>
+            </>
+          ) : null}
+          {!isOwnerCabinet ? (
+            <IconButton
+              label={
+                u.role === UserRole.OWNER && u.isActive
+                  ? 'Owner accounts cannot be deactivated'
+                  : u.isActive
+                    ? 'Deactivate user'
+                    : 'Activate user'
+              }
+              variant={u.isActive ? 'danger' : 'success'}
+              disabled={u.role === UserRole.OWNER && u.isActive}
+              onClick={() =>
+                setPendingStatusToggle({
+                  id: u.id,
+                  email: u.email,
+                  nextActive: !u.isActive,
+                  role: u.role,
+                })
+              }
+            >
+              {u.isActive ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+            </IconButton>
+          ) : null}
         </div>
       ),
     },
@@ -676,27 +746,92 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         open={!!pendingStatusToggle}
         onOpenChange={(next) => !next && setPendingStatusToggle(null)}
         tone={pendingStatusToggle?.nextActive ? 'default' : 'danger'}
-        title={pendingStatusToggle?.nextActive ? 'Activate this user?' : 'Deactivate this user?'}
+        title={
+          pendingStatusToggle?.nextActive
+            ? isOwnerCabinet
+              ? 'Activate this cabinet?'
+              : 'Activate this user?'
+            : isOwnerCabinet
+              ? 'Deactivate this cabinet?'
+              : 'Deactivate this user?'
+        }
         description={
           pendingStatusToggle ? (
             <>
-              {pendingStatusToggle.nextActive
-                ? 'They will be able to sign in again if credentials are valid.'
-                : 'They will be blocked from signing in until reactivated.'}{' '}
+              {pendingStatusToggle.nextActive ? (
+                'They will be able to sign in again if credentials are valid.'
+              ) : isOwnerCabinet ? (
+                <>
+                  Sign-in will be blocked, role profiles turned off, and merchants locked. Order history
+                  and balances are kept; the cabinet can be reactivated or permanently deleted later.
+                  {pendingStatusToggle.role === UserRole.TRADER ? (
+                    <span className="block mt-2 text-text-muted">
+                      Open Pay-In assignments will be canceled and Pay-Out tasks returned to the pool.
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                'They will be blocked from signing in until reactivated.'
+              )}{' '}
               <span className="font-medium text-text-primary">{pendingStatusToggle.email}</span>
             </>
           ) : null
         }
-        confirmLabel={pendingStatusToggle?.nextActive ? 'Activate' : 'Deactivate'}
-        loading={toggleStatus.isPending}
+        confirmLabel={
+          pendingStatusToggle?.nextActive
+            ? 'Activate'
+            : isOwnerCabinet
+              ? 'Deactivate'
+              : 'Deactivate'
+        }
+        loading={toggleStatus.isPending || deactivateCabinet.isPending}
         onConfirm={() => {
           if (!pendingStatusToggle) return;
-          toggleStatus.mutate(
-            { id: pendingStatusToggle.id, isActive: pendingStatusToggle.nextActive },
-            { onSettled: () => setPendingStatusToggle(null) },
-          );
+          if (pendingStatusToggle.nextActive) {
+            toggleStatus.mutate(
+              { id: pendingStatusToggle.id, isActive: true },
+              { onSettled: () => setPendingStatusToggle(null) },
+            );
+            return;
+          }
+          deactivateCabinet.mutate(pendingStatusToggle.id, {
+            onSettled: () => setPendingStatusToggle(null),
+          });
         }}
       />
+
+      <ConfirmDialog
+        open={!!pendingPermanentDelete}
+        onOpenChange={(next) => {
+          if (!next) {
+            setPendingPermanentDelete(null);
+            purgeCabinet.reset();
+          }
+        }}
+        tone="danger"
+        title="Permanently delete this cabinet?"
+        description={
+          pendingPermanentDelete ? (
+            <>
+              This removes the user account and role profiles from the database. Allowed only when the
+              cabinet is inactive and has no linked orders or settlements. This cannot be undone.{' '}
+              <span className="font-medium text-text-primary">{pendingPermanentDelete.email}</span>
+            </>
+          ) : null
+        }
+        confirmLabel="Delete permanently"
+        loading={purgeCabinet.isPending}
+        onConfirm={() => {
+          if (!pendingPermanentDelete) return;
+          purgeCabinet.mutate(pendingPermanentDelete.id, {
+            onSuccess: () => setPendingPermanentDelete(null),
+          });
+        }}
+      >
+        {purgeCabinet.isError ? (
+          <FormAlert>{errorMessageFromUnknown(purgeCabinet.error)}</FormAlert>
+        ) : null}
+      </ConfirmDialog>
 
       <FilterBar dense>
         <div
@@ -1031,7 +1166,8 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
             }}
           >
             <p className="text-sm text-text-muted">
-              Link a payment profile to <strong>{merchantProfileCreateModal.email}</strong>. Directions & commissions can be set right after creation.
+              Link a payment profile to <strong>{merchantProfileCreateModal.email}</strong>. After
+              creation you can set min/max limits, blocked amounts, and commissions per direction.
             </p>
             <Input
               label="Merchant display name"
@@ -1057,6 +1193,7 @@ export function StaffUserAccountsPanel({ queryKeyPrefix }: StaffUserAccountsPane
         merchantId={directionsMerchant?.id ?? null}
         merchantName={directionsMerchant?.name ?? ''}
         open={!!directionsMerchant}
+        initialShowAddDirection={directionsMerchant?.showAddDirection ?? false}
         onClose={() => setDirectionsMerchant(null)}
         onChanged={invalidateDirectory}
       />

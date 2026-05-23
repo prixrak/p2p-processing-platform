@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/modal';
 import type { UseMutationResult } from '@tanstack/react-query';
 import type { PayOutOrderCabinetDto } from '@p2p/shared';
 import { PayOutOrderStatus } from '@p2p/shared';
-import { formatCurrency, formatDateFull } from '@/lib/utils';
+import { formatDateFull } from '@/lib/utils';
 import { internalPaths } from '@/lib/internal-api';
 import { DetailRow } from '@/components/ui/detail-row';
 import type { PayoutCompleteVars } from './trader-payout-columns';
@@ -17,7 +17,12 @@ import {
 import { TraderPayoutTakeFromPoolButton } from './trader-payout-take-from-pool-button';
 import { AuthorizedFilePreview } from '@/components/files/authorized-file-preview';
 import { payoutCompletionProofFileIds } from './payout-completion-proof-ids';
-import { PayoutPoolCloseCountdown, PayoutProcessingElapsed } from './trader-payout-columns';
+import {
+  PayoutAmountCopyCell,
+  PayoutPoolCloseCountdown,
+  PayoutProcessingElapsed,
+  PayoutRecipientNumberCopyCell,
+} from './trader-payout-columns';
 
 export type TraderPayoutDetailVariant = 'standard' | 'specialist';
 
@@ -63,10 +68,14 @@ export function TraderPayoutOrderDetailModal({
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <DetailRow label={tTable('colId')} value={selectedOrder.id} mono />
-            <DetailRow
-              label={tTable('colAmount')}
-              value={formatCurrency(selectedOrder.amount, selectedOrder.currency)}
-            />
+            <DetailRow label={tTable('colAmount')}>
+              <PayoutAmountCopyCell
+                amount={selectedOrder.amount}
+                currency={selectedOrder.currency}
+                copyLabel={tTable('colAmount')}
+                className="text-sm font-semibold text-text-primary tabular-nums"
+              />
+            </DetailRow>
             {isSpecialist && (
               <DetailRow
                 label={tTable('colUsdtEstimate')}
@@ -99,7 +108,12 @@ export function TraderPayoutOrderDetailModal({
             <DetailRow label={tTable('colCurrency')} value={selectedOrder.currency} />
             {showRecipient && (
               <>
-                <DetailRow label={t('recipientNumber')} value={selectedOrder.details.number} mono />
+                <DetailRow label={t('recipientNumber')}>
+                  <PayoutRecipientNumberCopyCell
+                    number={selectedOrder.details.number}
+                    copyLabel={t('recipientNumber')}
+                  />
+                </DetailRow>
                 <DetailRow
                   label={t('recipientOwner')}
                   value={selectedOrder.details.owner ?? '—'}

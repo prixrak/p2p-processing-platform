@@ -1,12 +1,37 @@
 'use client';
 
-import { Filter } from 'lucide-react';
+import { Filter, RefreshCw } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
-import { FilterInput, FilterSelect } from '@/components/ui/filters';
 import { cn } from '@/lib/utils';
+import { FilterInput, FilterSelect } from '@/components/ui/filters';
 
 export type ListPageSelectOption = { value: string; label: string };
+
+export function ListPageRefreshButton({
+  onRefresh,
+  isRefreshing = false,
+}: {
+  onRefresh: () => void | Promise<void>;
+  isRefreshing?: boolean;
+}) {
+  const t = useTranslations('Trader.Common');
+
+  return (
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      disabled={isRefreshing}
+      onClick={() => void onRefresh()}
+      aria-label={t('refresh')}
+    >
+      <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
+      {isRefreshing ? t('refreshing') : t('refresh')}
+    </Button>
+  );
+}
 
 export function ListPageHeader({
   title,

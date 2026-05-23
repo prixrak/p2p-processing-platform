@@ -69,6 +69,57 @@ function CopyOrderIdCell({ id }: { id: string }) {
   return <OrderIdCopyCell id={id} />;
 }
 
+function payoutCardNumberCopyValue(number: string): string {
+  return number.trim().replace(/\s+/g, '');
+}
+
+function payoutAmountCopyValue(amount: number): string {
+  return amount.toFixed(2);
+}
+
+export function PayoutAmountCopyCell({
+  amount,
+  currency,
+  copyLabel,
+  className,
+}: {
+  amount: number;
+  currency: string;
+  copyLabel: string;
+  className?: string;
+}) {
+  return (
+    <span className="inline-flex items-center justify-end gap-1">
+      <span className={className}>{formatCurrency(amount, currency)}</span>
+      <OrderIdCopyCell
+        id={payoutAmountCopyValue(amount)}
+        withToast
+        label={copyLabel}
+      />
+    </span>
+  );
+}
+
+export function PayoutRecipientNumberCopyCell({
+  number,
+  copyLabel,
+}: {
+  number: string;
+  copyLabel: string;
+}) {
+  const copyValue = payoutCardNumberCopyValue(number);
+  if (!copyValue) {
+    return <span className="text-text-muted">—</span>;
+  }
+
+  return (
+    <span className="inline-flex max-w-full items-center gap-1">
+      <span className="truncate font-mono text-xs">{number}</span>
+      <OrderIdCopyCell id={copyValue} withToast label={copyLabel} />
+    </span>
+  );
+}
+
 function PayoutStatusWithHistory({
   row,
   statusHistoryPath,
@@ -152,9 +203,12 @@ export function buildPayoutPoolColumns(opts: {
       className: 'text-end tabular-nums',
       mobilePrimary: true,
       render: (row: PayOutOrderCabinetDto) => (
-        <span className="font-semibold text-accent-blue">
-          {formatCurrency(row.amount, row.currency)}
-        </span>
+        <PayoutAmountCopyCell
+          amount={row.amount}
+          currency={row.currency}
+          copyLabel={t('colAmount')}
+          className="font-semibold text-accent-blue"
+        />
       ),
     },
     {
@@ -237,7 +291,12 @@ export function buildPayoutOrdersColumns(opts: {
     className: 'text-end tabular-nums',
     mobilePrimary: true,
     render: (row: PayOutOrderCabinetDto) => (
-      <span className="font-medium">{formatCurrency(row.amount, row.currency)}</span>
+      <PayoutAmountCopyCell
+        amount={row.amount}
+        currency={row.currency}
+        copyLabel={t('colAmount')}
+        className="font-medium"
+      />
     ),
   };
 
@@ -287,7 +346,10 @@ export function buildPayoutOrdersColumns(opts: {
       header: t('colRecipient'),
       render: (row: PayOutOrderCabinetDto) => (
         <div className="flex flex-col">
-          <span className="font-mono text-xs">{row.details.number}</span>
+          <PayoutRecipientNumberCopyCell
+            number={row.details.number}
+            copyLabel={t('detail.recipientNumber')}
+          />
           {row.details.owner && (
             <span className="text-xs text-text-muted">{row.details.owner}</span>
           )}

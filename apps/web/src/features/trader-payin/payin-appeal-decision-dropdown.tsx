@@ -1,24 +1,26 @@
 'use client';
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { computeTraderPayinFinalizeMenuPosition } from './order-finalize-dropdown-position';
+import { useAnchoredFixedMenuBySelector } from '@/lib/hooks/use-anchored-fixed-menu';
 
 export type AppealDecisionMenuAnchor = 'table' | 'modal';
 
 export type AppealDecisionMenuState =
   | { anchor: AppealDecisionMenuAnchor; orderId: string; appealId: string }
   | null;
+
+export function appealDecisionTriggerSelector(
+  anchor: AppealDecisionMenuAnchor,
+  orderId: string,
+  appealId: string,
+): string {
+  return `[data-payin-appeal-decision-trigger="${anchor}:${orderId}:${appealId}"]`;
+}
 
 export function PayInAppealDecisionDropdown({
   orderId,
@@ -27,8 +29,6 @@ export function PayInAppealDecisionDropdown({
   setMenuState,
   menuAnchor,
   loading,
-  onReject,
-  onAccept,
 }: {
   orderId: string;
   appealId: string;
@@ -36,8 +36,6 @@ export function PayInAppealDecisionDropdown({
   setMenuState: (state: AppealDecisionMenuState) => void;
   menuAnchor: AppealDecisionMenuAnchor;
   loading: boolean;
-  onReject: () => void;
-  onAccept: () => void;
 }) {
   const t = useTranslations('Trader.Payin.appealDecision');
   const open =
@@ -46,52 +44,61 @@ export function PayInAppealDecisionDropdown({
     menuState.orderId === orderId &&
     menuState.appealId === appealId;
 
-  const triggerRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  return (
+    <div
+      className="relative inline-block text-left"
+      data-payin-appeal-decision-dropdown
+    >
+      <Button
+        size="sm"
+        variant="secondary"
+        className="gap-1"
+        loading={loading}
+        disabled={loading}
+        data-payin-appeal-decision-trigger={`${menuAnchor}:${orderId}:${appealId}`}
+        onClick={() =>
+          setMenuState(open ? null : { anchor: menuAnchor, orderId, appealId })
+        }
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label={t('ariaChoose')}
+      >
+        {t('trigger')}
+        <ChevronDown
+          className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')}
+        />
+      </Button>
+    </div>
+  );
+}
 
-  const updateMenuPosition = useCallback(() => {
-    const trigger = triggerRef.current;
-    const menu = menuRef.current;
-    if (!trigger) return;
+export function PayInAppealDecisionMenuPortal({
+  menuState,
+  setMenuState,
+  loading,
+  onReject,
+  onAccept,
+}: {
+  menuState: AppealDecisionMenuState;
+  setMenuState: (state: AppealDecisionMenuState) => void;
+  loading: boolean;
+  onReject: () => void;
+  onAccept: () => void;
+}) {
+  const t = useTranslations('Trader.Payin.appealDecision');
+  const open = menuState !== null;
+  const triggerSelector = open
+    ? appealDecisionTriggerSelector(
+        menuState.anchor,
+        menuState.orderId,
+        menuState.appealId,
+      )
+    : null;
 
-    const tr = trigger.getBoundingClientRect();
-    let top = tr.bottom + 4;
-    let left = tr.right;
-
-    if (menu) {
-      const next = computeTraderPayinFinalizeMenuPosition(
-        tr,
-        menu.offsetWidth,
-        menu.offsetHeight,
-        window.innerWidth,
-        window.innerHeight,
-      );
-      top = next.top;
-      left = next.left;
-    }
-
-    setMenuPos({ top, left });
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!open) return;
-    updateMenuPosition();
-    queueMicrotask(() => {
-      updateMenuPosition();
-    });
-  }, [open, updateMenuPosition]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onScrollOrResize = () => updateMenuPosition();
-    window.addEventListener('scroll', onScrollOrResize, true);
-    window.addEventListener('resize', onScrollOrResize);
-    return () => {
-      window.removeEventListener('scroll', onScrollOrResize, true);
-      window.removeEventListener('resize', onScrollOrResize);
-    };
-  }, [open, updateMenuPosition]);
+  const { menuRef, menuPos, isPositioned } = useAnchoredFixedMenuBySelector(
+    open,
+    triggerSelector,
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -102,12 +109,17 @@ export function PayInAppealDecisionDropdown({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, setMenuState]);
 
-  const menu = open && (
+  if (!open) {
+    return null;
+  }
+
+  const menu = (
     <div
       ref={menuRef}
       data-payin-appeal-decision-dropdown
       className={cn(
         'flex min-w-[11rem] flex-col gap-1 rounded-lg border border-border-primary bg-surface-secondary p-1.5 shadow-2xl',
+        !isPositioned && 'pointer-events-none invisible',
       )}
       style={{
         position: 'fixed',
@@ -146,33 +158,9 @@ export function PayInAppealDecisionDropdown({
     </div>
   );
 
-  return (
-    <>
-      <div
-        ref={triggerRef}
-        className="relative inline-block text-left"
-        data-payin-appeal-decision-dropdown
-      >
-        <Button
-          size="sm"
-          variant="secondary"
-          className="gap-1"
-          loading={loading}
-          disabled={loading}
-          onClick={() =>
-            setMenuState(open ? null : { anchor: menuAnchor, orderId, appealId })
-          }
-          aria-expanded={open}
-          aria-haspopup="menu"
-          aria-label={t('ariaChoose')}
-        >
-          {t('trigger')}
-          <ChevronDown
-            className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')}
-          />
-        </Button>
-      </div>
-      {typeof document !== 'undefined' && menu && createPortal(menu, document.body)}
-    </>
-  );
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(menu, document.body);
 }

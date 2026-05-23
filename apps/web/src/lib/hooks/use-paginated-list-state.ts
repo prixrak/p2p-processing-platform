@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { DEFAULT_LIST_PAGE_SIZE, type ListPageSize } from '@/lib/list-pagination';
 import { DEFAULT_INPUT_DEBOUNCE_MS, useDebouncedTextFilter } from './use-debounced-value';
 
 /**
@@ -15,16 +16,18 @@ import { DEFAULT_INPUT_DEBOUNCE_MS, useDebouncedTextFilter } from './use-debounc
  *   isn't fired on every keystroke. Whitespace is trimmed.
  */
 export function usePaginatedListState<TStatus extends string = string>(opts: {
-  /** Page-size constant used by the caller's API query (only used to allow callers to plumb it through). */
-  pageSize: number;
+  /** Initial rows per page. Defaults to {@link DEFAULT_LIST_PAGE_SIZE}. */
+  initialPageSize?: ListPageSize;
   /** Debounce delay for the search-input → debouncedSearch transition. Defaults to 350ms. */
   debounceMs?: number;
   /** Extra dependencies that should reset page back to 1 (e.g. tab change). */
   resetWhen?: ReadonlyArray<unknown>;
 }) {
-  const { pageSize, debounceMs = DEFAULT_INPUT_DEBOUNCE_MS, resetWhen = [] } = opts;
+  const { initialPageSize = DEFAULT_LIST_PAGE_SIZE, debounceMs = DEFAULT_INPUT_DEBOUNCE_MS, resetWhen = [] } =
+    opts;
 
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<ListPageSize>(initialPageSize);
   const {
     value: searchInput,
     setValue: setSearchInput,
@@ -55,6 +58,7 @@ export function usePaginatedListState<TStatus extends string = string>(opts: {
     statusFilter,
     setStatusFilter,
     pageSize,
+    setPageSize,
     useClampToTotalPages,
   };
 }

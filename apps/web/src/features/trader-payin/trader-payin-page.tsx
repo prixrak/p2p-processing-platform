@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { ArrowDownToLine } from 'lucide-react';
 import type { AppealDto, TraderPayInOrderDto } from '@p2p/shared';
-import { ListPageHeader, SearchStatusRow } from '@/components/ui/list-page-tools';
+import { ListPageHeader, ListPageRefreshButton, SearchStatusRow } from '@/components/ui/list-page-tools';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { Tabs } from '@/components/ui/tabs';
 import { Table } from '@/components/ui/table';
@@ -32,10 +32,12 @@ import {
 } from './payin-order-cells';
 import {
   OrderFinalizeDropdown,
+  OrderFinalizeMenuPortal,
   type OrderFinalizeMenuState,
 } from './order-finalize-dropdown';
 import {
   PayInAppealDecisionDropdown,
+  PayInAppealDecisionMenuPortal,
   type AppealDecisionMenuState,
 } from './payin-appeal-decision-dropdown';
 import {
@@ -49,10 +51,9 @@ import { usePaginatedListState } from '@/lib/hooks/use-paginated-list-state';
 import { useSelectedRowSync } from '@/lib/hooks/use-selected-row-sync';
 import { listSearchForQuery } from '@/lib/list-search';
 
-const PAYIN_LIST_PAGE_SIZE = 20;
-
 export function TraderPayInPage() {
   const t = useTranslations('Trader.Payin');
+  const tCommon = useTranslations('Trader.Common');
   const queryClient = useQueryClient();
   const [listTab, setListTab] = useState<'current' | 'history'>('current');
   const {
@@ -63,9 +64,10 @@ export function TraderPayInPage() {
     debouncedSearch,
     statusFilter,
     setStatusFilter,
+    pageSize,
+    setPageSize,
     useClampToTotalPages,
   } = usePaginatedListState({
-    pageSize: PAYIN_LIST_PAGE_SIZE,
     resetWhen: [listTab],
   });
   const [selectedOrder, setSelectedOrder] = useState<TraderPayInOrderDto | null>(null);
@@ -142,20 +144,20 @@ export function TraderPayInPage() {
   const queryParams: Record<string, string> = {
     list: listTab,
     page: String(page),
-    limit: String(PAYIN_LIST_PAGE_SIZE),
+    limit: String(pageSize),
   };
   if (statusFilter) queryParams.status = statusFilter;
   const searchParam = listSearchForQuery(debouncedSearch);
   if (searchParam) queryParams.search = searchParam;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: traderKeys.payinOrders(queryParams),
     queryFn: async () => {
       const { data: res, clockOffsetMs } = await api.getWithClockOffset<PayInListApiResponse>(
         internalPaths.traderPayinOrders,
         queryParams,
       );
-      const limit = res.limit ?? PAYIN_LIST_PAGE_SIZE;
+      const limit = res.limit ?? pageSize;
       const totalPages = Math.max(1, Math.ceil(res.total / limit));
       return {
         orders: res.items,
@@ -171,6 +173,22 @@ export function TraderPayInPage() {
   useClampToTotalPages(data?.totalPages);
   useSelectedRowSync(data?.orders, selectedOrder, setSelectedOrder);
   useSelectedRowSync(data?.orders, receiptOrder, setReceiptOrder);
+
+  const finalizeMenuOrder = useMemo(() => {
+    if (!finalizeMenu) return null;
+    const fromList = data?.orders.find((order) => order.id === finalizeMenu.orderId);
+    if (fromList) return fromList;
+    if (selectedOrder?.id === finalizeMenu.orderId) return selectedOrder;
+    return null;
+  }, [data?.orders, finalizeMenu, selectedOrder]);
+
+  const appealDecisionMenuOrder = useMemo(() => {
+    if (!appealDecisionMenu) return null;
+    const fromList = data?.orders.find((order) => order.id === appealDecisionMenu.orderId);
+    if (fromList) return fromList;
+    if (selectedOrder?.id === appealDecisionMenu.orderId) return selectedOrder;
+    return null;
+  }, [appealDecisionMenu, data?.orders, selectedOrder]);
 
   function openFinalize(kind: FinalizeKind, order: TraderPayInOrderDto) {
     setFinalizeDialog({
@@ -371,12 +389,6 @@ export function TraderPayInPage() {
                         setMenuState={setAppealDecisionMenu}
                         menuAnchor="table"
                         loading={appealBusy}
-                        onReject={() =>
-                          requestAppealDecision(openAppeal!.id, AppealStatus.REJECTED, row)
-                        }
-                        onAccept={() =>
-                          requestAppealDecision(openAppeal!.id, AppealStatus.RESOLVED, row)
-                        }
                       />
                     )}
                     <OrderFinalizeDropdown
@@ -384,7 +396,6 @@ export function TraderPayInPage() {
                       menuState={finalizeMenu}
                       setMenuState={setFinalizeMenu}
                       menuAnchor="table"
-                      onPickKind={(kind) => openFinalize(kind, row)}
                     />
                   </div>
                 );
@@ -421,7 +432,14 @@ export function TraderPayInPage() {
           </div>
         }
         actions={
-          <Tabs
+          <>
+            <ListPageRefreshButton
+              isRefreshing={isFetching}
+              onRefresh={() =>
+                queryClient.invalidateQueries({ queryKey: traderKeys.payinOrdersScope })
+              }
+            />
+            <Tabs
             tabs={[
               { key: 'current', label: t('tabCurrent') },
               { key: 'history', label: t('tabHistory') },
@@ -438,6 +456,7 @@ export function TraderPayInPage() {
               );
             }}
           />
+          </>
         }
       />
 
@@ -470,6 +489,9 @@ export function TraderPayInPage() {
         totalItems={data?.total ?? 0}
         itemLabel={t('itemLabel')}
         variant="minimal"
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+        rowsPerPageLabel={tCommon('rowsPerPage')}
       />
 
       <PayInReceiptGalleryModal
@@ -483,6 +505,39 @@ export function TraderPayInPage() {
 
       <PayInProofViewerModal fileId={viewingProofFileId} onClose={() => setViewingProofFileId(null)} />
 
+      <OrderFinalizeMenuPortal
+        menuState={finalizeMenu}
+        setMenuState={setFinalizeMenu}
+        order={finalizeMenuOrder}
+        onPickKind={(kind) => {
+          const order = finalizeMenuOrder;
+          if (order) openFinalize(kind, order);
+        }}
+      />
+
+      <PayInAppealDecisionMenuPortal
+        menuState={appealDecisionMenu}
+        setMenuState={setAppealDecisionMenu}
+        loading={
+          resolveAppealMutation.isPending &&
+          resolveAppealMutation.variables?.appealId === appealDecisionMenu?.appealId
+        }
+        onReject={() => {
+          const order = appealDecisionMenuOrder;
+          const appealId = appealDecisionMenu?.appealId;
+          if (order && appealId) {
+            requestAppealDecision(appealId, AppealStatus.REJECTED, order);
+          }
+        }}
+        onAccept={() => {
+          const order = appealDecisionMenuOrder;
+          const appealId = appealDecisionMenu?.appealId;
+          if (order && appealId) {
+            requestAppealDecision(appealId, AppealStatus.RESOLVED, order);
+          }
+        }}
+      />
+
       <PayInOrderDetailModal
         selectedOrder={selectedOrder}
         historyMode={listTab === 'history'}
@@ -490,7 +545,6 @@ export function TraderPayInPage() {
         appealDecisionMenu={appealDecisionMenu}
         setAppealDecisionMenu={setAppealDecisionMenu}
         resolveAppealMutation={resolveAppealMutation}
-        onAppealDecision={requestAppealDecision}
         onOpenReceipts={setReceiptOrder}
         onClose={() => {
           setFinalizeMenu((m) => (m?.anchor === 'modal' ? null : m));
@@ -499,7 +553,6 @@ export function TraderPayInPage() {
         }}
         finalizeMenu={finalizeMenu}
         setFinalizeMenu={setFinalizeMenu}
-        onPickFinalizeKind={(kind, order) => openFinalize(kind, order)}
       />
 
       <PayInFinalizeConfirmationModal

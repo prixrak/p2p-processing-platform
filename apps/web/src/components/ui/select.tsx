@@ -15,6 +15,7 @@ import {
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 import { clsx } from 'clsx';
+import { computeDropdownBelowPosition } from '@/lib/anchored-dropdown-position';
 import { cn } from '@/lib/utils';
 
 export interface SelectOption {
@@ -85,6 +86,7 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(function Select(
   const triggerWrapRef = useRef<HTMLDivElement>(null);
   const listboxRef = useRef<HTMLUListElement>(null);
   const [listboxPos, setListboxPos] = useState({ top: 0, left: 0, width: 0 });
+  const [isPositioned, setIsPositioned] = useState(false);
 
   const setRefs = (node: HTMLDivElement | null) => {
     containerRef.current = node;
@@ -95,14 +97,41 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(function Select(
   const updateListboxPosition = useCallback(() => {
     const wrap = triggerWrapRef.current;
     if (!wrap) return;
-    const r = wrap.getBoundingClientRect();
-    setListboxPos({ top: r.bottom + 4, left: r.left, width: r.width });
+
+    const triggerRect = wrap.getBoundingClientRect();
+    const menu = listboxRef.current;
+    const menuWidth = menu ? Math.max(menu.offsetWidth, triggerRect.width, 120) : Math.max(triggerRect.width, 120);
+    const menuHeight = menu?.offsetHeight ?? 0;
+
+    let top = triggerRect.bottom + 4;
+    let left = triggerRect.left;
+
+    if (menuHeight > 0) {
+      const next = computeDropdownBelowPosition(
+        triggerRect,
+        menuWidth,
+        menuHeight,
+        window.innerWidth,
+        window.innerHeight,
+      );
+      top = next.top;
+      left = next.left;
+      setIsPositioned(true);
+    }
+
+    setListboxPos({ top, left, width: menuWidth });
   }, []);
 
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setIsPositioned(false);
+      return;
+    }
+
     updateListboxPosition();
-  }, [open, updateListboxPosition]);
+    const frame = requestAnimationFrame(updateListboxPosition);
+    return () => cancelAnimationFrame(frame);
+  }, [open, updateListboxPosition, options.length]);
 
   useEffect(() => {
     if (!open) return;
@@ -201,8 +230,9 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(function Select(
                 position: 'fixed',
                 top: listboxPos.top,
                 left: listboxPos.left,
-                width: Math.max(listboxPos.width, 120),
+                width: listboxPos.width,
                 zIndex: 250,
+                visibility: isPositioned ? 'visible' : 'hidden',
               }}
               className={clsx(
                 'max-h-60 overflow-auto rounded-lg border border-border-primary bg-surface-secondary py-1 shadow-2xl',

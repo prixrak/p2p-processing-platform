@@ -1,12 +1,6 @@
 'use client';
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -15,7 +9,7 @@ import { cn } from '@/lib/utils';
 import type { TraderPayInOrderDto } from '@p2p/shared';
 import { finalizeOptionsForOrder } from './payin-finalize-utils';
 import type { FinalizeKind } from './payin-types';
-import { computeTraderPayinFinalizeMenuPosition } from './order-finalize-dropdown-position';
+import { useAnchoredFixedMenuBySelector } from '@/lib/hooks/use-anchored-fixed-menu';
 
 /** Which UI surface owns the open menu (table row vs detail modal share the same order id). */
 export type OrderFinalizeMenuAnchor = 'table' | 'modal';
@@ -24,18 +18,23 @@ export type OrderFinalizeMenuState =
   | { anchor: OrderFinalizeMenuAnchor; orderId: string }
   | null;
 
+export function orderFinalizeTriggerSelector(
+  anchor: OrderFinalizeMenuAnchor,
+  orderId: string,
+): string {
+  return `[data-trader-payin-finalize-trigger="${anchor}:${orderId}"]`;
+}
+
 export function OrderFinalizeDropdown({
   order,
   menuState,
   setMenuState,
   menuAnchor,
-  onPickKind,
 }: {
   order: TraderPayInOrderDto;
   menuState: OrderFinalizeMenuState;
   setMenuState: (state: OrderFinalizeMenuState) => void;
   menuAnchor: OrderFinalizeMenuAnchor;
-  onPickKind: (kind: FinalizeKind) => void;
 }) {
   const t = useTranslations('Trader.Payin.finalize');
   const opts = finalizeOptionsForOrder(order);
@@ -44,52 +43,59 @@ export function OrderFinalizeDropdown({
     menuState !== null &&
     menuState.anchor === menuAnchor &&
     menuState.orderId === order.id;
-  const triggerRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
 
-  const updateMenuPosition = useCallback(() => {
-    const trigger = triggerRef.current;
-    const menu = menuRef.current;
-    if (!trigger) return;
+  if (opts.length === 0) {
+    return null;
+  }
 
-    const tr = trigger.getBoundingClientRect();
-    let top = tr.bottom + 4;
-    let left = tr.right;
+  return (
+    <div
+      className="relative inline-block text-left"
+      data-trader-payin-finalize-dropdown
+    >
+      <Button
+        size="sm"
+        variant="primary"
+        className="gap-1"
+        data-trader-payin-finalize-trigger={`${menuAnchor}:${order.id}`}
+        onClick={() =>
+          setMenuState(open ? null : { anchor: menuAnchor, orderId: order.id })
+        }
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        {t('changeStatus')}
+        <ChevronDown
+          className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')}
+        />
+      </Button>
+    </div>
+  );
+}
 
-    if (menu) {
-      const next = computeTraderPayinFinalizeMenuPosition(
-        tr,
-        menu.offsetWidth,
-        menu.offsetHeight,
-        window.innerWidth,
-        window.innerHeight,
-      );
-      top = next.top;
-      left = next.left;
-    }
+export function OrderFinalizeMenuPortal({
+  menuState,
+  setMenuState,
+  order,
+  onPickKind,
+}: {
+  menuState: OrderFinalizeMenuState;
+  setMenuState: (state: OrderFinalizeMenuState) => void;
+  order: TraderPayInOrderDto | null;
+  onPickKind: (kind: FinalizeKind) => void;
+}) {
+  const t = useTranslations('Trader.Payin.finalize');
+  const opts = order ? finalizeOptionsForOrder(order) : [];
+  const open = menuState !== null && order !== null && opts.length > 0;
+  const triggerSelector =
+    open && menuState
+      ? orderFinalizeTriggerSelector(menuState.anchor, menuState.orderId)
+      : null;
 
-    setMenuPos({ top, left });
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!open) return;
-    updateMenuPosition();
-    queueMicrotask(() => {
-      updateMenuPosition();
-    });
-  }, [open, updateMenuPosition, opts.length]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onScrollOrResize = () => updateMenuPosition();
-    window.addEventListener('scroll', onScrollOrResize, true);
-    window.addEventListener('resize', onScrollOrResize);
-    return () => {
-      window.removeEventListener('scroll', onScrollOrResize, true);
-      window.removeEventListener('resize', onScrollOrResize);
-    };
-  }, [open, updateMenuPosition]);
+  const { menuRef, menuPos, isPositioned } = useAnchoredFixedMenuBySelector(
+    open,
+    triggerSelector,
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -108,12 +114,17 @@ export function OrderFinalizeDropdown({
     adjustment: 'border-accent-purple text-accent-purple hover:bg-accent-purple/10',
   };
 
-  const menu = open && (
+  if (!open || !order) {
+    return null;
+  }
+
+  const menu = (
     <div
       ref={menuRef}
       data-trader-payin-finalize-dropdown
       className={cn(
         'flex min-w-[12.5rem] flex-col gap-1 rounded-lg border border-border-primary bg-surface-secondary p-1.5 shadow-2xl',
+        !isPositioned && 'pointer-events-none invisible',
       )}
       style={{
         position: 'fixed',
@@ -172,36 +183,9 @@ export function OrderFinalizeDropdown({
     </div>
   );
 
-  if (opts.length === 0) {
+  if (typeof document === 'undefined') {
     return null;
   }
 
-  return (
-    <>
-      <div
-        ref={triggerRef}
-        className="relative inline-block text-left"
-        data-trader-payin-finalize-dropdown
-      >
-        <Button
-          size="sm"
-          variant="primary"
-          className="gap-1"
-          onClick={() =>
-            setMenuState(open ? null : { anchor: menuAnchor, orderId: order.id })
-          }
-          aria-expanded={open}
-          aria-haspopup="menu"
-        >
-          {t('changeStatus')}
-          <ChevronDown
-            className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')}
-          />
-        </Button>
-      </div>
-      {typeof document !== 'undefined' &&
-        menu &&
-        createPortal(menu, document.body)}
-    </>
-  );
+  return createPortal(menu, document.body);
 }

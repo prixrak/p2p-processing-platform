@@ -27,6 +27,11 @@
       "signOut": "Вийти",
       "badgePending": "{label}: {count} очікує"
     },
+    "Common": {
+      "refresh": "Оновити",
+      "refreshing": "Оновлення…",
+      "rowsPerPage": "Рядків на сторінці"
+    },
     "HeaderStatus": {
       "loadingTooltip": "Завантаження статусу доступності…",
       "errorTooltip": "Не вдалося завантажити статус. Оновіть сторінку або спробуйте ще раз.",
@@ -329,6 +334,7 @@
       "loading": "Завантаження…",
       "emptyArchived": "Немає архівних груп.",
       "emptyCurrent": "Ще немає груп способів оплати. Створіть групу, щоб додати реквізити.",
+      "itemLabel": "груп",
       "created": "Створено",
       "trader": "Трейдер",
       "name": "Назва",
@@ -378,6 +384,72 @@
         "actions": "Дії",
         "editLimits": "Редагувати ліміти реквізиту",
         "viewHistory": "Історія реквізиту"
+      },
+      "modals": {
+        "cancel": "Скасувати",
+        "save": "Зберегти",
+        "saveChanges": "Зберегти зміни",
+        "addGroup": {
+          "title": "Додати групу способу оплати",
+          "nameLabel": "Назва",
+          "namePlaceholder": "напр. Картки Monobank",
+          "currencyLabel": "Валюта",
+          "paymentMethodLabel": "Спосіб оплати з каталогу",
+          "paymentMethodPlaceholder": "Оберіть спосіб оплати",
+          "noPaymentMethods": "Немає способів оплати Pay-In для цієї валюти. Попросіть адміністратора додати спосіб перед створенням групи.",
+          "submit": "Створити групу"
+        },
+        "editGroup": {
+          "title": "Редагувати групу способу оплати",
+          "nameLabel": "Назва",
+          "paymentMethodLabel": "Спосіб оплати з каталогу",
+          "paymentMethodPlaceholder": "Оберіть спосіб оплати",
+          "noPaymentMethods": "Немає способів оплати Pay-In для валюти цієї групи. Додайте спосіб у каталозі або зверніться до підтримки."
+        },
+        "addRequisite": {
+          "title": "Додати реквізит",
+          "typeLabel": "Тип",
+          "typeCard": "Картка",
+          "typeIban": "IBAN",
+          "cardNumberLabel": "Номер картки",
+          "ibanLabel": "IBAN",
+          "cardNumberPlaceholder": "0000 0000 0000 0000",
+          "ibanPlaceholder": "UA00 0000 0000 0000 0000 0000 00000",
+          "ownerNameLabel": "Ім'я власника",
+          "ownerNamePlaceholder": "Власник рахунку",
+          "cardHolderNameLabel": "Ім'я власника картки",
+          "cardHolderNamePlaceholder": "Прізвище Ім'я По батькові",
+          "bankLabel": "Банк",
+          "bankPlaceholder": "Оберіть банк",
+          "noBanks": "У каталозі ще немає банків. Попросіть адміністратора додати банки перед створенням реквізиту.",
+          "acceptOtherBanks": "Приймати перекази з інших банків",
+          "minAmountLabel": "Мін. сума",
+          "maxAmountLabel": "Макс. сума",
+          "volumeLimitLabel": "Ліміт обсягу",
+          "operationsLimitLabel": "Ліміт операцій",
+          "submit": "Створити реквізит"
+        },
+        "editLimits": {
+          "title": "Редагувати ліміти реквізиту",
+          "acceptOtherBanks": "Приймати перекази з інших банків",
+          "minAmountLabel": "Мін. сума",
+          "maxAmountLabel": "Макс. сума",
+          "volumeLimitLabel": "Ліміт обсягу",
+          "operationsLimitLabel": "Ліміт операцій"
+        },
+        "history": {
+          "title": "Історія реквізиту",
+          "subtitle": "ID реквізиту: {id}",
+          "loading": "Завантаження…",
+          "empty": "Ще немає записів аудиту для цього реквізиту.",
+          "actorNotRecorded": "Актора не зафіксовано",
+          "changedFields": "Змінені поля",
+          "before": "До",
+          "after": "Після",
+          "previousState": "Попередній стан",
+          "newState": "Новий стан",
+          "noSnapshots": "Для цього запису не збережено знімків полів (лише метадані)."
+        }
       }
     },
     "Payout": {

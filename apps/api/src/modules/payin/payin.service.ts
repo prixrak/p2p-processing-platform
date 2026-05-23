@@ -178,6 +178,12 @@ export class PayinService {
       dto.currency,
       dto.amount,
     );
+    await this.merchantDirectionsService.assertOrderAmountNotBlocked(
+      merchantId,
+      PrismaDirectionType.PAYIN,
+      dto.currency,
+      dto.amount,
+    );
 
     const merchantCommissionPct =
       await this.merchantDirectionsService.getEffectiveCommissionPercent(
@@ -587,6 +593,12 @@ export class PayinService {
     );
 
     await this.merchantDirectionsService.assertOrderAmountWithinActiveMerchantDirection(
+      merchantId,
+      PrismaDirectionType.PAYIN,
+      dto.currency,
+      dto.amount,
+    );
+    await this.merchantDirectionsService.assertOrderAmountNotBlocked(
       merchantId,
       PrismaDirectionType.PAYIN,
       dto.currency,

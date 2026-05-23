@@ -149,4 +149,68 @@ describe('MerchantDirectionsService', () => {
       ).resolves.toBeUndefined();
     });
   });
+
+  describe('assertOrderAmountNotBlocked', () => {
+    it('does nothing when no merchant direction exists', async () => {
+      const prisma = {
+        merchantDirection: { findUnique: jest.fn().mockResolvedValue(null) },
+      };
+      const currencies = {
+        requireActiveCurrencyIdByCode: jest.fn().mockResolvedValue(currencyId),
+      };
+      const s = createService(prisma, currencies);
+      await expect(
+        s.assertOrderAmountNotBlocked(merchantId, DirectionType.PAYIN, 'UAH', 300),
+      ).resolves.toBeUndefined();
+    });
+
+    it('does nothing when direction has no blocked amounts', async () => {
+      const prisma = {
+        merchantDirection: {
+          findUnique: jest.fn().mockResolvedValue({ blockedAmounts: [] }),
+        },
+      };
+      const currencies = {
+        requireActiveCurrencyIdByCode: jest.fn().mockResolvedValue(currencyId),
+      };
+      const s = createService(prisma, currencies);
+      await expect(
+        s.assertOrderAmountNotBlocked(merchantId, DirectionType.PAYIN, 'UAH', 300),
+      ).resolves.toBeUndefined();
+    });
+
+    it('rejects when amount exactly matches a blocked value', async () => {
+      const prisma = {
+        merchantDirection: {
+          findUnique: jest.fn().mockResolvedValue({
+            blockedAmounts: [{ amount: 300 }],
+          }),
+        },
+      };
+      const currencies = {
+        requireActiveCurrencyIdByCode: jest.fn().mockResolvedValue(currencyId),
+      };
+      const s = createService(prisma, currencies);
+      await expect(
+        s.assertOrderAmountNotBlocked(merchantId, DirectionType.PAYIN, 'UAH', 300),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('allows amount that does not exactly match blocked values', async () => {
+      const prisma = {
+        merchantDirection: {
+          findUnique: jest.fn().mockResolvedValue({
+            blockedAmounts: [{ amount: 300 }],
+          }),
+        },
+      };
+      const currencies = {
+        requireActiveCurrencyIdByCode: jest.fn().mockResolvedValue(currencyId),
+      };
+      const s = createService(prisma, currencies);
+      await expect(
+        s.assertOrderAmountNotBlocked(merchantId, DirectionType.PAYIN, 'UAH', 301),
+      ).resolves.toBeUndefined();
+    });
+  });
 });
